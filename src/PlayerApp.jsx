@@ -56,7 +56,7 @@ function PlayerApp({ client, onSignOut, signingOut = false }) {
   const dorsal = Number.isInteger(profile?.number) && profile.number > 0
     ? String(profile.number)
     : '—';
-  const position = String(profile?.position || '').trim() || 'Sin posición asignada';
+  const playerPosition = String(profile?.player_position || '').trim() || 'Sin posición asignada';
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_50%_0%,rgba(61,217,255,0.12),transparent_34%),linear-gradient(180deg,#02070f_0%,#071225_52%,#030812_100%)] px-4 py-8 text-slate-100">
@@ -120,7 +120,7 @@ function PlayerApp({ client, onSignOut, signingOut = false }) {
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-4">
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Posición</p>
-                  <p className="mt-1 text-sm font-black leading-7 text-white">{position}</p>
+                  <p className="mt-1 text-sm font-black leading-7 text-white">{playerPosition}</p>
                 </div>
               </div>
             </div>

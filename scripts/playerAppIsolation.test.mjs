@@ -30,6 +30,8 @@ assert.deepEqual(
   ['get_my_player_profile'],
   'PlayerApp solo puede cargar el perfil mediante get_my_player_profile'
 );
+assert.match(playerSource, /profile\?\.player_position/, 'PlayerApp consume player_position del RPC');
+assert.doesNotMatch(playerSource, /profile\?\.position/, 'PlayerApp no depende del nombre conflictivo position');
 assert.equal(/\.from\s*\(/.test(shellSource), false, 'el shell no debe consultar tablas antes del branch');
 assert.equal(/\.rpc\s*\(/.test(shellSource), false, 'el shell delega la única RPC al resolver de identidad');
 assert.equal(/\.from\s*\(/.test(resolverSource), false, 'el resolver no debe consultar tablas');

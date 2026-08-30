@@ -13,7 +13,7 @@ assert.match(migration, /do \$preconditions\$[\s\S]*do \$postconditions\$/i)
 
 assert.match(
   migration,
-  /create function public\.get_my_player_profile\(\)\s*returns table\s*\(\s*jugador_id uuid,\s*name text,\s*shirt_name text,\s*number integer,\s*position text,\s*image text\s*\)/i,
+  /create function public\.get_my_player_profile\(\)\s*returns table\s*\(\s*jugador_id uuid,\s*name text,\s*shirt_name text,\s*number integer,\s*player_position text,\s*image text\s*\)/i,
 )
 assert.match(migration, /language plpgsql\s+stable\s+security definer\s+set search_path = pg_catalog/i)
 assert.match(migration, /alter function public\.get_my_player_profile\(\) owner to postgres/i)
@@ -35,6 +35,7 @@ assert.match(body, /from public\.current_membership\(\)/i)
 assert.match(body, /membership_role is distinct from 'player'/i)
 assert.match(body, /linked_jugador_id is null/i)
 assert.match(body, /from public\.jugadores player\s+where player\.id = linked_jugador_id/i)
+assert.match(body, /player\.position as player_position/i)
 assert.doesNotMatch(body, /\bexecute\b/i)
 assert.doesNotMatch(body, /\b(insert|update|delete|merge|truncate)\b/i)
 assert.doesNotMatch(

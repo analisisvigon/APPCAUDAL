@@ -182,7 +182,7 @@ returns table (
   name text,
   shirt_name text,
   number integer,
-  position text,
+  player_position text,
   image text
 )
 language plpgsql
@@ -245,7 +245,7 @@ begin
     player.name,
     player.shirt_name,
     player.number,
-    player.position,
+    player.position as player_position,
     player.image
   from public.jugadores player
   where player.id = linked_jugador_id;
@@ -292,7 +292,7 @@ begin
     ]::oid[]
     and function_row.proargmodes = array['t', 't', 't', 't', 't', 't']::"char"[]
     and function_row.proargnames = array[
-      'jugador_id', 'name', 'shirt_name', 'number', 'position', 'image'
+      'jugador_id', 'name', 'shirt_name', 'number', 'player_position', 'image'
     ]::text[];
 
   if function_owner is null then

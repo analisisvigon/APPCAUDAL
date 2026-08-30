@@ -41,7 +41,7 @@ declare
   borja_name text;
   borja_shirt_name text;
   borja_number integer;
-  borja_position text;
+  borja_player_position text;
   borja_image text;
   jairo_rows integer;
   direct_jugadores_rows bigint;
@@ -114,7 +114,7 @@ begin
       ]::oid[]
       and function_arg_modes = array['t', 't', 't', 't', 't', 't']::"char"[]
       and function_arg_names = array[
-        'jugador_id', 'name', 'shirt_name', 'number', 'position', 'image'
+        'jugador_id', 'name', 'shirt_name', 'number', 'player_position', 'image'
       ]::text[];
 
     definition_ok := pg_catalog.strpos(function_source, 'auth.uid()') > 0
@@ -259,14 +259,14 @@ begin
       profile.name,
       profile.shirt_name,
       profile.number,
-      profile.position,
+      profile.player_position,
       profile.image
     into
       borja_jugador_id,
       borja_name,
       borja_shirt_name,
       borja_number,
-      borja_position,
+      borja_player_position,
       borja_image
     from public.get_my_player_profile() profile;
 
@@ -300,7 +300,7 @@ begin
         'name', borja_name,
         'shirt_name', borja_shirt_name,
         'number', borja_number,
-        'position', borja_position,
+        'player_position', borja_player_position,
         'image_present', nullif(pg_catalog.btrim(coalesce(borja_image, '')), '') is not null,
         'jairo_rows', jairo_rows
       )
