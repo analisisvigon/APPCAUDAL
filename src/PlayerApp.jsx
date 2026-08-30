@@ -5,7 +5,22 @@ import PlayerPerformancePanel from './components/player/PlayerPerformancePanel';
 const EMPTY_PROFILE_STATE = {
   status: 'loading',
   profile: null,
+  errorKind: '',
 };
+
+const getProfileErrorKind = (error) => {
+  const status = Number(error?.status || error?.statusCode);
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '').toLowerCase();
+  return status === 401
+    || code === 'PGRST301'
+    || message.includes('jwt expired')
+    || message.includes('invalid jwt')
+    ? 'invalid_session'
+    : 'profile_unavailable';
+};
+
+const PLAYER_FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric focus-visible:ring-offset-2 focus-visible:ring-offset-[#081326]';
 
 function PlayerApp({ client, onSignOut, signingOut = false }) {
   const [profileState, setProfileState] = useState(EMPTY_PROFILE_STATE);
@@ -19,31 +34,35 @@ function PlayerApp({ client, onSignOut, signingOut = false }) {
       setProfileState(EMPTY_PROFILE_STATE);
 
       if (!client || typeof client.rpc !== 'function') {
-        if (!cancelled) setProfileState({ status: 'error', profile: null });
+        if (!cancelled) setProfileState({ status: 'error', profile: null, errorKind: 'invalid_session' });
         return;
       }
 
       let response;
       try {
         response = await client.rpc('get_my_player_profile');
-      } catch {
-        if (!cancelled) setProfileState({ status: 'error', profile: null });
+      } catch (error) {
+        if (!cancelled) setProfileState({ status: 'error', profile: null, errorKind: getProfileErrorKind(error) });
         return;
       }
 
       if (cancelled) return;
-      if (response?.error || !Array.isArray(response?.data) || response.data.length !== 1) {
-        setProfileState({ status: 'error', profile: null });
+      if (response?.error) {
+        setProfileState({ status: 'error', profile: null, errorKind: getProfileErrorKind(response.error) });
+        return;
+      }
+      if (!Array.isArray(response?.data) || response.data.length !== 1) {
+        setProfileState({ status: 'error', profile: null, errorKind: 'identity_invalid' });
         return;
       }
 
       const profile = response.data[0];
       if (!profile || typeof profile !== 'object' || !String(profile.jugador_id || '').trim()) {
-        setProfileState({ status: 'error', profile: null });
+        setProfileState({ status: 'error', profile: null, errorKind: 'identity_invalid' });
         return;
       }
 
-      setProfileState({ status: 'ready', profile });
+      setProfileState({ status: 'ready', profile, errorKind: '' });
     };
 
     void loadProfile();
@@ -61,7 +80,7 @@ function PlayerApp({ client, onSignOut, signingOut = false }) {
   const playerPosition = String(profile?.player_position || '').trim() || 'Sin posición asignada';
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_50%_0%,rgba(61,217,255,0.12),transparent_34%),linear-gradient(180deg,#02070f_0%,#071225_52%,#030812_100%)] px-4 py-8 text-slate-100">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_50%_0%,rgba(61,217,255,0.12),transparent_34%),linear-gradient(180deg,#02070f_0%,#071225_52%,#030812_100%)] px-3 py-4 text-slate-100 sm:px-4 sm:py-8">
       <main className="mx-auto max-w-4xl">
         <section className="w-full rounded-[1.65rem] border border-white/10 bg-[#081326]/90 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.38)] backdrop-blur-md sm:p-7">
           {profileState.status === 'ready' ? (
@@ -75,7 +94,7 @@ function PlayerApp({ client, onSignOut, signingOut = false }) {
                   type="button"
                   onClick={() => setActiveSection(section)}
                   aria-current={activeSection === section ? 'page' : undefined}
-                  className={`min-h-[46px] rounded-xl px-3 py-2 text-sm font-black transition ${
+                  className={`min-h-[46px] rounded-xl px-3 py-2 text-sm font-black transition ${PLAYER_FOCUS_RING} ${
                     activeSection === section
                       ? 'bg-caudal-electric text-slate-950'
                       : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'
@@ -109,12 +128,16 @@ function PlayerApp({ client, onSignOut, signingOut = false }) {
               />
               <h1 className="mt-6 text-2xl font-black text-white">No se pudo cargar tu perfil</h1>
               <p role="alert" className="mt-3 text-sm leading-6 text-slate-400">
-                Tu sesión está activa, pero no hemos podido resolver de forma segura el jugador vinculado.
+                {profileState.errorKind === 'invalid_session'
+                  ? 'Tu sesión ha caducado. Cierra sesión y vuelve a identificarte.'
+                  : profileState.errorKind === 'identity_invalid'
+                    ? 'No hemos podido resolver de forma segura el jugador vinculado a esta cuenta.'
+                    : 'Ha ocurrido un problema temporal al cargar tu perfil.'}
               </p>
               <button
                 type="button"
                 onClick={() => setReloadToken((current) => current + 1)}
-                className="mt-7 min-h-[50px] w-full rounded-2xl bg-white/10 px-5 py-3 text-sm font-black text-white transition hover:bg-white/15"
+                className={`mt-7 min-h-[50px] w-full rounded-2xl bg-white/10 px-5 py-3 text-sm font-black text-white transition hover:bg-white/15 ${PLAYER_FOCUS_RING}`}
               >
                 Reintentar
               </button>
@@ -132,22 +155,35 @@ function PlayerApp({ client, onSignOut, signingOut = false }) {
               <p className="mt-7 text-[11px] font-black uppercase tracking-[0.26em] text-caudal-electric/90">
                 Mi perfil
               </p>
-              <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">
+              <h1 className="mt-2 break-words text-3xl font-black tracking-tight text-white sm:text-4xl">
                 {shirtName || fullName}
               </h1>
               {shirtName && shirtName.toLocaleLowerCase('es') !== fullName.toLocaleLowerCase('es') ? (
                 <p className="mt-2 text-sm font-semibold text-slate-400">{fullName}</p>
               ) : null}
               <div className="mt-7 grid grid-cols-2 gap-3 text-left">
-                <div className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-4">
+                <div className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-4">
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Dorsal</p>
                   <p className="mt-1 text-2xl font-black text-white">{dorsal}</p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-4">
+                <div className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.055] px-4 py-4">
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Posición</p>
                   <p className="mt-1 text-sm font-black leading-7 text-white">{playerPosition}</p>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setActiveSection('performance')}
+                className={`mt-4 flex min-h-[64px] w-full items-center justify-between gap-4 rounded-2xl border border-caudal-electric/25 bg-caudal-electric/[0.08] px-4 py-3 text-left transition hover:bg-caudal-electric/[0.13] ${PLAYER_FOCUS_RING}`}
+              >
+                <span className="min-w-0">
+                  <span className="block text-sm font-black text-white">Mi rendimiento</span>
+                  <span className="mt-1 block text-xs leading-5 text-slate-400">
+                    Consulta tus respuestas Wellness y RPE.
+                  </span>
+                </span>
+                <span aria-hidden="true" className="shrink-0 text-xl font-black text-caudal-electric">→</span>
+              </button>
             </div>
           ) : null}
 
@@ -159,7 +195,7 @@ function PlayerApp({ client, onSignOut, signingOut = false }) {
             type="button"
             onClick={onSignOut}
             disabled={signingOut}
-            className="mt-8 inline-flex min-h-[50px] w-full items-center justify-center rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-60"
+            className={`mt-8 inline-flex min-h-[50px] w-full items-center justify-center rounded-2xl bg-caudal-electric px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-60 ${PLAYER_FOCUS_RING}`}
           >
             {signingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
           </button>

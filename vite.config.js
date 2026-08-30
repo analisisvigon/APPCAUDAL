@@ -47,6 +47,23 @@ export default defineConfig({
         clientsClaim: true,
         skipWaiting: true,
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+        globIgnores: [
+          '**/App-*.js',
+          '**/App-*.css',
+        ],
+        runtimeCaching: [
+          {
+            urlPattern: /\/assets\/App-.+\.(?:js|css)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'appcaudal-staff-on-demand',
+              expiration: {
+                maxEntries: 12,
+                maxAgeSeconds: 30 * 24 * 60 * 60,
+              },
+            },
+          },
+        ],
       },
     }),
   ],

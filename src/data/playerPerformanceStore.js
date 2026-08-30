@@ -35,6 +35,21 @@ export class PlayerPerformanceLoadError extends Error {
   }
 }
 
+export function appendUniquePlayerEntries(currentEntries = [], nextEntries = []) {
+  const merged = [];
+  const seenIds = new Set();
+
+  [...(Array.isArray(currentEntries) ? currentEntries : []), ...(Array.isArray(nextEntries) ? nextEntries : [])]
+    .forEach((entry) => {
+      const entryId = String(entry?.id || '').trim();
+      if (entryId && seenIds.has(entryId)) return;
+      if (entryId) seenIds.add(entryId);
+      merged.push(entry);
+    });
+
+  return merged;
+}
+
 const normalizeOptionalNumber = (value) => {
   if (value === null || value === undefined || String(value).trim() === '') return null;
   const parsed = Number(value);

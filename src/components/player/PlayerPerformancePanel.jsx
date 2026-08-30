@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   PLAYER_PERFORMANCE_PAGE_SIZE,
+  appendUniquePlayerEntries,
   loadPlayerPerformancePage,
   loadPlayerRpePage,
   loadPlayerWellnessPage,
@@ -14,9 +15,15 @@ const INITIAL_STATE = {
   rpe: [],
   wellnessHasMore: false,
   rpeHasMore: false,
-  loadingMore: false,
-  loadMoreError: false,
+  wellnessOffset: 0,
+  rpeOffset: 0,
+  wellnessLoadingMore: false,
+  rpeLoadingMore: false,
+  wellnessLoadMoreError: '',
+  rpeLoadMoreError: '',
 };
+
+const PLAYER_FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric focus-visible:ring-offset-2 focus-visible:ring-offset-[#081326]';
 
 const formatDate = (value) => {
   const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -27,11 +34,16 @@ const displayNumber = (value, suffix = '') => (
   value === null || value === undefined ? '—' : `${value}${suffix}`
 );
 
+const displayAvailableNumber = (value, suffix = '') => (
+  value === null || value === undefined ? 'No disponible' : `${value}${suffix}`
+);
+
 function Metric({ label, value, accent = false }) {
+  const compactValue = value === 'No disponible';
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-3">
+    <div className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-3">
       <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
-      <p className={`mt-1 text-xl font-black ${accent ? 'text-caudal-electric' : 'text-white'}`}>
+      <p className={`mt-1 break-words font-black leading-tight ${compactValue ? 'text-sm' : 'text-xl'} ${accent ? 'text-caudal-electric' : 'text-white'}`}>
         {value}
       </p>
     </div>
@@ -58,7 +70,11 @@ function MetricTrend({ title, entries, field, max, color }) {
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
       <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">{title}</p>
       {points.length ? (
-        <div className="mt-4 flex h-24 items-end gap-2" aria-label={`Evolución reciente: ${title}`}>
+        <div
+          className="mt-4 flex h-24 items-end gap-1.5 sm:gap-2"
+          role="img"
+          aria-label={`Evolución reciente de ${title}: ${points.map((point) => `${point.date}, ${point.value}`).join('; ')}`}
+        >
           {points.map((point) => (
             <div key={`${point.date}-${field}`} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1">
               <span className="text-[9px] font-bold text-slate-300">{point.value}</span>
@@ -126,8 +142,8 @@ function LatestRpeCard({ entry }) {
           <p className="mt-5 text-6xl font-black tracking-tight text-white">{displayNumber(entry.rpe)}</p>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-300">Esfuerzo percibido</p>
           <div className="mt-5 grid grid-cols-2 gap-2">
-            <Metric label="Duración válida" value={displayNumber(workload.durationMinutes, ' min')} />
-            <Metric label="Carga interna" value={displayNumber(workload.load)} />
+            <Metric label="Duración" value={displayAvailableNumber(workload.durationMinutes, ' min')} />
+            <Metric label="Carga interna" value={displayAvailableNumber(workload.load)} />
           </div>
           <p className="mt-3 text-[10px] leading-5 text-slate-500">
             Duración y carga solo aparecen cuando el RPE está vinculado a una sesión válida. No son U.C. externas.
@@ -146,7 +162,7 @@ function LatestRpeCard({ entry }) {
 function WellnessHistoryEntry({ entry }) {
   return (
     <article className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="font-black text-white">{formatDate(entry.entry_date)}</p>
         <p className="text-sm font-black text-cyan-300">Sueño {displayNumber(entry.sleep_hours, ' h')}</p>
       </div>
@@ -165,13 +181,13 @@ function RpeHistoryEntry({ entry }) {
   const workload = getRpeWorkloadAvailability(entry);
   return (
     <article className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="font-black text-white">{formatDate(entry.entry_date)}</p>
         <p className="text-2xl font-black text-violet-300">RPE {displayNumber(entry.rpe)}</p>
       </div>
-      <div className="mt-2 flex gap-4 text-xs font-bold text-slate-400">
-        <span>Duración: {displayNumber(workload.durationMinutes, ' min')}</span>
-        <span>Carga interna: {displayNumber(workload.load)}</span>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold text-slate-400">
+        <span>Duración: {displayAvailableNumber(workload.durationMinutes, ' min')}</span>
+        <span>Carga interna: {displayAvailableNumber(workload.load)}</span>
       </div>
       {entry.comment ? <div className="mt-3"><TextValue label="Comentario" value={entry.comment} /></div> : null}
     </article>
@@ -181,9 +197,15 @@ function RpeHistoryEntry({ entry }) {
 function PlayerPerformancePanel({ client }) {
   const [state, setState] = useState(INITIAL_STATE);
   const [reloadToken, setReloadToken] = useState(0);
+  const mountedRef = useRef(false);
+  const wellnessRequestInFlightRef = useRef(false);
+  const rpeRequestInFlightRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
+    mountedRef.current = true;
+    wellnessRequestInFlightRef.current = false;
+    rpeRequestInFlightRef.current = false;
     setState(INITIAL_STATE);
 
     loadPlayerPerformancePage(client)
@@ -196,8 +218,12 @@ function PlayerPerformancePanel({ client }) {
           rpe: result.rpe.rows,
           wellnessHasMore: result.wellness.hasMore,
           rpeHasMore: result.rpe.hasMore,
-          loadingMore: false,
-          loadMoreError: false,
+          wellnessOffset: result.wellness.nextOffset,
+          rpeOffset: result.rpe.nextOffset,
+          wellnessLoadingMore: false,
+          rpeLoadingMore: false,
+          wellnessLoadMoreError: '',
+          rpeLoadMoreError: '',
         });
       })
       .catch((error) => {
@@ -211,45 +237,83 @@ function PlayerPerformancePanel({ client }) {
 
     return () => {
       cancelled = true;
+      mountedRef.current = false;
     };
   }, [client, reloadToken]);
 
-  const loadMore = useCallback(async () => {
-    if (state.loadingMore || (!state.wellnessHasMore && !state.rpeHasMore)) return;
-    setState((current) => ({ ...current, loadingMore: true, loadMoreError: false }));
+  const loadMoreWellness = useCallback(async () => {
+    if (wellnessRequestInFlightRef.current || !state.wellnessHasMore) return;
+    wellnessRequestInFlightRef.current = true;
+    setState((current) => ({
+      ...current,
+      wellnessLoadingMore: true,
+      wellnessLoadMoreError: '',
+    }));
 
     try {
-      const [wellnessPage, rpePage] = await Promise.all([
-        state.wellnessHasMore
-          ? loadPlayerWellnessPage(client, { offset: state.wellness.length })
-          : Promise.resolve(null),
-        state.rpeHasMore
-          ? loadPlayerRpePage(client, { offset: state.rpe.length })
-          : Promise.resolve(null),
-      ]);
+      const wellnessPage = await loadPlayerWellnessPage(client, { offset: state.wellnessOffset });
+      if (!mountedRef.current) return;
       setState((current) => ({
         ...current,
-        wellness: wellnessPage ? [...current.wellness, ...wellnessPage.rows] : current.wellness,
-        rpe: rpePage ? [...current.rpe, ...rpePage.rows] : current.rpe,
-        wellnessHasMore: wellnessPage ? wellnessPage.hasMore : current.wellnessHasMore,
-        rpeHasMore: rpePage ? rpePage.hasMore : current.rpeHasMore,
-        loadingMore: false,
-        loadMoreError: false,
+        wellness: appendUniquePlayerEntries(current.wellness, wellnessPage.rows),
+        wellnessHasMore: wellnessPage.hasMore,
+        wellnessOffset: wellnessPage.nextOffset,
+        wellnessLoadingMore: false,
+        wellnessLoadMoreError: '',
       }));
     } catch (error) {
+      if (!mountedRef.current) return;
       setState((current) => ({
         ...current,
-        loadingMore: false,
-        loadMoreError: true,
-        errorKind: error?.kind === 'invalid_session' ? 'invalid_session' : current.errorKind,
+        wellnessLoadingMore: false,
+        wellnessLoadMoreError: error?.kind === 'invalid_session' ? 'invalid_session' : 'network',
       }));
+    } finally {
+      wellnessRequestInFlightRef.current = false;
     }
-  }, [client, state.loadingMore, state.rpe, state.rpeHasMore, state.wellness, state.wellnessHasMore]);
+  }, [client, state.wellnessHasMore, state.wellnessOffset]);
+
+  const loadMoreRpe = useCallback(async () => {
+    if (rpeRequestInFlightRef.current || !state.rpeHasMore) return;
+    rpeRequestInFlightRef.current = true;
+    setState((current) => ({
+      ...current,
+      rpeLoadingMore: true,
+      rpeLoadMoreError: '',
+    }));
+
+    try {
+      const rpePage = await loadPlayerRpePage(client, { offset: state.rpeOffset });
+      if (!mountedRef.current) return;
+      setState((current) => ({
+        ...current,
+        rpe: appendUniquePlayerEntries(current.rpe, rpePage.rows),
+        rpeHasMore: rpePage.hasMore,
+        rpeOffset: rpePage.nextOffset,
+        rpeLoadingMore: false,
+        rpeLoadMoreError: '',
+      }));
+    } catch (error) {
+      if (!mountedRef.current) return;
+      setState((current) => ({
+        ...current,
+        rpeLoadingMore: false,
+        rpeLoadMoreError: error?.kind === 'invalid_session' ? 'invalid_session' : 'network',
+      }));
+    } finally {
+      rpeRequestInFlightRef.current = false;
+    }
+  }, [client, state.rpeHasMore, state.rpeOffset]);
 
   if (state.status === 'loading') {
     return (
-      <div role="status" className="rounded-[1.4rem] border border-white/10 bg-white/[0.04] px-5 py-14 text-center">
-        <p className="text-sm font-black uppercase tracking-[0.18em] text-caudal-electric">Cargando Mi rendimiento…</p>
+      <div role="status" aria-live="polite" className="grid gap-4 sm:grid-cols-2">
+        <div className="rounded-[1.4rem] border border-cyan-300/15 bg-cyan-300/[0.045] px-5 py-12 text-center">
+          <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan-300">Cargando Wellness…</p>
+        </div>
+        <div className="rounded-[1.4rem] border border-violet-300/15 bg-violet-300/[0.045] px-5 py-12 text-center">
+          <p className="text-sm font-black uppercase tracking-[0.18em] text-violet-300">Cargando RPE…</p>
+        </div>
       </div>
     );
   }
@@ -268,7 +332,7 @@ function PlayerPerformancePanel({ client }) {
         <button
           type="button"
           onClick={() => setReloadToken((current) => current + 1)}
-          className="mt-6 min-h-[48px] w-full rounded-2xl bg-white/10 px-5 py-3 text-sm font-black text-white hover:bg-white/15"
+          className={`mt-6 min-h-[48px] w-full rounded-2xl bg-white/10 px-5 py-3 text-sm font-black text-white hover:bg-white/15 ${PLAYER_FOCUS_RING}`}
         >
           Reintentar
         </button>
@@ -288,10 +352,14 @@ function PlayerPerformancePanel({ client }) {
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <LatestWellnessCard entry={state.wellness[0] || null} />
-        <LatestRpeCard entry={state.rpe[0] || null} />
-      </div>
+      <section aria-labelledby="player-current-status-title">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Tu información más reciente</p>
+        <h2 id="player-current-status-title" className="mt-1 text-2xl font-black text-white">Estado actual</h2>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <LatestWellnessCard entry={state.wellness[0] || null} />
+          <LatestRpeCard entry={state.rpe[0] || null} />
+        </div>
+      </section>
 
       <section className="rounded-[1.4rem] border border-white/10 bg-[#081326]/80 p-4 sm:p-5">
         <div>
@@ -305,7 +373,7 @@ function PlayerPerformancePanel({ client }) {
         </div>
       </section>
 
-      <section className="rounded-[1.4rem] border border-white/10 bg-[#081326]/80 p-4 sm:p-5">
+      <section id="player-wellness-history" className="rounded-[1.4rem] border border-white/10 bg-[#081326]/80 p-4 sm:p-5">
         <h2 className="text-xl font-black text-white">Histórico Wellness</h2>
         {state.wellness.length ? (
           <div className="mt-4 grid gap-3">
@@ -314,9 +382,27 @@ function PlayerPerformancePanel({ client }) {
         ) : (
           <p className="mt-3 text-sm text-slate-500">Sin respuestas Wellness.</p>
         )}
+        {state.wellnessHasMore ? (
+          <button
+            type="button"
+            onClick={loadMoreWellness}
+            disabled={state.wellnessLoadingMore}
+            aria-controls="player-wellness-history"
+            className={`mt-4 min-h-[50px] w-full rounded-2xl border border-white/10 bg-white/[0.06] px-5 py-3 text-sm font-black text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 ${PLAYER_FOCUS_RING}`}
+          >
+            {state.wellnessLoadingMore ? 'Cargando Wellness…' : `Ver ${PLAYER_PERFORMANCE_PAGE_SIZE} Wellness más`}
+          </button>
+        ) : null}
+        {state.wellnessLoadMoreError ? (
+          <p role="alert" className="mt-3 text-sm font-semibold text-rose-300">
+            {state.wellnessLoadMoreError === 'invalid_session'
+              ? 'Tu sesión ha caducado. Cierra sesión y vuelve a identificarte.'
+              : 'No se pudo ampliar Wellness. Lo ya cargado sigue disponible.'}
+          </p>
+        ) : null}
       </section>
 
-      <section className="rounded-[1.4rem] border border-white/10 bg-[#081326]/80 p-4 sm:p-5">
+      <section id="player-rpe-history" className="rounded-[1.4rem] border border-white/10 bg-[#081326]/80 p-4 sm:p-5">
         <h2 className="text-xl font-black text-white">Histórico RPE</h2>
         {state.rpe.length ? (
           <div className="mt-4 grid gap-3">
@@ -325,24 +411,25 @@ function PlayerPerformancePanel({ client }) {
         ) : (
           <p className="mt-3 text-sm text-slate-500">Sin respuestas RPE.</p>
         )}
+        {state.rpeHasMore ? (
+          <button
+            type="button"
+            onClick={loadMoreRpe}
+            disabled={state.rpeLoadingMore}
+            aria-controls="player-rpe-history"
+            className={`mt-4 min-h-[50px] w-full rounded-2xl border border-white/10 bg-white/[0.06] px-5 py-3 text-sm font-black text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 ${PLAYER_FOCUS_RING}`}
+          >
+            {state.rpeLoadingMore ? 'Cargando RPE…' : `Ver ${PLAYER_PERFORMANCE_PAGE_SIZE} RPE más`}
+          </button>
+        ) : null}
+        {state.rpeLoadMoreError ? (
+          <p role="alert" className="mt-3 text-sm font-semibold text-rose-300">
+            {state.rpeLoadMoreError === 'invalid_session'
+              ? 'Tu sesión ha caducado. Cierra sesión y vuelve a identificarte.'
+              : 'No se pudo ampliar RPE. Lo ya cargado sigue disponible.'}
+          </p>
+        ) : null}
       </section>
-
-      {state.wellnessHasMore || state.rpeHasMore ? (
-        <button
-          type="button"
-          onClick={loadMore}
-          disabled={state.loadingMore}
-          className="min-h-[50px] w-full rounded-2xl border border-white/10 bg-white/[0.06] px-5 py-3 text-sm font-black text-white hover:bg-white/10 disabled:opacity-60"
-        >
-          {state.loadingMore ? 'Cargando…' : `Ver ${PLAYER_PERFORMANCE_PAGE_SIZE} más`}
-        </button>
-      ) : null}
-
-      {state.loadMoreError ? (
-        <p role="alert" className="text-center text-sm font-semibold text-rose-300">
-          No se pudo ampliar el historial. Puedes volver a intentarlo.
-        </p>
-      ) : null}
     </div>
   );
 }

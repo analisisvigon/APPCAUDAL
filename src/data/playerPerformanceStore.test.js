@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   PLAYER_PERFORMANCE_MAX_PAGE_SIZE,
   PlayerPerformanceLoadError,
+  appendUniquePlayerEntries,
   loadPlayerPerformancePage,
   loadPlayerRpePage,
   loadPlayerWellnessPage,
@@ -114,6 +115,28 @@ assert.deepEqual(limitedClient.calls[0].range, [0, PLAYER_PERFORMANCE_MAX_PAGE_S
 const paginatedClient = makeClient({ rpe_entries: rpeRows });
 await loadPlayerRpePage(paginatedClient, { offset: 8, limit: 8, jugadorId: 'other-player' });
 assert.deepEqual(paginatedClient.calls[0].range, [8, 16]);
+
+const exactFirstEntry = {
+  id: 'same-wellness',
+  entry_date: '2026-08-30',
+  discomfort: 'Molestia exacta inicial',
+  comment: 'Comentario exacto inicial',
+};
+const uniqueEntries = appendUniquePlayerEntries(
+  [exactFirstEntry, { id: 'already-loaded', entry_date: '2026-08-29' }],
+  [
+    { id: 'already-loaded', entry_date: '2026-08-29', comment: 'No debe reemplazar la fila cargada' },
+    { id: 'next-page', entry_date: '2026-08-28', comment: 'Comentario de la página nueva' },
+  ],
+);
+assert.deepEqual(
+  uniqueEntries.map((entry) => entry.id),
+  ['same-wellness', 'already-loaded', 'next-page'],
+  'La paginación conserva el orden y elimina duplicados por id.',
+);
+assert.equal(uniqueEntries[0], exactFirstEntry, 'No se reconstruye ni mezcla la respuesta ya cargada.');
+assert.equal(uniqueEntries[0].comment, 'Comentario exacto inicial');
+assert.equal(uniqueEntries[0].discomfort, 'Molestia exacta inicial');
 
 await assert.rejects(
   () => loadPlayerWellnessPage(makeClient({}, { wellness_entries: { message: 'offline' } })),
