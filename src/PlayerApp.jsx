@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import PlayerAvatar from './components/player/PlayerAvatar';
+import PlayerPerformancePanel from './components/player/PlayerPerformancePanel';
 
 const EMPTY_PROFILE_STATE = {
   status: 'loading',
@@ -9,6 +10,7 @@ const EMPTY_PROFILE_STATE = {
 function PlayerApp({ client, onSignOut, signingOut = false }) {
   const [profileState, setProfileState] = useState(EMPTY_PROFILE_STATE);
   const [reloadToken, setReloadToken] = useState(0);
+  const [activeSection, setActiveSection] = useState('space');
 
   useEffect(() => {
     let cancelled = false;
@@ -60,10 +62,33 @@ function PlayerApp({ client, onSignOut, signingOut = false }) {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_50%_0%,rgba(61,217,255,0.12),transparent_34%),linear-gradient(180deg,#02070f_0%,#071225_52%,#030812_100%)] px-4 py-8 text-slate-100">
-      <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-xl items-center justify-center">
-        <section className="w-full rounded-[1.65rem] border border-white/10 bg-[#081326]/90 p-7 text-center shadow-[0_24px_80px_rgba(0,0,0,0.38)] backdrop-blur-md sm:p-10">
+      <main className="mx-auto max-w-4xl">
+        <section className="w-full rounded-[1.65rem] border border-white/10 bg-[#081326]/90 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.38)] backdrop-blur-md sm:p-7">
+          {profileState.status === 'ready' ? (
+            <nav className="mb-5 grid grid-cols-2 gap-2 rounded-2xl bg-black/20 p-1" aria-label="Espacio de jugador">
+              {[
+                ['space', 'Mi espacio'],
+                ['performance', 'Mi rendimiento'],
+              ].map(([section, label]) => (
+                <button
+                  key={section}
+                  type="button"
+                  onClick={() => setActiveSection(section)}
+                  aria-current={activeSection === section ? 'page' : undefined}
+                  className={`min-h-[46px] rounded-xl px-3 py-2 text-sm font-black transition ${
+                    activeSection === section
+                      ? 'bg-caudal-electric text-slate-950'
+                      : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+          ) : null}
+
           {profileState.status === 'loading' ? (
-            <div role="status" className="py-10">
+            <div role="status" className="py-10 text-center">
               <img
                 src="/pwa-192x192.png"
                 alt="Escudo del C.D. Caudal"
@@ -76,7 +101,7 @@ function PlayerApp({ client, onSignOut, signingOut = false }) {
           ) : null}
 
           {profileState.status === 'error' ? (
-            <div className="py-6">
+            <div className="py-6 text-center">
               <img
                 src="/pwa-192x192.png"
                 alt="Escudo del C.D. Caudal"
@@ -96,8 +121,8 @@ function PlayerApp({ client, onSignOut, signingOut = false }) {
             </div>
           ) : null}
 
-          {profileState.status === 'ready' ? (
-            <div>
+          {profileState.status === 'ready' && activeSection === 'space' ? (
+            <div className="mx-auto max-w-xl py-3 text-center">
               <PlayerAvatar
                 player={profile}
                 alt={fullName}
@@ -124,6 +149,10 @@ function PlayerApp({ client, onSignOut, signingOut = false }) {
                 </div>
               </div>
             </div>
+          ) : null}
+
+          {profileState.status === 'ready' && activeSection === 'performance' ? (
+            <PlayerPerformancePanel client={client} />
           ) : null}
 
           <button
