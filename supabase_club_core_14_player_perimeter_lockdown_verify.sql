@@ -445,14 +445,14 @@ begin
     service_role_execute := function_oid is not null
       and pg_catalog.has_function_privilege('service_role', function_oid, 'EXECUTE');
     guard_present := function_oid is not null
-      and pg_catalog.position('public.is_app_staff()' in function_source) > 0
-      and pg_catalog.position('service_role' in function_source) > 0
-      and pg_catalog.position('STAFF_ONLY' in function_source) > 0;
+      and pg_catalog.strpos(function_source, 'public.is_app_staff()') > 0
+      and pg_catalog.strpos(function_source, 'service_role') > 0
+      and pg_catalog.strpos(function_source, 'STAFF_ONLY') > 0;
     guard_is_early := guard_present
-      and pg_catalog.position('public.is_app_staff()' in function_source)
-        > pg_catalog.position(E'\nbegin\n' in function_source)
-      and pg_catalog.position('public.is_app_staff()' in function_source)
-        < pg_catalog.position(E'\nbegin\n' in function_source) + 500;
+      and pg_catalog.strpos(function_source, 'public.is_app_staff()')
+        > pg_catalog.strpos(function_source, E'\nbegin\n')
+      and pg_catalog.strpos(function_source, 'public.is_app_staff()')
+        < pg_catalog.strpos(function_source, E'\nbegin\n') + 500;
 
     result_order := result_order + 1;
     results := results || pg_catalog.jsonb_build_array(

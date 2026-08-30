@@ -470,7 +470,7 @@ begin
       );
     end if;
 
-    if pg_catalog.position('public.is_app_staff()' in function_source) > 0 then
+    if pg_catalog.strpos(function_source, 'public.is_app_staff()') > 0 then
       raise exception 'Bloque 2.1b: % ya contiene un guard STAFF no esperado', function_target.signature;
     end if;
 
@@ -856,7 +856,7 @@ begin
     from pg_catalog.pg_proc function_row
     where function_row.oid = function_oid;
 
-    if pg_catalog.position(staff_guard in function_source) = 0 then
+    if pg_catalog.strpos(function_source, staff_guard) = 0 then
       raise exception
         'Bloque 2.1b postcondicion: falta guard STAFF en %',
         function_target.signature;
