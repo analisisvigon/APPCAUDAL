@@ -20,6 +20,9 @@ declare
   relation_oid oid;
   function_oid oid;
   function_source text;
+  normalized_function_source text;
+  unguarded_function_source text;
+  expected_guarded_function_source text;
   function_owner oid;
   function_definition text;
   visible_count bigint;
@@ -33,9 +36,20 @@ declare
   service_role_execute boolean;
   guard_present boolean;
   guard_is_early boolean;
+  guard_occurrence_count integer;
+  main_begin_count integer;
+  main_begin_match text[];
+  normalized_source_md5 text;
   actual_security_definer boolean;
   service_role_ok boolean;
   bucket_public boolean;
+  staff_guard constant text := E'  if coalesce(auth.role(), '''') <> ''service_role''\n'
+    || E'     and session_user <> ''service_role''\n'
+    || E'     and not public.is_app_staff() then\n'
+    || E'    raise exception using\n'
+    || E'      errcode = ''42501'',\n'
+    || E'      message = ''STAFF_ONLY'';\n'
+    || E'  end if;\n\n';
 begin
   ---------------------------------------------------------------------------
   -- Catalogo RLS/policies/grants de las siete tablas cerradas.
@@ -398,25 +412,32 @@ begin
   for function_target in
     select *
     from (values
-      ('public.set_player_availability(uuid,text,integer)', true),
-      ('public.consume_player_suspensions_for_match(uuid)', true),
-      ('public.apply_rival_tactical_placements(uuid,jsonb)', false),
-      ('public.assign_global_player_to_team(uuid,uuid,text,text,date)', false),
-      ('public.create_own_player_atomic(uuid,jsonb,jsonb,jsonb,jsonb)', false),
-      ('public.merge_global_player_profiles(uuid,uuid)', false),
-      ('public.remove_global_player_from_current_team(uuid,date)', false),
-      ('public.remove_rival_player_from_team_atomic(uuid,uuid,uuid,text)', false),
-      ('public.save_global_player_profile(jsonb,jsonb,jsonb,jsonb,jsonb)', false),
-      ('public.save_match_squad_lineup_atomic(uuid,text,jsonb,jsonb)', false),
-      ('public.save_own_captain_priorities(uuid[])', false),
-      ('public.save_rival_lineup_atomic(uuid,text,jsonb,jsonb,jsonb,jsonb)', false)
-    ) targets(signature, expected_security_definer)
+      ('public.set_player_availability(uuid,text,integer)', '466c8d47470aaa5acee20cf44fa7d502', true),
+      ('public.consume_player_suspensions_for_match(uuid)', '3b02b9eb3bbe11a3a21bfe06cb783e1c', true),
+      ('public.apply_rival_tactical_placements(uuid,jsonb)', 'be25e6a1de65150ee8a911eb7a11ccd7', false),
+      ('public.assign_global_player_to_team(uuid,uuid,text,text,date)', '3442decaf92c00c43c430fe12078dde7', false),
+      ('public.create_own_player_atomic(uuid,jsonb,jsonb,jsonb,jsonb)', '45dfc24ec82df4b8cf3987e7e41fffa2', false),
+      ('public.merge_global_player_profiles(uuid,uuid)', '5c5121dbebf1c75b2ec013693c2e5a2e', false),
+      ('public.remove_global_player_from_current_team(uuid,date)', '0cd47394f23797cdefa3578eb84e2be9', false),
+      ('public.remove_rival_player_from_team_atomic(uuid,uuid,uuid,text)', '665350c6a1dbcfc6eed4b8f12b0799f6', false),
+      ('public.save_global_player_profile(jsonb,jsonb,jsonb,jsonb,jsonb)', 'b4a1b3987f20e7eb3cd8695b40341634', false),
+      ('public.save_match_squad_lineup_atomic(uuid,text,jsonb,jsonb)', '9a61cf69d600145dbbe9e6fab3e1ccb1', false),
+      ('public.save_own_captain_priorities(uuid[])', 'ea72384385e286c5df3f71666d3d2581', false),
+      ('public.save_rival_lineup_atomic(uuid,text,jsonb,jsonb,jsonb,jsonb)', 'a103846f1c9da2cf5effc6836f80e742', false)
+    ) targets(signature, expected_source_md5, expected_security_definer)
   loop
     function_oid := pg_catalog.to_regprocedure(function_target.signature);
     function_source := null;
     function_owner := null;
     function_definition := null;
     actual_security_definer := null;
+    normalized_function_source := null;
+    unguarded_function_source := null;
+    expected_guarded_function_source := null;
+    guard_occurrence_count := 0;
+    main_begin_count := 0;
+    main_begin_match := null;
+    normalized_source_md5 := null;
 
     select
       function_row.prosrc,
@@ -444,15 +465,61 @@ begin
       and pg_catalog.has_function_privilege('authenticated', function_oid, 'EXECUTE');
     service_role_execute := function_oid is not null
       and pg_catalog.has_function_privilege('service_role', function_oid, 'EXECUTE');
+
+    if function_oid is not null then
+      normalized_function_source := pg_catalog.replace(
+        function_source,
+        chr(13),
+        ''
+      );
+      guard_occurrence_count := (
+        pg_catalog.length(normalized_function_source)
+        - pg_catalog.length(pg_catalog.replace(
+            normalized_function_source,
+            staff_guard,
+            ''
+          ))
+      ) / pg_catalog.length(staff_guard);
+      unguarded_function_source := pg_catalog.replace(
+        normalized_function_source,
+        staff_guard,
+        ''
+      );
+      normalized_source_md5 := pg_catalog.md5(unguarded_function_source);
+
+      select pg_catalog.count(*)::integer
+      into main_begin_count
+      from pg_catalog.regexp_matches(
+        unguarded_function_source,
+        '^[[:blank:]]*begin[[:blank:]]*$',
+        'gni'
+      );
+      main_begin_match := pg_catalog.regexp_match(
+        unguarded_function_source,
+        E'^([[:blank:]]*begin[[:blank:]]*\n)',
+        'ni'
+      );
+
+      if main_begin_match is not null then
+        expected_guarded_function_source := pg_catalog.regexp_replace(
+          unguarded_function_source,
+          E'^[[:blank:]]*begin[[:blank:]]*\n',
+          main_begin_match[1] || staff_guard,
+          'ni'
+        );
+      end if;
+    end if;
+
     guard_present := function_oid is not null
-      and pg_catalog.strpos(function_source, 'public.is_app_staff()') > 0
-      and pg_catalog.strpos(function_source, 'service_role') > 0
-      and pg_catalog.strpos(function_source, 'STAFF_ONLY') > 0;
-    guard_is_early := guard_present
-      and pg_catalog.strpos(function_source, 'public.is_app_staff()')
-        > pg_catalog.strpos(function_source, E'\nbegin\n')
-      and pg_catalog.strpos(function_source, 'public.is_app_staff()')
-        < pg_catalog.strpos(function_source, E'\nbegin\n') + 500;
+      and guard_occurrence_count = 1
+      and normalized_source_md5 = function_target.expected_source_md5;
+    guard_is_early := coalesce(
+      guard_present
+      and main_begin_count = 1
+      and main_begin_match is not null
+      and normalized_function_source = expected_guarded_function_source,
+      false
+    );
 
     result_order := result_order + 1;
     results := results || pg_catalog.jsonb_build_array(
@@ -470,6 +537,11 @@ begin
           'service_role_execute', service_role_execute,
           'guard_present', guard_present,
           'guard_is_early', guard_is_early,
+          'guard_occurrences', guard_occurrence_count,
+          'main_begin_count', main_begin_count,
+          'original_body_md5', normalized_source_md5,
+          'original_body_matches_expected',
+            normalized_source_md5 = function_target.expected_source_md5,
           'security_mode', case
             when actual_security_definer then 'SECURITY DEFINER'
             else 'SECURITY INVOKER'

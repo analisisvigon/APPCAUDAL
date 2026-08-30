@@ -27,6 +27,8 @@ declare
   function_target record;
   function_oid oid;
   function_source text;
+  normalized_function_source text;
+  guarded_function_source text;
   function_definition text;
   guarded_definition text;
   function_owner text;
@@ -34,6 +36,10 @@ declare
   function_security_definer boolean;
   authenticated_execute boolean;
   normalized_source_md5 text;
+  main_begin_count integer;
+  main_begin_match text[];
+  source_occurrence_count integer;
+  guard_occurrence_count integer;
   expected_storage_predicate constant text := 'bucket_id=''jugadores''::text';
   staff_guard constant text := E'  if coalesce(auth.role(), '''') <> ''service_role''\n'
     || E'     and session_user <> ''service_role''\n'
@@ -450,9 +456,12 @@ begin
       on language.oid = function_row.prolang
     where function_row.oid = function_oid;
 
-    normalized_source_md5 := pg_catalog.md5(
-      pg_catalog.replace(function_source, chr(13), '')
+    normalized_function_source := pg_catalog.replace(
+      function_source,
+      chr(13),
+      ''
     );
+    normalized_source_md5 := pg_catalog.md5(normalized_function_source);
 
     if function_owner <> 'postgres'
        or function_language <> 'plpgsql'
@@ -470,14 +479,27 @@ begin
       );
     end if;
 
-    if pg_catalog.strpos(function_source, 'public.is_app_staff()') > 0 then
+    if pg_catalog.strpos(
+      normalized_function_source,
+      'public.is_app_staff()'
+    ) > 0 then
       raise exception 'Bloque 2.1b: % ya contiene un guard STAFF no esperado', function_target.signature;
     end if;
 
-    if (
-      pg_catalog.length(function_source)
-      - pg_catalog.length(pg_catalog.replace(function_source, E'\nbegin\n', ''))
-    ) / pg_catalog.length(E'\nbegin\n') <> 1 then
+    select pg_catalog.count(*)::integer
+    into main_begin_count
+    from pg_catalog.regexp_matches(
+      normalized_function_source,
+      '^[[:blank:]]*begin[[:blank:]]*$',
+      'gni'
+    );
+    main_begin_match := pg_catalog.regexp_match(
+      normalized_function_source,
+      E'^([[:blank:]]*begin[[:blank:]]*\n)',
+      'ni'
+    );
+
+    if main_begin_count <> 1 or main_begin_match is null then
       raise exception
         'Bloque 2.1b: no se encontro un unico BEGIN principal en %',
         function_target.signature;
@@ -639,30 +661,115 @@ begin
   ---------------------------------------------------------------------------
   -- APLICACION: GUARD STAFF + ACL DE RPC MUTADORAS.
   -- pg_get_functiondef conserva firma, retorno, SECURITY MODE y search_path.
+  -- El prosrc completo se sustituye una sola vez tras normalizar CRLF a LF.
   ---------------------------------------------------------------------------
   for function_target in
     select *
     from (values
-      ('public.set_player_availability(uuid,text,integer)'),
-      ('public.consume_player_suspensions_for_match(uuid)'),
-      ('public.apply_rival_tactical_placements(uuid,jsonb)'),
-      ('public.assign_global_player_to_team(uuid,uuid,text,text,date)'),
-      ('public.create_own_player_atomic(uuid,jsonb,jsonb,jsonb,jsonb)'),
-      ('public.merge_global_player_profiles(uuid,uuid)'),
-      ('public.remove_global_player_from_current_team(uuid,date)'),
-      ('public.remove_rival_player_from_team_atomic(uuid,uuid,uuid,text)'),
-      ('public.save_global_player_profile(jsonb,jsonb,jsonb,jsonb,jsonb)'),
-      ('public.save_match_squad_lineup_atomic(uuid,text,jsonb,jsonb)'),
-      ('public.save_own_captain_priorities(uuid[])'),
-      ('public.save_rival_lineup_atomic(uuid,text,jsonb,jsonb,jsonb,jsonb)')
-    ) targets(signature)
+      ('public.set_player_availability(uuid,text,integer)', '466c8d47470aaa5acee20cf44fa7d502'),
+      ('public.consume_player_suspensions_for_match(uuid)', '3b02b9eb3bbe11a3a21bfe06cb783e1c'),
+      ('public.apply_rival_tactical_placements(uuid,jsonb)', 'be25e6a1de65150ee8a911eb7a11ccd7'),
+      ('public.assign_global_player_to_team(uuid,uuid,text,text,date)', '3442decaf92c00c43c430fe12078dde7'),
+      ('public.create_own_player_atomic(uuid,jsonb,jsonb,jsonb,jsonb)', '45dfc24ec82df4b8cf3987e7e41fffa2'),
+      ('public.merge_global_player_profiles(uuid,uuid)', '5c5121dbebf1c75b2ec013693c2e5a2e'),
+      ('public.remove_global_player_from_current_team(uuid,date)', '0cd47394f23797cdefa3578eb84e2be9'),
+      ('public.remove_rival_player_from_team_atomic(uuid,uuid,uuid,text)', '665350c6a1dbcfc6eed4b8f12b0799f6'),
+      ('public.save_global_player_profile(jsonb,jsonb,jsonb,jsonb,jsonb)', 'b4a1b3987f20e7eb3cd8695b40341634'),
+      ('public.save_match_squad_lineup_atomic(uuid,text,jsonb,jsonb)', '9a61cf69d600145dbbe9e6fab3e1ccb1'),
+      ('public.save_own_captain_priorities(uuid[])', 'ea72384385e286c5df3f71666d3d2581'),
+      ('public.save_rival_lineup_atomic(uuid,text,jsonb,jsonb,jsonb,jsonb)', 'a103846f1c9da2cf5effc6836f80e742')
+    ) targets(signature, expected_source_md5)
   loop
     function_oid := pg_catalog.to_regprocedure(function_target.signature);
-    function_definition := pg_catalog.pg_get_functiondef(function_oid);
+    select
+      function_row.prosrc,
+      pg_catalog.pg_get_functiondef(function_row.oid)
+    into function_source, function_definition
+    from pg_catalog.pg_proc function_row
+    where function_row.oid = function_oid;
+
+    normalized_function_source := pg_catalog.replace(
+      function_source,
+      chr(13),
+      ''
+    );
+    function_definition := pg_catalog.replace(
+      function_definition,
+      chr(13),
+      ''
+    );
+
+    if pg_catalog.md5(normalized_function_source)
+       <> function_target.expected_source_md5 then
+      raise exception
+        'Bloque 2.1b: drift concurrente antes de proteger %',
+        function_target.signature;
+    end if;
+
+    select pg_catalog.count(*)::integer
+    into main_begin_count
+    from pg_catalog.regexp_matches(
+      normalized_function_source,
+      '^[[:blank:]]*begin[[:blank:]]*$',
+      'gni'
+    );
+    main_begin_match := pg_catalog.regexp_match(
+      normalized_function_source,
+      E'^([[:blank:]]*begin[[:blank:]]*\n)',
+      'ni'
+    );
+
+    if main_begin_count <> 1 or main_begin_match is null then
+      raise exception
+        'Bloque 2.1b: BEGIN principal ambiguo antes de proteger %',
+        function_target.signature;
+    end if;
+
+    guarded_function_source := pg_catalog.regexp_replace(
+      normalized_function_source,
+      E'^[[:blank:]]*begin[[:blank:]]*\n',
+      main_begin_match[1] || staff_guard,
+      'ni'
+    );
+    guard_occurrence_count := (
+      pg_catalog.length(guarded_function_source)
+      - pg_catalog.length(pg_catalog.replace(
+          guarded_function_source,
+          staff_guard,
+          ''
+        ))
+    ) / pg_catalog.length(staff_guard);
+
+    if guard_occurrence_count <> 1
+       or pg_catalog.replace(
+         guarded_function_source,
+         staff_guard,
+         ''
+       ) <> normalized_function_source then
+      raise exception
+        'Bloque 2.1b: insercion no univoca del guard en %',
+        function_target.signature;
+    end if;
+
+    source_occurrence_count := (
+      pg_catalog.length(function_definition)
+      - pg_catalog.length(pg_catalog.replace(
+          function_definition,
+          normalized_function_source,
+          ''
+        ))
+    ) / pg_catalog.length(normalized_function_source);
+
+    if source_occurrence_count <> 1 then
+      raise exception
+        'Bloque 2.1b: prosrc no univoco dentro de pg_get_functiondef para %',
+        function_target.signature;
+    end if;
+
     guarded_definition := pg_catalog.replace(
       function_definition,
-      E'\nbegin\n',
-      E'\nbegin\n' || staff_guard
+      normalized_function_source,
+      guarded_function_source
     );
 
     if guarded_definition = function_definition then
@@ -693,9 +800,15 @@ declare
   function_target record;
   function_oid oid;
   function_source text;
+  normalized_function_source text;
+  unguarded_function_source text;
+  expected_guarded_function_source text;
   function_owner oid;
   policy_count integer;
   normalized_source_md5 text;
+  main_begin_count integer;
+  main_begin_match text[];
+  guard_occurrence_count integer;
   staff_guard constant text := E'  if coalesce(auth.role(), '''') <> ''service_role''\n'
     || E'     and session_user <> ''service_role''\n'
     || E'     and not public.is_app_staff() then\n'
@@ -856,23 +969,68 @@ begin
     from pg_catalog.pg_proc function_row
     where function_row.oid = function_oid;
 
-    if pg_catalog.strpos(function_source, staff_guard) = 0 then
+    normalized_function_source := pg_catalog.replace(
+      function_source,
+      chr(13),
+      ''
+    );
+    guard_occurrence_count := (
+      pg_catalog.length(normalized_function_source)
+      - pg_catalog.length(pg_catalog.replace(
+          normalized_function_source,
+          staff_guard,
+          ''
+        ))
+    ) / pg_catalog.length(staff_guard);
+
+    if guard_occurrence_count <> 1 then
       raise exception
-        'Bloque 2.1b postcondicion: falta guard STAFF en %',
+        'Bloque 2.1b postcondicion: guard STAFF no univoco en %',
         function_target.signature;
     end if;
 
-    normalized_source_md5 := pg_catalog.md5(
-      pg_catalog.replace(
-        pg_catalog.replace(function_source, staff_guard, ''),
-        chr(13),
-        ''
-      )
+    unguarded_function_source := pg_catalog.replace(
+      normalized_function_source,
+      staff_guard,
+      ''
     );
+    normalized_source_md5 := pg_catalog.md5(unguarded_function_source);
 
     if normalized_source_md5 <> function_target.expected_source_md5 then
       raise exception
         'Bloque 2.1b postcondicion: cambio logico no autorizado en %',
+        function_target.signature;
+    end if;
+
+    select pg_catalog.count(*)::integer
+    into main_begin_count
+    from pg_catalog.regexp_matches(
+      unguarded_function_source,
+      '^[[:blank:]]*begin[[:blank:]]*$',
+      'gni'
+    );
+    main_begin_match := pg_catalog.regexp_match(
+      unguarded_function_source,
+      E'^([[:blank:]]*begin[[:blank:]]*\n)',
+      'ni'
+    );
+
+    if main_begin_count <> 1 or main_begin_match is null then
+      raise exception
+        'Bloque 2.1b postcondicion: BEGIN principal ambiguo en %',
+        function_target.signature;
+    end if;
+
+    expected_guarded_function_source := pg_catalog.regexp_replace(
+      unguarded_function_source,
+      E'^[[:blank:]]*begin[[:blank:]]*\n',
+      main_begin_match[1] || staff_guard,
+      'ni'
+    );
+
+    if normalized_function_source <> expected_guarded_function_source then
+      raise exception
+        'Bloque 2.1b postcondicion: el guard STAFF no es la primera operacion en %',
         function_target.signature;
     end if;
 
