@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
+import AppAuthShell from './AppAuthShell';
 import { registerAppServiceWorker } from './pwa/registerPwa';
 import { PDF_GENERATOR_LOAD_ERROR_MESSAGE, recoverFromStaleChunkOnce } from './utils/pwaChunkRecovery';
 import './index.css';
@@ -28,6 +28,6 @@ window.addEventListener('unhandledrejection', (event) => {
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <AppAuthShell />
   </React.StrictMode>
 );

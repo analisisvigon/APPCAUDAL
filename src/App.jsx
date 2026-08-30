@@ -5177,7 +5177,8 @@ const renderTacticalBlock = (block) => (
   </div>
 );
 
-function App() {
+function App({ controlledSession = undefined, onControlledSignOut = null }) {
+  const hasControlledAuth = controlledSession !== undefined;
   const [activeTab, setActiveTab] = useState('Inicio');
   const [players, setPlayers] = useState([]);
   const [captainPriorities, setCaptainPriorities] = useState([]);
@@ -5210,8 +5211,8 @@ function App() {
   };
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [session, setSession] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [session, setSession] = useState(controlledSession ?? null);
+  const [authLoading, setAuthLoading] = useState(!hasControlledAuth);
   const [dataLoading, setDataLoading] = useState(true);
   const [authDataRefreshVersion, setAuthDataRefreshVersion] = useState(0);
   const [authSubmitting, setAuthSubmitting] = useState(false);
@@ -6038,7 +6039,8 @@ function App() {
     const { error: authSubmitError } = await supabase.auth.signInWithPassword(credentials);
 
     if (authSubmitError) {
-      setAuthError(authSubmitError.message || 'No se pudo completar la autenticación.');
+      if (import.meta.env.DEV) console.error('[STAFF_APP:SIGN_IN]', authSubmitError);
+      setAuthError('No se pudo iniciar sesión. Revisa tus credenciales y vuelve a intentarlo.');
     }
 
     setAuthSubmitting(false);
@@ -6046,9 +6048,19 @@ function App() {
 
   const handleSignOut = async () => {
     setAuthError('');
+    if (hasControlledAuth && onControlledSignOut) {
+      try {
+        await onControlledSignOut();
+      } catch (controlledSignOutError) {
+        if (import.meta.env.DEV) console.error('[STAFF_APP:SIGN_OUT]', controlledSignOutError);
+        setAuthError('No se pudo cerrar sesión. Vuelve a intentarlo.');
+      }
+      return;
+    }
     const { error: signOutError } = await supabase.auth.signOut();
     if (signOutError) {
-      setAuthError(signOutError.message || 'No se pudo cerrar sesión.');
+      if (import.meta.env.DEV) console.error('[STAFF_APP:SIGN_OUT]', signOutError);
+      setAuthError('No se pudo cerrar sesión. Vuelve a intentarlo.');
       return;
     }
     authenticatedDataCoordinatorRef.current.invalidate();
@@ -7262,6 +7274,13 @@ function App() {
   };
 
   useEffect(() => {
+    if (hasControlledAuth) {
+      authSessionIdentityRef.current = controlledSession?.access_token || controlledSession?.user?.id || '';
+      setSession(controlledSession ?? null);
+      setAuthLoading(false);
+      return undefined;
+    }
+
     let isMounted = true;
 
     const loadSession = async () => {
@@ -7271,7 +7290,10 @@ function App() {
       const { data, error: sessionError } = await supabase.auth.getSession();
       if (!isMounted) return;
 
-      if (sessionError) setAuthError(sessionError.message || 'No se pudo cargar la sesión.');
+      if (sessionError) {
+        if (import.meta.env.DEV) console.error('[STAFF_APP:GET_SESSION]', sessionError);
+        setAuthError('No se pudo comprobar la sesión. Vuelve a intentarlo.');
+      }
       authSessionIdentityRef.current = data.session?.access_token || data.session?.user?.id || '';
       setSession(data.session ?? null);
       setAuthLoading(false);
@@ -7304,7 +7326,7 @@ function App() {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [controlledSession, hasControlledAuth]);
 
   useEffect(() => {
     const fadeTimer = window.setTimeout(() => setIsSplashVisible(false), 1100);
