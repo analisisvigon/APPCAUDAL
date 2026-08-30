@@ -841,9 +841,39 @@ begin
         'player_perimeter_staff_update',
         'player_perimeter_staff_delete'
       )
-      and pg_catalog.lower(
-        coalesce(policy.qual, '') || ' ' || coalesce(policy.with_check, '')
-      ) like '%is_app_staff%';
+      and (
+        policy.policyname = 'player_perimeter_staff_select'
+        and policy.cmd = 'SELECT'
+        and pg_catalog.regexp_replace(
+          pg_catalog.lower(coalesce(policy.qual, '')),
+          '[[:space:]()]', '', 'g'
+        ) in ('is_app_staff', 'public.is_app_staff')
+        and policy.with_check is null
+        or policy.policyname = 'player_perimeter_staff_insert'
+        and policy.cmd = 'INSERT'
+        and policy.qual is null
+        and pg_catalog.regexp_replace(
+          pg_catalog.lower(coalesce(policy.with_check, '')),
+          '[[:space:]()]', '', 'g'
+        ) in ('is_app_staff', 'public.is_app_staff')
+        or policy.policyname = 'player_perimeter_staff_update'
+        and policy.cmd = 'UPDATE'
+        and pg_catalog.regexp_replace(
+          pg_catalog.lower(coalesce(policy.qual, '')),
+          '[[:space:]()]', '', 'g'
+        ) in ('is_app_staff', 'public.is_app_staff')
+        and pg_catalog.regexp_replace(
+          pg_catalog.lower(coalesce(policy.with_check, '')),
+          '[[:space:]()]', '', 'g'
+        ) in ('is_app_staff', 'public.is_app_staff')
+        or policy.policyname = 'player_perimeter_staff_delete'
+        and policy.cmd = 'DELETE'
+        and pg_catalog.regexp_replace(
+          pg_catalog.lower(coalesce(policy.qual, '')),
+          '[[:space:]()]', '', 'g'
+        ) in ('is_app_staff', 'public.is_app_staff')
+        and policy.with_check is null
+      );
 
     if policy_count <> 4 then
       raise exception
@@ -917,14 +947,70 @@ begin
         'player_assets_staff_delete'
       )
       and policy.roles = array['authenticated']::name[]
+      and (
+        policy.policyname = 'player_assets_staff_select'
+        and policy.cmd = 'SELECT'
+        and pg_catalog.regexp_replace(
+          pg_catalog.lower(coalesce(policy.qual, '')),
+          '[[:space:]()]', '', 'g'
+        ) in (
+          'bucket_id=''jugadores''::textandis_app_staff',
+          'bucket_id=''jugadores''::textandpublic.is_app_staff'
+        )
+        and policy.with_check is null
+        or policy.policyname = 'player_assets_staff_insert'
+        and policy.cmd = 'INSERT'
+        and policy.qual is null
+        and pg_catalog.regexp_replace(
+          pg_catalog.lower(coalesce(policy.with_check, '')),
+          '[[:space:]()]', '', 'g'
+        ) in (
+          'bucket_id=''jugadores''::textandis_app_staff',
+          'bucket_id=''jugadores''::textandpublic.is_app_staff'
+        )
+        or policy.policyname = 'player_assets_staff_update'
+        and policy.cmd = 'UPDATE'
+        and pg_catalog.regexp_replace(
+          pg_catalog.lower(coalesce(policy.qual, '')),
+          '[[:space:]()]', '', 'g'
+        ) in (
+          'bucket_id=''jugadores''::textandis_app_staff',
+          'bucket_id=''jugadores''::textandpublic.is_app_staff'
+        )
+        and pg_catalog.regexp_replace(
+          pg_catalog.lower(coalesce(policy.with_check, '')),
+          '[[:space:]()]', '', 'g'
+        ) in (
+          'bucket_id=''jugadores''::textandis_app_staff',
+          'bucket_id=''jugadores''::textandpublic.is_app_staff'
+        )
+        or policy.policyname = 'player_assets_staff_delete'
+        and policy.cmd = 'DELETE'
+        and pg_catalog.regexp_replace(
+          pg_catalog.lower(coalesce(policy.qual, '')),
+          '[[:space:]()]', '', 'g'
+        ) in (
+          'bucket_id=''jugadores''::textandis_app_staff',
+          'bucket_id=''jugadores''::textandpublic.is_app_staff'
+        )
+        and policy.with_check is null
+      )
+  ) <> 4 then
+    raise exception 'Bloque 2.1b postcondicion: policies STAFF Storage incompletas';
+  end if;
+
+  if (
+    select pg_catalog.count(*)
+    from pg_catalog.pg_policies policy
+    where policy.schemaname = 'storage'
+      and policy.tablename = 'objects'
+      and policy.roles && array['public', 'anon', 'authenticated']::name[]
       and pg_catalog.lower(
         coalesce(policy.qual, '') || ' ' || coalesce(policy.with_check, '')
       ) like '%jugadores%'
-      and pg_catalog.lower(
-        coalesce(policy.qual, '') || ' ' || coalesce(policy.with_check, '')
-      ) like '%is_app_staff%'
   ) <> 4 then
-    raise exception 'Bloque 2.1b postcondicion: policies STAFF Storage incompletas';
+    raise exception
+      'Bloque 2.1b postcondicion: numero inesperado de policies cliente para bucket jugadores';
   end if;
 
   if exists (
