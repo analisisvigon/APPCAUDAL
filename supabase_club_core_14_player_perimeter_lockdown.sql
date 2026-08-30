@@ -421,15 +421,15 @@ begin
       ('public.set_player_availability(uuid,text,integer)', '466c8d47470aaa5acee20cf44fa7d502', true),
       ('public.consume_player_suspensions_for_match(uuid)', '3b02b9eb3bbe11a3a21bfe06cb783e1c', true),
       ('public.apply_rival_tactical_placements(uuid,jsonb)', 'be25e6a1de65150ee8a911eb7a11ccd7', false),
-      ('public.assign_global_player_to_team(uuid,uuid,text,text,date)', '3442decaf92c00c43c430fe12078dde7', false),
-      ('public.create_own_player_atomic(uuid,jsonb,jsonb,jsonb,jsonb)', '45dfc24ec82df4b8cf3987e7e41fffa2', false),
+      ('public.assign_global_player_to_team(uuid,uuid,text,text,date)', 'fd794865119cc8d26ffe13d6b0b73862', false),
+      ('public.create_own_player_atomic(uuid,jsonb,jsonb,jsonb,jsonb)', 'aad1e4eaf3cd1fa7e30e1d630f641076', false),
       ('public.merge_global_player_profiles(uuid,uuid)', '5c5121dbebf1c75b2ec013693c2e5a2e', false),
       ('public.remove_global_player_from_current_team(uuid,date)', '0cd47394f23797cdefa3578eb84e2be9', false),
-      ('public.remove_rival_player_from_team_atomic(uuid,uuid,uuid,text)', '665350c6a1dbcfc6eed4b8f12b0799f6', false),
-      ('public.save_global_player_profile(jsonb,jsonb,jsonb,jsonb,jsonb)', 'b4a1b3987f20e7eb3cd8695b40341634', false),
-      ('public.save_match_squad_lineup_atomic(uuid,text,jsonb,jsonb)', '9a61cf69d600145dbbe9e6fab3e1ccb1', false),
+      ('public.remove_rival_player_from_team_atomic(uuid,uuid,uuid,text)', '128aa60b5ecf5c96f79a61f821e40bc9', false),
+      ('public.save_global_player_profile(jsonb,jsonb,jsonb,jsonb,jsonb)', 'a638f6ca4d202abbcb562b5261b4b6e4', false),
+      ('public.save_match_squad_lineup_atomic(uuid,text,jsonb,jsonb)', '63bb815b9ea846b7ec90465ccfc06369', false),
       ('public.save_own_captain_priorities(uuid[])', 'ea72384385e286c5df3f71666d3d2581', false),
-      ('public.save_rival_lineup_atomic(uuid,text,jsonb,jsonb,jsonb,jsonb)', 'a103846f1c9da2cf5effc6836f80e742', false)
+      ('public.save_rival_lineup_atomic(uuid,text,jsonb,jsonb,jsonb,jsonb)', 'cb8a5da84addcf1f34934380a03a725c', false)
     ) targets(signature, expected_source_md5, expected_security_definer)
   loop
     function_oid := pg_catalog.to_regprocedure(function_target.signature);
@@ -669,15 +669,15 @@ begin
       ('public.set_player_availability(uuid,text,integer)', '466c8d47470aaa5acee20cf44fa7d502'),
       ('public.consume_player_suspensions_for_match(uuid)', '3b02b9eb3bbe11a3a21bfe06cb783e1c'),
       ('public.apply_rival_tactical_placements(uuid,jsonb)', 'be25e6a1de65150ee8a911eb7a11ccd7'),
-      ('public.assign_global_player_to_team(uuid,uuid,text,text,date)', '3442decaf92c00c43c430fe12078dde7'),
-      ('public.create_own_player_atomic(uuid,jsonb,jsonb,jsonb,jsonb)', '45dfc24ec82df4b8cf3987e7e41fffa2'),
+      ('public.assign_global_player_to_team(uuid,uuid,text,text,date)', 'fd794865119cc8d26ffe13d6b0b73862'),
+      ('public.create_own_player_atomic(uuid,jsonb,jsonb,jsonb,jsonb)', 'aad1e4eaf3cd1fa7e30e1d630f641076'),
       ('public.merge_global_player_profiles(uuid,uuid)', '5c5121dbebf1c75b2ec013693c2e5a2e'),
       ('public.remove_global_player_from_current_team(uuid,date)', '0cd47394f23797cdefa3578eb84e2be9'),
-      ('public.remove_rival_player_from_team_atomic(uuid,uuid,uuid,text)', '665350c6a1dbcfc6eed4b8f12b0799f6'),
-      ('public.save_global_player_profile(jsonb,jsonb,jsonb,jsonb,jsonb)', 'b4a1b3987f20e7eb3cd8695b40341634'),
-      ('public.save_match_squad_lineup_atomic(uuid,text,jsonb,jsonb)', '9a61cf69d600145dbbe9e6fab3e1ccb1'),
+      ('public.remove_rival_player_from_team_atomic(uuid,uuid,uuid,text)', '128aa60b5ecf5c96f79a61f821e40bc9'),
+      ('public.save_global_player_profile(jsonb,jsonb,jsonb,jsonb,jsonb)', 'a638f6ca4d202abbcb562b5261b4b6e4'),
+      ('public.save_match_squad_lineup_atomic(uuid,text,jsonb,jsonb)', '63bb815b9ea846b7ec90465ccfc06369'),
       ('public.save_own_captain_priorities(uuid[])', 'ea72384385e286c5df3f71666d3d2581'),
-      ('public.save_rival_lineup_atomic(uuid,text,jsonb,jsonb,jsonb,jsonb)', 'a103846f1c9da2cf5effc6836f80e742')
+      ('public.save_rival_lineup_atomic(uuid,text,jsonb,jsonb,jsonb,jsonb)', 'cb8a5da84addcf1f34934380a03a725c')
     ) targets(signature, expected_source_md5)
   loop
     function_oid := pg_catalog.to_regprocedure(function_target.signature);
@@ -952,15 +952,15 @@ begin
       ('public.set_player_availability(uuid,text,integer)', '466c8d47470aaa5acee20cf44fa7d502'),
       ('public.consume_player_suspensions_for_match(uuid)', '3b02b9eb3bbe11a3a21bfe06cb783e1c'),
       ('public.apply_rival_tactical_placements(uuid,jsonb)', 'be25e6a1de65150ee8a911eb7a11ccd7'),
-      ('public.assign_global_player_to_team(uuid,uuid,text,text,date)', '3442decaf92c00c43c430fe12078dde7'),
-      ('public.create_own_player_atomic(uuid,jsonb,jsonb,jsonb,jsonb)', '45dfc24ec82df4b8cf3987e7e41fffa2'),
+      ('public.assign_global_player_to_team(uuid,uuid,text,text,date)', 'fd794865119cc8d26ffe13d6b0b73862'),
+      ('public.create_own_player_atomic(uuid,jsonb,jsonb,jsonb,jsonb)', 'aad1e4eaf3cd1fa7e30e1d630f641076'),
       ('public.merge_global_player_profiles(uuid,uuid)', '5c5121dbebf1c75b2ec013693c2e5a2e'),
       ('public.remove_global_player_from_current_team(uuid,date)', '0cd47394f23797cdefa3578eb84e2be9'),
-      ('public.remove_rival_player_from_team_atomic(uuid,uuid,uuid,text)', '665350c6a1dbcfc6eed4b8f12b0799f6'),
-      ('public.save_global_player_profile(jsonb,jsonb,jsonb,jsonb,jsonb)', 'b4a1b3987f20e7eb3cd8695b40341634'),
-      ('public.save_match_squad_lineup_atomic(uuid,text,jsonb,jsonb)', '9a61cf69d600145dbbe9e6fab3e1ccb1'),
+      ('public.remove_rival_player_from_team_atomic(uuid,uuid,uuid,text)', '128aa60b5ecf5c96f79a61f821e40bc9'),
+      ('public.save_global_player_profile(jsonb,jsonb,jsonb,jsonb,jsonb)', 'a638f6ca4d202abbcb562b5261b4b6e4'),
+      ('public.save_match_squad_lineup_atomic(uuid,text,jsonb,jsonb)', '63bb815b9ea846b7ec90465ccfc06369'),
       ('public.save_own_captain_priorities(uuid[])', 'ea72384385e286c5df3f71666d3d2581'),
-      ('public.save_rival_lineup_atomic(uuid,text,jsonb,jsonb,jsonb,jsonb)', 'a103846f1c9da2cf5effc6836f80e742')
+      ('public.save_rival_lineup_atomic(uuid,text,jsonb,jsonb,jsonb,jsonb)', 'cb8a5da84addcf1f34934380a03a725c')
     ) targets(signature, expected_source_md5)
   loop
     function_oid := pg_catalog.to_regprocedure(function_target.signature);

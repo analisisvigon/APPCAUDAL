@@ -12,15 +12,15 @@ with targets(
     (1,  'public.set_player_availability(uuid,text,integer)', '466c8d47470aaa5acee20cf44fa7d502'),
     (2,  'public.consume_player_suspensions_for_match(uuid)', '3b02b9eb3bbe11a3a21bfe06cb783e1c'),
     (3,  'public.apply_rival_tactical_placements(uuid,jsonb)', 'be25e6a1de65150ee8a911eb7a11ccd7'),
-    (4,  'public.assign_global_player_to_team(uuid,uuid,text,text,date)', '3442decaf92c00c43c430fe12078dde7'),
-    (5,  'public.create_own_player_atomic(uuid,jsonb,jsonb,jsonb,jsonb)', '45dfc24ec82df4b8cf3987e7e41fffa2'),
+    (4,  'public.assign_global_player_to_team(uuid,uuid,text,text,date)', 'fd794865119cc8d26ffe13d6b0b73862'),
+    (5,  'public.create_own_player_atomic(uuid,jsonb,jsonb,jsonb,jsonb)', 'aad1e4eaf3cd1fa7e30e1d630f641076'),
     (6,  'public.merge_global_player_profiles(uuid,uuid)', '5c5121dbebf1c75b2ec013693c2e5a2e'),
     (7,  'public.remove_global_player_from_current_team(uuid,date)', '0cd47394f23797cdefa3578eb84e2be9'),
-    (8,  'public.remove_rival_player_from_team_atomic(uuid,uuid,uuid,text)', '665350c6a1dbcfc6eed4b8f12b0799f6'),
-    (9,  'public.save_global_player_profile(jsonb,jsonb,jsonb,jsonb,jsonb)', 'b4a1b3987f20e7eb3cd8695b40341634'),
-    (10, 'public.save_match_squad_lineup_atomic(uuid,text,jsonb,jsonb)', '9a61cf69d600145dbbe9e6fab3e1ccb1'),
+    (8,  'public.remove_rival_player_from_team_atomic(uuid,uuid,uuid,text)', '128aa60b5ecf5c96f79a61f821e40bc9'),
+    (9,  'public.save_global_player_profile(jsonb,jsonb,jsonb,jsonb,jsonb)', 'a638f6ca4d202abbcb562b5261b4b6e4'),
+    (10, 'public.save_match_squad_lineup_atomic(uuid,text,jsonb,jsonb)', '63bb815b9ea846b7ec90465ccfc06369'),
     (11, 'public.save_own_captain_priorities(uuid[])', 'ea72384385e286c5df3f71666d3d2581'),
-    (12, 'public.save_rival_lineup_atomic(uuid,text,jsonb,jsonb,jsonb,jsonb)', 'a103846f1c9da2cf5effc6836f80e742')
+    (12, 'public.save_rival_lineup_atomic(uuid,text,jsonb,jsonb,jsonb,jsonb)', 'cb8a5da84addcf1f34934380a03a725c')
 ),
 resolved as (
   select
