@@ -6,6 +6,18 @@ const performancePanelSource = fs.readFileSync(
   new URL('../src/components/player/PlayerPerformancePanel.jsx', import.meta.url),
   'utf8',
 );
+const playerHeaderSource = fs.readFileSync(
+  new URL('../src/components/player/PlayerHeader.jsx', import.meta.url),
+  'utf8',
+);
+const playerNavigationSource = fs.readFileSync(
+  new URL('../src/components/player/PlayerNavigation.jsx', import.meta.url),
+  'utf8',
+);
+const playerChartSource = fs.readFileSync(
+  new URL('../src/components/player/PlayerLineChart.jsx', import.meta.url),
+  'utf8',
+);
 const performanceStoreSource = fs.readFileSync(
   new URL('../src/data/playerPerformanceStore.js', import.meta.url),
   'utf8',
@@ -23,7 +35,14 @@ const forbiddenPlayerImports = [
   'authenticatedDataLoad',
 ];
 
-const playerBranchSource = `${playerSource}\n${performancePanelSource}\n${performanceStoreSource}`;
+const playerBranchSource = [
+  playerSource,
+  performancePanelSource,
+  playerHeaderSource,
+  playerNavigationSource,
+  playerChartSource,
+  performanceStoreSource,
+].join('\n');
 for (const forbiddenImport of forbiddenPlayerImports) {
   assert.equal(playerBranchSource.includes(forbiddenImport), false, `El branch PLAYER no debe importar ${forbiddenImport}`);
 }
@@ -40,8 +59,8 @@ assert.deepEqual(
   ['get_my_player_profile'],
   'PlayerApp solo puede cargar el perfil mediante get_my_player_profile'
 );
-assert.match(playerSource, /profile\?\.player_position/, 'PlayerApp consume player_position del RPC');
-assert.doesNotMatch(playerSource, /profile\?\.position/, 'PlayerApp no depende del nombre conflictivo position');
+assert.match(playerHeaderSource, /profile\?\.player_position/, 'La cabecera consume player_position del RPC');
+assert.doesNotMatch(playerBranchSource, /profile\?\.position/, 'PLAYER no depende del nombre conflictivo position');
 assert.equal(/\.from\s*\(/.test(shellSource), false, 'el shell no debe consultar tablas antes del branch');
 assert.equal(/\.rpc\s*\(/.test(shellSource), false, 'el shell delega la única RPC al resolver de identidad');
 assert.equal(/\.from\s*\(/.test(resolverSource), false, 'el resolver no debe consultar tablas');
