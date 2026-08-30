@@ -24,6 +24,11 @@ declare
   unguarded_function_source text;
   expected_guarded_function_source text;
   function_owner oid;
+  function_owner_name text;
+  function_language text;
+  function_config text[];
+  function_volatility "char";
+  actual_signature text;
   function_definition text;
   visible_count bigint;
   policy_count integer;
@@ -412,23 +417,33 @@ begin
   for function_target in
     select *
     from (values
-      ('public.set_player_availability(uuid,text,integer)', '466c8d47470aaa5acee20cf44fa7d502', true),
-      ('public.consume_player_suspensions_for_match(uuid)', '3b02b9eb3bbe11a3a21bfe06cb783e1c', true),
-      ('public.apply_rival_tactical_placements(uuid,jsonb)', 'be25e6a1de65150ee8a911eb7a11ccd7', false),
-      ('public.assign_global_player_to_team(uuid,uuid,text,text,date)', 'fd794865119cc8d26ffe13d6b0b73862', false),
-      ('public.create_own_player_atomic(uuid,jsonb,jsonb,jsonb,jsonb)', 'aad1e4eaf3cd1fa7e30e1d630f641076', false),
-      ('public.merge_global_player_profiles(uuid,uuid)', '5c5121dbebf1c75b2ec013693c2e5a2e', false),
-      ('public.remove_global_player_from_current_team(uuid,date)', '0cd47394f23797cdefa3578eb84e2be9', false),
-      ('public.remove_rival_player_from_team_atomic(uuid,uuid,uuid,text)', '128aa60b5ecf5c96f79a61f821e40bc9', false),
-      ('public.save_global_player_profile(jsonb,jsonb,jsonb,jsonb,jsonb)', 'a638f6ca4d202abbcb562b5261b4b6e4', false),
-      ('public.save_match_squad_lineup_atomic(uuid,text,jsonb,jsonb)', '63bb815b9ea846b7ec90465ccfc06369', false),
-      ('public.save_own_captain_priorities(uuid[])', 'ea72384385e286c5df3f71666d3d2581', false),
-      ('public.save_rival_lineup_atomic(uuid,text,jsonb,jsonb,jsonb,jsonb)', 'cb8a5da84addcf1f34934380a03a725c', false)
-    ) targets(signature, expected_source_md5, expected_security_definer)
+      ('public.set_player_availability(uuid,text,integer)', '466c8d47470aaa5acee20cf44fa7d502', true, array['search_path=pg_catalog, public']::text[]),
+      ('public.consume_player_suspensions_for_match(uuid)', '3b02b9eb3bbe11a3a21bfe06cb783e1c', true, array['search_path=pg_catalog, public']::text[]),
+      ('public.apply_rival_tactical_placements(uuid,jsonb)', 'be25e6a1de65150ee8a911eb7a11ccd7', false, array['search_path=public']::text[]),
+      ('public.assign_global_player_to_team(uuid,uuid,text,text,date)', 'fd794865119cc8d26ffe13d6b0b73862', false, array['search_path=public']::text[]),
+      ('public.create_own_player_atomic(uuid,jsonb,jsonb,jsonb,jsonb)', 'aad1e4eaf3cd1fa7e30e1d630f641076', false, array['search_path=public']::text[]),
+      ('public.merge_global_player_profiles(uuid,uuid)', '5c5121dbebf1c75b2ec013693c2e5a2e', false, array['search_path=public']::text[]),
+      ('public.remove_global_player_from_current_team(uuid,date)', '0cd47394f23797cdefa3578eb84e2be9', false, array['search_path=public']::text[]),
+      ('public.remove_rival_player_from_team_atomic(uuid,uuid,uuid,text)', '128aa60b5ecf5c96f79a61f821e40bc9', false, array['search_path=public, pg_temp']::text[]),
+      ('public.save_global_player_profile(jsonb,jsonb,jsonb,jsonb,jsonb)', 'a638f6ca4d202abbcb562b5261b4b6e4', false, array['search_path=public']::text[]),
+      ('public.save_match_squad_lineup_atomic(uuid,text,jsonb,jsonb)', '63bb815b9ea846b7ec90465ccfc06369', false, array['search_path=pg_catalog, public']::text[]),
+      ('public.save_own_captain_priorities(uuid[])', 'ea72384385e286c5df3f71666d3d2581', false, array['search_path=public']::text[]),
+      ('public.save_rival_lineup_atomic(uuid,text,jsonb,jsonb,jsonb,jsonb)', 'cb8a5da84addcf1f34934380a03a725c', false, array['search_path=public, pg_temp']::text[])
+    ) targets(
+      signature,
+      expected_source_md5,
+      expected_security_definer,
+      expected_proconfig
+    )
   loop
     function_oid := pg_catalog.to_regprocedure(function_target.signature);
     function_source := null;
     function_owner := null;
+    function_owner_name := null;
+    function_language := null;
+    function_config := null;
+    function_volatility := null;
+    actual_signature := null;
     function_definition := null;
     actual_security_definer := null;
     normalized_function_source := null;
@@ -442,10 +457,38 @@ begin
     select
       function_row.prosrc,
       function_row.proowner,
+      pg_catalog.pg_get_userbyid(function_row.proowner),
+      language.lanname,
+      coalesce(function_row.proconfig, array[]::text[]),
+      function_row.provolatile,
+      pg_catalog.format(
+        '%I.%I(%s)',
+        namespace.nspname,
+        function_row.proname,
+        pg_catalog.regexp_replace(
+          pg_catalog.oidvectortypes(function_row.proargtypes),
+          ',[[:space:]]*',
+          ',',
+          'g'
+        )
+      ),
       pg_catalog.pg_get_functiondef(function_row.oid),
       function_row.prosecdef
-    into function_source, function_owner, function_definition, actual_security_definer
+    into
+      function_source,
+      function_owner,
+      function_owner_name,
+      function_language,
+      function_config,
+      function_volatility,
+      actual_signature,
+      function_definition,
+      actual_security_definer
     from pg_catalog.pg_proc function_row
+    join pg_catalog.pg_namespace namespace
+      on namespace.oid = function_row.pronamespace
+    join pg_catalog.pg_language language
+      on language.oid = function_row.prolang
     where function_row.oid = function_oid;
 
     select coalesce(pg_catalog.bool_or(
@@ -542,6 +585,20 @@ begin
           'original_body_md5', normalized_source_md5,
           'original_body_matches_expected',
             normalized_source_md5 = function_target.expected_source_md5,
+          'catalog_signature', actual_signature,
+          'signature_matches_expected',
+            actual_signature = function_target.signature,
+          'owner', function_owner_name,
+          'owner_matches_expected', function_owner_name = 'postgres',
+          'language', function_language,
+          'language_matches_expected', function_language = 'plpgsql',
+          'volatility', case function_volatility
+            when 'i' then 'IMMUTABLE'
+            when 's' then 'STABLE'
+            when 'v' then 'VOLATILE'
+            else null
+          end,
+          'volatility_matches_expected', function_volatility = 'v',
           'security_mode', case
             when actual_security_definer then 'SECURITY DEFINER'
             else 'SECURITY INVOKER'
@@ -550,15 +607,18 @@ begin
             actual_security_definer is not distinct from function_target.expected_security_definer,
           'search_path_or_config', case
             when function_oid is null then null
-            else (
-              select coalesce(function_row.proconfig, array[]::text[])
-              from pg_catalog.pg_proc function_row
-              where function_row.oid = function_oid
-            )
-          end
+            else function_config
+          end,
+          'search_path_matches_expected',
+            function_config is not distinct from function_target.expected_proconfig
         ),
         'risk_level', case
           when function_oid is null
+            or actual_signature is distinct from function_target.signature
+            or function_owner_name is distinct from 'postgres'
+            or function_language is distinct from 'plpgsql'
+            or function_volatility is distinct from 'v'
+            or function_config is distinct from function_target.expected_proconfig
             or public_execute
             or anon_execute
             or not authenticated_execute
@@ -568,6 +628,11 @@ begin
           else 'INFO'
         end,
         'test_ok', function_oid is not null
+          and actual_signature = function_target.signature
+          and function_owner_name = 'postgres'
+          and function_language = 'plpgsql'
+          and function_volatility = 'v'
+          and function_config is not distinct from function_target.expected_proconfig
           and not public_execute
           and not anon_execute
           and authenticated_execute

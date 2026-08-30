@@ -413,7 +413,8 @@ begin
 
   ---------------------------------------------------------------------------
   -- PRECONDICIONES DE LAS 12 RPC MUTADORAS CONFIRMADAS.
-  -- La huella es md5(prosrc con CRLF normalizado a LF).
+  -- La huella es md5(prosrc UTF-8 con CRLF normalizado a LF).
+  -- Fuente explicita: supabase_club_core_14_mutating_rpcs_remote_baseline.md.
   ---------------------------------------------------------------------------
   for function_target in
     select *

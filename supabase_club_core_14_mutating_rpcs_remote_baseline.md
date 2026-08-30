@@ -35,14 +35,14 @@ Seis huellas anteriores se habían calculado leyendo archivos UTF-8 con la
 codificación ANSI heredada de Windows PowerShell. Los bytes versionados no
 estaban desactualizados y no se ha reescrito ninguna definición histórica.
 
-| RPC | Huella errónea anterior | Causa textual |
-| --- | --- | --- |
-| `assign_global_player_to_team` | `3442decaf92c00c43c430fe12078dde7` | Dos mensajes con `á/ó` convertidos a mojibake. |
-| `create_own_player_atomic` | `45dfc24ec82df4b8cf3987e7e41fffa2` | Clase de normalización `áéíóúüñ` y dos comentarios convertidos a mojibake. |
-| `remove_rival_player_from_team_atomic` | `665350c6a1dbcfc6eed4b8f12b0799f6` | Dos mensajes con caracteres acentuados convertidos a mojibake. |
-| `save_global_player_profile` | `b4a1b3987f20e7eb3cd8695b40341634` | Un mensaje y dos comentarios convertidos a mojibake. |
-| `save_match_squad_lineup_atomic` | `9a61cf69d600145dbbe9e6fab3e1ccb1` | Tres comentarios con caracteres acentuados convertidos a mojibake. |
-| `save_rival_lineup_atomic` | `a103846f1c9da2cf5effc6836f80e742` | Seis mensajes con caracteres acentuados convertidos a mojibake. |
+| RPC | Causa textual |
+| --- | --- |
+| `assign_global_player_to_team` | Dos mensajes con `á/ó` convertidos a mojibake durante el cálculo local. |
+| `create_own_player_atomic` | Clase de normalización `áéíóúüñ` y dos comentarios convertidos a mojibake durante el cálculo local. |
+| `remove_rival_player_from_team_atomic` | Dos mensajes con caracteres acentuados convertidos a mojibake durante el cálculo local. |
+| `save_global_player_profile` | Un mensaje y dos comentarios convertidos a mojibake durante el cálculo local. |
+| `save_match_squad_lineup_atomic` | Tres comentarios con caracteres acentuados convertidos a mojibake durante el cálculo local. |
+| `save_rival_lineup_atomic` | Seis mensajes con caracteres acentuados convertidos a mojibake durante el cálculo local. |
 
 El diff funcional entre producción y las fuentes versionadas correctamente
 decodificadas es cero. En particular, la expresión de normalización de nombres
