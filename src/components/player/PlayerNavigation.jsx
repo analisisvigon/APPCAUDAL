@@ -3,10 +3,12 @@ const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visibl
 export default function PlayerNavigation({ activeSection, onChange, onSignOut, signingOut = false }) {
   return (
     <nav className="flex items-center gap-2" aria-label="Espacio de jugador">
-      <div className="grid min-w-0 flex-1 grid-cols-2 gap-1 rounded-[1.05rem] border border-white/[0.07] bg-black/20 p-1">
+      <div className="grid min-w-0 flex-1 grid-cols-2 gap-1 rounded-[1.05rem] border border-white/[0.07] bg-black/20 p-1 sm:grid-cols-4">
         {[
-          ['space', 'Mi espacio'],
-          ['performance', 'Mi rendimiento'],
+          ['home', 'Inicio'],
+          ['analysis', 'Mi análisis'],
+          ['matches', 'Partidos'],
+          ['performance', 'Rendimiento'],
         ].map(([section, label]) => (
           <button
             key={section}

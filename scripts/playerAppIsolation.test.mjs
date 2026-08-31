@@ -22,6 +22,22 @@ const performanceStoreSource = fs.readFileSync(
   new URL('../src/data/playerPerformanceStore.js', import.meta.url),
   'utf8',
 );
+const analysisPanelSource = fs.readFileSync(
+  new URL('../src/components/player/PlayerAnalysisPanel.jsx', import.meta.url),
+  'utf8',
+);
+const analysisStoreSource = fs.readFileSync(
+  new URL('../src/data/playerAnalysisStore.js', import.meta.url),
+  'utf8',
+);
+const analysisPresentationSource = fs.readFileSync(
+  new URL('../src/utils/playerAnalysisPresentation.js', import.meta.url),
+  'utf8',
+);
+const matchesPlaceholderSource = fs.readFileSync(
+  new URL('../src/components/player/PlayerMatchesPlaceholder.jsx', import.meta.url),
+  'utf8',
+);
 const shellSource = fs.readFileSync(new URL('../src/AppAuthShell.jsx', import.meta.url), 'utf8');
 const resolverSource = fs.readFileSync(new URL('../src/auth/resolveAppIdentity.js', import.meta.url), 'utf8');
 
@@ -42,6 +58,10 @@ const playerBranchSource = [
   playerNavigationSource,
   playerChartSource,
   performanceStoreSource,
+  analysisPanelSource,
+  analysisStoreSource,
+  analysisPresentationSource,
+  matchesPlaceholderSource,
 ].join('\n');
 for (const forbiddenImport of forbiddenPlayerImports) {
   assert.equal(playerBranchSource.includes(forbiddenImport), false, `El branch PLAYER no debe importar ${forbiddenImport}`);
@@ -54,6 +74,8 @@ assert.equal(
 );
 assert.equal(/\.from\s*\(/.test(playerSource), false, 'PlayerApp no debe consultar tablas directamente');
 assert.equal(/\.from\s*\(/.test(performancePanelSource), false, 'la UI de rendimiento delega sus consultas en el loader PLAYER');
+assert.equal(/\.from\s*\(/.test(analysisStoreSource), false, 'Mi análisis no consulta tablas deportivas');
+assert.match(analysisStoreSource, /client\.rpc\(ANALYSIS_RPC\)/, 'Mi análisis usa su RPC propia sin identidad externa');
 assert.deepEqual(
   [...playerSource.matchAll(/\.rpc\(\s*['"]([^'"]+)['"]/g)].map((match) => match[1]),
   ['get_my_player_profile'],

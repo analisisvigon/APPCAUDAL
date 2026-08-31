@@ -44,13 +44,13 @@ assert.match(header, /profile\?\.number/);
 assert.match(header, /profile\?\.player_position/);
 
 assert.deepEqual(
-  [...navigation.matchAll(/\['(space|performance)', '([^']+)'\]/g)].map((match) => match[2]),
-  ['Mi espacio', 'Mi rendimiento'],
-  'La navegación PLAYER mantiene exactamente sus dos destinos.',
+  [...navigation.matchAll(/\['(home|analysis|matches|performance)', '([^']+)'\]/g)].map((match) => match[2]),
+  ['Inicio', 'Mi análisis', 'Partidos', 'Rendimiento'],
+  'La navegación PLAYER mantiene sus cuatro destinos V1.',
 );
 assert.match(navigation, /'Salir'/, 'Cerrar sesión queda como acción secundaria discreta.');
 assert.match(navigation, /min-h-\[44px\]/, 'Los destinos conservan touch target móvil.');
-assert.match(app, /view=\{activeSection\}/, 'Un único estado alimenta HOME y rendimiento sin duplicar loader.');
+assert.match(app, /view=\{activeSection === 'home' \? 'space' : 'performance'\}/, 'Inicio conserva la vista HOME y Rendimiento su vista completa.');
 assert.match(app, /onOpenPerformance=\{\(\) => setActiveSection\('performance'\)\}/);
 
 assert.match(panel, /function PlayerSpaceDashboard/);

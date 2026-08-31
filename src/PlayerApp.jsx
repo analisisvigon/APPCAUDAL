@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import PlayerHeader from './components/player/PlayerHeader';
 import PlayerNavigation from './components/player/PlayerNavigation';
+import PlayerAnalysisPanel from './components/player/PlayerAnalysisPanel';
+import PlayerMatchesPlaceholder from './components/player/PlayerMatchesPlaceholder';
 import PlayerPerformancePanel from './components/player/PlayerPerformancePanel';
 
 const EMPTY_PROFILE_STATE = { status: 'loading', profile: null, errorKind: '' };
@@ -18,7 +20,7 @@ const getProfileErrorKind = (error) => {
 function PlayerApp({ client, onSignOut, signingOut = false }) {
   const [profileState, setProfileState] = useState(EMPTY_PROFILE_STATE);
   const [reloadToken, setReloadToken] = useState(0);
-  const [activeSection, setActiveSection] = useState('space');
+  const [activeSection, setActiveSection] = useState('home');
 
   useEffect(() => {
     let cancelled = false;
@@ -87,7 +89,15 @@ function PlayerApp({ client, onSignOut, signingOut = false }) {
           <>
             <PlayerHeader profile={profileState.profile} />
             <PlayerNavigation activeSection={activeSection} onChange={setActiveSection} onSignOut={onSignOut} signingOut={signingOut} />
-            <PlayerPerformancePanel client={client} view={activeSection} onOpenPerformance={() => setActiveSection('performance')} />
+            {activeSection === 'home' || activeSection === 'performance' ? (
+              <PlayerPerformancePanel
+                client={client}
+                view={activeSection === 'home' ? 'space' : 'performance'}
+                onOpenPerformance={() => setActiveSection('performance')}
+              />
+            ) : null}
+            {activeSection === 'analysis' ? <PlayerAnalysisPanel client={client} /> : null}
+            {activeSection === 'matches' ? <PlayerMatchesPlaceholder /> : null}
           </>
         ) : null}
       </main>

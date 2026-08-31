@@ -62,6 +62,10 @@ for (const requiredPath of [
   'src/auth/resolveAppIdentity.js',
   'src/components/player/PlayerPerformancePanel.jsx',
   'src/data/playerPerformanceStore.js',
+  'src/components/player/PlayerAnalysisPanel.jsx',
+  'src/data/playerAnalysisStore.js',
+  'src/utils/playerAnalysisPresentation.js',
+  'src/components/player/PlayerMatchesPlaceholder.jsx',
 ]) {
   assert.equal(relativeFiles.includes(requiredPath), true, `${requiredPath} debe formar parte del flujo PLAYER.`);
 }
@@ -70,12 +74,16 @@ const shell = fs.readFileSync(path.join(sourceRoot, 'AppAuthShell.jsx'), 'utf8')
 const resolver = fs.readFileSync(path.join(sourceRoot, 'auth', 'resolveAppIdentity.js'), 'utf8');
 const playerApp = fs.readFileSync(path.join(sourceRoot, 'PlayerApp.jsx'), 'utf8');
 const performanceStore = fs.readFileSync(path.join(sourceRoot, 'data', 'playerPerformanceStore.js'), 'utf8');
+const analysisStore = fs.readFileSync(path.join(sourceRoot, 'data', 'playerAnalysisStore.js'), 'utf8');
 assert.match(shell, /const StaffApp = lazy\(\(\) => import\('\.\/App'\)\);/);
 assert.match(shell, /auth\.signInWithPassword\(/, 'El flujo empieza en Supabase Auth con email/password.');
 assert.match(resolver, /client\.rpc\('current_membership'\)/, 'La identidad se resuelve con current_membership().');
 assert.match(shell, /authState\.status === 'player'[\s\S]*?<PlayerApp/);
 assert.match(shell, /authState\.status === 'staff'[\s\S]*?<StaffApp/);
 assert.match(playerApp, /client\.rpc\('get_my_player_profile'\)/, 'PlayerApp resuelve únicamente el perfil propio.');
+assert.match(analysisStore, /client\.rpc\(ANALYSIS_RPC\)/, 'Mi análisis usa exclusivamente su RPC segura propia.');
+assert.match(analysisStore, /get_my_player_analysis_summary/);
+assert.doesNotMatch(analysisStore, /\.from\s*\(/);
 assert.deepEqual(
   [...performanceStore.matchAll(/^\s*['"](wellness_entries|rpe_entries)['"],$/gm)].map((match) => match[1]),
   ['wellness_entries', 'rpe_entries'],
