@@ -424,7 +424,7 @@ reconciliation_result as (
       ) from pg_catalog.generate_series(0, 4950, 50) page_offset
         cross join lateral public.get_my_player_match_history('all','all',50,page_offset) h)
     )$sql$
-  ) result on true
+  ) result
 ),
 reconciliation_check as (
   select
@@ -458,7 +458,7 @@ production_safety_result as (
         or (video_url is not null and video_url !~* '^https://(youtu[.]be|youtube[.]com|www[.]youtube[.]com|m[.]youtube[.]com)(/|$)')),
       'uuid_counterpart', count(*) filter (where counterpart_name ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
     ) from public.get_my_player_production_actions('all','all')$sql$
-  ) result on true
+  ) result
 ),
 production_safety_check as (
   select 810 as sort_group, 'production-sanitization'::text as sort_key,

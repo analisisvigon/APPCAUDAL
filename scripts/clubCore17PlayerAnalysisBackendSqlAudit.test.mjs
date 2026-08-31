@@ -48,6 +48,54 @@ const assertBalanced = (source, label) => {
   assert.equal(depth, 0, `${label}: parentesis no balanceados`);
 };
 
+const findBalancedCallEnd = (source, openIndex) => {
+  let depth = 0;
+  for (let index = openIndex; index < source.length; index += 1) {
+    if (source[index] === "'") {
+      index += 1;
+      while (index < source.length) {
+        if (source[index] === "'" && source[index + 1] === "'") index += 2;
+        else if (source[index] === "'") break;
+        else index += 1;
+      }
+      continue;
+    }
+    if (source[index] === '$') {
+      const tag = source.slice(index).match(/^\$[A-Za-z_][A-Za-z_0-9]*\$|^\$\$/)?.[0];
+      if (tag) {
+        const close = source.indexOf(tag, index + tag.length);
+        assert.ok(close >= 0, `Dollar quote ${tag} sin cierre dentro de JOIN/LATERAL`);
+        index = close + tag.length - 1;
+        continue;
+      }
+    }
+    if (source[index] === '(') depth += 1;
+    if (source[index] === ')') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+};
+
+const auditLateralJoins = (source) => {
+  const clauses = [];
+  const joinPattern = /\b(left|cross)\s+join\s+lateral\s+([a-z_][a-z0-9_.]*)\s*\(/gi;
+  for (const match of source.matchAll(joinPattern)) {
+    const openIndex = match.index + match[0].lastIndexOf('(');
+    const closeIndex = findBalancedCallEnd(source, openIndex);
+    assert.ok(closeIndex > openIndex, `Llamada LATERAL sin parentesis balanceados: ${match[0]}`);
+    const tail = source.slice(closeIndex + 1);
+    const aliasMatch = tail.match(/^\s+(?:as\s+)?([a-z_][a-z0-9_$]*)(?:\s+(on)\b)?/i);
+    assert.ok(aliasMatch, `JOIN LATERAL sin alias tras ${match[2]}`);
+    const clause = { joinType: match[1].toLowerCase(), functionName: match[2], hasOn: Boolean(aliasMatch[2]) };
+    if (clause.joinType === 'left') assert.ok(clause.hasOn, `LEFT JOIN LATERAL sin ON: ${clause.functionName}`);
+    if (clause.joinType === 'cross') assert.equal(clause.hasOn, false, `CROSS JOIN LATERAL no admite ON: ${clause.functionName}`);
+    clauses.push(clause);
+  }
+  return clauses;
+};
+
 const extractFunction = (signaturePattern) => {
   const match = migration.match(new RegExp(
     `create\\s+function\\s+public\\.${signaturePattern}[\\s\\S]*?\\n\\$function\\$;`,
@@ -59,6 +107,12 @@ const extractFunction = (signaturePattern) => {
 
 assertBalanced(migration, 'Migracion 17');
 assertBalanced(verify, 'Verificador 17');
+const allJoinClauses = verify.match(/\b(?:(?:left|cross)\s+)?join(?:\s+lateral)?\b/gi) || [];
+const lateralJoinClauses = auditLateralJoins(verify);
+assert.equal(allJoinClauses.length, 18, 'El inventario estructural debe revisar los 18 JOIN del verificador');
+assert.equal(lateralJoinClauses.length, 7, 'El inventario debe revisar los siete JOIN LATERAL, incluido el SQL dinamico');
+assert.equal(lateralJoinClauses.filter(({ joinType }) => joinType === 'left').length, 3);
+assert.equal(lateralJoinClauses.filter(({ joinType }) => joinType === 'cross').length, 4);
 for (const source of [migration, verify]) {
   assert.doesNotMatch(source, /\bpg_catalog\.(?:coalesce|nullif|greatest|least)\s*\(/i);
   assert.doesNotMatch(source, /\)\s*::\s*[a-z_][a-z0-9_.]*(?:\s*\[\s*\])?\s*filter\s*\(/i);
