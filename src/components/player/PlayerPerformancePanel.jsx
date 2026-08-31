@@ -47,6 +47,7 @@ function SectionHeading({ eyebrow, title }) {
 
 function WellnessStatusCard({ entry, compact = false }) {
   const metrics = [['Ánimo', entry?.mood], ['Fatiga', entry?.fatigue], ['Dolor', entry?.muscle_soreness], ['Estrés', entry?.stress]];
+  const availableMetrics = metrics.filter(([, value]) => isAvailable(value));
   return (
     <article className={`${CARD_CLASS} p-4 sm:p-5`}>
       <div className="flex items-start justify-between gap-3">
@@ -55,9 +56,9 @@ function WellnessStatusCard({ entry, compact = false }) {
       </div>
       {entry ? (
         <>
-          <dl className="mt-4 grid grid-cols-4 divide-x divide-white/10 rounded-2xl border border-white/[0.07] bg-black/15 px-1 py-3 text-center">
-            {metrics.map(([label, value]) => <div key={label} className="min-w-0 px-1"><dt className="truncate text-[8px] font-black uppercase tracking-[0.08em] text-slate-500 sm:text-[9px]">{label}</dt><dd className="mt-1 text-xl font-black text-white sm:text-2xl">{isAvailable(value) ? value : '—'}</dd></div>)}
-          </dl>
+          {availableMetrics.length ? <dl className="mt-4 grid grid-cols-2 divide-x divide-white/10 rounded-2xl border border-white/[0.07] bg-black/15 px-1 py-3 text-center min-[430px]:grid-cols-4">
+            {availableMetrics.map(([label, value]) => <div key={label} className="min-w-0 px-1"><dt className="truncate text-[8px] font-black uppercase tracking-[0.08em] text-slate-500 sm:text-[9px]">{label}</dt><dd className="mt-1 text-xl font-black text-white sm:text-2xl">{value}</dd></div>)}
+          </dl> : <p className="mt-4 text-sm text-slate-500">Sin indicadores Wellness.</p>}
           {entry.discomfort ? <div className="mt-3 rounded-xl border border-rose-300/10 bg-rose-300/[0.045] px-3 py-2.5"><p className="text-[9px] font-black uppercase tracking-[0.14em] text-rose-200/70">Molestias</p><p className={`mt-1 text-sm text-slate-200 ${compact ? 'line-clamp-2' : ''}`}>{entry.discomfort}</p></div> : null}
           {!compact && entry.comment ? <p className="mt-3 border-t border-white/[0.07] pt-3 text-sm leading-6 text-slate-400">{entry.comment}</p> : null}
         </>
@@ -78,7 +79,7 @@ function RpeStatusCard({ entry, compact = false }) {
       {entry ? (
         <>
           <div className="mt-3 flex flex-wrap items-end gap-x-5 gap-y-2">
-            <p className="text-5xl font-black tracking-tight text-white">{isAvailable(entry.rpe) ? entry.rpe : '—'}</p>
+            <p className="text-5xl font-black tracking-tight text-white">{isAvailable(entry.rpe) ? entry.rpe : 'Sin datos'}</p>
             {hasWorkload ? <dl className="flex flex-wrap gap-2 pb-1 text-xs font-bold text-slate-300">
               {workload.durationMinutes !== null ? <div className="rounded-xl bg-white/[0.06] px-2.5 py-1.5"><dt className="sr-only">Duración</dt><dd>{workload.durationMinutes} min</dd></div> : null}
               {workload.load !== null ? <div className="rounded-xl bg-white/[0.06] px-2.5 py-1.5"><dt className="sr-only">Carga interna</dt><dd>Carga {workload.load}</dd></div> : null}
@@ -114,10 +115,11 @@ function PerformanceSummary({ wellness, rpe }) {
   const latestRpe = rpe[0] || null;
   const latestDate = getLatestPlayerUpdateDate(wellness, rpe);
   const indicators = [['Ánimo', latestWellness?.mood, 'text-emerald-300'], ['Fatiga', latestWellness?.fatigue, 'text-sky-300'], ['Dolor', latestWellness?.muscle_soreness, 'text-rose-300'], ['RPE', latestRpe?.rpe, 'text-violet-300']];
+  const availableIndicators = indicators.filter(([, value]) => isAvailable(value));
   return (
     <section className={`${CARD_CLASS} p-3.5 sm:p-4`}>
       <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-[9px] font-black uppercase tracking-[0.2em] text-caudal-electric/80">Resumen de rendimiento</p><p className="text-[10px] font-bold text-slate-500">Actualizado {latestDate ? formatDate(latestDate, true) : 'sin datos'}</p></div>
-      <dl className="mt-3 grid grid-cols-4 divide-x divide-white/10">{indicators.map(([label, value, color]) => <div key={label} className="min-w-0 px-1.5 text-center sm:px-3"><dt className="truncate text-[8px] font-black uppercase tracking-[0.08em] text-slate-500 sm:text-[9px]">{label}</dt><dd className={`mt-1 text-xl font-black sm:text-2xl ${color}`}>{isAvailable(value) ? value : '—'}</dd></div>)}</dl>
+      {availableIndicators.length ? <dl className="mt-3 grid grid-cols-2 divide-x divide-white/10 min-[430px]:grid-cols-4">{availableIndicators.map(([label, value, color]) => <div key={label} className="min-w-0 px-1.5 text-center sm:px-3"><dt className="truncate text-[8px] font-black uppercase tracking-[0.08em] text-slate-500 sm:text-[9px]">{label}</dt><dd className={`mt-1 text-xl font-black sm:text-2xl ${color}`}>{value}</dd></div>)}</dl> : <p className="mt-3 text-sm text-slate-500">Sin indicadores recientes.</p>}
     </section>
   );
 }
@@ -128,14 +130,15 @@ function ChartCard({ title, subtitle, children, controls }) {
 
 function WellnessHistoryEntry({ entry }) {
   const hasDetails = Boolean(entry.discomfort || entry.comment);
-  const summary = <div className="grid min-w-0 flex-1 grid-cols-[auto_1fr] items-center gap-3 sm:grid-cols-[5rem_1fr]"><time className="text-xs font-black uppercase text-white" dateTime={entry.entry_date}>{formatDate(entry.entry_date, true)}</time><p className="min-w-0 text-xs font-semibold leading-5 text-slate-300 sm:text-sm">Ánimo {isAvailable(entry.mood) ? entry.mood : '—'} <span className="text-slate-600">·</span> Fatiga {isAvailable(entry.fatigue) ? entry.fatigue : '—'} <span className="text-slate-600">·</span> Dolor {isAvailable(entry.muscle_soreness) ? entry.muscle_soreness : '—'}</p></div>;
+  const metrics = [['Ánimo', entry.mood], ['Fatiga', entry.fatigue], ['Dolor', entry.muscle_soreness]].filter(([, value]) => isAvailable(value));
+  const summary = <div className="grid min-w-0 flex-1 grid-cols-[auto_1fr] items-center gap-3 sm:grid-cols-[5rem_1fr]"><time className="text-xs font-black uppercase text-white" dateTime={entry.entry_date}>{formatDate(entry.entry_date, true)}</time><p className="min-w-0 text-xs font-semibold leading-5 text-slate-300 sm:text-sm">{metrics.length ? metrics.map(([label, value], index) => <span key={label}>{index ? <span className="text-slate-600"> · </span> : null}{label} {value}</span>) : 'Sin indicadores'}</p></div>;
   if (!hasDetails) return <li className="px-1 py-3">{summary}</li>;
   return <li><details className="group px-1 py-3"><summary className={`flex min-h-[44px] cursor-pointer list-none items-center gap-2 rounded-xl ${FOCUS_RING}`}>{summary}<span aria-hidden="true" className="shrink-0 text-slate-500 transition group-open:rotate-180">⌄</span></summary><div className="ml-0 mt-2 grid gap-2 border-l-2 border-caudal-electric/20 pl-3 sm:ml-20">{entry.discomfort ? <p className="text-sm leading-5 text-slate-300"><span className="font-black text-rose-200">Molestias:</span> {entry.discomfort}</p> : null}{entry.comment ? <p className="text-sm leading-5 text-slate-400"><span className="font-black text-slate-300">Comentario:</span> {entry.comment}</p> : null}</div></details></li>;
 }
 
 function RpeHistoryEntry({ entry }) {
   const workload = getRpeWorkloadAvailability(entry);
-  return <li className="px-1 py-3"><div className="flex min-h-[44px] items-center justify-between gap-3"><div className="min-w-0"><time className="text-xs font-black uppercase text-white" dateTime={entry.entry_date}>{formatDate(entry.entry_date, true)}</time>{entry.comment ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">{entry.comment}</p> : null}{workload.durationMinutes !== null || workload.load !== null ? <p className="mt-1 flex flex-wrap gap-x-3 text-[10px] font-bold text-slate-500">{workload.durationMinutes !== null ? <span>{workload.durationMinutes} min</span> : null}{workload.load !== null ? <span>Carga {workload.load}</span> : null}</p> : null}</div><p className="shrink-0 text-xl font-black text-violet-300">RPE {isAvailable(entry.rpe) ? entry.rpe : '—'}</p></div></li>;
+  return <li className="px-1 py-3"><div className="flex min-h-[44px] items-center justify-between gap-3"><div className="min-w-0"><time className="text-xs font-black uppercase text-white" dateTime={entry.entry_date}>{formatDate(entry.entry_date, true)}</time>{entry.comment ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">{entry.comment}</p> : null}{workload.durationMinutes !== null || workload.load !== null ? <p className="mt-1 flex flex-wrap gap-x-3 text-[10px] font-bold text-slate-500">{workload.durationMinutes !== null ? <span>{workload.durationMinutes} min</span> : null}{workload.load !== null ? <span>Carga {workload.load}</span> : null}</p> : null}</div><p className="shrink-0 text-xl font-black text-violet-300">RPE {isAvailable(entry.rpe) ? entry.rpe : 'Sin datos'}</p></div></li>;
 }
 
 function HistorySection({ type, entries, hasMore, loadingMore, error, onLoadMore }) {

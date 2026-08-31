@@ -82,6 +82,7 @@ assert.match(panel, /workload\.durationMinutes !== null \?/, 'Duración solo se 
 assert.match(panel, /workload\.load !== null \?/, 'Carga solo se renderiza cuando está disponible.');
 assert.doesNotMatch(panel, /No disponible|No son U\.C\.|Duración y carga solo aparecen/, 'Los opcionales ausentes y textos técnicos no añaden ruido.');
 assert.doesNotMatch(panel, /U\.C\./, 'La interfaz no denomina U.C. a la carga RPE.');
+assert.doesNotMatch(panel, /'—'/, 'Los datos ausentes no llenan la interfaz de guiones.');
 
 assert.match(panel, /<ol className="mt-2 divide-y/, 'Los históricos son listas compactas, no tarjetas por fila.');
 assert.match(panel, /<details className="group/, 'Los detalles Wellness secundarios pueden expandirse.');
@@ -105,8 +106,8 @@ assert.doesNotMatch(branch, /<table|overflow-x-auto|min-w-\[[4-9]\d\dpx\]/, 'PLA
 
 assert.match(app, /invalid_session/);
 assert.match(app, /identity_invalid/);
-assert.match(panel, /Cargando Wellness/);
-assert.match(panel, /Cargando RPE/);
+assert.match(panel, /\['Wellness', 'RPE'\]\.map/, 'Los dos estados de carga se generan de forma consistente.');
+assert.match(panel, /Cargando \{label\}/);
 assert.match(panel, /Reintentar/);
 assert.match(branch, /focus-visible:ring-2/);
 
