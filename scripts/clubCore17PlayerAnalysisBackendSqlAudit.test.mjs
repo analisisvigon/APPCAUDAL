@@ -96,6 +96,70 @@ const auditLateralJoins = (source) => {
   return clauses;
 };
 
+const auditRpcCatalogProjection = (source) => {
+  const block = source.match(/rpc_catalog\s+as\s*\(([\s\S]*?)\n\),\ncontract_checks\s+as\s*\(/i)?.[1] || '';
+  assert.ok(block, 'No se pudo aislar la CTE rpc_catalog');
+
+  const pgProcColumns = [
+    'oid', 'pronargs', 'pronargdefaults', 'proargtypes', 'proallargtypes',
+    'proargmodes', 'proargnames', 'prorettype', 'proowner', 'prolang',
+    'prosecdef', 'provolatile', 'proconfig', 'prosrc', 'proacl',
+  ];
+  for (const column of pgProcColumns) {
+    assert.match(block, new RegExp(`\\bprocedure\\.${column}\\b`, 'i'), `rpc_catalog no proyecta pg_proc.${column}`);
+  }
+
+  const projected = new Set([
+    'rpc_order', 'signature', 'expected_input_count', 'expected_arguments', 'expected_result',
+    ...pgProcColumns,
+    'actual_arguments', 'actual_result', 'owner_name', 'language_name',
+  ]);
+  const references = [...source.matchAll(/\bcatalog\.([a-z_][a-z0-9_]*)\b/gi)].map((match) => match[1].toLowerCase());
+  assert.equal(references.length, 78, 'Debe revisarse el inventario completo de referencias catalog.columna');
+  for (const column of new Set(references)) {
+    assert.ok(projected.has(column), `catalog.${column} se usa sin estar proyectada por rpc_catalog`);
+  }
+  return { pgProcColumns, references };
+};
+
+const auditKnownAliasReferences = (source) => {
+  const allowed = {
+    acl: ['grantee', 'privilege_type'],
+    call: ['call_sql', 'rpc_order', 'signature'],
+    catalog: [
+      'rpc_order', 'signature', 'expected_input_count', 'expected_arguments', 'expected_result',
+      'oid', 'pronargs', 'pronargdefaults', 'proargtypes', 'proallargtypes', 'proargmodes',
+      'proargnames', 'prorettype', 'proowner', 'prolang', 'prosecdef', 'provolatile',
+      'proconfig', 'prosrc', 'proacl', 'actual_arguments', 'actual_result', 'owner_name', 'language_name',
+    ],
+    check_row: ['sort_group', 'sort_key', 'category', 'scenario', 'object_name', 'check_name', 'expected', 'observed', 'test_ok', 'details'],
+    constants: ['borja_auth_uid', 'borja_jugador_id', 'jairo_jugador_id', 'staff_auth_uid', 'no_membership_uid'],
+    direct: ['access_mode', 'row_count', 'error_code'],
+    event_window: ['window_order', 'window_value'],
+    filter: ['call_sql', 'filter_order', 'signature', 'label'],
+    h: ['minutes', 'role', 'goals', 'assists', 'yellow_cards', 'red_cards'],
+    language: ['oid', 'lanname'],
+    page_offset: ['offset_value'],
+    pattern: ['value'],
+    procedure: ['oid', 'pronargs', 'pronargdefaults', 'proargtypes', 'proallargtypes', 'proargmodes', 'proargnames', 'prorettype', 'proowner', 'prolang', 'prosecdef', 'provolatile', 'proconfig', 'prosrc', 'proacl'],
+    result: ['access_mode', 'result', 'error_code', 'error_message', 'rpc_order', 'scenario', 'scenario_order', 'signature'],
+    scenario: ['database_role', 'auth_uid'],
+    scope: ['scope_order', 'scope_value'],
+    specification: ['rpc_order', 'signature', 'expected_input_count', 'expected_arguments', 'expected_result', 'required_patterns', 'forbidden_patterns'],
+    venue: ['venue_order', 'venue_value'],
+  };
+  let referenceCount = 0;
+  for (const [alias, columns] of Object.entries(allowed)) {
+    const references = [...source.matchAll(new RegExp(`\\b${alias}\\.([a-z_][a-z0-9_]*)\\b`, 'gi'))];
+    referenceCount += references.length;
+    for (const reference of references) {
+      assert.ok(columns.includes(reference[1].toLowerCase()), `${alias}.${reference[1]} no pertenece a la proyeccion inventariada`);
+    }
+  }
+  assert.equal(referenceCount, 254, 'Debe revisarse el inventario completo de alias.columna razonablemente resoluble');
+  return referenceCount;
+};
+
 const extractFunction = (signaturePattern) => {
   const match = migration.match(new RegExp(
     `create\\s+function\\s+public\\.${signaturePattern}[\\s\\S]*?\\n\\$function\\$;`,
@@ -109,10 +173,14 @@ assertBalanced(migration, 'Migracion 17');
 assertBalanced(verify, 'Verificador 17');
 const allJoinClauses = verify.match(/\b(?:(?:left|cross)\s+)?join(?:\s+lateral)?\b/gi) || [];
 const lateralJoinClauses = auditLateralJoins(verify);
+const rpcCatalogAudit = auditRpcCatalogProjection(verify);
+const reviewedAliasReferences = auditKnownAliasReferences(verify);
 assert.equal(allJoinClauses.length, 18, 'El inventario estructural debe revisar los 18 JOIN del verificador');
 assert.equal(lateralJoinClauses.length, 7, 'El inventario debe revisar los siete JOIN LATERAL, incluido el SQL dinamico');
 assert.equal(lateralJoinClauses.filter(({ joinType }) => joinType === 'left').length, 3);
 assert.equal(lateralJoinClauses.filter(({ joinType }) => joinType === 'cross').length, 4);
+assert.equal(rpcCatalogAudit.pgProcColumns.length, 15, 'Deben inventariarse las 15 columnas pg_proc relevantes');
+assert.equal(reviewedAliasReferences, 254);
 for (const source of [migration, verify]) {
   assert.doesNotMatch(source, /\bpg_catalog\.(?:coalesce|nullif|greatest|least)\s*\(/i);
   assert.doesNotMatch(source, /\)\s*::\s*[a-z_][a-z0-9_.]*(?:\s*\[\s*\])?\s*filter\s*\(/i);

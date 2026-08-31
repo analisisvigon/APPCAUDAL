@@ -137,8 +137,21 @@ rpc_specs(rpc_order, signature, expected_input_count, expected_arguments, expect
 ),
 rpc_catalog as (
   select specification.*,
-    procedure.oid, procedure.proowner, procedure.prolang, procedure.prosecdef,
-    procedure.provolatile, procedure.proconfig, procedure.prosrc, procedure.proacl,
+    procedure.oid,
+    procedure.pronargs,
+    procedure.pronargdefaults,
+    procedure.proargtypes,
+    procedure.proallargtypes,
+    procedure.proargmodes,
+    procedure.proargnames,
+    procedure.prorettype,
+    procedure.proowner,
+    procedure.prolang,
+    procedure.prosecdef,
+    procedure.provolatile,
+    procedure.proconfig,
+    procedure.prosrc,
+    procedure.proacl,
     pg_catalog.pg_get_function_identity_arguments(procedure.oid) as actual_arguments,
     pg_catalog.pg_get_function_result(procedure.oid) as actual_result,
     pg_catalog.pg_get_userbyid(procedure.proowner) as owner_name,
@@ -163,6 +176,7 @@ contract_checks as (
       'result', catalog.actual_result,
       'owner', catalog.owner_name,
       'language', catalog.language_name,
+      'input_count', catalog.pronargs,
       'default_count', catalog.pronargdefaults,
       'security_definer', catalog.prosecdef,
       'volatility', catalog.provolatile,
@@ -178,6 +192,7 @@ contract_checks as (
     (
       catalog.oid is not null
       and catalog.actual_arguments = catalog.expected_arguments
+      and catalog.pronargs = catalog.expected_input_count
       and catalog.pronargdefaults = catalog.expected_input_count
       and pg_catalog.replace(catalog.actual_result, '"', '')
           = pg_catalog.replace(catalog.expected_result, '"', '')
@@ -421,8 +436,8 @@ reconciliation_result as (
         'assists', coalesce(sum(h.assists),0)::integer,
         'yellow_cards', coalesce(sum(h.yellow_cards),0)::integer,
         'red_cards', coalesce(sum(h.red_cards),0)::integer
-      ) from pg_catalog.generate_series(0, 4950, 50) page_offset
-        cross join lateral public.get_my_player_match_history('all','all',50,page_offset) h)
+      ) from pg_catalog.generate_series(0, 4950, 50) page_offset(offset_value)
+        cross join lateral public.get_my_player_match_history('all','all',50,page_offset.offset_value) h)
     )$sql$
   ) result
 ),
