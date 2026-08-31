@@ -469,45 +469,45 @@ table_grant_checks as (
     pg_catalog.jsonb_build_object(
       'role_exists', grant_role.role_name = 'PUBLIC' or database_role.oid is not null,
       'acl_is_null', relation.relacl is null,
-      'explicit_privileges', coalesce(explicit_acl.privileges, array[]::text[]),
+      'explicit_privileges', coalesce(explicit_acl.privileges::text[], array[]::text[]),
       'effective_select', case
         when relation.relation_oid is null then null
-        when grant_role.role_name = 'PUBLIC' then coalesce('SELECT' = any(explicit_acl.privileges), false)
+        when grant_role.role_name = 'PUBLIC' then coalesce('SELECT' = any(explicit_acl.privileges::text[]), false)
         when database_role.oid is null then null
         else pg_catalog.has_table_privilege(database_role.oid, relation.relation_oid, 'SELECT')
       end,
       'effective_insert', case
         when relation.relation_oid is null then null
-        when grant_role.role_name = 'PUBLIC' then coalesce('INSERT' = any(explicit_acl.privileges), false)
+        when grant_role.role_name = 'PUBLIC' then coalesce('INSERT' = any(explicit_acl.privileges::text[]), false)
         when database_role.oid is null then null
         else pg_catalog.has_table_privilege(database_role.oid, relation.relation_oid, 'INSERT')
       end,
       'effective_update', case
         when relation.relation_oid is null then null
-        when grant_role.role_name = 'PUBLIC' then coalesce('UPDATE' = any(explicit_acl.privileges), false)
+        when grant_role.role_name = 'PUBLIC' then coalesce('UPDATE' = any(explicit_acl.privileges::text[]), false)
         when database_role.oid is null then null
         else pg_catalog.has_table_privilege(database_role.oid, relation.relation_oid, 'UPDATE')
       end,
       'effective_delete', case
         when relation.relation_oid is null then null
-        when grant_role.role_name = 'PUBLIC' then coalesce('DELETE' = any(explicit_acl.privileges), false)
+        when grant_role.role_name = 'PUBLIC' then coalesce('DELETE' = any(explicit_acl.privileges::text[]), false)
         when database_role.oid is null then null
         else pg_catalog.has_table_privilege(database_role.oid, relation.relation_oid, 'DELETE')
       end
     )::text as observed,
     case
       when relation.relation_oid is null or (grant_role.role_name <> 'PUBLIC' and database_role.oid is null) then 'HIGH'
-      when grant_role.role_name = 'PUBLIC' and coalesce('SELECT' = any(explicit_acl.privileges), false) then 'CRITICAL'
+      when grant_role.role_name = 'PUBLIC' and coalesce('SELECT' = any(explicit_acl.privileges::text[]), false) then 'CRITICAL'
       when grant_role.role_name = 'anon'
        and database_role.oid is not null
        and pg_catalog.has_table_privilege(database_role.oid, relation.relation_oid, 'SELECT') then 'CRITICAL'
-      when grant_role.role_name = 'authenticated' and coalesce('SELECT' = any(explicit_acl.privileges), false) then 'MEDIUM'
+      when grant_role.role_name = 'authenticated' and coalesce('SELECT' = any(explicit_acl.privileges::text[]), false) then 'MEDIUM'
       else 'INFO'
     end::text as risk_level,
     case
       when relation.relation_oid is null then false
       when grant_role.role_name <> 'PUBLIC' and database_role.oid is null then false
-      when grant_role.role_name = 'PUBLIC' and coalesce('SELECT' = any(explicit_acl.privileges), false) then false
+      when grant_role.role_name = 'PUBLIC' and coalesce('SELECT' = any(explicit_acl.privileges::text[]), false) then false
       when grant_role.role_name = 'anon'
        and database_role.oid is not null
        and pg_catalog.has_table_privilege(database_role.oid, relation.relation_oid, 'SELECT') then false
@@ -519,7 +519,7 @@ table_grant_checks as (
   left join pg_catalog.pg_roles database_role
     on database_role.rolname = grant_role.role_name
   left join lateral (
-    select pg_catalog.array_agg(distinct acl.privilege_type order by acl.privilege_type) as privileges
+    select pg_catalog.array_agg(distinct acl.privilege_type::text order by acl.privilege_type::text)::text[] as privileges
     from pg_catalog.aclexplode(
       coalesce(relation.relacl, pg_catalog.acldefault('r', relation.relowner))
     ) acl
@@ -845,7 +845,7 @@ publication_check as (
         where column_row.column_name ~* '(publish|public|visible|visibility|draft|borrador|internal)'
       ) = 0 then 'NO_PUBLICATION_FIELD_FOUND'
       else pg_catalog.array_to_string(
-        pg_catalog.array_agg(column_row.column_name order by column_row.ordinal_position)
+        pg_catalog.array_agg(column_row.column_name::text order by column_row.ordinal_position)::text[]
           filter (where column_row.column_name ~* '(publish|public|visible|visibility|draft|borrador|internal)'),
         ','
       )
@@ -859,7 +859,7 @@ publication_check as (
     true::boolean as test_ok,
     pg_catalog.jsonb_build_object(
       'state_like_columns', coalesce(
-        pg_catalog.array_agg(column_row.column_name order by column_row.ordinal_position)
+        pg_catalog.array_agg(column_row.column_name::text order by column_row.ordinal_position)::text[]
           filter (where column_row.column_name ~* '(status|estado|final)'),
         array[]::text[]
       ),
@@ -870,7 +870,7 @@ publication_check as (
     and column_row.table_name = 'partidos'
 ),
 match_state_columns as (
-  select column_row.column_name
+  select column_row.column_name::text as column_name
   from information_schema.columns column_row
   where column_row.table_schema = 'public'
     and column_row.table_name = 'partidos'
@@ -1028,17 +1028,17 @@ event_type_checks as (
 ),
 timeline_source_specs(event_name, source_table, required_columns, player_classification) as (
   values
-    ('goal_for',       'public.partido_eventos_gol',          array['type'],                              'CANDIDATE_PLAYER'),
-    ('goal_against',   'public.partido_eventos_gol',          array['type'],                              'CANDIDATE_PLAYER'),
-    ('assist',         'public.partido_eventos_gol',          array['assistant','assistant_id'],           'CANDIDATE_PLAYER'),
-    ('yellow_card',    'public.partido_estadisticas_jugador', array['yellow','yellow_count'],              'CANDIDATE_PLAYER'),
-    ('red_card',       'public.partido_estadisticas_jugador', array['red'],                                'CANDIDATE_PLAYER'),
-    ('substitution',   'public.partido_estadisticas_jugador', array['role','replacement_name','minutes'],  'DUDOSO'),
-    ('system_change',  'public.partido_eventos_sistema',      array['from_system','to_system'],            'STAFF_ONLY'),
-    ('injury',         'public.partido_estadisticas_jugador', array['injured'],                            'STAFF_ONLY'),
-    ('quick_events',   'public.match_quick_events',           array['tipo_evento'],                        'STAFF_ONLY'),
-    ('post_events',    'public.partido_eventos_post',         array['type','description'],                 'STAFF_ONLY'),
-    ('tactical_state', 'public.partido_snapshots_tacticos',   array['system'],                             'STAFF_ONLY')
+    ('goal_for',       'public.partido_eventos_gol',          array['type']::text[],                              'CANDIDATE_PLAYER'),
+    ('goal_against',   'public.partido_eventos_gol',          array['type']::text[],                              'CANDIDATE_PLAYER'),
+    ('assist',         'public.partido_eventos_gol',          array['assistant','assistant_id']::text[],           'CANDIDATE_PLAYER'),
+    ('yellow_card',    'public.partido_estadisticas_jugador', array['yellow','yellow_count']::text[],              'CANDIDATE_PLAYER'),
+    ('red_card',       'public.partido_estadisticas_jugador', array['red']::text[],                                'CANDIDATE_PLAYER'),
+    ('substitution',   'public.partido_estadisticas_jugador', array['role','replacement_name','minutes']::text[],  'DUDOSO'),
+    ('system_change',  'public.partido_eventos_sistema',      array['from_system','to_system']::text[],            'STAFF_ONLY'),
+    ('injury',         'public.partido_estadisticas_jugador', array['injured']::text[],                            'STAFF_ONLY'),
+    ('quick_events',   'public.match_quick_events',           array['tipo_evento']::text[],                        'STAFF_ONLY'),
+    ('post_events',    'public.partido_eventos_post',         array['type','description']::text[],                 'STAFF_ONLY'),
+    ('tactical_state', 'public.partido_snapshots_tacticos',   array['system']::text[],                             'STAFF_ONLY')
 ),
 timeline_source_checks as (
   select
@@ -1051,22 +1051,22 @@ timeline_source_checks as (
     timeline.player_classification::text as expected,
     pg_catalog.jsonb_build_object(
       'required_columns', timeline.required_columns,
-      'present_columns', coalesce(present.present_columns, array[]::text[]),
-      'all_required_present', coalesce(present.present_columns, array[]::text[]) @> timeline.required_columns
+      'present_columns', coalesce(present.present_columns::text[], array[]::text[]),
+      'all_required_present', coalesce(present.present_columns::text[], array[]::text[]) @> timeline.required_columns::text[]
     )::text as observed,
     case when timeline.player_classification = 'STAFF_ONLY' then 'INFO' else 'LOW' end::text as risk_level,
     (
       pg_catalog.to_regclass(timeline.source_table) is not null
-      and coalesce(present.present_columns, array[]::text[]) @> timeline.required_columns
+      and coalesce(present.present_columns::text[], array[]::text[]) @> timeline.required_columns::text[]
     )::boolean as test_ok,
     'La clasificacion es informativa; no crea la allowlist.'::text as details
   from timeline_source_specs timeline
   left join lateral (
-    select pg_catalog.array_agg(column_row.column_name order by column_row.column_name) as present_columns
+    select pg_catalog.array_agg(column_row.column_name::text order by column_row.column_name::text)::text[] as present_columns
     from information_schema.columns column_row
     where column_row.table_schema = pg_catalog.split_part(timeline.source_table, '.', 1)
       and column_row.table_name = pg_catalog.split_part(timeline.source_table, '.', 2)
-      and column_row.column_name = any(timeline.required_columns)
+      and column_row.column_name::text = any(timeline.required_columns::text[])
   ) present on true
 ),
 video_summary_query as (
@@ -1149,34 +1149,34 @@ analysis_metric_specs(metric_order, metric_name, source_name, metric_sql, requir
   values
     (1, 'partidos', 'public.partido_estadisticas_jugador',
       'select pg_catalog.jsonb_build_object(''borja_value'', count(distinct partido_id)) from public.partido_estadisticas_jugador where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid',
-      array['partido_id','jugador_id'], 'AVAILABLE'),
+      array['partido_id','jugador_id']::text[], 'AVAILABLE'),
     (2, 'minutos', 'public.partido_estadisticas_jugador',
       'select pg_catalog.jsonb_build_object(''borja_value'', coalesce(sum(case when pg_catalog.btrim(minutes::text) ~ ''^[0-9]+([.][0-9]+)?$'' then pg_catalog.btrim(minutes::text)::numeric else 0 end), 0)) from public.partido_estadisticas_jugador where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid',
-      array['jugador_id','minutes'], 'AVAILABLE'),
+      array['jugador_id','minutes']::text[], 'AVAILABLE'),
     (3, 'titularidades', 'public.partido_estadisticas_jugador',
       'select pg_catalog.jsonb_build_object(''borja_value'', count(*) filter (where pg_catalog.lower(coalesce(role, '''')) = ''titular'')) from public.partido_estadisticas_jugador where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid',
-      array['jugador_id','role'], 'AVAILABLE'),
+      array['jugador_id','role']::text[], 'AVAILABLE'),
     (4, 'entradas_desde_banquillo', 'public.partido_estadisticas_jugador',
       'select pg_catalog.jsonb_build_object(''borja_value'', count(*) filter (where pg_catalog.lower(coalesce(role, '''')) <> ''titular'' and case when pg_catalog.btrim(minutes::text) ~ ''^[0-9]+([.][0-9]+)?$'' then pg_catalog.btrim(minutes::text)::numeric else 0 end > 0)) from public.partido_estadisticas_jugador where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid',
-      array['jugador_id','role','minutes'], 'AVAILABLE'),
+      array['jugador_id','role','minutes']::text[], 'AVAILABLE'),
     (5, 'goles', 'public.partido_eventos_gol',
       'select pg_catalog.jsonb_build_object(''borja_value'', count(*) filter (where scorer_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid), ''uuid_linked_rows'', count(*) filter (where scorer_id is not null), ''name_only_rows'', count(*) filter (where scorer_id is null and nullif(pg_catalog.btrim(scorer), '''') is not null)) from public.partido_eventos_gol',
-      array['scorer_id','scorer'], 'AVAILABLE'),
+      array['scorer_id','scorer']::text[], 'AVAILABLE'),
     (6, 'asistencias', 'public.partido_eventos_gol',
       'select pg_catalog.jsonb_build_object(''borja_value'', count(*) filter (where assistant_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid), ''uuid_linked_rows'', count(*) filter (where assistant_id is not null), ''name_only_rows'', count(*) filter (where assistant_id is null and nullif(pg_catalog.btrim(assistant), '''') is not null)) from public.partido_eventos_gol',
-      array['assistant_id','assistant'], 'AVAILABLE'),
+      array['assistant_id','assistant']::text[], 'AVAILABLE'),
     (7, 'amarillas', 'public.partido_estadisticas_jugador',
       'select pg_catalog.jsonb_build_object(''borja_value'', coalesce(sum(coalesce(yellow_count, case when yellow then 1 else 0 end)), 0)) from public.partido_estadisticas_jugador where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid',
-      array['jugador_id','yellow','yellow_count'], 'AVAILABLE'),
+      array['jugador_id','yellow','yellow_count']::text[], 'AVAILABLE'),
     (8, 'rojas', 'public.partido_estadisticas_jugador',
       'select pg_catalog.jsonb_build_object(''borja_value'', count(*) filter (where red)) from public.partido_estadisticas_jugador where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid',
-      array['jugador_id','red'], 'AVAILABLE'),
+      array['jugador_id','red']::text[], 'AVAILABLE'),
     (9, 'medias_y_produccion_por_90', 'public.partido_estadisticas_jugador',
       'select pg_catalog.jsonb_build_object(''stats_rows'', count(*), ''minutes_total'', coalesce(sum(case when pg_catalog.btrim(minutes::text) ~ ''^[0-9]+([.][0-9]+)?$'' then pg_catalog.btrim(minutes::text)::numeric else 0 end), 0)) from public.partido_estadisticas_jugador where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid',
-      array['jugador_id','partido_id','minutes'], 'AVAILABLE'),
+      array['jugador_id','partido_id','minutes']::text[], 'AVAILABLE'),
     (10, 'distribucion_posicional', 'public.partido_snapshot_tactico_slots',
       'select pg_catalog.jsonb_build_object(''uuid_linked_snapshot_slots'', count(*) filter (where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid), ''legacy_name_slots'', count(*) filter (where jugador_id is null and nullif(pg_catalog.btrim(player_name_snapshot), '''') is not null)) from public.partido_snapshot_tactico_slots',
-      array['snapshot_id','slot','jugador_id','player_name_snapshot'], 'PARTIAL')
+      array['snapshot_id','slot','jugador_id','player_name_snapshot']::text[], 'PARTIAL')
 ),
 analysis_metric_checks as (
   select
@@ -1193,20 +1193,20 @@ analysis_metric_checks as (
         when metric.metric_name in ('goles', 'asistencias')
          and metric_result.query_ok
          and coalesce((metric_result.result ->> 'name_only_rows')::bigint, 0) > 0 then 'PARTIAL'
-        when coalesce(columns_present.present_columns, array[]::text[]) @> metric.required_columns
+        when coalesce(columns_present.present_columns::text[], array[]::text[]) @> metric.required_columns::text[]
           and metric_result.query_ok then metric.base_status
-        when coalesce(pg_catalog.array_length(columns_present.present_columns, 1), 0) > 0 then 'PARTIAL'
+        when coalesce(pg_catalog.array_length(columns_present.present_columns::text[], 1), 0) > 0 then 'PARTIAL'
         else 'NOT_AVAILABLE'
       end,
       'source', metric.source_name,
       'required_columns', metric.required_columns,
-      'present_columns', coalesce(columns_present.present_columns, array[]::text[]),
+      'present_columns', coalesce(columns_present.present_columns::text[], array[]::text[]),
       'aggregates', metric_result.result,
       'error_code', metric_result.error_code
     )::text as observed,
     case
       when pg_catalog.to_regclass(metric.source_name) is null then 'HIGH'
-      when not (coalesce(columns_present.present_columns, array[]::text[]) @> metric.required_columns) then 'HIGH'
+      when not (coalesce(columns_present.present_columns::text[], array[]::text[]) @> metric.required_columns::text[]) then 'HIGH'
       when metric.metric_name in ('goles', 'asistencias')
        and coalesce((metric_result.result ->> 'name_only_rows')::bigint, 0) > 0 then 'HIGH'
       when metric.base_status = 'PARTIAL' then 'MEDIUM'
@@ -1214,7 +1214,7 @@ analysis_metric_checks as (
     end::text as risk_level,
     (
       pg_catalog.to_regclass(metric.source_name) is not null
-      and coalesce(columns_present.present_columns, array[]::text[]) @> metric.required_columns
+      and coalesce(columns_present.present_columns::text[], array[]::text[]) @> metric.required_columns::text[]
       and metric_result.query_ok
       and not (
         metric.metric_name in ('goles', 'asistencias')
@@ -1231,11 +1231,11 @@ analysis_metric_checks as (
     )::text as details
   from analysis_metric_specs metric
   left join lateral (
-    select pg_catalog.array_agg(column_row.column_name order by column_row.column_name) as present_columns
+    select pg_catalog.array_agg(column_row.column_name::text order by column_row.column_name::text)::text[] as present_columns
     from information_schema.columns column_row
     where column_row.table_schema = pg_catalog.split_part(metric.source_name, '.', 1)
       and column_row.table_name = pg_catalog.split_part(metric.source_name, '.', 2)
-      and column_row.column_name = any(metric.required_columns)
+      and column_row.column_name::text = any(metric.required_columns::text[])
   ) columns_present on true
   left join lateral pg_temp.player_audit_safe_json(metric.metric_sql) metric_result on true
 ),
@@ -1249,29 +1249,29 @@ identity_linkage_checks as (
     'uuid_vs_legacy_identity_columns'::text as check_name,
     'UUID linkage preferred; name-only linkage reported as risk'::text as expected,
     pg_catalog.jsonb_build_object(
-      'identity_columns', coalesce(identity_columns.columns, array[]::text[]),
-      'has_jugador_id', coalesce('jugador_id' = any(identity_columns.columns), false),
-      'has_player_id', coalesce('player_id' = any(identity_columns.columns), false),
+      'identity_columns', coalesce(identity_columns.columns::text[], array[]::text[]),
+      'has_jugador_id', coalesce('jugador_id' = any(identity_columns.columns::text[]), false),
+      'has_player_id', coalesce('player_id' = any(identity_columns.columns::text[]), false),
       'has_player_name', coalesce(
-        identity_columns.columns && array['player_name','player_name_snapshot','scorer','assistant'],
+        identity_columns.columns::text[] && array['player_name','player_name_snapshot','scorer','assistant']::text[],
         false
       ),
       'uuid_fk_count', coalesce(uuid_fk.uuid_fk_count, 0)
     )::text as observed,
     case
       when relation.identity_mode is not null
-       and not coalesce(identity_columns.columns && array['id','jugador_id','scorer_id','assistant_id'], false) then 'HIGH'
-      when coalesce(identity_columns.columns && array['player_name','player_name_snapshot','scorer','assistant'], false) then 'MEDIUM'
+       and not coalesce(identity_columns.columns::text[] && array['id','jugador_id','scorer_id','assistant_id']::text[], false) then 'HIGH'
+      when coalesce(identity_columns.columns::text[] && array['player_name','player_name_snapshot','scorer','assistant']::text[], false) then 'MEDIUM'
       else 'INFO'
     end::text as risk_level,
     (
       relation.identity_mode is null
-      or coalesce(identity_columns.columns && array['id','jugador_id','scorer_id','assistant_id'], false)
+      or coalesce(identity_columns.columns::text[] && array['id','jugador_id','scorer_id','assistant_id']::text[], false)
     )::boolean as test_ok,
     'La existencia de una columna UUID no garantiza cobertura completa; revisar metricas name_only.'::text as details
   from relations relation
   left join lateral (
-    select pg_catalog.array_agg(column_row.column_name order by column_row.ordinal_position) as columns
+    select pg_catalog.array_agg(column_row.column_name::text order by column_row.ordinal_position)::text[] as columns
     from information_schema.columns column_row
     where column_row.table_schema = pg_catalog.split_part(relation.table_name, '.', 1)
       and column_row.table_name = pg_catalog.split_part(relation.table_name, '.', 2)
@@ -1372,7 +1372,7 @@ staff_content_checks as (
       'borja_access', visibility.access_mode,
       'borja_visible_rows', visibility.visible_rows,
       'baseline_rows', visibility.baseline_rows,
-      'columns_with_internal_semantics', coalesce(internal_columns.columns, array[]::text[])
+      'columns_with_internal_semantics', coalesce(internal_columns.columns::text[], array[]::text[])
     )::text as observed,
     case
       when pg_catalog.to_regclass(staff_table.table_name) is null then 'CRITICAL'
@@ -1389,7 +1389,7 @@ staff_content_checks as (
     on visibility.table_name = staff_table.table_name
    and visibility.scenario = 'BORJA_PLAYER'
   left join lateral (
-    select pg_catalog.array_agg(column_row.column_name order by column_row.ordinal_position) as columns
+    select pg_catalog.array_agg(column_row.column_name::text order by column_row.ordinal_position)::text[] as columns
     from information_schema.columns column_row
     where column_row.table_schema = pg_catalog.split_part(staff_table.table_name, '.', 1)
       and column_row.table_name = pg_catalog.split_part(staff_table.table_name, '.', 2)

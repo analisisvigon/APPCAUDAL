@@ -136,4 +136,26 @@ assert.match(sql, /pg_catalog\.pg_policy/);
 assert.match(sql, /set local role %I/);
 assert.match(sql, /request\.jwt\.claim\.sub/);
 
+const informationSchemaColumnArrays = [
+  ...sql.matchAll(/array_agg\(\s*column_row\.column_name(?<cast>\s*::\s*text)?/gi),
+];
+assert.equal(informationSchemaColumnArrays.length, 6, 'Deben auditarse las seis agregaciones de column_name');
+for (const match of informationSchemaColumnArrays) {
+  assert.ok(match.groups?.cast, 'Todo array_agg de information_schema.columns.column_name debe convertir cada elemento a text');
+}
+assert.doesNotMatch(
+  sql,
+  /array_agg\(\s*column_row\.column_name(?!\s*::\s*text)/i,
+  'No puede reconstruirse information_schema.sql_identifier[] desde column_name',
+);
+for (const operatorPattern of [/@>/g, /<@/g, /&&/g]) {
+  const occurrences = [...sql.matchAll(operatorPattern)];
+  for (const occurrence of occurrences) {
+    const context = sql.slice(Math.max(0, occurrence.index - 180), occurrence.index + 180);
+    assert.match(context, /text\[\]/i, `Comparacion de arrays sin normalizacion text[] cerca de ${occurrence.index}`);
+  }
+}
+assert.match(sql, /column_row\.column_name::text\s*=\s*any\(timeline\.required_columns::text\[\]\)/i);
+assert.match(sql, /column_row\.column_name::text\s*=\s*any\(metric\.required_columns::text\[\]\)/i);
+
 console.log('playerAnalysisMatchesRemoteAudit.test.mjs: OK');
