@@ -1,5 +1,15 @@
 import assert from 'node:assert/strict';
-import { MATCH_STATUS_COLORS, getMatchOutcome, getMatchScore, getMatchStatus, getMatchStatusPresentation, parseLocalMatchDate } from './matchStatus.js';
+import {
+  MATCH_STATUS_COLORS,
+  getMatchOutcome,
+  getMatchScore,
+  getMatchScoreDisplay,
+  getMatchStatus,
+  getMatchStatusPresentation,
+  isValidMatchScoreInput,
+  normalizeMatchScoreForStorage,
+  parseLocalMatchDate,
+} from './matchStatus.js';
 
 const now = new Date(2026, 6, 20, 12, 0, 0);
 const base = { date: '2026-07-20', isHome: true, status: 'Previa', homeScore: '', awayScore: '', goalsFor: '', goalsAgainst: '', statsGoalEvents: [] };
@@ -25,6 +35,37 @@ assert.equal(getMatchStatus({ ...base, date: '2026-07-19', played: false, statsG
 assert.equal(getMatchStatus({ ...base, date: '2026-07-19', played: true }, now), 'played');
 assert.equal(getMatchStatus({ ...base, date: '2026-07-19', status: 'Cerrado' }, now), 'played');
 assert.equal(getMatchOutcome({ ...base, date: '2026-07-19', played: true }, now), null, 'compatibilidad legacy no inventa un 0-0');
+
+const scoreCases = [
+  ['A: 0-0', { homeScore: 0, awayScore: 0 }, '0 - 0'],
+  ['B: 1-0', { homeScore: 1, awayScore: 0 }, '1 - 0'],
+  ['C: 0-2', { homeScore: 0, awayScore: 2 }, '0 - 2'],
+  ['D: 2-2', { homeScore: 2, awayScore: 2 }, '2 - 2'],
+  ['E: null/null', { homeScore: null, awayScore: null }, 'Resultado pendiente'],
+  ['F: undefined/undefined', { homeScore: undefined, awayScore: undefined }, 'Resultado pendiente'],
+];
+
+for (const [label, scoreInput, expectedDisplay] of scoreCases) {
+  const match = { ...base, ...scoreInput, date: '2026-07-19' };
+  assert.equal(getMatchScoreDisplay(match, now), expectedDisplay, label);
+}
+assert.equal(
+  getMatchScoreDisplay({ ...base, date: '2026-07-27', homeScore: undefined, awayScore: undefined }, now),
+  'Resultado pendiente',
+  'G: un partido futuro sin marcador sigue pendiente',
+);
+assert.equal(getMatchScore({ ...base, homeScore: null, awayScore: null }), null, 'null/null no se convierte en 0-0');
+assert.equal(getMatchScore({ ...base, homeScore: undefined, awayScore: undefined }), null, 'undefined/undefined no se convierte en 0-0');
+assert.equal(getMatchScore({ ...base, statsGoalEvents: [] }), null, 'la ausencia de goles no permite inferir un 0-0');
+assert.equal(normalizeMatchScoreForStorage(0), 0, 'el guardado conserva el cero numérico');
+assert.equal(normalizeMatchScoreForStorage('0'), 0, 'el guardado conserva el cero introducido en un input');
+assert.equal(normalizeMatchScoreForStorage(''), null, 'un marcador vacío se persiste como ausencia de resultado');
+assert.equal(normalizeMatchScoreForStorage(null), null);
+assert.equal(isValidMatchScoreInput(0), true);
+assert.equal(isValidMatchScoreInput('0'), true);
+assert.equal(isValidMatchScoreInput(-1), false);
+assert.equal(isValidMatchScoreInput('1.5'), false);
+assert.equal(isValidMatchScoreInput('no-numérico'), false);
 
 const localDate = parseLocalMatchDate('2026-08-16');
 assert.equal(localDate.getFullYear(), 2026);

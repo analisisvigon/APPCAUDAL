@@ -61,12 +61,16 @@ import {
   normalizeCompetitionKey,
 } from './utils/competitionFilters';
 import {
+  getMatchScoreDisplay,
   getMatchOutcome,
   getMatchScore,
   getMatchStatus,
   getMatchStatusPresentation,
+  isValidMatchScoreInput,
+  normalizeMatchScoreForStorage,
   parseLocalMatchDate,
 } from './utils/matchStatus';
+import { calculateDelegatedPerMatch, formatDelegatedNumber } from './utils/delegatedStats';
 import {
   formatMatchCalendarRound,
   getMatchCalendarEventPriority,
@@ -1964,8 +1968,8 @@ const createPartidoPayload = (matchFormState, teams = [], competitions = []) => 
     status: matchFormState.status || 'Previa',
     home_team: matchFormState.isHome ? 'C.D. Caudal' : (selectedTeam ? cleanTeamDisplayName(selectedTeam.name) : matchFormState.opponent),
     away_team: matchFormState.isHome ? (selectedTeam ? cleanTeamDisplayName(selectedTeam.name) : matchFormState.opponent) : 'C.D. Caudal',
-    home_score: matchFormState.homeScore ?? '',
-    away_score: matchFormState.awayScore ?? '',
+    home_score: normalizeMatchScoreForStorage(matchFormState.homeScore),
+    away_score: normalizeMatchScoreForStorage(matchFormState.awayScore),
     goals_for: matchFormState.goalsFor ?? '',
     goals_against: matchFormState.goalsAgainst ?? '',
     stats_system: matchFormState.statsSystem || DEFAULT_OWN_FORMATION,
@@ -2192,6 +2196,17 @@ const EVENT_STAT_FIELDS = [
   { key: 'foulsCommitted', label: 'Faltas realizadas', group: 'Disciplina y duelos' },
   { key: 'foulsReceived', label: 'Faltas recibidas', group: 'Disciplina y duelos' },
 ];
+
+const PLAYER_LIVE_PER_MATCH_FIELDS = EVENT_STAT_FIELDS.filter((field) => [
+  'goals',
+  'shots',
+  'shotsOnTarget',
+  'crosses',
+  'turnovers',
+  'steals',
+  'foulsCommitted',
+  'foulsReceived',
+].includes(field.key));
 
 const createEmptyEventStats = () => EVENT_STAT_FIELDS.reduce((acc, field) => ({ ...acc, [field.key]: 0 }), {});
 const getDelegatedStatusTone = (status) => ({
@@ -20494,9 +20509,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         losses: 0,
         fouls: 0,
         shotAccuracy: 'No disponible',
-        recoveryLossBalance: 0,
+        perMatch: null,
         events: [],
-        recent: [],
         matchesWithEvents: 0,
         readings: [],
         alerts: [],
@@ -20522,10 +20536,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       ? scopedReviewedEvents.filter((event) => visibleMatchIds.has(event.partidoId))
       : scopedReviewedEvents;
     const summary = aggregateQuickEventStats(quickEvents, { side: 'caudal', playerId: player.id, scope: 'player' });
-    const recent = quickEvents
-      .slice()
-      .sort((a, b) => String(b.match.date || '').localeCompare(String(a.match.date || '')) || Number(b.minute || 0) - Number(a.minute || 0));
     const matchCount = new Set(quickEvents.map((event) => event.partidoId)).size;
+    const perMatch = calculateDelegatedPerMatch(summary, matchCount, PLAYER_LIVE_PER_MATCH_FIELDS);
     const shotAccuracy = getStatRate(summary.shotsOnTarget, summary.shots);
     const shotAccuracyValue = Number(String(shotAccuracy).replace('%', '')) || 0;
     const readings = [
@@ -20540,9 +20552,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       losses: summary.turnovers,
       fouls: summary.foulsCommitted,
       shotAccuracy,
-      recoveryLossBalance: summary.recoveries + summary.steals - summary.turnovers,
+      perMatch,
       events: quickEvents,
-      recent,
       matchesWithEvents: matchCount,
       readings,
       alerts: readings,
@@ -23856,6 +23867,13 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     }
     if (!String(formState.date || '').trim()) errors.date = 'Indica la fecha del encuentro.';
     if (formState.isHome !== true && formState.isHome !== false) errors.isHome = 'Indica si el partido es local o visitante.';
+    const homeScoreIsBlank = formState.homeScore === null || formState.homeScore === undefined || String(formState.homeScore).trim() === '';
+    const awayScoreIsBlank = formState.awayScore === null || formState.awayScore === undefined || String(formState.awayScore).trim() === '';
+    if (homeScoreIsBlank !== awayScoreIsBlank) {
+      errors.score = 'Introduce los dos marcadores o deja ambos vacíos.';
+    } else if (!isValidMatchScoreInput(formState.homeScore) || !isValidMatchScoreInput(formState.awayScore)) {
+      errors.score = 'El marcador debe usar números enteros iguales o mayores que cero.';
+    }
     return errors;
   };
 
@@ -29895,38 +29913,25 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                       </div>
                     </div>
                     {hasUsefulQuickData ? (
-                      <>
-                        <div className="mt-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
-                          {[
-                            ['Partidos con eventos', quick.matchesWithEvents],
-                            ['Goles', quick.goals],
-                            ['Tiros', quick.shots],
-                            ['Tiros a puerta', quick.shotsOnTarget],
-                            ['% tiros a puerta', quick.shotAccuracy],
-                            ['Regates', quick.dribbles],
-                            ['Centros', quick.crosses],
-                            ['Pérdidas', quick.losses],
-                            ['Robos', quick.steals],
-                            ['Recuperaciones', quick.recoveries],
-                            ['Balance rec/pérd', quick.recoveryLossBalance],
-                            ['Faltas realizadas', quick.foulsCommitted],
-                            ['Faltas recibidas', quick.foulsReceived],
-                          ].map(([label, value]) => (
-                            <div key={label} className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2.5">
-                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
-                              <p className="mt-1 text-xl font-black text-white">{value}</p>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                          {quick.recent.slice(0, 4).map((event) => (
-                            <div key={event.id} className="rounded-2xl bg-white/5 p-4 text-sm">
-                              <p className="font-black text-white">{event.minute}' · {getQuickEventLabel(event.tipoEvento)}</p>
-                              <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">{event.match.opponent} · {matchDisplayDate(event.match.date)}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </>
+                      <div className="mt-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                        {[
+                          ['Partidos con eventos', quick.matchesWithEvents],
+                          ['Goles / partido', formatDelegatedNumber(quick.perMatch?.goals, 'average')],
+                          ['Tiros / partido', formatDelegatedNumber(quick.perMatch?.shots, 'average')],
+                          ['Tiros a puerta / partido', formatDelegatedNumber(quick.perMatch?.shotsOnTarget, 'average')],
+                          ['% tiros a puerta', quick.shotAccuracy],
+                          ['Centros / partido', formatDelegatedNumber(quick.perMatch?.crosses, 'average')],
+                          ['Pérdidas / partido', formatDelegatedNumber(quick.perMatch?.turnovers, 'average')],
+                          ['Robos / partido', formatDelegatedNumber(quick.perMatch?.steals, 'average')],
+                          ['Faltas realizadas / partido', formatDelegatedNumber(quick.perMatch?.foulsCommitted, 'average')],
+                          ['Faltas recibidas / partido', formatDelegatedNumber(quick.perMatch?.foulsReceived, 'average')],
+                        ].map(([label, value]) => (
+                          <div key={label} className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2.5">
+                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
+                            <p className="mt-1 text-xl font-black text-white">{value}</p>
+                          </div>
+                        ))}
+                      </div>
                     ) : (
                       <p className="mt-4 rounded-xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-2 text-xs text-slate-500">
                         {quick.events.length === 1 ? '1 evento en el filtro actual; amplía el periodo para mostrar el resumen.' : 'Sin eventos en el filtro actual.'}
@@ -33045,13 +33050,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                     const statsEvents = score.statsEvents;
                     const played = isMatchPlayedForUi(match);
                     const statusPresentation = getMatchStatusPresentation(match);
-                    const scoreDisplay = played && score.hasCompleteScore
-                      ? `${score.home} - ${score.away}`
-                      : statusPresentation.status === 'scheduled'
-                        ? 'VS'
-                        : statusPresentation.status === 'pending_result' || statusPresentation.status === 'played'
-                          ? 'Resultado pendiente'
-                          : statusPresentation.label;
+                    const scoreDisplay = getMatchScoreDisplay(match);
                     const outcomeLabel = statusPresentation.outcome === 'win'
                       ? 'Victoria'
                       : statusPresentation.outcome === 'draw'
@@ -33329,11 +33328,10 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                       <div className="rounded-3xl bg-[#091428]/90 p-4">
                         <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Resultado</p>
                         {(() => {
-                          const score = getMatchScore(selectedMatch);
                           const presentation = getMatchStatusPresentation(selectedMatch);
                           return (
                             <>
-                              <p className="mt-3 text-3xl font-semibold text-white">{presentation.status === 'played' && score ? `${score.home} - ${score.away}` : presentation.status === 'scheduled' ? 'VS' : presentation.status === 'pending_result' || presentation.status === 'played' ? 'Resultado pendiente' : presentation.label}</p>
+                              <p className="mt-3 text-3xl font-semibold text-white">{getMatchScoreDisplay(selectedMatch)}</p>
                               <p className="mt-2 text-sm uppercase tracking-[0.2em] text-slate-400">{presentation.label}</p>
                             </>
                           );
@@ -36583,6 +36581,34 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 <input name="stadium" value={matchFormState.stadium} onChange={handleMatchChange} placeholder="Campo del encuentro" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white" />
                 {getMatchStadiumHelp() ? <span className="block text-xs font-semibold text-slate-500">{getMatchStadiumHelp()}</span> : null}
               </label>
+
+              <fieldset className={`rounded-2xl border bg-white/[0.025] p-4 ${matchFieldErrors.score ? 'border-red-300/40' : 'border-white/10'}`}>
+                <legend className="px-2 text-xs font-black uppercase tracking-[0.16em] text-slate-500">Marcador oficial</legend>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    ['homeScore', matchFormState.isHome ? 'C.D. Caudal' : matchFormState.opponent || 'Local'],
+                    ['awayScore', matchFormState.isHome ? matchFormState.opponent || 'Visitante' : 'C.D. Caudal'],
+                  ].map(([name, label]) => (
+                    <label key={name} className="min-w-0 space-y-2 text-sm text-slate-300">
+                      <span className="block truncate text-[10px] font-black uppercase tracking-[0.12em] text-slate-500" title={label}>{label}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        inputMode="numeric"
+                        name={name}
+                        value={matchFormState[name] ?? ''}
+                        onChange={handleMatchChange}
+                        placeholder="—"
+                        aria-describedby={matchFieldErrors.score ? 'match-score-error' : undefined}
+                        className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center text-xl font-black text-white"
+                      />
+                    </label>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs leading-5 text-slate-500">Déjalo vacío mientras el resultado no esté confirmado. Un 0-0 debe guardarse escribiendo cero en ambos campos.</p>
+                {matchFieldErrors.score ? <p id="match-score-error" className="mt-2 text-xs font-semibold text-red-200">{matchFieldErrors.score}</p> : null}
+              </fieldset>
 
               {editingMatchId ? (
                 <details className="rounded-2xl border border-white/10 bg-white/[0.025] px-4 py-3">

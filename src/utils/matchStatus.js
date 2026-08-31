@@ -26,9 +26,20 @@ const normalizeText = (value) => String(value || '')
   .replace(/[\u0300-\u036f]/g, '');
 
 export const hasMatchScoreValue = (value) => {
-  if (value === '' || value === null || value === undefined) return false;
+  if (value === null || value === undefined || String(value).trim() === '') return false;
   return Number.isFinite(Number(value));
 };
+
+export const isValidMatchScoreInput = (value) => (
+  value === null
+  || value === undefined
+  || String(value).trim() === ''
+  || (Number.isInteger(Number(value)) && Number(value) >= 0)
+);
+
+export const normalizeMatchScoreForStorage = (value) => (
+  hasMatchScoreValue(value) && isValidMatchScoreInput(value) ? Number(value) : null
+);
 
 export const parseLocalMatchDate = (value) => {
   const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -181,4 +192,12 @@ export const getMatchStatusPresentation = (match = {}, now = new Date()) => {
     label: MATCH_STATUS_LABELS[status],
     color: MATCH_STATUS_COLORS[colorKey] || MATCH_STATUS_COLORS.scheduled,
   };
+};
+
+export const getMatchScoreDisplay = (match = {}, now = new Date()) => {
+  const presentation = getMatchStatusPresentation(match, now);
+  const score = getMatchScore(match);
+  if (presentation.status === 'played' && score) return `${score.home} - ${score.away}`;
+  if (['postponed', 'suspended', 'cancelled'].includes(presentation.status)) return presentation.label;
+  return 'Resultado pendiente';
 };

@@ -88,4 +88,31 @@ assert.match(profile, /hasUsefulQuickData = quick\.events\.length >= 2/);
 assert.match(profile, /Últimos 3 partidos/);
 assert.match(profile, /Solo validados/);
 
+const liveStart = profile.indexOf('<AccordionSection title="Registro en vivo"');
+const liveEnd = profile.indexOf('<AccordionSection title="Producción', liveStart);
+assert.ok(liveStart >= 0 && liveEnd > liveStart, 'localiza exclusivamente el bloque Registro en vivo');
+const liveSection = profile.slice(liveStart, liveEnd);
+assert.match(source, /const scopedReviewedEvents = \(playerProfileData\?\.quickEvents \|\| \[\]\)/);
+assert.match(source, /playerDelegatedScope === 'Todos los registros' \|\| isDelegatedDataValidated\(event\.match\)/);
+assert.match(source, /const quickScopeLimit = playerQuickScope === 'Últimos 3 partidos' \? 3 : playerQuickScope === 'Últimos 5 partidos' \? 5 : null/);
+assert.match(source, /const matchCount = new Set\(quickEvents\.map\(\(event\) => event\.partidoId\)\)\.size;/);
+assert.match(source, /calculateDelegatedPerMatch\(summary, matchCount, PLAYER_LIVE_PER_MATCH_FIELDS\)/);
+for (const metric of [
+  'Partidos con eventos',
+  'Goles / partido',
+  'Tiros / partido',
+  'Tiros a puerta / partido',
+  '% tiros a puerta',
+  'Centros / partido',
+  'Pérdidas / partido',
+  'Robos / partido',
+  'Faltas realizadas / partido',
+  'Faltas recibidas / partido',
+]) {
+  assert.ok(liveSection.includes(metric), `Registro en vivo debe mostrar ${metric}`);
+}
+for (const removedMetric of ['Regates', 'Recuperaciones', 'Balance rec/pérd', 'event.minute', 'quick.recent']) {
+  assert.equal(liveSection.includes(removedMetric), false, `Registro en vivo no debe mostrar ${removedMetric}`);
+}
+
 console.log('playerProfileUxAudit.test.mjs: OK');

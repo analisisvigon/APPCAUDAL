@@ -10,7 +10,12 @@ assert.ok(calendarStart >= 0 && calendarEnd > calendarStart, 'localiza el calend
 assert.match(calendar, /className="grid items-start gap-4 xl:grid-cols-2"/, 'el grid no estira las tarjetas a la altura de la fila');
 assert.match(calendar, /className={`relative self-start overflow-hidden/, 'cada tarjeta conserva su altura intrínseca');
 assert.match(calendar, /played \? 'max-w-\[620px\]' : 'max-w-\[540px\]'/, 'el partido programado acerca los equipos al centro sin reducir escudos');
-assert.match(calendar, /statusPresentation\.status === 'scheduled'[\s\S]*?rounded-full[\s\S]*?text-2xl/, 'VS tiene una composición compacta propia');
+assert.match(calendar, /const scoreDisplay = getMatchScoreDisplay\(match\)/, 'el calendario usa el helper canónico y no confunde cero con marcador ausente');
+assert.match(app, /getMatchScoreDisplay\(selectedMatch\)/, 'el detalle usa el mismo contrato de marcador que el calendario');
+assert.doesNotMatch(calendar, /statusPresentation\.status === 'scheduled'[\s\S]*?\? 'VS'/, 'el calendario no convierte los futuros sin marcador en VS');
+assert.match(app, /home_score: normalizeMatchScoreForStorage\(matchFormState\.homeScore\)/, 'el payload preserva el cero local');
+assert.match(app, /away_score: normalizeMatchScoreForStorage\(matchFormState\.awayScore\)/, 'el payload preserva el cero visitante');
+assert.match(app, /<legend[^>]*>Marcador oficial<\/legend>/, 'el formulario permite registrar un 0-0 oficial sin inventar eventos');
 assert.match(calendar, />\s*Finalizado\s*</, 'el partido con marcador muestra el estado FINALIZADO');
 assert.match(calendar, /formatMatchCalendarRound\(match\.round\)/, 'la jornada/ronda se presenta con etiqueta comprensible');
 assert.match(calendar, /getMatchMdLabel\(\)[\s\S]*?rounded-full|rounded-full[\s\S]*?getMatchMdLabel\(\)/, 'MD se presenta como badge secundario');

@@ -24,6 +24,7 @@ import {
   calculateDelegatedPerMatch,
   calculateDelegatedPer90,
   filterDelegatedValidatedMatches,
+  formatDelegatedNumber,
   getDelegatedMatchResult,
   getDelegatedMatchVenue,
 } from './delegatedStats.js';
@@ -313,6 +314,37 @@ const officialPlayerEvolution = buildDelegatedEvolution({
 assert.deepEqual(officialPlayerEvolution.map((row) => row.value), [1, 1, 0, 0, 0, 0, 0, 0, 0, 0], 'la evolución individual de goles usa autoría oficial, no quickEvents');
 
 assert.equal(calculateDelegatedPerMatch({ shots: 7 }, 2).shots, 3.5, 'la media por partido divide el total entre la muestra real');
+const livePerMatch = calculateDelegatedPerMatch({
+  goals: 1,
+  shots: 10,
+  shotsOnTarget: 4,
+  crosses: 5,
+  turnovers: 8,
+  steals: 3,
+  foulsCommitted: 2,
+  foulsReceived: 7,
+}, 3, [
+  'goals',
+  'shots',
+  'shotsOnTarget',
+  'crosses',
+  'turnovers',
+  'steals',
+  'foulsCommitted',
+  'foulsReceived',
+].map((key) => ({ key })));
+assert.deepEqual(livePerMatch, {
+  goals: 0.33,
+  shots: 3.33,
+  shotsOnTarget: 1.33,
+  crosses: 1.67,
+  turnovers: 2.67,
+  steals: 1,
+  foulsCommitted: 0.67,
+  foulsReceived: 2.33,
+}, 'Registro en vivo divide cada total entre los partidos filtrados que sí tienen eventos');
+assert.equal(formatDelegatedNumber(livePerMatch.shots, 'average'), '3,3', 'la media muestra un decimal y separador español cuando hace falta');
+assert.equal(formatDelegatedNumber(livePerMatch.steals, 'average'), '1', 'la media entera no fuerza decimales');
 
 const participationMatches = [
   {
