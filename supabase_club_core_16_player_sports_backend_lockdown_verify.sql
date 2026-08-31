@@ -39,14 +39,20 @@ begin
     perform pg_catalog.set_config('request.jwt.claim.sub', coalesce(p_auth_uid::text, ''), true);
     perform pg_catalog.set_config(
       'request.jwt.claim.role',
-      case when p_database_role = 'anon' then 'anon' else 'authenticated' end,
+      case
+        when p_database_role in ('anon', 'service_role') then p_database_role
+        else 'authenticated'
+      end,
       true
     );
     perform pg_catalog.set_config(
       'request.jwt.claims',
       pg_catalog.jsonb_build_object(
         'sub', p_auth_uid,
-        'role', case when p_database_role = 'anon' then 'anon' else 'authenticated' end
+        'role', case
+          when p_database_role in ('anon', 'service_role') then p_database_role
+          else 'authenticated'
+        end
       )::text,
       true
     );
@@ -103,14 +109,20 @@ begin
     perform pg_catalog.set_config('request.jwt.claim.sub', coalesce(p_auth_uid::text, ''), true);
     perform pg_catalog.set_config(
       'request.jwt.claim.role',
-      case when p_database_role = 'anon' then 'anon' else 'authenticated' end,
+      case
+        when p_database_role in ('anon', 'service_role') then p_database_role
+        else 'authenticated'
+      end,
       true
     );
     perform pg_catalog.set_config(
       'request.jwt.claims',
       pg_catalog.jsonb_build_object(
         'sub', p_auth_uid,
-        'role', case when p_database_role = 'anon' then 'anon' else 'authenticated' end
+        'role', case
+          when p_database_role in ('anon', 'service_role') then p_database_role
+          else 'authenticated'
+        end
       )::text,
       true
     );
@@ -193,14 +205,20 @@ begin
     perform pg_catalog.set_config('request.jwt.claim.sub', coalesce(p_auth_uid::text, ''), true);
     perform pg_catalog.set_config(
       'request.jwt.claim.role',
-      case when p_database_role = 'anon' then 'anon' else 'authenticated' end,
+      case
+        when p_database_role in ('anon', 'service_role') then p_database_role
+        else 'authenticated'
+      end,
       true
     );
     perform pg_catalog.set_config(
       'request.jwt.claims',
       pg_catalog.jsonb_build_object(
         'sub', p_auth_uid,
-        'role', case when p_database_role = 'anon' then 'anon' else 'authenticated' end
+        'role', case
+          when p_database_role in ('anon', 'service_role') then p_database_role
+          else 'authenticated'
+        end
       )::text,
       true
     );
@@ -697,6 +715,17 @@ analysis_rpc_checks as (
   from analysis_rpc_results result
   cross join constants
 ),
+staff_guard_contract as (
+  select (
+    E'  if coalesce(auth.role(), '''') <> ''service_role''\n'
+    || E'     and session_user <> ''service_role''\n'
+    || E'     and not public.is_app_staff() then\n'
+    || E'    raise exception using\n'
+    || E'      errcode = ''42501'',\n'
+    || E'      message = ''STAFF_ONLY'';\n'
+    || E'  end if;\n\n'
+  )::text as guard_clause
+),
 mutating_rpcs as (
   select
     procedure.oid,
@@ -706,26 +735,77 @@ mutating_rpcs as (
     ) as signature,
     procedure.prosrc,
     procedure.proowner,
+    (
+      (
+        pg_catalog.length(procedure.prosrc)
+        - pg_catalog.length(
+          pg_catalog.replace(procedure.prosrc, guard_contract.guard_clause, '')
+        )
+      ) / pg_catalog.length(guard_contract.guard_clause)
+    )::integer as guard_occurrence_count,
     pg_catalog.has_function_privilege('anon', procedure.oid, 'EXECUTE') as anon_execute,
     pg_catalog.has_function_privilege('authenticated', procedure.oid, 'EXECUTE') as authenticated_execute,
     pg_catalog.has_function_privilege('service_role', procedure.oid, 'EXECUTE') as service_role_execute
   from pg_catalog.pg_proc procedure
   join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
   join pg_catalog.pg_language language on language.oid = procedure.prolang
+  cross join staff_guard_contract guard_contract
   where namespace.nspname = 'public'
     and procedure.prokind = 'f'
     and language.lanname = 'plpgsql'
     and procedure.prorettype <> 'pg_catalog.trigger'::regtype
     and pg_catalog.has_function_privilege('authenticated', procedure.oid, 'EXECUTE')
-    and pg_catalog.lower(procedure.prosrc) ~ (
-      '(^|[^a-z_])(insert[[:space:]]+into|update|delete[[:space:]]+from)'
-      || '[[:space:]]+(public[.])?'
-      || '(partido_estadisticas_jugador|partido_eventos_gol|match_quick_events|partidos|'
-      || 'partido_alineacion_slots|partido_eventos_sistema|partido_snapshots_tacticos|'
-      || 'partido_snapshot_tactico_slots|partido_eventos_post|competitions|'
-      || 'partido_convocados|partido_notas_individuales_pre)'
-      || '([^a-z0-9_]|$)'
+    and (
+      pg_catalog.lower(procedure.prosrc) ~ (
+        '(^|[^a-z_])(insert[[:space:]]+into|update|delete[[:space:]]+from)'
+        || '[[:space:]]+(public[.])?'
+        || '(partido_estadisticas_jugador|partido_eventos_gol|match_quick_events|partidos|'
+        || 'partido_alineacion_slots|partido_eventos_sistema|partido_snapshots_tacticos|'
+        || 'partido_snapshot_tactico_slots|partido_eventos_post|competitions|'
+        || 'partido_convocados|partido_notas_individuales_pre)'
+        || '([^a-z0-9_]|$)'
+      )
+      or procedure.oid = any(array[
+        pg_catalog.to_regprocedure('public.delete_match_system_change_with_snapshot(uuid)'),
+        pg_catalog.to_regprocedure('public.mutate_match_goal_atomic(text,uuid,uuid,jsonb,jsonb)'),
+        pg_catalog.to_regprocedure('public.save_match_print_plan_atomic(uuid,jsonb)'),
+        pg_catalog.to_regprocedure('public.set_delegated_match_status(uuid,text)')
+      ]::oid[])
     )
+),
+required_mutator_specs(required_order, signature) as (
+  values
+    (1, 'public.delete_match_system_change_with_snapshot(uuid)'),
+    (2, 'public.mutate_match_goal_atomic(text,uuid,uuid,jsonb,jsonb)'),
+    (3, 'public.save_match_print_plan_atomic(uuid,jsonb)'),
+    (4, 'public.set_delegated_match_status(uuid,text)')
+),
+required_mutator_checks as (
+  select
+    3700 + required.required_order as sort_order,
+    'REQUIRED_MUTATING_RPC'::text as category,
+    'REMOTE'::text as scenario,
+    required.signature::text as object_name,
+    'required_inventory_and_guard'::text as check_name,
+    'exists in the protected inventory with STAFF_ONLY guard and exact ACL path'::text as expected,
+    pg_catalog.jsonb_build_object(
+      'exists', mutator.oid is not null,
+      'guard_occurrences', coalesce(mutator.guard_occurrence_count, 0),
+      'anon_execute', mutator.anon_execute,
+      'authenticated_execute', mutator.authenticated_execute,
+      'service_role_execute', mutator.service_role_execute
+    )::text as observed,
+    (
+      mutator.oid is not null
+      and mutator.guard_occurrence_count = 1
+      and not mutator.anon_execute
+      and mutator.authenticated_execute
+      and mutator.service_role_execute
+    )::boolean as test_ok,
+    'La comprobacion es explicita y no depende solo del regexp de tablas.'::text as details
+  from required_mutator_specs required
+  left join mutating_rpcs mutator
+    on mutator.oid = pg_catalog.to_regprocedure(required.signature)
 ),
 mutator_contract_checks as (
   select
@@ -736,15 +816,13 @@ mutator_contract_checks as (
     'staff_guard_acl'::text as check_name,
     'STAFF_ONLY guard; anon false; authenticated/service_role true'::text as expected,
     pg_catalog.jsonb_build_object(
-      'staff_guard', pg_catalog.strpos(mutator.prosrc, 'STAFF_ONLY') > 0
-        and pg_catalog.strpos(pg_catalog.lower(mutator.prosrc), 'public.is_app_staff()') > 0,
+      'guard_occurrences', mutator.guard_occurrence_count,
       'anon_execute', mutator.anon_execute,
       'authenticated_execute', mutator.authenticated_execute,
       'service_role_execute', mutator.service_role_execute
     )::text as observed,
     (
-      pg_catalog.strpos(mutator.prosrc, 'STAFF_ONLY') > 0
-      and pg_catalog.strpos(pg_catalog.lower(mutator.prosrc), 'public.is_app_staff()') > 0
+      mutator.guard_occurrence_count = 1
       and not mutator.anon_execute
       and mutator.authenticated_execute
       and mutator.service_role_execute
@@ -797,6 +875,53 @@ mutator_anon_checks as (
     mutator.oid, 'anon', null
   ) probe on true
 ),
+mutator_staff_checks as (
+  select
+    4200 + pg_catalog.row_number() over (order by mutator.signature)::integer as sort_order,
+    'MUTATING_RPC_FUNCTIONAL'::text as category,
+    'STAFF_OWNER'::text as scenario,
+    mutator.signature::text as object_name,
+    'staff_not_rejected_by_guard'::text as check_name,
+    'never 42501 STAFF_ONLY; no writes because transaction is READ ONLY'::text as expected,
+    pg_catalog.jsonb_build_object(
+      'access', probe.access_mode,
+      'error_code', probe.error_code,
+      'error_message', probe.error_message
+    )::text as observed,
+    (
+      coalesce(probe.error_code, '') <> '42501'
+      and coalesce(probe.error_message, '') <> 'STAFF_ONLY'
+    )::boolean as test_ok,
+    'NULL arguments may produce validation/read-only errors; only STAFF_ONLY would be a regression.'::text as details
+  from mutating_rpcs mutator
+  cross join constants
+  left join lateral pg_temp.sports_mutator_probe(
+    mutator.oid, 'authenticated', constants.staff_owner_auth_uid
+  ) probe on true
+),
+mutator_service_role_checks as (
+  select
+    4400 + pg_catalog.row_number() over (order by mutator.signature)::integer as sort_order,
+    'MUTATING_RPC_FUNCTIONAL'::text as category,
+    'SERVICE_ROLE'::text as scenario,
+    mutator.signature::text as object_name,
+    'service_role_not_rejected_by_guard'::text as check_name,
+    'never 42501 STAFF_ONLY; no writes because transaction is READ ONLY'::text as expected,
+    pg_catalog.jsonb_build_object(
+      'access', probe.access_mode,
+      'error_code', probe.error_code,
+      'error_message', probe.error_message
+    )::text as observed,
+    (
+      coalesce(probe.error_code, '') <> '42501'
+      and coalesce(probe.error_message, '') <> 'STAFF_ONLY'
+    )::boolean as test_ok,
+    'Simula claim service_role; cualquier mutacion efectiva queda bloqueada por READ ONLY.'::text as details
+  from mutating_rpcs mutator
+  left join lateral pg_temp.sports_mutator_probe(
+    mutator.oid, 'service_role', null
+  ) probe on true
+),
 all_checks as (
   select * from direct_access_checks
   union all select * from policy_checks
@@ -805,9 +930,12 @@ all_checks as (
   union all select * from rpc_contract_checks
   union all select * from matches_rpc_checks
   union all select * from analysis_rpc_checks
+  union all select * from required_mutator_checks
   union all select * from mutator_contract_checks
   union all select * from mutator_player_checks
   union all select * from mutator_anon_checks
+  union all select * from mutator_staff_checks
+  union all select * from mutator_service_role_checks
 )
 select
   pg_catalog.row_number() over (order by check_row.sort_order, check_row.category, check_row.object_name)::integer as test_order,

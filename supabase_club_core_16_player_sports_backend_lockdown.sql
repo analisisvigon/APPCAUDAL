@@ -656,6 +656,7 @@ declare
   function_target record;
   extra_grantee record;
   original_source text;
+  original_source_md5 text;
   guarded_source text;
   function_definition text;
   guarded_definition text;
@@ -670,15 +671,26 @@ declare
   after_parallel "char";
   after_config text[];
   after_result text;
-  staff_guard constant text := E'begin\n'
-    || E'  if coalesce(auth.role(), '''') <> ''service_role''\n'
+  after_arguments text;
+  after_strict boolean;
+  after_leakproof boolean;
+  after_cost real;
+  after_rows real;
+  after_support oid;
+  after_unwrapped_source text;
+  after_unwrapped_source_md5 text;
+  guard_occurrence_count integer;
+  staff_guard_clause constant text := E'  if coalesce(auth.role(), '''') <> ''service_role''\n'
     || E'     and session_user <> ''service_role''\n'
     || E'     and not public.is_app_staff() then\n'
     || E'    raise exception using\n'
     || E'      errcode = ''42501'',\n'
     || E'      message = ''STAFF_ONLY'';\n'
     || E'  end if;\n\n';
+  staff_guard text;
 begin
+  staff_guard := E'begin\n' || staff_guard_clause;
+
   for function_target in
     select
       procedure.oid,
@@ -695,7 +707,13 @@ begin
       procedure.provolatile,
       procedure.proparallel,
       procedure.proconfig,
-      pg_catalog.pg_get_function_result(procedure.oid) as result_type
+      pg_catalog.pg_get_function_result(procedure.oid) as result_type,
+      pg_catalog.pg_get_function_arguments(procedure.oid) as full_arguments,
+      procedure.proisstrict,
+      procedure.proleakproof,
+      procedure.procost,
+      procedure.prorows,
+      procedure.prosupport
     from pg_catalog.pg_proc procedure
     join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
     join pg_catalog.pg_language language on language.oid = procedure.prolang
@@ -706,31 +724,54 @@ begin
       and pg_catalog.has_function_privilege(
         'authenticated', procedure.oid, 'EXECUTE'
       )
-      and pg_catalog.lower(procedure.prosrc) ~ (
-        '(^|[^a-z_])(insert[[:space:]]+into|update|delete[[:space:]]+from)'
-        || '[[:space:]]+(public[.])?'
-        || '(partido_estadisticas_jugador|partido_eventos_gol|match_quick_events|partidos|'
-        || 'partido_alineacion_slots|partido_eventos_sistema|partido_snapshots_tacticos|'
-        || 'partido_snapshot_tactico_slots|partido_eventos_post|competitions|'
-        || 'partido_convocados|partido_notas_individuales_pre)'
-        || '([^a-z0-9_]|$)'
+      and (
+        pg_catalog.lower(procedure.prosrc) ~ (
+          '(^|[^a-z_])(insert[[:space:]]+into|update|delete[[:space:]]+from)'
+          || '[[:space:]]+(public[.])?'
+          || '(partido_estadisticas_jugador|partido_eventos_gol|match_quick_events|partidos|'
+          || 'partido_alineacion_slots|partido_eventos_sistema|partido_snapshots_tacticos|'
+          || 'partido_snapshot_tactico_slots|partido_eventos_post|competitions|'
+          || 'partido_convocados|partido_notas_individuales_pre)'
+          || '([^a-z0-9_]|$)'
+        )
+        -- Estas cuatro RPC forman parte obligatoria del perimetro aunque una
+        -- escriba en una tabla deportiva auxiliar fuera de la lista anterior.
+        or procedure.oid = any(array[
+          pg_catalog.to_regprocedure('public.delete_match_system_change_with_snapshot(uuid)'),
+          pg_catalog.to_regprocedure('public.mutate_match_goal_atomic(text,uuid,uuid,jsonb,jsonb)'),
+          pg_catalog.to_regprocedure('public.save_match_print_plan_atomic(uuid,jsonb)'),
+          pg_catalog.to_regprocedure('public.set_delegated_match_status(uuid,text)')
+        ]::oid[])
       )
     order by procedure.oid
   loop
-    if (
-      pg_catalog.strpos(function_target.prosrc, 'STAFF_ONLY') > 0
-    ) <> (
-      pg_catalog.strpos(
-        pg_catalog.lower(function_target.prosrc),
-        'public.is_app_staff()'
-      ) > 0
-    ) then
+    guard_occurrence_count := (
+      (
+        pg_catalog.length(function_target.prosrc)
+        - pg_catalog.length(
+          pg_catalog.replace(function_target.prosrc, staff_guard_clause, '')
+        )
+      ) / pg_catalog.length(staff_guard_clause)
+    )::integer;
+
+    if guard_occurrence_count > 1
+       or (
+         guard_occurrence_count = 0
+         and (
+           pg_catalog.strpos(function_target.prosrc, 'STAFF_ONLY') > 0
+           or pg_catalog.strpos(
+             pg_catalog.lower(function_target.prosrc),
+             'public.is_app_staff()'
+           ) > 0
+         )
+       ) then
       raise exception 'Bloque 2.6A: guard STAFF parcial/incompatible en %',
         function_target.signature;
     end if;
 
-    if pg_catalog.strpos(function_target.prosrc, 'STAFF_ONLY') = 0 then
+    if guard_occurrence_count = 0 then
       original_source := function_target.prosrc;
+      original_source_md5 := pg_catalog.md5(original_source);
       guarded_source := staff_guard || original_source || E'\nend;';
       function_definition := pg_catalog.pg_get_functiondef(function_target.oid);
       source_position := pg_catalog.strpos(function_definition, original_source);
@@ -772,7 +813,13 @@ begin
         procedure.provolatile,
         procedure.proparallel,
         procedure.proconfig,
-        pg_catalog.pg_get_function_result(procedure.oid)
+        pg_catalog.pg_get_function_result(procedure.oid),
+        pg_catalog.pg_get_function_arguments(procedure.oid),
+        procedure.proisstrict,
+        procedure.proleakproof,
+        procedure.procost,
+        procedure.prorows,
+        procedure.prosupport
       into
         after_oid,
         after_source,
@@ -782,19 +829,40 @@ begin
         after_volatility,
         after_parallel,
         after_config,
-        after_result
+        after_result,
+        after_arguments,
+        after_strict,
+        after_leakproof,
+        after_cost,
+        after_rows,
+        after_support
       from pg_catalog.pg_proc procedure
       where procedure.oid = function_target.oid;
 
+      after_unwrapped_source := pg_catalog.substr(
+        after_source,
+        pg_catalog.length(staff_guard) + 1,
+        pg_catalog.length(original_source)
+      );
+      after_unwrapped_source_md5 := pg_catalog.md5(after_unwrapped_source);
+
       if after_oid is distinct from function_target.oid
          or after_source is distinct from guarded_source
+         or after_unwrapped_source is distinct from original_source
+         or after_unwrapped_source_md5 is distinct from original_source_md5
          or after_owner is distinct from function_target.proowner
          or after_language is distinct from function_target.prolang
          or after_security_definer is distinct from function_target.prosecdef
          or after_volatility is distinct from function_target.provolatile
          or after_parallel is distinct from function_target.proparallel
          or after_config is distinct from function_target.proconfig
-         or after_result is distinct from function_target.result_type then
+         or after_result is distinct from function_target.result_type
+         or after_arguments is distinct from function_target.full_arguments
+         or after_strict is distinct from function_target.proisstrict
+         or after_leakproof is distinct from function_target.proleakproof
+         or after_cost is distinct from function_target.procost
+         or after_rows is distinct from function_target.prorows
+         or after_support is distinct from function_target.prosupport then
         raise exception 'Bloque 2.6A: contrato alterado al proteger %',
           function_target.signature;
       end if;
@@ -845,6 +913,13 @@ declare
   unsafe_policy_count integer;
   mutator_count integer;
   unguarded_mutator_count integer;
+  staff_guard_clause constant text := E'  if coalesce(auth.role(), '''') <> ''service_role''\n'
+    || E'     and session_user <> ''service_role''\n'
+    || E'     and not public.is_app_staff() then\n'
+    || E'    raise exception using\n'
+    || E'      errcode = ''42501'',\n'
+    || E'      message = ''STAFF_ONLY'';\n'
+    || E'  end if;\n\n';
 begin
   if not exists (
     select 1
@@ -1029,11 +1104,14 @@ begin
       select 1
       from pg_catalog.pg_proc procedure
       where procedure.oid = pg_catalog.to_regprocedure(required_signature)
-        and pg_catalog.strpos(procedure.prosrc, 'STAFF_ONLY') > 0
-        and pg_catalog.strpos(
-          pg_catalog.lower(procedure.prosrc),
-          'public.is_app_staff()'
-        ) > 0
+        and (
+          (
+            pg_catalog.length(procedure.prosrc)
+            - pg_catalog.length(
+              pg_catalog.replace(procedure.prosrc, staff_guard_clause, '')
+            )
+          ) / pg_catalog.length(staff_guard_clause)
+        )::integer = 1
         and not pg_catalog.has_function_privilege('anon', procedure.oid, 'EXECUTE')
         and pg_catalog.has_function_privilege('authenticated', procedure.oid, 'EXECUTE')
         and pg_catalog.has_function_privilege('service_role', procedure.oid, 'EXECUTE')
@@ -1045,11 +1123,14 @@ begin
   select
     pg_catalog.count(*)::integer,
     pg_catalog.count(*) filter (
-      where pg_catalog.strpos(procedure.prosrc, 'STAFF_ONLY') = 0
-         or pg_catalog.strpos(
-           pg_catalog.lower(procedure.prosrc),
-           'public.is_app_staff()'
-         ) = 0
+      where (
+        (
+          pg_catalog.length(procedure.prosrc)
+          - pg_catalog.length(
+            pg_catalog.replace(procedure.prosrc, staff_guard_clause, '')
+          )
+        ) / pg_catalog.length(staff_guard_clause)
+      )::integer <> 1
     )::integer
   into mutator_count, unguarded_mutator_count
   from pg_catalog.pg_proc procedure
@@ -1060,14 +1141,22 @@ begin
     and language.lanname = 'plpgsql'
     and procedure.prorettype <> 'pg_catalog.trigger'::regtype
     and pg_catalog.has_function_privilege('authenticated', procedure.oid, 'EXECUTE')
-    and pg_catalog.lower(procedure.prosrc) ~ (
-      '(^|[^a-z_])(insert[[:space:]]+into|update|delete[[:space:]]+from)'
-      || '[[:space:]]+(public[.])?'
-      || '(partido_estadisticas_jugador|partido_eventos_gol|match_quick_events|partidos|'
-      || 'partido_alineacion_slots|partido_eventos_sistema|partido_snapshots_tacticos|'
-      || 'partido_snapshot_tactico_slots|partido_eventos_post|competitions|'
-      || 'partido_convocados|partido_notas_individuales_pre)'
-      || '([^a-z0-9_]|$)'
+    and (
+      pg_catalog.lower(procedure.prosrc) ~ (
+        '(^|[^a-z_])(insert[[:space:]]+into|update|delete[[:space:]]+from)'
+        || '[[:space:]]+(public[.])?'
+        || '(partido_estadisticas_jugador|partido_eventos_gol|match_quick_events|partidos|'
+        || 'partido_alineacion_slots|partido_eventos_sistema|partido_snapshots_tacticos|'
+        || 'partido_snapshot_tactico_slots|partido_eventos_post|competitions|'
+        || 'partido_convocados|partido_notas_individuales_pre)'
+        || '([^a-z0-9_]|$)'
+      )
+      or procedure.oid = any(array[
+        pg_catalog.to_regprocedure('public.delete_match_system_change_with_snapshot(uuid)'),
+        pg_catalog.to_regprocedure('public.mutate_match_goal_atomic(text,uuid,uuid,jsonb,jsonb)'),
+        pg_catalog.to_regprocedure('public.save_match_print_plan_atomic(uuid,jsonb)'),
+        pg_catalog.to_regprocedure('public.set_delegated_match_status(uuid,text)')
+      ]::oid[])
     );
 
   if mutator_count < 4 or unguarded_mutator_count <> 0 then

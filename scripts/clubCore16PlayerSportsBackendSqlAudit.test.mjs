@@ -3,8 +3,10 @@ import fs from 'node:fs';
 
 const migrationUrl = new URL('../supabase_club_core_16_player_sports_backend_lockdown.sql', import.meta.url);
 const verifyUrl = new URL('../supabase_club_core_16_player_sports_backend_lockdown_verify.sql', import.meta.url);
+const printPlanUrl = new URL('../supabase_match_print_plan_atomic.sql', import.meta.url);
 const migration = fs.readFileSync(migrationUrl, 'utf8').replaceAll('\r', '');
 const verify = fs.readFileSync(verifyUrl, 'utf8').replaceAll('\r', '');
+const printPlanVersioned = fs.readFileSync(printPlanUrl, 'utf8').replaceAll('\r', '');
 
 function assertBalancedSqlStructure(source, label) {
   const dollarTags = [...source.matchAll(/\$[A-Za-z_][A-Za-z_0-9]*\$|\$\$/g)]
@@ -114,6 +116,11 @@ assert.match(migration, /\ncommit;\s*$/i);
 assert.equal((migration.match(/^begin;$/gim) || []).length, 1, 'Migracion: una sola transaccion superior');
 assert.equal((migration.match(/^commit;$/gim) || []).length, 1, 'Migracion: un solo COMMIT superior');
 assert.doesNotMatch(stripSqlCommentsAndQuotedText(migration), /\brollback\b/i);
+assert.doesNotMatch(
+  stripSqlCommentsAndQuotedText(migration),
+  /\bexception\s+when\b/i,
+  'La migracion no debe capturar la postcondicion ni permitir commit parcial',
+);
 
 for (const table of targetTables) {
   assert.ok(migration.includes(`'${table}'`), `Migracion: falta tabla ${table}`);
@@ -140,6 +147,24 @@ assert.doesNotMatch(migration, /create policy[\s\S]{0,160}\bto\s+(?:anon|public)
 
 const matchesRpc = extractFunction(migration, 'public\\.get_my_player_matches\\(\\)');
 const analysisRpc = extractFunction(migration, 'public\\.get_my_player_analysis_summary\\(\\)');
+const printPlanVersionedRpc = printPlanVersioned.match(
+  /create\s+or\s+replace\s+function\s+public\.save_match_print_plan_atomic\s*\([\s\S]*?\n\$\$;/i,
+)?.[0] || '';
+assert.ok(printPlanVersionedRpc, 'Falta referencia versionada de save_match_print_plan_atomic(uuid,jsonb)');
+
+assert.equal(
+  (printPlanVersioned.match(/create\s+or\s+replace\s+function\s+public\.save_match_print_plan_atomic\s*\(/gi) || []).length,
+  1,
+  'La referencia local solo contiene el overload uuid,jsonb',
+);
+assert.match(printPlanVersionedRpc, /returns jsonb[\s\S]*language plpgsql[\s\S]*security invoker/i);
+assert.match(printPlanVersionedRpc, /set search_path = public, pg_temp/i);
+assert.match(printPlanVersionedRpc, /(?:insert into|update|delete from) public\.match_set_piece_diagrams/i);
+assert.doesNotMatch(
+  printPlanVersionedRpc,
+  /(?:insert\s+into|update|delete\s+from)\s+(?:public\.)?(?:partido_estadisticas_jugador|partido_eventos_gol|match_quick_events|partidos|partido_alineacion_slots|partido_eventos_sistema|partido_snapshots_tacticos|partido_snapshot_tactico_slots|partido_eventos_post|competitions|partido_convocados|partido_notas_individuales_pre)\b/i,
+  'La causa del fallo cambia: la referencia ya muta directamente una de las 12 tablas',
+);
 
 for (const [name, body] of [
   ['get_my_player_matches', matchesRpc],
@@ -201,21 +226,55 @@ assert.match(analysisRpc, /unresolved_scorers[\s\S]*?'PARTIAL'/i);
 assert.doesNotMatch(analysisRpc, /lower\([^)]*(?:scorer|assistant|player_name)[^)]*\)\s*=/i, 'Legacy por nombre no puede atribuirse al PLAYER');
 assert.doesNotMatch(analysisRpc, /partido_snapshot|partido_eventos_sistema|\bsystem\b/i, 'Distribucion posicional no fiable queda fuera de 2.6A');
 
-for (const signature of [
+const requiredMutatorSignatures = [
   'public.delete_match_system_change_with_snapshot(uuid)',
   'public.mutate_match_goal_atomic(text,uuid,uuid,jsonb,jsonb)',
   'public.save_match_print_plan_atomic(uuid,jsonb)',
   'public.set_delegated_match_status(uuid,text)',
-]) assert.ok(migration.includes(signature), `Falta mutadora confirmada ${signature}`);
+];
+const mutatorGuardBlock = migration.match(/do \$mutator_guards\$[\s\S]*?\$mutator_guards\$;/i)?.[0] || '';
+const postconditionsBlock = migration.match(/do \$postconditions\$[\s\S]*?\$postconditions\$;/i)?.[0] || '';
+const verifierMutatorInventory = verify.match(/mutating_rpcs as \([\s\S]*?\n\),\nrequired_mutator_specs/i)?.[0] || '';
+
+assert.ok(mutatorGuardBlock, 'Falta bloque de aplicacion de guards');
+assert.ok(postconditionsBlock, 'Falta bloque de postcondiciones');
+assert.ok(verifierMutatorInventory, 'Falta inventario mutador del verificador');
+for (const signature of requiredMutatorSignatures) {
+  assert.ok(migration.includes(signature), `Falta mutadora confirmada ${signature}`);
+  assert.ok(mutatorGuardBlock.includes(`to_regprocedure('${signature}')`), `La inyeccion no incluye obligatoriamente ${signature}`);
+  assert.ok(postconditionsBlock.includes(signature), `La postcondicion no exige ${signature}`);
+  assert.ok(verifierMutatorInventory.includes(`to_regprocedure('${signature}')`), `El verificador dinamico no incluye ${signature}`);
+  assert.ok(verify.includes(`'${signature}'`), `El verificador no genera fila explicita para ${signature}`);
+}
+
+assert.ok(
+  (migration.match(/public\.save_match_print_plan_atomic\(uuid,jsonb\)/g) || []).length >= 4,
+  'save_match_print_plan_atomic debe estar en precondicion, inyeccion y postcondiciones',
+);
 
 assert.match(migration, /procedure\.prorettype <> 'pg_catalog\.trigger'::regtype/i);
 assert.match(migration, /guarded_source := staff_guard \|\| original_source \|\| E'\\nend;'/i);
 assert.match(migration, /pg_catalog\.pg_get_functiondef\(function_target\.oid\)/i);
+assert.match(migration, /source_position := pg_catalog\.strpos\(function_definition, original_source\)/i);
+assert.match(migration, /second_source_position := pg_catalog\.strpos/i);
+assert.match(migration, /original_source_md5 := pg_catalog\.md5\(original_source\)/i);
+assert.match(migration, /after_unwrapped_source is distinct from original_source/i);
+assert.match(migration, /after_unwrapped_source_md5 is distinct from original_source_md5/i);
 assert.match(migration, /after_source is distinct from guarded_source/i);
 assert.match(migration, /after_owner is distinct from function_target\.proowner/i);
 assert.match(migration, /after_security_definer is distinct from function_target\.prosecdef/i);
 assert.match(migration, /after_volatility is distinct from function_target\.provolatile/i);
 assert.match(migration, /after_config is distinct from function_target\.proconfig/i);
+assert.match(migration, /after_arguments is distinct from function_target\.full_arguments/i);
+assert.match(migration, /after_strict is distinct from function_target\.proisstrict/i);
+assert.match(migration, /after_leakproof is distinct from function_target\.proleakproof/i);
+assert.match(migration, /after_cost is distinct from function_target\.procost/i);
+assert.match(migration, /after_rows is distinct from function_target\.prorows/i);
+assert.match(migration, /after_support is distinct from function_target\.prosupport/i);
+assert.match(postconditionsBlock, /pg_catalog\.replace\(procedure\.prosrc, staff_guard_clause, ''\)/i);
+assert.match(postconditionsBlock, /\)::integer = 1/i);
+assert.match(migration, /guard_occurrence_count = 0[\s\S]*?guarded_source := staff_guard \|\| original_source/i);
+assert.match(verify, /guard_occurrence_count = 1/i);
 for (const guardPart of [
   "coalesce(auth.role(), '''') <> ''service_role''",
   "session_user <> ''service_role''",
@@ -233,7 +292,7 @@ assert.equal((verify.match(/FINAL_RESULT_BEGIN/g) || []).length, 1);
 assert.equal((verify.match(/FINAL_RESULT_END/g) || []).length, 1);
 assert.match(verify, /begin;\s*set transaction read only;/i);
 assert.match(verify, /rollback;\s*$/i);
-for (const scenario of ['BORJA_PLAYER', 'UID_WITHOUT_MEMBERSHIP', 'ANON', 'STAFF_OWNER']) {
+for (const scenario of ['BORJA_PLAYER', 'UID_WITHOUT_MEMBERSHIP', 'ANON', 'STAFF_OWNER', 'SERVICE_ROLE']) {
   assert.ok(verify.includes(scenario), `Falta escenario ${scenario}`);
 }
 for (const helper of ['sports_table_count', 'sports_rpc_json', 'sports_mutator_probe']) {
@@ -242,8 +301,10 @@ for (const helper of ['sports_table_count', 'sports_rpc_json', 'sports_mutator_p
 for (const category of [
   'DIRECT_TABLE_ACCESS', 'RLS_POLICY', 'TABLE_GRANT', 'MATCH_PUBLICATION',
   'PLAYER_RPC_CONTRACT', 'PLAYER_MATCHES_RPC', 'PLAYER_ANALYSIS_RPC',
-  'MUTATING_RPC_GUARD', 'MUTATING_RPC_FUNCTIONAL',
+  'REQUIRED_MUTATING_RPC', 'MUTATING_RPC_GUARD', 'MUTATING_RPC_FUNCTIONAL',
 ]) assert.ok(verify.includes(category), `Falta categoria ${category}`);
+assert.match(verify, /staff_not_rejected_by_guard/i);
+assert.match(verify, /service_role_not_rejected_by_guard/i);
 
 const verifierExecutable = stripSqlCommentsAndQuotedText(verify);
 for (const forbidden of [
