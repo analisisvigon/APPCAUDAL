@@ -194,6 +194,93 @@ assert.match(
   /'state_like_columns',\s*coalesce\(\s*\(\s*pg_catalog\.array_agg\(column_row\.column_name::text\s+order\s+by\s+column_row\.ordinal_position\)\s*filter\s*\(\s*where\s+column_row\.column_name::text\s*~\*[\s\S]*?\)\s*\)::text\[\],\s*array\[\]::text\[\]/i,
   'El array de campos de estado debe aplicar FILTER y cast antes de COALESCE',
 );
+assert.doesNotMatch(
+  sql,
+  /\bpg_catalog\.(?:greatest|least)\s*\(/i,
+  'GREATEST/LEAST son construcciones especiales y no deben cualificarse como funciones de pg_catalog',
+);
+const greatestLeastMatches = [...sql.matchAll(/\b(?:greatest|least)\s*\(/gi)];
+assert.equal(greatestLeastMatches.length, 1, 'Debe inventariarse el unico GREATEST/LEAST del auditor');
+assert.match(
+  sql,
+  /\bgreatest\(visible_rows\s*-\s*subject_rows,\s*0::bigint\)/i,
+  'Los contadores de visibilidad deben normalizar GREATEST a bigint',
+);
+assert.doesNotMatch(
+  sql,
+  /\b(?:greatest|least)\s*\([^)]*,\s*[+-]?\d+\s*\)/gi,
+  'Los literales numericos de GREATEST/LEAST deben llevar un tipo explicito',
+);
+assert.doesNotMatch(
+  sql,
+  /\b(?:max|min)\s*\(\s*(?:[a-z_][a-z0-9_]*\.)?[a-z_][a-z0-9_]*_id\s*\)/gi,
+  'No puede aplicarse max/min a identificadores UUID',
+);
+const minMaxAggregates = [
+  ...sql.matchAll(/\b(?<aggregate>max|min)\s*\(\s*(?<argument>[a-z_][a-z0-9_.]*)\s*\)/gi),
+].map((match) => `${match.groups.aggregate.toLowerCase()}(${match.groups.argument.toLowerCase()})`);
+assert.deepEqual(
+  minMaxAggregates,
+  ['min(date)', 'max(date)'],
+  'Solo se permiten los min/max no UUID inventariados',
+);
+assert.match(
+  sql,
+  /'membership_role',\s*\(select\s+membership\.role\s+from\s+public\.current_membership\(\)\s+membership\)/i,
+  'membership_role debe obtenerse mediante la misma subconsulta escalar 0/1',
+);
+assert.match(
+  sql,
+  /'membership_jugador_id',\s*\(select\s+membership\.jugador_id\s+from\s+public\.current_membership\(\)\s+membership\)/i,
+  'membership_jugador_id debe obtenerse mediante una subconsulta escalar 0/1',
+);
+assert.match(
+  sql,
+  /'profile_jugador_id',\s*\(select\s+profile\.jugador_id\s+from\s+public\.get_my_player_profile\(\)\s+profile\)/i,
+  'profile_jugador_id debe obtenerse mediante una subconsulta escalar 0/1',
+);
+assert.doesNotMatch(
+  sql,
+  /\bcount\s*\([^)]*\)\s*[+*/-]\s*[+-]?\d+(?!\s*::\s*bigint)/gi,
+  'La aritmetica entre count(*) y literales debe normalizar explicitamente el tipo',
+);
+assert.doesNotMatch(
+  sql,
+  /(?:\b(?:visible_rows|subject_rows|contrast_rows|non_subject_rows|baseline_rows|uuid_fk_count)|::bigint)\s*(?:=|<>|>=|<=|>|<)\s*[01](?!\s*::\s*bigint)/gi,
+  'Las comparaciones de contadores bigint con 0/1 deben tipar tambien el literal',
+);
+const visibilityHelper = sql.match(
+  /create\s+or\s+replace\s+function\s+pg_temp\.player_audit_visibility\([\s\S]*?\n\$audit\$;/i,
+)?.[0];
+assert.ok(visibilityHelper, 'Debe poder auditarse el helper FUNCTIONAL_SELECT');
+const visibilityCounts = [...visibilityHelper.matchAll(/\bcount\s*\(\s*\*\s*\)/gi)];
+const typedVisibilityCounts = [
+  ...visibilityHelper.matchAll(
+    /\bcount\s*\(\s*\*\s*\)(?:\s*::\s*bigint|\s*filter\s*\([\s\S]*?\)\s*::\s*bigint)/gi,
+  ),
+];
+assert.equal(visibilityCounts.length, 7, 'Deben inventariarse los siete count(*) del helper de visibilidad');
+assert.equal(
+  typedVisibilityCounts.length,
+  visibilityCounts.length,
+  'Todo count(*) que alimenta las salidas bigint de FUNCTIONAL_SELECT debe tiparse como bigint',
+);
+assert.doesNotMatch(
+  sql,
+  /coalesce\(\s*(?:\([^)]*\)::bigint|[a-z_][a-z0-9_.]*(?:_rows|_count))\s*,\s*0\s*\)/gi,
+  'Los fallbacks de contadores bigint en COALESCE deben usar 0::bigint',
+);
+assert.match(
+  sql,
+  /coalesce\(pg_catalog\.array_length\([^)]*\),\s*0::integer\)\s*>\s*0::integer/i,
+  'array_length y sus literales deben conservar el tipo integer',
+);
+const sumMatches = [...sql.matchAll(/\bsum\s*\(/gi)];
+assert.equal(sumMatches.length, 3, 'Deben inventariarse los tres SUM del auditor');
+for (const sumMatch of sumMatches) {
+  const sumContext = sql.slice(sumMatch.index, sumMatch.index + 500);
+  assert.match(sumContext, /0::numeric/i, `SUM sin normalizacion numeric cerca de ${sumMatch.index}`);
+}
 for (const operatorPattern of [/@>/g, /<@/g, /&&/g]) {
   const occurrences = [...sql.matchAll(operatorPattern)];
   for (const occurrence of occurrences) {

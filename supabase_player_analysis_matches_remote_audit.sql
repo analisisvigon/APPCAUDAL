@@ -165,7 +165,7 @@ begin
         execute pg_catalog.format(identity_sql, relation_oid)
           into subject_rows, contrast_rows
           using p_subject_jugador_id, p_contrast_jugador_id;
-        non_subject_rows := pg_catalog.greatest(visible_rows - subject_rows, 0);
+        non_subject_rows := greatest(visible_rows - subject_rows, 0::bigint);
       exception
         when undefined_column then
           subject_rows := null;
@@ -244,13 +244,13 @@ begin
     execute $query$
       select pg_catalog.jsonb_build_object(
         'membership_rows', (select count(*) from public.current_membership()),
-        'membership_role', (select max(membership.role) from public.current_membership() membership),
-        'membership_jugador_id', (select max(membership.jugador_id) from public.current_membership() membership),
+        'membership_role', (select membership.role from public.current_membership() membership),
+        'membership_jugador_id', (select membership.jugador_id from public.current_membership() membership),
         'current_jugador_id', public.current_jugador_id(),
         'is_player', public.is_player(),
         'is_app_staff', public.is_app_staff(),
         'profile_rows', (select count(*) from public.get_my_player_profile()),
-        'profile_jugador_id', (select max(profile.jugador_id) from public.get_my_player_profile() profile)
+        'profile_jugador_id', (select profile.jugador_id from public.get_my_player_profile() profile)
       )
     $query$ into identity_result;
     access_mode := 'EXECUTE_OK';
@@ -698,21 +698,21 @@ visibility_checks as (
        and visibility.table_name = 'public.club_memberships'
        and not (
          visibility.access_mode = 'SELECT_OK'
-         and visibility.visible_rows = 1
-         and visibility.subject_rows = 1
-         and coalesce(visibility.contrast_rows, 0) = 0
-         and coalesce(visibility.non_subject_rows, 0) = 0
+         and visibility.visible_rows = 1::bigint
+         and visibility.subject_rows = 1::bigint
+         and coalesce(visibility.contrast_rows, 0::bigint) = 0::bigint
+         and coalesce(visibility.non_subject_rows, 0::bigint) = 0::bigint
        ) then 'CRITICAL'
       when visibility.scenario <> 'STAFF_OWNER'
        and visibility.scenario <> 'BORJA_PLAYER'
-       and coalesce(visibility.visible_rows, 0) > 0 then 'CRITICAL'
+       and coalesce(visibility.visible_rows, 0::bigint) > 0::bigint then 'CRITICAL'
       when visibility.scenario = 'BORJA_PLAYER'
        and visibility.table_name <> 'public.club_memberships'
-       and coalesce(visibility.visible_rows, 0) > 0
+       and coalesce(visibility.visible_rows, 0::bigint) > 0::bigint
        and visibility.sensitivity in ('TACTICAL', 'STAFF_INTERNAL', 'INDIVIDUAL') then 'CRITICAL'
       when visibility.scenario = 'BORJA_PLAYER'
        and visibility.table_name <> 'public.club_memberships'
-       and coalesce(visibility.visible_rows, 0) > 0 then 'HIGH'
+       and coalesce(visibility.visible_rows, 0::bigint) > 0::bigint then 'HIGH'
       else 'INFO'
     end::text as risk_level,
     case
@@ -722,11 +722,11 @@ visibility_checks as (
         and visibility.visible_rows is not distinct from visibility.baseline_rows
       when visibility.scenario = 'BORJA_PLAYER' and visibility.table_name = 'public.club_memberships' then
         visibility.access_mode = 'SELECT_OK'
-        and visibility.visible_rows = 1
-        and visibility.subject_rows = 1
-        and coalesce(visibility.contrast_rows, 0) = 0
-        and coalesce(visibility.non_subject_rows, 0) = 0
-      else visibility.access_mode = 'DENIED' or coalesce(visibility.visible_rows, 0) = 0
+        and visibility.visible_rows = 1::bigint
+        and visibility.subject_rows = 1::bigint
+        and coalesce(visibility.contrast_rows, 0::bigint) = 0::bigint
+        and coalesce(visibility.non_subject_rows, 0::bigint) = 0::bigint
+      else visibility.access_mode = 'DENIED' or coalesce(visibility.visible_rows, 0::bigint) = 0::bigint
     end::boolean as test_ok,
     coalesce(visibility.error_message, 'Solo contadores; no se exponen filas ni nombres.')::text as details
   from visibility_raw visibility
@@ -760,25 +760,25 @@ identity_checks as (
     coalesce((case
       when identity_scenario.scenario = 'BORJA_PLAYER' then
         identity_result.access_mode = 'EXECUTE_OK'
-        and (identity_result.identity_result ->> 'membership_rows')::bigint = 1
+        and (identity_result.identity_result ->> 'membership_rows')::bigint = 1::bigint
         and identity_result.identity_result ->> 'membership_role' = 'player'
         and identity_result.identity_result ->> 'membership_jugador_id' = constants.borja_jugador_id::text
         and identity_result.identity_result ->> 'current_jugador_id' = constants.borja_jugador_id::text
         and (identity_result.identity_result ->> 'is_player')::boolean
         and not (identity_result.identity_result ->> 'is_app_staff')::boolean
-        and (identity_result.identity_result ->> 'profile_rows')::bigint = 1
+        and (identity_result.identity_result ->> 'profile_rows')::bigint = 1::bigint
         and identity_result.identity_result ->> 'profile_jugador_id' = constants.borja_jugador_id::text
       when identity_scenario.scenario = 'STAFF_OWNER' then
         identity_result.access_mode = 'EXECUTE_OK'
         and (identity_result.identity_result ->> 'is_app_staff')::boolean
         and not (identity_result.identity_result ->> 'is_player')::boolean
-        and (identity_result.identity_result ->> 'profile_rows')::bigint = 0
+        and (identity_result.identity_result ->> 'profile_rows')::bigint = 0::bigint
       when identity_scenario.scenario = 'UID_WITHOUT_MEMBERSHIP' then
         identity_result.access_mode = 'EXECUTE_OK'
-        and (identity_result.identity_result ->> 'membership_rows')::bigint = 0
+        and (identity_result.identity_result ->> 'membership_rows')::bigint = 0::bigint
         and not (identity_result.identity_result ->> 'is_app_staff')::boolean
         and not (identity_result.identity_result ->> 'is_player')::boolean
-        and (identity_result.identity_result ->> 'profile_rows')::bigint = 0
+        and (identity_result.identity_result ->> 'profile_rows')::bigint = 0::bigint
       else identity_result.access_mode = 'DENIED'
     end), false)::boolean as test_ok,
     coalesce(identity_result.error_message, 'Funciones ejecutadas solo en lectura.')::text as details
@@ -1115,8 +1115,8 @@ video_summary_check as (
     ))::text as observed,
     case
       when not video_summary.query_ok then 'HIGH'
-      when coalesce((video_summary.result ->> 'http')::bigint, 0) > 0
-        or coalesce((video_summary.result ->> 'potentially_signed')::bigint, 0) > 0 then 'HIGH'
+      when coalesce((video_summary.result ->> 'http')::bigint, 0::bigint) > 0::bigint
+        or coalesce((video_summary.result ->> 'potentially_signed')::bigint, 0::bigint) > 0::bigint then 'HIGH'
       else 'MEDIUM'
     end::text as risk_level,
     video_summary.query_ok::boolean as test_ok,
@@ -1159,13 +1159,13 @@ analysis_metric_specs(metric_order, metric_name, source_name, metric_sql, requir
       'select pg_catalog.jsonb_build_object(''borja_value'', count(distinct partido_id)) from public.partido_estadisticas_jugador where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid',
       array['partido_id','jugador_id']::text[], 'AVAILABLE'),
     (2, 'minutos', 'public.partido_estadisticas_jugador',
-      'select pg_catalog.jsonb_build_object(''borja_value'', coalesce(sum(case when pg_catalog.btrim(minutes::text) ~ ''^[0-9]+([.][0-9]+)?$'' then pg_catalog.btrim(minutes::text)::numeric else 0 end), 0)) from public.partido_estadisticas_jugador where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid',
+      'select pg_catalog.jsonb_build_object(''borja_value'', coalesce(sum(case when pg_catalog.btrim(minutes::text) ~ ''^[0-9]+([.][0-9]+)?$'' then pg_catalog.btrim(minutes::text)::numeric else 0::numeric end), 0::numeric)) from public.partido_estadisticas_jugador where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid',
       array['jugador_id','minutes']::text[], 'AVAILABLE'),
     (3, 'titularidades', 'public.partido_estadisticas_jugador',
       'select pg_catalog.jsonb_build_object(''borja_value'', count(*) filter (where pg_catalog.lower(coalesce(role, '''')) = ''titular'')) from public.partido_estadisticas_jugador where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid',
       array['jugador_id','role']::text[], 'AVAILABLE'),
     (4, 'entradas_desde_banquillo', 'public.partido_estadisticas_jugador',
-      'select pg_catalog.jsonb_build_object(''borja_value'', count(*) filter (where pg_catalog.lower(coalesce(role, '''')) <> ''titular'' and case when pg_catalog.btrim(minutes::text) ~ ''^[0-9]+([.][0-9]+)?$'' then pg_catalog.btrim(minutes::text)::numeric else 0 end > 0)) from public.partido_estadisticas_jugador where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid',
+      'select pg_catalog.jsonb_build_object(''borja_value'', count(*) filter (where pg_catalog.lower(coalesce(role, '''')) <> ''titular'' and case when pg_catalog.btrim(minutes::text) ~ ''^[0-9]+([.][0-9]+)?$'' then pg_catalog.btrim(minutes::text)::numeric else 0::numeric end > 0::numeric)) from public.partido_estadisticas_jugador where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid',
       array['jugador_id','role','minutes']::text[], 'AVAILABLE'),
     (5, 'goles', 'public.partido_eventos_gol',
       'select pg_catalog.jsonb_build_object(''borja_value'', count(*) filter (where scorer_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid), ''uuid_linked_rows'', count(*) filter (where scorer_id is not null), ''name_only_rows'', count(*) filter (where scorer_id is null and nullif(pg_catalog.btrim(scorer), '''') is not null)) from public.partido_eventos_gol',
@@ -1174,13 +1174,13 @@ analysis_metric_specs(metric_order, metric_name, source_name, metric_sql, requir
       'select pg_catalog.jsonb_build_object(''borja_value'', count(*) filter (where assistant_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid), ''uuid_linked_rows'', count(*) filter (where assistant_id is not null), ''name_only_rows'', count(*) filter (where assistant_id is null and nullif(pg_catalog.btrim(assistant), '''') is not null)) from public.partido_eventos_gol',
       array['assistant_id','assistant']::text[], 'AVAILABLE'),
     (7, 'amarillas', 'public.partido_estadisticas_jugador',
-      'select pg_catalog.jsonb_build_object(''borja_value'', coalesce(sum(coalesce(yellow_count, case when yellow then 1 else 0 end)), 0)) from public.partido_estadisticas_jugador where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid',
+      'select pg_catalog.jsonb_build_object(''borja_value'', coalesce(sum(coalesce(yellow_count::numeric, case when yellow then 1::numeric else 0::numeric end)), 0::numeric)) from public.partido_estadisticas_jugador where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid',
       array['jugador_id','yellow','yellow_count']::text[], 'AVAILABLE'),
     (8, 'rojas', 'public.partido_estadisticas_jugador',
       'select pg_catalog.jsonb_build_object(''borja_value'', count(*) filter (where red)) from public.partido_estadisticas_jugador where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid',
       array['jugador_id','red']::text[], 'AVAILABLE'),
     (9, 'medias_y_produccion_por_90', 'public.partido_estadisticas_jugador',
-      'select pg_catalog.jsonb_build_object(''stats_rows'', count(*), ''minutes_total'', coalesce(sum(case when pg_catalog.btrim(minutes::text) ~ ''^[0-9]+([.][0-9]+)?$'' then pg_catalog.btrim(minutes::text)::numeric else 0 end), 0)) from public.partido_estadisticas_jugador where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid',
+      'select pg_catalog.jsonb_build_object(''stats_rows'', count(*), ''minutes_total'', coalesce(sum(case when pg_catalog.btrim(minutes::text) ~ ''^[0-9]+([.][0-9]+)?$'' then pg_catalog.btrim(minutes::text)::numeric else 0::numeric end), 0::numeric)) from public.partido_estadisticas_jugador where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid',
       array['jugador_id','partido_id','minutes']::text[], 'AVAILABLE'),
     (10, 'distribucion_posicional', 'public.partido_snapshot_tactico_slots',
       'select pg_catalog.jsonb_build_object(''uuid_linked_snapshot_slots'', count(*) filter (where jugador_id = ''2e0146e9-e9fc-45ad-b055-edc138a85f7e''::uuid), ''legacy_name_slots'', count(*) filter (where jugador_id is null and nullif(pg_catalog.btrim(player_name_snapshot), '''') is not null)) from public.partido_snapshot_tactico_slots',
@@ -1200,10 +1200,10 @@ analysis_metric_checks as (
         when pg_catalog.to_regclass(metric.source_name) is null then 'NOT_AVAILABLE'
         when metric.metric_name in ('goles', 'asistencias')
          and metric_result.query_ok
-         and coalesce((metric_result.result ->> 'name_only_rows')::bigint, 0) > 0 then 'PARTIAL'
+         and coalesce((metric_result.result ->> 'name_only_rows')::bigint, 0::bigint) > 0::bigint then 'PARTIAL'
         when coalesce(columns_present.present_columns::text[], array[]::text[]) @> metric.required_columns::text[]
           and metric_result.query_ok then metric.base_status
-        when coalesce(pg_catalog.array_length(columns_present.present_columns::text[], 1), 0) > 0 then 'PARTIAL'
+        when coalesce(pg_catalog.array_length(columns_present.present_columns::text[], 1), 0::integer) > 0::integer then 'PARTIAL'
         else 'NOT_AVAILABLE'
       end,
       'source', metric.source_name,
@@ -1216,7 +1216,7 @@ analysis_metric_checks as (
       when pg_catalog.to_regclass(metric.source_name) is null then 'HIGH'
       when not (coalesce(columns_present.present_columns::text[], array[]::text[]) @> metric.required_columns::text[]) then 'HIGH'
       when metric.metric_name in ('goles', 'asistencias')
-       and coalesce((metric_result.result ->> 'name_only_rows')::bigint, 0) > 0 then 'HIGH'
+       and coalesce((metric_result.result ->> 'name_only_rows')::bigint, 0::bigint) > 0::bigint then 'HIGH'
       when metric.base_status = 'PARTIAL' then 'MEDIUM'
       else 'INFO'
     end::text as risk_level,
@@ -1226,7 +1226,7 @@ analysis_metric_checks as (
       and metric_result.query_ok
       and not (
         metric.metric_name in ('goles', 'asistencias')
-        and coalesce((metric_result.result ->> 'name_only_rows')::bigint, 0) > 0
+        and coalesce((metric_result.result ->> 'name_only_rows')::bigint, 0::bigint) > 0::bigint
       )
     )::boolean as test_ok,
     coalesce(
@@ -1264,7 +1264,7 @@ identity_linkage_checks as (
         identity_columns.columns::text[] && array['player_name','player_name_snapshot','scorer','assistant']::text[],
         false
       ),
-      'uuid_fk_count', coalesce(uuid_fk.uuid_fk_count, 0)
+      'uuid_fk_count', coalesce(uuid_fk.uuid_fk_count, 0::bigint)
     )::text as observed,
     case
       when relation.identity_mode is not null
@@ -1321,12 +1321,12 @@ identity_coverage_checks as (
     ))::text as observed,
     case
       when not coverage_result.query_ok then 'HIGH'
-      when coalesce((coverage_result.result ->> 'name_only_rows')::bigint, 0) > 0 then 'HIGH'
+      when coalesce((coverage_result.result ->> 'name_only_rows')::bigint, 0::bigint) > 0::bigint then 'HIGH'
       else 'INFO'
     end::text as risk_level,
     (
       coverage_result.query_ok
-      and coalesce((coverage_result.result ->> 'name_only_rows')::bigint, 0) = 0
+      and coalesce((coverage_result.result ->> 'name_only_rows')::bigint, 0::bigint) = 0::bigint
     )::boolean as test_ok,
     coalesce(coverage_result.error_message, 'Solo contadores de cobertura; no se devuelve player_name.')::text as details
   from identity_coverage_specs coverage
@@ -1348,7 +1348,7 @@ companion_baseline_checks as (
       'non_borja_rows', visibility.baseline_non_borja_rows
     )::text as observed,
     case
-      when coalesce(visibility.baseline_non_borja_rows, 0) > 0 then 'HIGH'
+      when coalesce(visibility.baseline_non_borja_rows, 0::bigint) > 0::bigint then 'HIGH'
       else 'INFO'
     end::text as risk_level,
     true::boolean as test_ok,
@@ -1384,12 +1384,12 @@ staff_content_checks as (
     )::text as observed,
     case
       when pg_catalog.to_regclass(staff_table.table_name) is null then 'CRITICAL'
-      when coalesce(visibility.visible_rows, 0) > 0 then 'CRITICAL'
+      when coalesce(visibility.visible_rows, 0::bigint) > 0::bigint then 'CRITICAL'
       else 'INFO'
     end::text as risk_level,
     (
       pg_catalog.to_regclass(staff_table.table_name) is not null
-      and (visibility.access_mode = 'DENIED' or coalesce(visibility.visible_rows, 0) = 0)
+      and (visibility.access_mode = 'DENIED' or coalesce(visibility.visible_rows, 0::bigint) = 0::bigint)
     )::boolean as test_ok,
     'No se devuelven notas, descripciones, sistemas ni nombres.'::text as details
   from staff_content_tables staff_table
