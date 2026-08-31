@@ -842,25 +842,33 @@ publication_check as (
     'explicit publication/visibility/draft field or NO_PUBLICATION_FIELD_FOUND'::text as expected,
     case
       when count(*) filter (
-        where column_row.column_name ~* '(publish|public|visible|visibility|draft|borrador|internal)'
+        where column_row.column_name::text ~* '(publish|public|visible|visibility|draft|borrador|internal)'
       ) = 0 then 'NO_PUBLICATION_FIELD_FOUND'
       else pg_catalog.array_to_string(
-        pg_catalog.array_agg(column_row.column_name::text order by column_row.ordinal_position)::text[]
-          filter (where column_row.column_name ~* '(publish|public|visible|visibility|draft|borrador|internal)'),
+        (
+          pg_catalog.array_agg(column_row.column_name::text order by column_row.ordinal_position)
+            filter (
+              where column_row.column_name::text ~* '(publish|public|visible|visibility|draft|borrador|internal)'
+            )
+        )::text[],
         ','
       )
     end::text as observed,
     case
       when count(*) filter (
-        where column_row.column_name ~* '(publish|public|visible|visibility|draft|borrador|internal)'
+        where column_row.column_name::text ~* '(publish|public|visible|visibility|draft|borrador|internal)'
       ) = 0 then 'HIGH'
       else 'MEDIUM'
     end::text as risk_level,
     true::boolean as test_ok,
     pg_catalog.jsonb_build_object(
       'state_like_columns', coalesce(
-        pg_catalog.array_agg(column_row.column_name::text order by column_row.ordinal_position)::text[]
-          filter (where column_row.column_name ~* '(status|estado|final)'),
+        (
+          pg_catalog.array_agg(column_row.column_name::text order by column_row.ordinal_position)
+            filter (
+              where column_row.column_name::text ~* '(status|estado|final)'
+            )
+        )::text[],
         array[]::text[]
       ),
       'warning', 'Un campo status/final no se considera por si solo una autorizacion de publicacion.'
@@ -874,7 +882,7 @@ match_state_columns as (
   from information_schema.columns column_row
   where column_row.table_schema = 'public'
     and column_row.table_name = 'partidos'
-    and column_row.column_name ~* '(status|estado|publication|publish|visible|visibility|draft|borrador|final)'
+    and column_row.column_name::text ~* '(status|estado|publication|publish|visible|visibility|draft|borrador|final)'
 ),
 match_state_checks as (
   select
@@ -1393,7 +1401,7 @@ staff_content_checks as (
     from information_schema.columns column_row
     where column_row.table_schema = pg_catalog.split_part(staff_table.table_name, '.', 1)
       and column_row.table_name = pg_catalog.split_part(staff_table.table_name, '.', 2)
-      and column_row.column_name ~* '(note|nota|description|comment|system|formation|position|player|jugador|lineup|scope|phase|zone)'
+      and column_row.column_name::text ~* '(note|nota|description|comment|system|formation|position|player|jugador|lineup|scope|phase|zone)'
   ) internal_columns on true
 ),
 relevant_functions as (

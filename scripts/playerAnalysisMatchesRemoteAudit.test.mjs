@@ -148,6 +148,52 @@ assert.doesNotMatch(
   /array_agg\(\s*column_row\.column_name(?!\s*::\s*text)/i,
   'No puede reconstruirse information_schema.sql_identifier[] desde column_name',
 );
+
+const aggregateFilterMatches = [...sql.matchAll(/\bfilter\s*\(/gi)];
+assert.equal(aggregateFilterMatches.length, 41, 'Deben revisarse todos los FILTER del auditor remoto');
+const aggregateFilterCounts = { count: 0, arrayAgg: 0 };
+for (const filterMatch of aggregateFilterMatches) {
+  const prefix = sql.slice(0, filterMatch.index).trimEnd();
+  assert.equal(
+    prefix.at(-1),
+    ')',
+    `FILTER no esta ligado directamente a una llamada de agregado cerca de ${filterMatch.index}`,
+  );
+  const aggregateContext = prefix.slice(-400);
+  const directAggregate = aggregateContext.match(
+    /(?:(?<count>\bcount\s*\(\s*\*\s*\))|(?<arrayAgg>\bpg_catalog\.array_agg\s*\([^)]*\)))\s*$/i,
+  );
+  assert.ok(
+    directAggregate,
+    `FILTER no sigue directamente a uno de los agregados auditados cerca de ${filterMatch.index}`,
+  );
+  aggregateFilterCounts[directAggregate.groups?.count ? 'count' : 'arrayAgg'] += 1;
+}
+assert.deepEqual(
+  aggregateFilterCounts,
+  { count: 39, arrayAgg: 2 },
+  'El inventario FILTER debe conservar 39 count(*) y dos array_agg',
+);
+assert.doesNotMatch(
+  sql,
+  /\)\s*::\s*[a-z_][a-z0-9_.]*(?:\s*\[\s*\])?\s*filter\s*\(/gi,
+  'El cast del resultado agregado debe aparecer despues de FILTER, nunca entre el agregado y FILTER',
+);
+assert.doesNotMatch(
+  sql,
+  /column_row\.column_name(?!\s*::\s*text)\s*(?:~\*|~|like\b|ilike\b)/gi,
+  'column_name de information_schema debe convertirse a text antes de regex/LIKE/ILIKE',
+);
+assert.match(
+  sql,
+  /\(\s*pg_catalog\.array_agg\(column_row\.column_name::text\s+order\s+by\s+column_row\.ordinal_position\)\s*filter\s*\(\s*where\s+column_row\.column_name::text\s*~\*[\s\S]*?\)\s*\)::text\[\]/i,
+  'El array de campos de publicacion debe aplicar FILTER antes del cast text[]',
+);
+assert.match(
+  sql,
+  /'state_like_columns',\s*coalesce\(\s*\(\s*pg_catalog\.array_agg\(column_row\.column_name::text\s+order\s+by\s+column_row\.ordinal_position\)\s*filter\s*\(\s*where\s+column_row\.column_name::text\s*~\*[\s\S]*?\)\s*\)::text\[\],\s*array\[\]::text\[\]/i,
+  'El array de campos de estado debe aplicar FILTER y cast antes de COALESCE',
+);
 for (const operatorPattern of [/@>/g, /<@/g, /&&/g]) {
   const occurrences = [...sql.matchAll(operatorPattern)];
   for (const occurrence of occurrences) {
