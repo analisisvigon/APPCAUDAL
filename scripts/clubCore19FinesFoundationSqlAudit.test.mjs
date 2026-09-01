@@ -147,6 +147,16 @@ assert.match(normalizedVerifier, /viewer_with_transient_permission_denied/);
 assert.match(normalizedVerifier, /cross_club_player_rejected/);
 assert.match(normalizedVerifier, /player_without_auth_is_subject/);
 assert.match(normalizedVerifier, /no_destructive_cascade/);
+assert.doesNotMatch(
+  normalizedVerifier,
+  /from information_schema\.columns column\b/,
+  'El verificador no debe usar la palabra reservada COLUMN como alias de tabla.',
+);
+assert.match(
+  normalizedVerifier,
+  /from information_schema\.columns actual_column\b/,
+  'El inventario de columnas debe usar un alias SQL inequívoco.',
+);
 
 const verificationCount = [...verifier.matchAll(/test_name\s*:=\s*'/g)].length;
 assert.ok(verificationCount >= 36, `El verificador debe tener al menos 36 comprobaciones; tiene ${verificationCount}.`);

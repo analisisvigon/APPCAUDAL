@@ -94,10 +94,10 @@ begin
       ('created_at', 'timestamp with time zone', 'NO'),
       ('updated_at', 'timestamp with time zone', 'NO')
   ), actual as (
-    select column.column_name, column.data_type, column.is_nullable as nullable
-    from information_schema.columns column
-    where column.table_schema = 'public'
-      and column.table_name = 'club_seasons'
+    select actual_column.column_name, actual_column.data_type, actual_column.is_nullable as nullable
+    from information_schema.columns actual_column
+    where actual_column.table_schema = 'public'
+      and actual_column.table_name = 'club_seasons'
   )
   select
     (select pg_catalog.count(*) from actual),
@@ -467,10 +467,10 @@ begin
       ('created_at', 'timestamp with time zone', 'NO'),
       ('updated_at', 'timestamp with time zone', 'NO')
   ), actual as (
-    select column.column_name, column.data_type, column.is_nullable as nullable
-    from information_schema.columns column
-    where column.table_schema = 'public'
-      and column.table_name = 'fine_subjects'
+    select actual_column.column_name, actual_column.data_type, actual_column.is_nullable as nullable
+    from information_schema.columns actual_column
+    where actual_column.table_schema = 'public'
+      and actual_column.table_name = 'fine_subjects'
   )
   select
     (select pg_catalog.count(*) from actual),
