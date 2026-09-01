@@ -181,6 +181,51 @@ function DenseMetric({ label, value, detail = '', tone = 'text-white', partial =
   );
 }
 
+function ProductionMetricRow({ label, total, per90, partial = false }) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-white/[0.07] py-2.5 last:border-b-0">
+      <div className="min-w-0">
+        <p className="text-xs font-bold text-slate-200">{label}</p>
+        <CoverageNote visible={partial} />
+      </div>
+      <strong className="min-w-8 text-right text-xl font-black text-white">{formatMetric(total)}</strong>
+      <span className="min-w-[68px] text-right text-[10px] font-black uppercase tracking-[0.08em] text-slate-500">
+        {formatRatio(per90)} /90
+      </span>
+    </div>
+  );
+}
+
+function DisciplineMetric({ label, value, tone }) {
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-3 py-2">
+      <span className="flex items-center gap-2 text-xs font-bold text-slate-300">
+        <span aria-hidden="true" className={`h-3 w-2 rounded-sm ${tone}`} />
+        {label}
+      </span>
+      <strong className="text-xl font-black text-white">{formatMetric(value)}</strong>
+    </div>
+  );
+}
+
+function LiveMetricGroup({ title, metrics }) {
+  return (
+    <section className="min-w-0 border-t border-white/[0.08] pt-3 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0 first:border-t-0 first:pt-0 lg:first:border-l-0 lg:first:pl-0">
+      <h4 className="text-[9px] font-black uppercase tracking-[0.16em] text-caudal-electric">{title}</h4>
+      <dl className="mt-2 divide-y divide-white/[0.07]">
+        {metrics.map(({ label, value, format }) => (
+          <div key={label} className="flex min-w-0 items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
+            <dt className="min-w-0 text-[11px] font-semibold text-slate-400">{label}</dt>
+            <dd className="shrink-0 text-base font-black text-white">
+              {format === 'ratio' ? formatRatio(value) : formatMetric(value)}{format === 'percent' ? ' %' : ''}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 function OverviewSection({ state, onRetry }) {
   if (state.status === 'loading') return <PlayerAnalysisLoading label="Cargando resumen" />;
   if (state.status === 'error') return <PlayerAnalysisError title="Resumen no disponible" kind={state.errorKind} onRetry={onRetry} />;
@@ -201,35 +246,26 @@ function OverviewSection({ state, onRetry }) {
           </div>
         </section>
 
-        <div className="grid min-w-0 gap-3 lg:grid-cols-[1.15fr_0.85fr]">
-          <section className={`${PLAYER_ANALYSIS_CARD} p-3.5 sm:p-4`}>
-            <PlayerAnalysisSectionHeader eyebrow="Complementarias" title="Producción y disciplina" />
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <DenseMetric label="Goles" value={overview.goals} tone="text-emerald-200" partial={presentation.goalsPartial} />
-              <DenseMetric label="Asistencias" value={overview.assists} tone="text-sky-200" partial={presentation.assistsPartial} />
-              <DenseMetric label="Amarillas" value={overview.yellowCards} tone="text-amber-100" />
-              <DenseMetric label="Rojas" value={overview.redCards} tone="text-red-100" />
+        <section className={`${PLAYER_ANALYSIS_CARD} p-3.5 sm:p-4`}>
+          <PlayerAnalysisSectionHeader eyebrow="Resumen ofensivo" title="Producción" />
+          <div className="mt-3 grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+            <div className="min-w-0">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 border-b border-white/[0.08] pb-1.5 text-[8px] font-black uppercase tracking-[0.12em] text-slate-600">
+                <span>Acción</span><span>Total</span><span className="min-w-[68px] text-right">Por 90'</span>
+              </div>
+              <ProductionMetricRow label="Goles" total={overview.goals} per90={overview.goalsPer90} partial={presentation.goalsPartial} />
+              <ProductionMetricRow label="Asistencias" total={overview.assists} per90={overview.assistsPer90} partial={presentation.assistsPartial} />
+              <ProductionMetricRow label="G+A" total={overview.goalContributions} per90={overview.goalContributionsPer90} partial={presentation.contributionsPartial} />
             </div>
-          </section>
-
-          <section className={`${PLAYER_ANALYSIS_CARD} p-3.5 sm:p-4`}>
-            <PlayerAnalysisSectionHeader eyebrow="Ritmo ofensivo" title="Producción por 90'" />
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {[
-                ['Goles / 90', overview.goalsPer90, 'text-emerald-200'],
-                ['Asist. / 90', overview.assistsPer90, 'text-sky-200'],
-                ['G+A / 90', overview.goalContributionsPer90, 'text-white'],
-                ['G+A total', overview.goalContributions, 'text-white'],
-              ].map(([label, value, tone]) => (
-                <div key={label} className="rounded-2xl border border-white/[0.08] bg-white/[0.04] px-2.5 py-2.5">
-                  <span className="text-[8px] font-black uppercase tracking-[0.1em] text-slate-500">{label}</span>
-                  <strong className={`mt-1 block text-xl ${tone}`}>{label.includes('/ 90') ? formatRatio(value) : formatMetric(value)}</strong>
-                </div>
-              ))}
+            <div className="min-w-0 border-t border-white/[0.08] pt-3 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
+              <h4 className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Disciplina</h4>
+              <div className="mt-1 divide-y divide-white/[0.07]">
+                <DisciplineMetric label="Amarillas" value={overview.yellowCards} tone="bg-amber-300" />
+                <DisciplineMetric label="Rojas" value={overview.redCards} tone="bg-red-400" />
+              </div>
             </div>
-            <CoverageNote visible={presentation.contributionsPartial} />
-          </section>
-        </div>
+          </div>
+        </section>
       </div>
     </AccordionSection>
   );
@@ -249,17 +285,22 @@ function LiveSection({ state, liveWindow, onWindowChange, onRetry }) {
   if (state.status === 'empty') return <PlayerAnalysisEmpty title="Sin Registro en vivo" copy="No hay agregados validados para este ámbito." />;
 
   const live = state.data;
-  const metrics = [
-    ['Partidos con eventos', live.matchesWithEvents, ''],
-    ['Goles / partido', live.goalsPerMatch, 'ratio'],
-    ['Tiros / partido', live.shotsPerMatch, 'ratio'],
-    ['A puerta / partido', live.shotsOnTargetPerMatch, 'ratio'],
-    ['% tiros a puerta', live.shotAccuracyPercentage, 'percent'],
-    ['Centros / partido', live.crossesPerMatch, 'ratio'],
-    ['Pérdidas / partido', live.turnoversPerMatch, 'ratio'],
-    ['Robos / partido', live.stealsPerMatch, 'ratio'],
-    ['Faltas realizadas', live.foulsCommittedPerMatch, 'ratio'],
-    ['Faltas recibidas', live.foulsReceivedPerMatch, 'ratio'],
+  const metricGroups = [
+    { title: 'Finalización', metrics: [
+      { label: 'Goles / partido', value: live.goalsPerMatch, format: 'ratio' },
+      { label: 'Tiros / partido', value: live.shotsPerMatch, format: 'ratio' },
+      { label: 'A puerta / partido', value: live.shotsOnTargetPerMatch, format: 'ratio' },
+      { label: '% tiros a puerta', value: live.shotAccuracyPercentage, format: 'percent' },
+    ] },
+    { title: 'Con balón', metrics: [
+      { label: 'Centros / partido', value: live.crossesPerMatch, format: 'ratio' },
+      { label: 'Pérdidas / partido', value: live.turnoversPerMatch, format: 'ratio' },
+    ] },
+    { title: 'Defensivo', metrics: [
+      { label: 'Robos / partido', value: live.stealsPerMatch, format: 'ratio' },
+      { label: 'Faltas realizadas', value: live.foulsCommittedPerMatch, format: 'ratio' },
+      { label: 'Faltas recibidas', value: live.foulsReceivedPerMatch, format: 'ratio' },
+    ] },
   ];
 
   return (
@@ -268,12 +309,14 @@ function LiveSection({ state, liveWindow, onWindowChange, onRetry }) {
         <PlayerAnalysisSectionHeader title="Registro en vivo" />
         <div className="mt-3">{windowSelector}</div>
         {live.matchesWithEvents === 0 ? <p className="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs text-slate-500">Sin partidos con eventos validados en esta ventana.</p> : null}
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          {metrics.map(([label, value, format]) => (
-            <div key={label} className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-2.5 sm:p-3">
-              <p className="text-[8px] font-black uppercase leading-4 tracking-[0.1em] text-slate-500">{label}</p>
-              <p className="mt-1 text-xl font-black text-white">{format === 'ratio' ? formatRatio(value) : formatMetric(value)}{format === 'percent' ? ' %' : ''}</p>
-            </div>
+        {live.matchesWithEvents > 0 ? (
+          <p className="mt-3 text-[10px] font-bold text-slate-500">
+            <strong className="text-slate-200">{formatMetric(live.matchesWithEvents)}</strong> {live.matchesWithEvents === 1 ? 'partido analizado' : 'partidos analizados'}
+          </p>
+        ) : null}
+        <div className="mt-3 grid min-w-0 gap-3 lg:grid-cols-3">
+          {metricGroups.map((group) => (
+            <LiveMetricGroup key={group.title} title={group.title} metrics={group.metrics} />
           ))}
         </div>
       </section>

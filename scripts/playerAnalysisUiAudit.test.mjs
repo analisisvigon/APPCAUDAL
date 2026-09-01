@@ -13,6 +13,7 @@ const placeholder = read('src/components/player/PlayerMatchesPlaceholder.jsx');
 const store = read('src/data/playerAnalysisStore.js');
 const presentation = read('src/utils/playerAnalysisPresentation.js');
 const branch = [app, navigation, panel, production, history, zoneMap, domainState, placeholder, store, presentation].join('\n');
+const liveSection = panel.slice(panel.indexOf('function LiveSection'), panel.indexOf('export default function PlayerAnalysisPanel'));
 
 assert.deepEqual(
   [...store.matchAll(/^\s*(?:overview|live|production|history): '([^']+)'/gm)].map((match) => match[1]),
@@ -64,9 +65,16 @@ assert.match(panel, /usePlayerAnalysisHistory\(client, competitionScope, venue\)
 
 for (const label of [
   'Principales', 'Minutos', 'Partidos', 'Titularidades', 'Participación',
-  'Complementarias', 'Goles', 'Asistencias', 'Amarillas', 'Rojas',
-  'Goles / 90', 'Asist. / 90', 'G+A / 90', 'G+A total',
+  'Producción', 'Goles', 'Asistencias', 'G+A', 'Disciplina', 'Amarillas', 'Rojas',
 ]) assert.ok(panel.includes(label), `Overview sin ${label}.`);
+assert.equal((panel.match(/<DenseMetric /g) || []).length, 4, 'Solo Participación conserva cuatro tarjetas KPI principales.');
+assert.equal((panel.match(/<ProductionMetricRow /g) || []).length, 3, 'Producción agrupa total y /90 en tres filas.');
+for (const field of [
+  'overview.goals', 'overview.goalsPer90', 'overview.assists', 'overview.assistsPer90',
+  'overview.goalContributions', 'overview.goalContributionsPer90',
+  'overview.yellowCards', 'overview.redCards',
+]) assert.ok(panel.includes(field), `Overview pierde ${field}.`);
+assert.doesNotMatch(panel, /title="Producción por 90'/, 'Producción total y /90 ya no duplican bloques.');
 assert.match(panel, /PLAYER_ANALYSIS_PARTIAL_NOTE/);
 assert.match(presentation, /Dato disponible parcialmente/);
 assert.doesNotMatch(panel, />\s*(?:PARTIAL|COMPLETE|UUID|legacy)\s*</i);
@@ -75,10 +83,16 @@ assert.match(panel, /Tu rendimiento en el periodo seleccionado\./);
 assert.doesNotMatch(panel, /en un único ámbito coherente|Solo datos validados|nunca eventos individuales/i);
 
 for (const label of [
-  'Registro en vivo', 'Partidos con eventos', 'Goles / partido', 'Tiros / partido',
+  'Registro en vivo', 'Finalización', 'Con balón', 'Defensivo', 'Goles / partido', 'Tiros / partido',
   'A puerta / partido', '% tiros a puerta', 'Centros / partido', 'Pérdidas / partido',
   'Robos / partido', 'Faltas realizadas', 'Faltas recibidas',
 ]) assert.ok(panel.includes(label), `Live sin ${label}.`);
+assert.match(panel, /partido analizado/);
+assert.match(panel, /partidos analizados/);
+assert.equal((panel.match(/<LiveMetricGroup /g) || []).length, 1, 'Los tres grupos se generan desde una única estructura compacta.');
+assert.match(panel, /metricGroups\.map/);
+assert.doesNotMatch(liveSection, /style=\{\{\s*width|<progress|<meter/i, 'Live no inventa escalas visuales.');
+assert.doesNotMatch(liveSection, /(?:bg|text)-(?:emerald|amber|red)-/, 'Live no aplica semáforos evaluativos.');
 assert.doesNotMatch(panel, /Solo validados|Todos los registros/);
 assert.match(panel, /live\.matchesWithEvents === 0/);
 
@@ -142,7 +156,7 @@ assert.doesNotMatch(branch, /get_my_player_matches/, 'Partidos sigue sin impleme
 
 assert.match(panel, /flex min-w-0 flex-wrap gap-2 sm:flex-nowrap/);
 assert.match(panel, /grid grid-cols-2 gap-2 sm:grid-cols-4/);
-assert.match(panel, /grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5/);
+assert.match(panel, /grid min-w-0 gap-3 lg:grid-cols-3/);
 assert.match(production, /filteredActions\.length === 1 \? 'max-w-2xl' : 'lg:grid-cols-2'/);
 assert.match(production, /mt-4 max-w-xl/, 'Una conexión no fuerza una tarjeta sobredimensionada.');
 assert.match(panel, /productionActions=\{productionState\.status === 'ready' \? productionState\.data : \[\]\}/);
