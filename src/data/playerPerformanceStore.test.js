@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import {
   PLAYER_PERFORMANCE_MAX_PAGE_SIZE,
+  PLAYER_PERFORMANCE_MAX_RANGE_DAYS,
   PlayerPerformanceLoadError,
   appendUniquePlayerEntries,
   loadPlayerPerformancePage,
+  loadPlayerPerformanceRange,
   loadPlayerRpePage,
   loadPlayerWellnessPage,
 } from './playerPerformanceStore.js';
@@ -13,8 +15,12 @@ const makeClient = (rowsByTable = {}, errorsByTable = {}) => {
   return {
     calls,
     from(table) {
-      const call = { table, select: '', order: [], range: [] };
+      const call = { table, select: '', order: [], range: [], filters: [], limit: null };
       calls.push(call);
+      const response = () => ({
+        data: rowsByTable[table] || [],
+        error: errorsByTable[table] || null,
+      });
       const builder = {
         select(columns) {
           call.select = columns;
@@ -24,12 +30,24 @@ const makeClient = (rowsByTable = {}, errorsByTable = {}) => {
           call.order.push([column, options]);
           return builder;
         },
+        gte(column, value) {
+          call.filters.push(['gte', column, value]);
+          return builder;
+        },
+        lte(column, value) {
+          call.filters.push(['lte', column, value]);
+          return builder;
+        },
+        limit(value) {
+          call.limit = value;
+          return builder;
+        },
         range(from, to) {
           call.range = [from, to];
-          return Promise.resolve({
-            data: rowsByTable[table] || [],
-            error: errorsByTable[table] || null,
-          });
+          return Promise.resolve(response());
+        },
+        then(resolve, reject) {
+          return Promise.resolve(response()).then(resolve, reject);
         },
       };
       return builder;
@@ -48,6 +66,7 @@ const wellnessRows = [
     muscle_soreness: 3,
     stress: 1,
     mood: 5,
+    health_ratio: '8.5',
     weight: '74.2',
     discomfort: '',
     comment: 'Fila más reciente',
@@ -79,6 +98,7 @@ assert.equal(initial.wellness.rows.length, 1);
 assert.equal(initial.wellness.rows[0].id, 'wellness-new');
 assert.equal('jugador_id' in initial.wellness.rows[0], false, 'La identidad de tabla no se entrega a la UI.');
 assert.equal(initial.wellness.rows[0].sleep_hours, 7.5);
+assert.equal(initial.wellness.rows[0].health_ratio, 8.5, 'El score validado se conserva sin recalcularlo.');
 assert.equal(initial.wellness.rows[0].comment, 'Fila más reciente');
 assert.equal(initial.rpe.rows[0].id, 'rpe-new');
 assert.equal('jugador_id' in initial.rpe.rows[0], false, 'La identidad de tabla no se entrega a la UI.');
@@ -115,6 +135,32 @@ assert.deepEqual(limitedClient.calls[0].range, [0, PLAYER_PERFORMANCE_MAX_PAGE_S
 const paginatedClient = makeClient({ rpe_entries: rpeRows });
 await loadPlayerRpePage(paginatedClient, { offset: 8, limit: 8, jugadorId: 'other-player' });
 assert.deepEqual(paginatedClient.calls[0].range, [8, 16]);
+
+const rangeClient = makeClient({ wellness_entries: wellnessRows, rpe_entries: rpeRows });
+const temporalRange = await loadPlayerPerformanceRange(rangeClient, {
+  startDate: '2026-08-24',
+  endDate: '2026-09-06',
+  jugadorId: 'must-be-ignored',
+});
+assert.equal(temporalRange.wellness[0].id, 'wellness-new');
+assert.equal(temporalRange.rpe[0].id, 'rpe-new');
+rangeClient.calls.forEach((call) => {
+  assert.deepEqual(call.filters, [
+    ['gte', 'entry_date', '2026-08-24'],
+    ['lte', 'entry_date', '2026-09-06'],
+  ]);
+  assert.equal(call.select.includes('jugador_id'), false);
+  assert.equal(call.limit, PLAYER_PERFORMANCE_MAX_RANGE_DAYS);
+});
+
+await assert.rejects(
+  () => loadPlayerPerformanceRange(makeClient(), {
+    startDate: '2026-01-01',
+    endDate: `2026-02-${String(PLAYER_PERFORMANCE_MAX_RANGE_DAYS).padStart(2, '0')}`,
+  }),
+  (error) => error instanceof PlayerPerformanceLoadError,
+  'El navegador temporal no puede solicitar rangos históricos ilimitados.',
+);
 
 const exactFirstEntry = {
   id: 'same-wellness',

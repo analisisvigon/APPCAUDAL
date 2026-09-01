@@ -7,6 +7,7 @@ const WELLNESS_COLUMNS = [
   'muscle_soreness',
   'stress',
   'mood',
+  'health_ratio',
   'weight',
   'discomfort',
   'comment',
@@ -24,6 +25,7 @@ const RPE_COLUMNS = [
 
 export const PLAYER_PERFORMANCE_PAGE_SIZE = 8;
 export const PLAYER_PERFORMANCE_MAX_PAGE_SIZE = 20;
+export const PLAYER_PERFORMANCE_MAX_RANGE_DAYS = 42;
 
 export class PlayerPerformanceLoadError extends Error {
   constructor(kind = 'network') {
@@ -66,6 +68,18 @@ const normalizeDate = (value) => {
   return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : '';
 };
 
+const dateToUtcTimestamp = (value) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return NaN;
+  const [year, month, day] = String(value).split('-').map(Number);
+  const timestamp = Date.UTC(year, month - 1, day);
+  const date = new Date(timestamp);
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day
+    ? timestamp
+    : NaN;
+};
+
 const normalizeWellnessEntry = (row) => ({
   id: String(row?.id || ''),
   entry_date: normalizeDate(row?.entry_date),
@@ -75,6 +89,7 @@ const normalizeWellnessEntry = (row) => ({
   muscle_soreness: normalizeOptionalNumber(row?.muscle_soreness),
   stress: normalizeOptionalNumber(row?.stress),
   mood: normalizeOptionalNumber(row?.mood),
+  health_ratio: normalizeOptionalNumber(row?.health_ratio),
   weight: normalizeOptionalNumber(row?.weight),
   discomfort: normalizeOptionalText(row?.discomfort),
   comment: normalizeOptionalText(row?.comment),
@@ -142,6 +157,46 @@ const loadPage = async (client, table, columns, mapEntry, options) => {
   };
 };
 
+const loadRange = async (client, table, columns, mapEntry, { startDate, endDate } = {}) => {
+  if (!client || typeof client.from !== 'function') {
+    throw new PlayerPerformanceLoadError('invalid_session');
+  }
+
+  const startTimestamp = dateToUtcTimestamp(startDate);
+  const endTimestamp = dateToUtcTimestamp(endDate);
+  const rangeDays = Math.floor((endTimestamp - startTimestamp) / 86400000) + 1;
+  if (!Number.isFinite(startTimestamp)
+    || !Number.isFinite(endTimestamp)
+    || rangeDays < 1
+    || rangeDays > PLAYER_PERFORMANCE_MAX_RANGE_DAYS) {
+    throw new PlayerPerformanceLoadError('network');
+  }
+
+  let response;
+  try {
+    response = await client
+      .from(table)
+      .select(columns)
+      .gte('entry_date', startDate)
+      .lte('entry_date', endDate)
+      .order('entry_date', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(PLAYER_PERFORMANCE_MAX_RANGE_DAYS);
+  } catch (error) {
+    throw new PlayerPerformanceLoadError(
+      isInvalidSessionError(error) ? 'invalid_session' : 'network',
+    );
+  }
+
+  if (response?.error) {
+    throw new PlayerPerformanceLoadError(
+      isInvalidSessionError(response.error) ? 'invalid_session' : 'network',
+    );
+  }
+
+  return (Array.isArray(response?.data) ? response.data : []).map(mapEntry);
+};
+
 export const loadPlayerWellnessPage = (client, options) => loadPage(
   client,
   'wellness_entries',
@@ -162,6 +217,14 @@ export async function loadPlayerPerformancePage(client, options = {}) {
   const [wellness, rpe] = await Promise.all([
     loadPlayerWellnessPage(client, options),
     loadPlayerRpePage(client, options),
+  ]);
+  return { wellness, rpe };
+}
+
+export async function loadPlayerPerformanceRange(client, options = {}) {
+  const [wellness, rpe] = await Promise.all([
+    loadRange(client, 'wellness_entries', WELLNESS_COLUMNS, normalizeWellnessEntry, options),
+    loadRange(client, 'rpe_entries', RPE_COLUMNS, normalizeRpeEntry, options),
   ]);
   return { wellness, rpe };
 }
