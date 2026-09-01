@@ -89,6 +89,7 @@ assert.match(panel, /function EvolutionSection/);
 assert.match(panel, /Tu evolución/);
 assert.match(panel, /\[\['week', 'Semana'\], \['month', 'Mes'\]\]/);
 assert.match(panel, /<select value=\{effectiveMetric\}/);
+assert.match(panel, /availableMetrics\.some\(\(metric\) => metric\.key === metricKey\) \? metricKey : availableMetrics\[0\]\?\.key \|\| ''/, 'Una métrica que deja de estar disponible obtiene fallback seguro.');
 assert.match(panel, /Métrica de la gráfica/);
 assert.match(panel, /shiftPlayerPerformanceAnchor/);
 assert.match(panel, /Media/);
@@ -108,6 +109,24 @@ assert.match(trendChart, /<circle/);
 assert.match(trendChart, /<title>/);
 assert.match(trendChart, /role="img"/);
 assert.match(trendChart, /metric\.unit/);
+assert.match(trendChart, /const axisLabelCount = Math\.min\(points\.length, 5\)/, 'La cantidad de etiquetas se calcula fuera del callback.');
+assert.match(trendChart, /Array\.from\(\{ length: axisLabelCount \}, \(_, index\) =>/, 'Array.from usa únicamente los dos argumentos que realmente entrega.');
+assert.doesNotMatch(trendChart, /Array\.from\([^]*\(_, index, labels\)/, 'Regresión: el tercer argumento de Array.from es undefined y tumbaba el render con puntos.');
+assert.throws(
+  () => Array.from({ length: 1 }, (_, index, labels) => labels.length + index),
+  TypeError,
+  'La regresión reproduce exactamente el TypeError original con una serie no vacía.',
+);
+const runtimeAxisIndexes = (pointCount) => {
+  const axisLabelCount = Math.min(pointCount, 5);
+  return Array.from({ length: axisLabelCount }, (_, index) => (
+    Math.round((index * Math.max(pointCount - 1, 0)) / Math.max(axisLabelCount - 1, 1))
+  ));
+};
+assert.deepEqual(runtimeAxisIndexes(0), []);
+assert.deepEqual(runtimeAxisIndexes(1), [0]);
+assert.deepEqual(runtimeAxisIndexes(7), [0, 2, 3, 5, 6]);
+assert.deepEqual(runtimeAxisIndexes(31), [0, 8, 15, 23, 30]);
 assert.match(presentation, /metric\.scale \|\| getDynamicScale/);
 assert.match(presentation, /summaryValues\.length > 1/);
 assert.doesNotMatch(presentation, /interpol|imput|value:\s*0/, 'No se imputan días ni valores ausentes.');
@@ -155,6 +174,7 @@ assert.match(app, /identity_invalid/);
 assert.match(panel, /\['Wellness', 'RPE'\]\.map/);
 assert.match(panel, /Cargando \{label\}/);
 assert.match(panel, /Reintentar/);
+assert.match(panel, /if \(cancelled\) return/, 'Una respuesta temporal tardía no reemplaza el estado tras cambiar de periodo.');
 
 for (const forbiddenLabel of ['Borja', 'Jairo', 'Prioridad', 'Vigilar', 'media de plantilla', 'ranking', 'alerta PF', 'cumplimiento', 'número de respuestas', 'diagnóstico', 'lesión']) {
   assert.equal(branch.toLowerCase().includes(forbiddenLabel.toLowerCase()), false, `Privacidad visual: no mostrar ${forbiddenLabel}.`);

@@ -55,6 +55,7 @@ assert.deepEqual(getPlayerWeekBounds('2026-09-03'), {
   endDate: '2026-09-06',
 });
 assert.equal(getPlayerCalendarGrid('2026-09-03').length, 35);
+assert.deepEqual(getPlayerCalendarGrid('fecha-inválida'), [], 'Una fecha inválida produce un calendario vacío, no una excepción.');
 assert.deepEqual(getPlayerPerformanceFetchRange('2026-09-03'), {
   startDate: '2026-08-31',
   endDate: '2026-10-04',
@@ -94,6 +95,23 @@ assert.equal(onePointTrend.metric.unit, 'kg');
 assert.equal(onePointTrend.summary.change, null, 'Una sola respuesta no inventa tendencia ni divide por cero.');
 assert.deepEqual(onePointTrend.scale, { min: 73.2, max: 75.2 }, 'El peso conserva su unidad y una escala propia.');
 assert.equal(buildPlayerPerformanceTrend({ metricKey: 'rpe', period: 'week', anchorDate: '2026-09-03' }).summary, null);
+assert.deepEqual(
+  buildPlayerPerformanceTrend({ metricKey: 'rpe', period: 'month', anchorDate: 'fecha-inválida' }).points,
+  [],
+  'Una fecha inválida no llega a cálculos de gráfica.',
+);
+const nullableWellnessTrend = buildPlayerPerformanceTrend({
+  wellness: [{ id: 'nullable', entry_date: '2026-09-04', health_ratio: null, weight: null, mood: 6 }],
+  metricKey: 'health_ratio',
+  period: 'week',
+  anchorDate: '2026-09-04',
+});
+assert.equal(nullableWellnessTrend.summary, null, 'health_ratio NULL no se convierte en cero.');
+assert.deepEqual(
+  getAvailablePlayerMetrics([{ entry_date: '2026-09-04', health_ratio: null, weight: null, mood: 6 }], []),
+  [PLAYER_PERFORMANCE_METRICS.find((metric) => metric.key === 'mood')],
+  'Con nulls solo queda disponible la métrica que realmente tiene valor.',
+);
 
 const denseMonth = Array.from({ length: PLAYER_MONTH_DAILY_POINT_LIMIT + 1 }, (_, index) => ({
   id: `dense-${index}`,
@@ -115,6 +133,8 @@ assert.deepEqual(
 assert.equal(PLAYER_PERFORMANCE_METRICS.find((metric) => metric.key === 'health_ratio').scale.min, 0, 'El Wellness general reutiliza su escala validada 0–10.');
 
 const activity = buildPlayerActivityByDate(ownWellness, ownRpe);
+assert.equal(buildPlayerActivityByDate([], []).size, 0, 'Un mes vacío conserva el calendario sin actividad.');
+assert.equal(buildPlayerActivityByDate([{ entry_date: 'inválida', discomfort: 'texto' }], []).size, 0, 'Las fechas inválidas se ignoran de forma cerrada.');
 assert.equal(activity.get('2026-09-01').wellness.id, 'w-1');
 assert.equal(activity.get('2026-09-01').rpe, null);
 assert.equal(activity.get('2026-09-02').wellness, null);
@@ -122,6 +142,7 @@ assert.equal(activity.get('2026-09-02').rpe.id, 'r-2');
 assert.equal(activity.get('2026-09-03').wellness.id, 'w-3');
 assert.equal(activity.get('2026-09-03').rpe.id, 'r-3');
 assert.equal(activity.get('2026-09-03').hasDiscomfort, true);
+assert.equal(activity.get('2026-09-30'), undefined, 'Seleccionar un día sin respuestas tiene un detalle vacío seguro.');
 assert.equal(getDefaultPlayerSelectedDate(ownWellness, ownRpe, '2026-09-15', '2026-09-03'), '2026-09-03');
 assert.equal(getDefaultPlayerSelectedDate(ownWellness, ownRpe, '2026-09-15', '2026-09-30'), '2026-09-03');
 

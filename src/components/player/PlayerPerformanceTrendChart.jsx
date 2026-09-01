@@ -20,9 +20,10 @@ export default function PlayerPerformanceTrendChart({ model }) {
   const xFor = (index) => plot.left + ((plotWidth / Math.max(points.length - 1, 1)) * index);
   const yFor = (value) => plot.top + (((scale.max - value) / scaleSpan) * plotHeight);
   const indexById = new Map(points.map((point, index) => [point.id, index]));
+  const axisLabelCount = Math.min(points.length, 5);
   const axisIndexes = new Set(
-    Array.from({ length: Math.min(points.length, 5) }, (_, index, labels) => (
-      Math.round((index * Math.max(points.length - 1, 0)) / Math.max(labels.length - 1, 1))
+    Array.from({ length: axisLabelCount }, (_, index) => (
+      Math.round((index * Math.max(points.length - 1, 0)) / Math.max(axisLabelCount - 1, 1))
     )),
   );
   const axisValues = [scale.max, (scale.max + scale.min) / 2, scale.min];
