@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import {
   PLAYER_ANALYSIS_PAGE_SIZE,
+  PLAYER_ANALYSIS_COMPETITION_MINUTE_SCOPES,
+  PLAYER_ANALYSIS_DISTRIBUTION_PAGE_SIZE,
   PlayerAnalysisLoadError,
   appendUniquePlayerHistory,
   isAllowedPlayerAnalysisVideo,
   loadPlayerAnalysisLiveStats,
   loadPlayerAnalysisOverview,
+  loadPlayerCompetitionMinutesDistribution,
   loadPlayerMatchHistoryPage,
   loadPlayerProductionActions,
   normalizePlayerAnalysisFilters,
@@ -106,6 +109,8 @@ assert.deepEqual(history, {
 });
 
 assert.equal(PLAYER_ANALYSIS_PAGE_SIZE, 25);
+assert.equal(PLAYER_ANALYSIS_DISTRIBUTION_PAGE_SIZE, 50);
+assert.deepEqual(PLAYER_ANALYSIS_COMPETITION_MINUTE_SCOPES, ['league', 'copa_rfef', 'playoff', 'friendly']);
 assert.deepEqual(normalizePlayerAnalysisFilters({ competitionScope: 'bad', venue: 'bad', liveWindow: 'bad' }), {
   competitionScope: 'season', venue: 'all', liveWindow: 'last_5_event_matches',
 });
@@ -135,4 +140,78 @@ await assert.rejects(
   (error) => error instanceof PlayerAnalysisLoadError && error.domain === 'history' && error.kind === 'invalid_session',
 );
 
-console.log('playerAnalysisStore: cuatro RPC, filtros, normalización, vídeo, errores y paginación validados.');
+const distributionCalls = [];
+const pendingDistributionCalls = [];
+const distributionMinutes = { league: 300, copa_rfef: 120, playoff: 0, friendly: 45 };
+const distributionHistory = [{
+  match_date: '2026-08-20', opponent: 'Rival Liga', competition_key: 'league',
+  competition_name: 'Liga Segunda Federación', competition_logo_url: 'https://assets.example/league.png',
+  venue: 'away', minutes: 90,
+}, {
+  match_date: '2026-08-10', opponent: 'Rival Copa', competition_key: 'copa_rfef',
+  competition_name: 'Copa RFEF', competition_logo_url: 'https://assets.example/cup.png',
+  venue: 'away', minutes: 120,
+}];
+const distributionClient = {
+  rpc(name, payload) {
+    distributionCalls.push([name, payload]);
+    return new Promise((resolve) => pendingDistributionCalls.push(() => {
+      if (name === 'get_my_player_analysis_overview') {
+        resolve({ data: [{ ...overviewRow, competition_scope: payload.p_competition_scope, venue: payload.p_venue, minutes: distributionMinutes[payload.p_competition_scope] }], error: null });
+        return;
+      }
+      resolve({ data: distributionHistory, error: null });
+    }));
+  },
+};
+const distributionPromise = loadPlayerCompetitionMinutesDistribution(distributionClient, {
+  competitionScope: 'season',
+  venue: 'away',
+});
+await Promise.resolve();
+await Promise.resolve();
+assert.equal(distributionCalls.length, 5, 'Los cuatro Overview y el historial seguro arrancan en paralelo.');
+pendingDistributionCalls.forEach((resolve) => resolve());
+const distribution = await distributionPromise;
+assert.deepEqual(distributionCalls.slice(0, 4), PLAYER_ANALYSIS_COMPETITION_MINUTE_SCOPES.map((scope) => [
+  'get_my_player_analysis_overview',
+  { p_competition_scope: scope, p_venue: 'away' },
+]));
+assert.deepEqual(distributionCalls[4], [
+  'get_my_player_match_history',
+  { p_competition_scope: 'season', p_venue: 'away', p_limit: 50, p_offset: 0 },
+]);
+assert.equal(distribution.enabled, true);
+assert.deepEqual(distribution.scopeMinutes, [
+  { key: 'league', minutes: 300 },
+  { key: 'copa_rfef', minutes: 120 },
+  { key: 'playoff', minutes: 0 },
+  { key: 'friendly', minutes: 45 },
+]);
+assert.equal(distribution.historyRows[0].competitionName, 'Liga Segunda Federación');
+distributionCalls.forEach(([, payload]) => {
+  assert.equal(Object.keys(payload).some((key) => /jugador|user|membership|player.*id/i.test(key)), false);
+});
+
+let concreteScopeCalls = 0;
+const concreteScope = await loadPlayerCompetitionMinutesDistribution({
+  rpc() { concreteScopeCalls += 1; throw new Error('No debe ejecutarse'); },
+}, { competitionScope: 'league', venue: 'home' });
+assert.equal(concreteScopeCalls, 0, 'Un filtro concreto no dispara ninguna RPC de reparto.');
+assert.deepEqual(concreteScope, {
+  enabled: false,
+  competitionScope: 'league',
+  venue: 'home',
+  scopeMinutes: [],
+  historyRows: [],
+});
+
+await assert.rejects(
+  () => loadPlayerCompetitionMinutesDistribution({ rpc: async () => ({ data: null, error: { message: 'offline' } }) }, { competitionScope: 'all' }),
+  (error) => error instanceof PlayerAnalysisLoadError
+    && error.domain === 'competition_minutes'
+    && error.kind === 'network',
+  'Un fallo del reparto conserva un dominio independiente.',
+);
+
+console.log('playerAnalysisStore: RPC, reparto paralelo por competición, filtros, errores y paginación validados.');

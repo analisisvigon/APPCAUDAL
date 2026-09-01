@@ -6,6 +6,14 @@ const ANALYSIS_RPCS = Object.freeze({
 });
 
 export const PLAYER_ANALYSIS_PAGE_SIZE = 25;
+export const PLAYER_ANALYSIS_DISTRIBUTION_PAGE_SIZE = 50;
+
+export const PLAYER_ANALYSIS_COMPETITION_MINUTE_SCOPES = Object.freeze([
+  'league',
+  'copa_rfef',
+  'playoff',
+  'friendly',
+]);
 
 export const PLAYER_ANALYSIS_DEFAULT_FILTERS = Object.freeze({
   competitionScope: 'season',
@@ -291,4 +299,65 @@ export async function loadPlayerMatchHistoryPage(
     nextOffset: safeOffset + rows.length,
     hasMore: rows.length === safeLimit,
   };
+}
+
+const loadCompletePlayerMatchHistory = async (client, filters) => {
+  const rows = [];
+  let offset = 0;
+  while (true) {
+    const page = await loadPlayerMatchHistoryPage(
+      client,
+      filters,
+      { limit: PLAYER_ANALYSIS_DISTRIBUTION_PAGE_SIZE, offset },
+    );
+    rows.push(...page.rows);
+    if (!page.hasMore) return rows;
+    if (page.nextOffset <= offset) {
+      throw new PlayerAnalysisLoadError('competition_minutes', 'identity_invalid');
+    }
+    offset = page.nextOffset;
+  }
+};
+
+export async function loadPlayerCompetitionMinutesDistribution(client, filters = {}) {
+  const normalized = normalizePlayerAnalysisFilters(filters);
+  if (!['season', 'all'].includes(normalized.competitionScope)) {
+    return {
+      enabled: false,
+      competitionScope: normalized.competitionScope,
+      venue: normalized.venue,
+      scopeMinutes: [],
+      historyRows: [],
+    };
+  }
+
+  try {
+    const overviewRequests = PLAYER_ANALYSIS_COMPETITION_MINUTE_SCOPES.map(async (competitionScope) => ({
+      key: competitionScope,
+      minutes: (await loadPlayerAnalysisOverview(client, {
+        competitionScope,
+        venue: normalized.venue,
+      }))?.minutes || 0,
+    }));
+    const historyRequest = loadCompletePlayerMatchHistory(client, {
+      competitionScope: normalized.competitionScope,
+      venue: normalized.venue,
+    });
+    const [scopeMinutes, historyRows] = await Promise.all([
+      Promise.all(overviewRequests),
+      historyRequest,
+    ]);
+    return {
+      enabled: true,
+      competitionScope: normalized.competitionScope,
+      venue: normalized.venue,
+      scopeMinutes,
+      historyRows,
+    };
+  } catch (error) {
+    if (error instanceof PlayerAnalysisLoadError) {
+      throw new PlayerAnalysisLoadError('competition_minutes', error.kind);
+    }
+    throw error;
+  }
 }

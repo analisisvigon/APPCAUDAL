@@ -6,6 +6,7 @@ import {
   appendUniquePlayerHistory,
   loadPlayerAnalysisLiveStats,
   loadPlayerAnalysisOverview,
+  loadPlayerCompetitionMinutesDistribution,
   loadPlayerMatchHistoryPage,
   loadPlayerProductionActions,
 } from '../../data/playerAnalysisStore';
@@ -14,7 +15,9 @@ import {
   PLAYER_ANALYSIS_PARTIAL_NOTE,
   PLAYER_ANALYSIS_VENUE_OPTIONS,
   PLAYER_ANALYSIS_WINDOW_OPTIONS,
+  buildCompetitionMinutesRows,
   buildPlayerAnalysisOverviewPresentation,
+  shouldShowPlayerCompetitionMinutes,
 } from '../../utils/playerAnalysisPresentation';
 import {
   PLAYER_ANALYSIS_CARD,
@@ -42,11 +45,15 @@ const ratioFormatter = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2
 const formatMetric = (value) => numberFormatter.format(Number(value) || 0);
 const formatRatio = (value) => ratioFormatter.format(Number(value) || 0);
 
-function usePlayerAnalysisDomain(loader, dependencies) {
+function usePlayerAnalysisDomain(loader, dependencies, enabled = true) {
   const [state, setState] = useState(initialDomainState);
   const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
+    if (!enabled) {
+      setState({ status: 'idle', data: null, errorKind: '' });
+      return undefined;
+    }
     let cancelled = false;
     setState(initialDomainState);
     loader()
@@ -59,7 +66,7 @@ function usePlayerAnalysisDomain(loader, dependencies) {
     return () => { cancelled = true; };
   // The caller supplies the exact primitive filter dependencies.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...dependencies, retryToken]);
+  }, [...dependencies, enabled, retryToken]);
 
   return [state, () => setRetryToken((current) => current + 1)];
 }
@@ -208,6 +215,85 @@ function DisciplineMetric({ label, value, tone }) {
   );
 }
 
+function CompetitionMinutesLogo({ src, name }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  if (!src || failed) {
+    return (
+      <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.055] text-[10px] font-black text-caudal-electric">
+        CP
+      </span>
+    );
+  }
+  return <img src={src} alt={`Logo de ${name}`} onError={() => setFailed(true)} className="h-9 w-9 shrink-0 object-contain" />;
+}
+
+function CompetitionMinutesBreakdown({ state, totalMinutes, onRetry }) {
+  return (
+    <div className="mt-4 border-t border-white/[0.08] pt-3.5">
+      <h4 className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Minutos por competición</h4>
+
+      {state.status === 'loading' ? (
+        <div role="status" aria-live="polite" className="mt-3 grid animate-pulse gap-2">
+          {[0, 1].map((item) => (
+            <div key={item} className="grid grid-cols-[36px_minmax(0,1fr)] gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.025] p-2.5">
+              <div className="h-9 w-9 rounded-xl bg-white/10" />
+              <div className="min-w-0"><div className="h-3 w-32 max-w-full rounded-full bg-white/10" /><div className="mt-3 h-1.5 rounded-full bg-white/[0.08]" /></div>
+            </div>
+          ))}
+          <span className="sr-only">Cargando minutos por competición…</span>
+        </div>
+      ) : null}
+
+      {state.status === 'error' ? (
+        <div className="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.025] px-3 py-3">
+          <p className="text-xs font-bold text-slate-300">No se pudo cargar el reparto por competición.</p>
+          <button type="button" onClick={onRetry} className={`mt-2 min-h-[44px] rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-[11px] font-black text-white transition hover:bg-white/10 ${PLAYER_ANALYSIS_FOCUS}`}>Reintentar</button>
+        </div>
+      ) : null}
+
+      {state.status === 'ready' ? (() => {
+        const distribution = buildCompetitionMinutesRows(state.data, totalMinutes);
+        if (!distribution.rows.length) {
+          return <p className="mt-2 text-xs leading-5 text-slate-500">Sin minutos por competición en este ámbito.</p>;
+        }
+        return (
+          <div className="mt-3 grid gap-2.5">
+            {distribution.rows.map((competition) => (
+              <div key={competition.key} className="min-w-0 rounded-xl border border-white/[0.07] bg-white/[0.025] p-2.5">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <CompetitionMinutesLogo src={competition.logoUrl} name={competition.name} />
+                  <div className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                    <p className="min-w-0 truncate text-xs font-black text-slate-200" title={competition.name}>{competition.name}</p>
+                    <p className="shrink-0 text-xs font-black tabular-nums text-white"><span className="text-caudal-electric">{formatMetric(competition.minutes)}'</span> <span className="ml-1 text-slate-400">{formatMetric(competition.percentage)}%</span></p>
+                  </div>
+                </div>
+                <div
+                  role="progressbar"
+                  aria-label={`${competition.name}: ${formatMetric(competition.percentage)} % de tus minutos`}
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  aria-valuenow={Math.min(100, competition.percentage)}
+                  className="ml-[46px] mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.08]"
+                >
+                  <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${Math.min(100, competition.percentage)}%` }} />
+                </div>
+              </div>
+            ))}
+            {!distribution.reconciles ? (
+              <p className="rounded-xl border border-amber-300/15 bg-amber-300/[0.06] px-3 py-2 text-[10px] font-semibold leading-4 text-amber-100/75">
+                {distribution.unclassifiedMinutes > 0 && distribution.reconciliationDelta === distribution.unclassifiedMinutes
+                  ? `${formatMetric(distribution.unclassifiedMinutes)} min no tienen una competición identificable y no se han asignado a una categoría.`
+                  : `El reparto difiere en ${formatMetric(Math.abs(distribution.reconciliationDelta))} min respecto al total mostrado.`}
+              </p>
+            ) : null}
+          </div>
+        );
+      })() : null}
+    </div>
+  );
+}
+
 function LiveMetricGroup({ title, metrics }) {
   return (
     <section className="min-w-0 border-t border-white/[0.08] pt-3 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0 first:border-t-0 first:pt-0 lg:first:border-l-0 lg:first:pl-0">
@@ -226,7 +312,7 @@ function LiveMetricGroup({ title, metrics }) {
   );
 }
 
-function OverviewSection({ state, onRetry }) {
+function OverviewSection({ state, onRetry, showCompetitionMinutes, competitionMinutesState, onRetryCompetitionMinutes }) {
   if (state.status === 'loading') return <PlayerAnalysisLoading label="Cargando resumen" />;
   if (state.status === 'error') return <PlayerAnalysisError title="Resumen no disponible" kind={state.errorKind} onRetry={onRetry} />;
   if (state.status === 'empty') return <PlayerAnalysisEmpty title="Sin resumen en estos filtros" copy="No hay participación propia registrada en este ámbito." />;
@@ -244,6 +330,9 @@ function OverviewSection({ state, onRetry }) {
             <DenseMetric label="Titularidades" value={overview.starts} detail={`${overview.benchEntries} desde banquillo`} />
             <DenseMetric label="Participación" value={presentation.participation} suffix=" %" detail={presentation.possibleMinutes ? `${overview.minutes} de ${presentation.possibleMinutes} min posibles` : ''} />
           </div>
+          {showCompetitionMinutes ? (
+            <CompetitionMinutesBreakdown state={competitionMinutesState} totalMinutes={overview.minutes} onRetry={onRetryCompetitionMinutes} />
+          ) : null}
         </section>
 
         <section className={`${PLAYER_ANALYSIS_CARD} p-3.5 sm:p-4`}>
@@ -332,6 +421,12 @@ export default function PlayerAnalysisPanel({ client }) {
     () => loadPlayerAnalysisOverview(client, { competitionScope, venue }),
     [client, competitionScope, venue],
   );
+  const showCompetitionMinutes = shouldShowPlayerCompetitionMinutes(competitionScope);
+  const [competitionMinutesState, retryCompetitionMinutes] = usePlayerAnalysisDomain(
+    () => loadPlayerCompetitionMinutesDistribution(client, { competitionScope, venue }),
+    [client, competitionScope, venue],
+    showCompetitionMinutes,
+  );
   const [liveState, retryLive] = usePlayerAnalysisDomain(
     () => loadPlayerAnalysisLiveStats(client, { competitionScope, venue, liveWindow }),
     [client, competitionScope, venue, liveWindow],
@@ -361,7 +456,13 @@ export default function PlayerAnalysisPanel({ client }) {
         </div>
       </section>
 
-      <OverviewSection state={overviewState} onRetry={retryOverview} />
+      <OverviewSection
+        state={overviewState}
+        onRetry={retryOverview}
+        showCompetitionMinutes={showCompetitionMinutes}
+        competitionMinutesState={competitionMinutesState}
+        onRetryCompetitionMinutes={retryCompetitionMinutes}
+      />
       <LiveSection state={liveState} liveWindow={liveWindow} onWindowChange={(value) => updateFilter('liveWindow', value)} onRetry={retryLive} />
       <PlayerAnalysisProduction state={productionState} onRetry={retryProduction} />
       <PlayerAnalysisHistory

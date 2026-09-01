@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   PLAYER_ANALYSIS_PARTIAL_NOTE,
+  buildCompetitionMinutesRows,
   buildPlayerAnalysisConnections,
   buildPlayerAnalysisOverviewPresentation,
   buildPlayerProductionCategories,
@@ -11,6 +12,7 @@ import {
   getPlayerHistoryOutcomePresentation,
   getPlayerZoneMapGridClass,
   resolvePlayerHistoryVideoUrls,
+  shouldShowPlayerCompetitionMinutes,
 } from './playerAnalysisPresentation.js';
 
 const overview = buildPlayerAnalysisOverviewPresentation({
@@ -26,6 +28,71 @@ assert.equal(overview.goalsPartial, true);
 assert.equal(overview.assistsPartial, false);
 assert.equal(overview.contributionsPartial, true);
 assert.equal(buildPlayerAnalysisOverviewPresentation({ matchesPlayed: 0, minutes: 0 }).minutesPerMatch, 0, 'No divide por cero.');
+
+assert.equal(shouldShowPlayerCompetitionMinutes('season'), true);
+assert.equal(shouldShowPlayerCompetitionMinutes('all'), true);
+for (const concreteScope of ['league', 'copa_rfef', 'playoff', 'friendly']) {
+  assert.equal(shouldShowPlayerCompetitionMinutes(concreteScope), false, `${concreteScope} oculta el reparto.`);
+}
+
+const competitionDistributionSource = {
+  enabled: true,
+  scopeMinutes: [
+    { key: 'league', minutes: 300 },
+    { key: 'copa_rfef', minutes: 100 },
+    { key: 'playoff', minutes: 0 },
+    { key: 'friendly', minutes: 50 },
+  ],
+  historyRows: [
+    { competitionKey: 'league', competitionName: 'Liga Segunda Federación', competitionLogoUrl: 'https://assets.example/league.png', minutes: 180 },
+    { competitionKey: 'league', competitionName: 'Liga Segunda Federación', competitionLogoUrl: 'https://assets.example/league.png', minutes: 120 },
+    { competitionKey: 'copa_rfef', competitionName: 'Copa RFEF', competitionLogoUrl: 'https://assets.example/cup.png', minutes: 100 },
+    { competitionKey: 'friendly', competitionName: 'Amistosos', competitionLogoUrl: 'http://unsafe.example/friendly.png', minutes: 50 },
+    { competitionKey: 'torneo_real', competitionName: 'Torneo Real', competitionLogoUrl: 'https://assets.example/tournament.png', minutes: 25 },
+  ],
+};
+const competitionDistribution = buildCompetitionMinutesRows(competitionDistributionSource, 475);
+assert.deepEqual(competitionDistribution.rows.map(({ key, name, logoUrl, minutes }) => ({ key, name, logoUrl, minutes })), [
+  { key: 'league', name: 'Liga Segunda Federación', logoUrl: 'https://assets.example/league.png', minutes: 300 },
+  { key: 'copa_rfef', name: 'Copa RFEF', logoUrl: 'https://assets.example/cup.png', minutes: 100 },
+  { key: 'friendly', name: 'Amistosos', logoUrl: '', minutes: 50 },
+  { key: 'torneo_real', name: 'Torneo Real', logoUrl: 'https://assets.example/tournament.png', minutes: 25 },
+]);
+assert.deepEqual(competitionDistribution.rows.map((row) => row.percentage), [63.2, 21.1, 10.5, 5.3]);
+assert.equal(competitionDistribution.percentageTotal, 100.1, 'El redondeo puede separar la suma una décima del 100 %.');
+assert.equal(competitionDistribution.accountedMinutes, 475);
+assert.equal(competitionDistribution.reconciles, true);
+assert.equal(competitionDistribution.rows.some((row) => row.key === 'playoff'), false, 'Las competiciones con cero minutos no aparecen.');
+
+const seasonWithoutFriendly = buildCompetitionMinutesRows({
+  ...competitionDistributionSource,
+  historyRows: competitionDistributionSource.historyRows.filter((row) => row.competitionKey !== 'friendly' && row.competitionKey !== 'torneo_real'),
+}, 400);
+assert.deepEqual(seasonWithoutFriendly.rows.map((row) => row.key), ['league', 'copa_rfef'], 'El historial del ámbito season impide incluir amistosos al 100 %.');
+assert.equal(seasonWithoutFriendly.percentageTotal, 100);
+
+const singleCompetition = buildCompetitionMinutesRows({
+  enabled: true,
+  scopeMinutes: [{ key: 'copa_rfef', minutes: 347 }],
+  historyRows: [{ competitionKey: 'copa_rfef', competitionName: 'Copa RFEF', minutes: 347 }],
+}, 347);
+assert.deepEqual(singleCompetition.rows.map((row) => [row.name, row.minutes, row.percentage]), [
+  ['Copa RFEF', 347, 100],
+], 'Una sola competición con minutos se muestra al 100 %.');
+
+const unclassifiedDistribution = buildCompetitionMinutesRows({
+  enabled: true,
+  scopeMinutes: [{ key: 'league', minutes: 90 }],
+  historyRows: [
+    { competitionKey: 'league', competitionName: 'Liga', minutes: 90 },
+    { competitionKey: '', competitionName: '', minutes: 10 },
+  ],
+}, 100);
+assert.equal(unclassifiedDistribution.unclassifiedMinutes, 10);
+assert.equal(unclassifiedDistribution.reconciliationDelta, 10);
+assert.equal(unclassifiedDistribution.reconciles, false, 'Los minutos sin competición no se esconden ni se inventan.');
+assert.deepEqual(buildCompetitionMinutesRows({ enabled: true }, 0).rows, [], 'Cero minutos produce bloque vacío sin dividir por cero.');
+assert.deepEqual(buildCompetitionMinutesRows({ enabled: false }, 200).rows, []);
 
 const actions = [{
   actionType: 'goal', counterpartRole: 'assistant', counterpartName: 'Compañero A',

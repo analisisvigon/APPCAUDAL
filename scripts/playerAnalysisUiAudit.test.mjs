@@ -38,6 +38,16 @@ assert.match(store, /p_limit/);
 assert.match(store, /p_offset/);
 assert.match(store, /PLAYER_ANALYSIS_PAGE_SIZE = 25/);
 assert.match(store, /appendUniquePlayerHistory/);
+assert.deepEqual(
+  [...store.matchAll(/^\s*'(league|copa_rfef|playoff|friendly)',?$/gm)].map((match) => match[1]),
+  ['league', 'copa_rfef', 'playoff', 'friendly'],
+  'El reparto solo consulta los cuatro scopes admitidos por Overview.',
+);
+assert.match(store, /loadPlayerCompetitionMinutesDistribution/);
+assert.match(store, /Promise\.all\(overviewRequests\)/, 'Los cuatro Overview se cargan en paralelo.');
+assert.match(store, /loadCompletePlayerMatchHistory/, 'Nombre, logo y competiciones adicionales proceden de una RPC PLAYER paginada.');
+assert.match(store, /if \(!\['season', 'all'\]\.includes\(normalized\.competitionScope\)\)/, 'Los filtros concretos no cargan reparto.');
+assert.match(store, /competitionScope: normalized\.competitionScope[\s\S]*venue: normalized\.venue/);
 
 for (const forbidden of [
   './App', 'getJugadores', 'globalPlayerStore', 'performanceLoadStore', 'authenticatedDataLoad',
@@ -69,6 +79,27 @@ for (const label of [
   'Producción', 'Goles', 'Asistencias', 'G+A', 'Disciplina', 'Amarillas', 'Rojas',
 ]) assert.ok(panel.includes(label), `Overview sin ${label}.`);
 assert.equal((panel.match(/<DenseMetric /g) || []).length, 4, 'Solo Participación conserva cuatro tarjetas KPI principales.');
+assert.match(panel, /Minutos por competición/);
+assert.match(panel, /showCompetitionMinutes=\{showCompetitionMinutes\}/);
+assert.match(panel, /shouldShowPlayerCompetitionMinutes\(competitionScope\)/);
+assert.match(panel, /loadPlayerCompetitionMinutesDistribution\(client, \{ competitionScope, venue \}\)/);
+assert.match(panel, /<CompetitionMinutesBreakdown state=\{competitionMinutesState\} totalMinutes=\{overview\.minutes\}/, 'El denominador es el KPI de minutos propios.');
+assert.match(panel, /role="progressbar"/);
+assert.match(panel, /style=\{\{ width: `\$\{Math\.min\(100, competition\.percentage\)\}%` \}\}/);
+assert.match(panel, /competition\.minutes/);
+assert.match(panel, /competition\.percentage/);
+assert.match(panel, /competition\.logoUrl/);
+assert.match(panel, /No se pudo cargar el reparto por competición/);
+assert.match(panel, /onRetryCompetitionMinutes/);
+assert.match(panel, /Sin minutos por competición en este ámbito/);
+assert.match(panel, /no tienen una competición identificable/);
+assert.match(presentation, /buildCompetitionMinutesRows/);
+assert.match(presentation, /historyRow\?\.competitionName/);
+assert.match(presentation, /historyRow\?\.competitionLogoUrl/);
+assert.match(presentation, /row\.minutes > 0/);
+assert.match(presentation, /row\.minutes \* 1000\) \/ totalMinutes/);
+assert.match(presentation, /totalMinutes === 0/);
+assert.doesNotMatch(panel, /\.from\s*\(|getJugadores|App\.jsx|globalPlayerStore|authenticatedDataLoad/);
 assert.equal((panel.match(/<ProductionMetricRow /g) || []).length, 3, 'Producción agrupa total y /90 en tres filas.');
 for (const field of [
   'overview.goals', 'overview.goalsPer90', 'overview.assists', 'overview.assistsPer90',

@@ -25,6 +25,13 @@ export const PLAYER_ANALYSIS_WINDOW_OPTIONS = Object.freeze([
 
 export const PLAYER_ANALYSIS_ACTION_FILTERS = Object.freeze(['Todos', 'Goles', 'Asistencias']);
 
+const PLAYER_ANALYSIS_DISTRIBUTION_SCOPES = Object.freeze(['league', 'copa_rfef', 'playoff', 'friendly']);
+const PLAYER_ANALYSIS_DISTRIBUTION_LABELS = new Map(
+  PLAYER_ANALYSIS_COMPETITION_OPTIONS
+    .filter((option) => PLAYER_ANALYSIS_DISTRIBUTION_SCOPES.includes(option.value))
+    .map((option) => [option.value, option.label === 'Amistoso' ? 'Amistosos' : option.label]),
+);
+
 const PITCH_ZONE_CATALOG = Object.freeze([
   { value: 'finalizacion_izquierda', label: 'Finalización\nizquierda' },
   { value: 'finalizacion_centro', label: 'Finalización\ncentro' },
@@ -52,6 +59,106 @@ const GOAL_ZONE_CATALOG = Object.freeze([
 const rows = (value) => Array.isArray(value) ? value : [];
 const clean = (value) => String(value ?? '').trim();
 const isPartial = (coverage) => coverage !== 'COMPLETE';
+
+const safeMinutes = (value) => {
+  const minutes = Number(value);
+  return Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes) : 0;
+};
+
+const safeHttpsImageUrl = (value) => {
+  const candidate = clean(value);
+  if (!candidate) return '';
+  try {
+    const url = new URL(candidate);
+    return url.protocol === 'https:' ? url.href : '';
+  } catch {
+    return '';
+  }
+};
+
+export const shouldShowPlayerCompetitionMinutes = (competitionScope) => (
+  competitionScope === 'season' || competitionScope === 'all'
+);
+
+export function buildCompetitionMinutesRows(source = {}, totalMinutesValue = 0) {
+  const totalMinutes = safeMinutes(totalMinutesValue);
+  if (source?.enabled !== true || totalMinutes === 0) {
+    return {
+      rows: [],
+      totalMinutes,
+      accountedMinutes: 0,
+      reconciliationDelta: totalMinutes,
+      unclassifiedMinutes: 0,
+      percentageTotal: 0,
+      reconciles: totalMinutes === 0,
+    };
+  }
+
+  const scopeMinutes = new Map(
+    rows(source.scopeMinutes).map((entry) => [clean(entry?.key), safeMinutes(entry?.minutes)]),
+  );
+  const historyByCompetition = new Map();
+  let unclassifiedMinutes = 0;
+
+  rows(source.historyRows).forEach((historyRow) => {
+    const minutes = safeMinutes(historyRow?.minutes);
+    const key = clean(historyRow?.competitionKey);
+    if (!key) {
+      unclassifiedMinutes += minutes;
+      return;
+    }
+    if (!historyByCompetition.has(key)) {
+      historyByCompetition.set(key, {
+        key,
+        name: '',
+        logoUrl: '',
+        historyMinutes: 0,
+      });
+    }
+    const competition = historyByCompetition.get(key);
+    competition.historyMinutes += minutes;
+    if (!competition.name) competition.name = clean(historyRow?.competitionName);
+    if (!competition.logoUrl) competition.logoUrl = safeHttpsImageUrl(historyRow?.competitionLogoUrl);
+  });
+
+  const knownRows = PLAYER_ANALYSIS_DISTRIBUTION_SCOPES
+    .filter((key) => historyByCompetition.has(key))
+    .map((key) => {
+      const history = historyByCompetition.get(key);
+      return {
+        key,
+        name: history.name || PLAYER_ANALYSIS_DISTRIBUTION_LABELS.get(key) || 'Competición',
+        logoUrl: history.logoUrl,
+        minutes: scopeMinutes.get(key) || 0,
+      };
+    });
+  const additionalRows = [...historyByCompetition.values()]
+    .filter((competition) => !PLAYER_ANALYSIS_DISTRIBUTION_SCOPES.includes(competition.key))
+    .map((competition) => ({
+      key: competition.key,
+      name: competition.name || 'Competición',
+      logoUrl: competition.logoUrl,
+      minutes: competition.historyMinutes,
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name, 'es'));
+
+  const visibleRows = [...knownRows, ...additionalRows].filter((row) => row.minutes > 0);
+  const resultRows = visibleRows.map((row) => ({
+    ...row,
+    percentage: Math.round((row.minutes * 1000) / totalMinutes) / 10,
+  }));
+  const accountedMinutes = resultRows.reduce((total, row) => total + row.minutes, 0);
+  const reconciliationDelta = totalMinutes - accountedMinutes;
+  return {
+    rows: resultRows,
+    totalMinutes,
+    accountedMinutes,
+    reconciliationDelta,
+    unclassifiedMinutes,
+    percentageTotal: Math.round(resultRows.reduce((total, row) => total + row.percentage, 0) * 10) / 10,
+    reconciles: reconciliationDelta === 0,
+  };
+}
 
 export function buildPlayerAnalysisOverviewPresentation(overview = {}) {
   const matches = Number(overview.matchesPlayed) || 0;
