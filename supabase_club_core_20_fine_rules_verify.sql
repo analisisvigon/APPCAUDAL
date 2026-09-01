@@ -35,6 +35,9 @@ declare
   inserted_ok boolean;
   updated_ok boolean;
   deleted_ok boolean;
+  amount_data_type text;
+  amount_precision integer;
+  amount_scale integer;
   error_message text;
 begin
   select club.id into club_id_value
@@ -63,7 +66,7 @@ begin
   details := 'relation=' || coalesce(pg_catalog.to_regclass('public.fine_rules')::text, 'NULL');
   return next;
 
-  with expected(column_name, data_type, is_nullable, numeric_precision, numeric_scale) as (
+  with expected(column_name, data_type, is_nullable, amount_precision, amount_scale) as (
     values
       ('id'::text, 'uuid'::text, 'NO'::text, null::integer, null::integer),
       ('club_id', 'uuid', 'NO', null, null),
@@ -84,8 +87,16 @@ begin
       actual_column.column_name,
       actual_column.data_type,
       actual_column.is_nullable,
-      actual_column.numeric_precision,
-      actual_column.numeric_scale
+      case
+        when actual_column.column_name = 'default_amount'
+          then actual_column.numeric_precision
+        else null::integer
+      end as amount_precision,
+      case
+        when actual_column.column_name = 'default_amount'
+          then actual_column.numeric_scale
+        else null::integer
+      end as amount_scale
     from information_schema.columns actual_column
     where actual_column.table_schema = 'public'
       and actual_column.table_name = 'fine_rules'
@@ -99,8 +110,26 @@ begin
       (select * from actual except select * from expected)
     )
   into observed_count, expected_count, test_ok;
+
+  select
+    actual_column.data_type,
+    actual_column.numeric_precision,
+    actual_column.numeric_scale
+  into amount_data_type, amount_precision, amount_scale
+  from information_schema.columns actual_column
+  where actual_column.table_schema = 'public'
+    and actual_column.table_name = 'fine_rules'
+    and actual_column.column_name = 'default_amount';
+
   test_name := 'B_exact_columns';
-  details := pg_catalog.format('observed=%s expected=%s; numeric(10,2)', observed_count, expected_count);
+  details := pg_catalog.format(
+    'observed=%s expected=%s; default_amount=%s precision=%s scale=%s',
+    observed_count,
+    expected_count,
+    coalesce(amount_data_type, 'NULL'),
+    coalesce(amount_precision::text, 'NULL'),
+    coalesce(amount_scale::text, 'NULL')
+  );
   return next;
 
   test_name := 'C_owner_postgres';

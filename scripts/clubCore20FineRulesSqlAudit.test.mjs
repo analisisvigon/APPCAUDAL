@@ -119,6 +119,26 @@ assert.doesNotMatch(executableMigration, /yellow[^;]*(sum|accum|acumul)|red[^;]*
 
 assert.match(normalizedVerifier, /create or replace function pg_temp\.verify_fine_rules\(\)/);
 assert.match(normalizedVerifier, /select test_name, test_ok, details from pg_temp\.verify_fine_rules\(\); rollback;/);
+assert.match(
+  normalizedVerifier,
+  /\('default_amount', 'numeric', 'yes', 10, 2\)/,
+  'B_exact_columns debe exigir numeric con precision 10 y escala 2.',
+);
+assert.match(
+  normalizedVerifier,
+  /when actual_column\.column_name = 'default_amount' then actual_column\.numeric_precision/,
+  'La precision numerica debe compararse especificamente para default_amount.',
+);
+assert.match(
+  normalizedVerifier,
+  /when actual_column\.column_name = 'default_amount' then actual_column\.numeric_scale/,
+  'La escala numerica debe compararse especificamente para default_amount.',
+);
+assert.doesNotMatch(
+  normalizedVerifier,
+  /'default_amount', 'numeric\(10,2\)'/,
+  'information_schema.data_type devuelve numeric, no numeric(10,2).',
+);
 for (const scenario of [
   'staff_reads_23_own_club_rules',
   'staff_cross_club_isolation',
