@@ -1,187 +1,327 @@
-import { useEffect, useState } from 'react';
-import { loadPlayerAnalysisSummary } from '../../data/playerAnalysisStore';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import AccordionSection from '../shared/AccordionSection';
 import {
+  PLAYER_ANALYSIS_DEFAULT_FILTERS,
+  PLAYER_ANALYSIS_PAGE_SIZE,
+  appendUniquePlayerHistory,
+  loadPlayerAnalysisLiveStats,
+  loadPlayerAnalysisOverview,
+  loadPlayerMatchHistoryPage,
+  loadPlayerProductionActions,
+} from '../../data/playerAnalysisStore';
+import {
+  PLAYER_ANALYSIS_COMPETITION_OPTIONS,
   PLAYER_ANALYSIS_PARTIAL_NOTE,
-  buildPlayerAnalysisPresentation,
+  PLAYER_ANALYSIS_VENUE_OPTIONS,
+  PLAYER_ANALYSIS_WINDOW_OPTIONS,
+  buildPlayerAnalysisOverviewPresentation,
 } from '../../utils/playerAnalysisPresentation';
+import {
+  PLAYER_ANALYSIS_CARD,
+  PLAYER_ANALYSIS_FOCUS,
+  PlayerAnalysisEmpty,
+  PlayerAnalysisError,
+  PlayerAnalysisLoading,
+  PlayerAnalysisSectionHeader,
+} from './PlayerAnalysisDomainState';
+import PlayerAnalysisHistory from './PlayerAnalysisHistory';
+import PlayerAnalysisProduction from './PlayerAnalysisProduction';
 
-const CARD_CLASS = 'min-w-0 rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 shadow-[0_16px_42px_rgba(0,0,0,0.18)]';
-const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric focus-visible:ring-offset-2 focus-visible:ring-offset-[#081326]';
-const INITIAL_STATE = { status: 'loading', summary: null, errorKind: '' };
+const initialDomainState = { status: 'loading', data: null, errorKind: '' };
+const initialHistoryState = {
+  status: 'loading',
+  rows: [],
+  errorKind: '',
+  nextOffset: 0,
+  hasMore: false,
+  loadingMore: false,
+};
 const numberFormatter = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 1 });
+const ratioFormatter = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const formatMetric = (value) => numberFormatter.format(Number(value) || 0);
+const formatRatio = (value) => ratioFormatter.format(Number(value) || 0);
 
-function CoverageNote({ visible }) {
-  if (!visible) return null;
+function usePlayerAnalysisDomain(loader, dependencies) {
+  const [state, setState] = useState(initialDomainState);
+  const [retryToken, setRetryToken] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setState(initialDomainState);
+    loader()
+      .then((data) => {
+        if (!cancelled) setState({ status: data === null ? 'empty' : 'ready', data, errorKind: '' });
+      })
+      .catch((error) => {
+        if (!cancelled) setState({ status: 'error', data: null, errorKind: error?.kind || 'network' });
+      });
+    return () => { cancelled = true; };
+  // The caller supplies the exact primitive filter dependencies.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [...dependencies, retryToken]);
+
+  return [state, () => setRetryToken((current) => current + 1)];
+}
+
+function usePlayerAnalysisHistory(client, competitionScope, venue) {
+  const [state, setState] = useState(initialHistoryState);
+  const [retryToken, setRetryToken] = useState(0);
+  const requestInFlightRef = useRef(false);
+  const generationRef = useRef(0);
+  const nextOffsetRef = useRef(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
+    requestInFlightRef.current = true;
+    nextOffsetRef.current = 0;
+    setState(initialHistoryState);
+
+    loadPlayerMatchHistoryPage(
+      client,
+      { competitionScope, venue },
+      { limit: PLAYER_ANALYSIS_PAGE_SIZE, offset: 0 },
+    )
+      .then((page) => {
+        if (cancelled || generationRef.current !== generation) return;
+        nextOffsetRef.current = page.nextOffset;
+        setState({
+          status: 'ready',
+          rows: page.rows,
+          errorKind: '',
+          nextOffset: page.nextOffset,
+          hasMore: page.hasMore,
+          loadingMore: false,
+        });
+      })
+      .catch((error) => {
+        if (cancelled || generationRef.current !== generation) return;
+        setState({ ...initialHistoryState, status: 'error', errorKind: error?.kind || 'network' });
+      })
+      .finally(() => {
+        if (!cancelled && generationRef.current === generation) requestInFlightRef.current = false;
+      });
+
+    return () => {
+      cancelled = true;
+      if (generationRef.current === generation) requestInFlightRef.current = false;
+    };
+  }, [client, competitionScope, venue, retryToken]);
+
+  const loadMore = useCallback(async () => {
+    if (requestInFlightRef.current) return;
+    requestInFlightRef.current = true;
+    const generation = generationRef.current;
+    const offset = nextOffsetRef.current;
+    setState((current) => ({ ...current, status: 'ready', loadingMore: true, errorKind: '' }));
+    try {
+      const page = await loadPlayerMatchHistoryPage(
+        client,
+        { competitionScope, venue },
+        { limit: PLAYER_ANALYSIS_PAGE_SIZE, offset },
+      );
+      if (generationRef.current !== generation) return;
+      nextOffsetRef.current = page.nextOffset;
+      setState((current) => ({
+        ...current,
+        status: 'ready',
+        rows: appendUniquePlayerHistory(current.rows, page.rows),
+        errorKind: '',
+        nextOffset: page.nextOffset,
+        hasMore: page.hasMore,
+        loadingMore: false,
+      }));
+    } catch (error) {
+      if (generationRef.current !== generation) return;
+      setState((current) => ({
+        ...current,
+        status: 'error',
+        errorKind: error?.kind || 'network',
+        loadingMore: false,
+      }));
+    } finally {
+      if (generationRef.current === generation) requestInFlightRef.current = false;
+    }
+  }, [client, competitionScope, venue]);
+
+  const retry = useCallback(() => {
+    if (state.rows.length) loadMore();
+    else setRetryToken((current) => current + 1);
+  }, [loadMore, state.rows.length]);
+
+  return [state, retry, loadMore];
+}
+
+function FilterSelect({ label, value, options, onChange }) {
   return (
-    <p className="mt-2 inline-flex items-center gap-1.5 text-[10px] font-bold text-amber-100/75">
-      <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-amber-200/70" />
-      {PLAYER_ANALYSIS_PARTIAL_NOTE}
-    </p>
+    <label className="min-w-0 flex-1 sm:flex-none">
+      <span className="mb-1.5 block text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)} className={`min-h-[44px] w-full rounded-xl border border-white/10 bg-[#081326] px-3 text-xs font-black text-white sm:w-44 ${PLAYER_ANALYSIS_FOCUS}`}>
+        {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+    </label>
   );
 }
 
-function MetricCard({ label, value, detail = '', tone = 'text-white', featured = false, partial = false }) {
+function CoverageNote({ visible }) {
+  if (!visible) return null;
+  return <p className="mt-1.5 text-[9px] font-bold leading-4 text-amber-100/70">{PLAYER_ANALYSIS_PARTIAL_NOTE}</p>;
+}
+
+function DenseMetric({ label, value, detail = '', tone = 'text-white', partial = false, suffix = '' }) {
   return (
-    <article className={`min-w-0 rounded-[1.15rem] border border-white/[0.08] bg-white/[0.045] ${featured ? 'p-4 sm:p-5' : 'p-3.5 sm:p-4'}`}>
-      <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p>
-      <p className={`mt-1.5 font-black tracking-tight ${featured ? 'text-3xl sm:text-4xl' : 'text-2xl sm:text-3xl'} ${tone}`}>{formatMetric(value)}</p>
-      {detail ? <p className="mt-1 text-[11px] font-semibold leading-4 text-slate-500">{detail}</p> : null}
+    <article className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-3 sm:p-3.5">
+      <p className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-[9px]">{label}</p>
+      <p className={`mt-1 text-2xl font-black tracking-tight sm:text-3xl ${tone}`}>{formatMetric(value)}{suffix}</p>
+      {detail ? <p className="mt-1 text-[10px] font-semibold leading-4 text-slate-500">{detail}</p> : null}
       <CoverageNote visible={partial} />
     </article>
   );
 }
 
-function SectionTitle({ eyebrow, title, description }) {
+function OverviewSection({ state, onRetry }) {
+  if (state.status === 'loading') return <PlayerAnalysisLoading label="Cargando resumen" />;
+  if (state.status === 'error') return <PlayerAnalysisError title="Resumen no disponible" kind={state.errorKind} onRetry={onRetry} />;
+  if (state.status === 'empty') return <PlayerAnalysisEmpty title="Sin resumen en estos filtros" copy="No hay participación propia registrada en este ámbito." />;
+
+  const overview = state.data;
+  const presentation = buildPlayerAnalysisOverviewPresentation(overview);
   return (
-    <div>
-      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-caudal-electric/80">{eyebrow}</p>
-      <h3 className="mt-1 text-lg font-black text-white sm:text-xl">{title}</h3>
-      {description ? <p className="mt-1 text-xs leading-5 text-slate-500 sm:text-sm">{description}</p> : null}
-    </div>
-  );
-}
-
-function AnalysisLoading() {
-  return (
-    <div role="status" aria-live="polite" className="space-y-3 sm:space-y-4">
-      <section className={`${CARD_CLASS} animate-pulse p-5`}>
-        <div className="h-3 w-24 rounded-full bg-white/10" />
-        <div className="mt-3 h-7 w-64 max-w-full rounded-full bg-white/10" />
-      </section>
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5 sm:gap-3">
-        {['Partidos', 'Minutos', 'Titularidades', 'Goles', 'Asistencias'].map((label) => (
-          <div key={label} className={`${CARD_CLASS} min-h-28 animate-pulse p-4 text-[9px] font-black uppercase tracking-[0.12em] text-slate-600`}>Cargando {label}</div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function AnalysisMessage({ kind, onRetry }) {
-  const content = kind === 'empty'
-    ? {
-      title: 'No hay un análisis vinculado a tu sesión',
-      copy: 'Vuelve a intentarlo. Si continúa, será necesario revisar la vinculación de tu cuenta.',
-    }
-    : kind === 'invalid_session'
-      ? {
-        title: 'Tu sesión ya no es válida',
-        copy: 'Cierra sesión y vuelve a identificarte para consultar tu análisis.',
-      }
-      : kind === 'identity_invalid'
-        ? {
-          title: 'No se pudo resolver tu análisis',
-          copy: 'No hemos podido vincular de forma segura este resumen con tu cuenta.',
-        }
-        : {
-          title: 'No se pudo cargar Mi análisis',
-          copy: 'Comprueba tu conexión y vuelve a intentarlo.',
-        };
-
-  return (
-    <section className={`${CARD_CLASS} px-5 py-8 text-center`}>
-      <div aria-hidden="true" className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] text-lg text-caudal-electric">↻</div>
-      <h2 className="mt-4 text-lg font-black text-white">{content.title}</h2>
-      <p role={kind === 'empty' ? undefined : 'alert'} className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-400">{content.copy}</p>
-      <button type="button" onClick={onRetry} className={`mt-5 min-h-[46px] rounded-xl bg-white/10 px-5 py-2.5 text-sm font-black text-white transition hover:bg-white/15 ${FOCUS_RING}`}>Reintentar</button>
-    </section>
-  );
-}
-
-function PlayerAnalysisContent({ summary }) {
-  const presentation = buildPlayerAnalysisPresentation(summary);
-
-  return (
-    <div className="space-y-3 sm:space-y-4">
-      <section className={`${CARD_CLASS} relative overflow-hidden p-4 sm:p-5`}>
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_100%_0%,rgba(61,217,255,0.12),transparent_42%)]" />
-        <div className="relative">
-          <p className="text-[9px] font-black uppercase tracking-[0.22em] text-caudal-electric">Mi análisis</p>
-          <h2 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl">¿Cómo voy esta temporada?</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-            {presentation.hasSeasonData
-              ? 'Tu participación, producción y disciplina reunidas en un resumen propio.'
-              : 'Aún no hay datos deportivos de temporada disponibles para mostrar.'}
-          </p>
-        </div>
-      </section>
-
-      <section aria-label="Resumen principal" className="grid grid-cols-2 gap-2.5 sm:grid-cols-5 sm:gap-3">
-        <MetricCard label="Partidos" value={summary.matches} featured />
-        <MetricCard label="Minutos" value={summary.minutes} featured tone="text-caudal-electric" />
-        <MetricCard label="Titularidades" value={summary.starts} featured />
-        <MetricCard label="Goles" value={summary.goals} featured tone="text-emerald-200" partial={presentation.goalsPartial} />
-        <MetricCard label="Asistencias" value={summary.assists} featured tone="text-sky-200" partial={presentation.assistsPartial} />
-      </section>
-
-      <div className="grid min-w-0 gap-3 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
-        <section className={`${CARD_CLASS} p-4 sm:p-5`}>
-          <SectionTitle eyebrow="Temporada" title="Participación" description="Presencia acumulada en los partidos registrados." />
-          <div className="mt-4 grid grid-cols-2 gap-2.5">
-            <MetricCard label="Partidos" value={summary.matches} detail="con participación registrada" />
-            <MetricCard label="Minutos" value={summary.minutes} detail="acumulados" tone="text-caudal-electric" />
+    <AccordionSection title="Resumen" subtitle="Principales y complementarias" defaultOpen>
+      <div className="space-y-3">
+        <section className={`${PLAYER_ANALYSIS_CARD} p-4 sm:p-5`}>
+          <PlayerAnalysisSectionHeader eyebrow="Principales" title="Participación" description={presentation.hasData ? 'Tu presencia en los partidos del ámbito seleccionado.' : 'Todavía no hay participación registrada.'} />
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <DenseMetric label="Minutos" value={overview.minutes} detail={overview.matchesPlayed ? `${formatMetric(presentation.minutesPerMatch)} min / partido` : 'Sin partidos jugados'} tone="text-caudal-electric" />
+            <DenseMetric label="Partidos" value={overview.matchesPlayed} detail={`${overview.matchRecords} registros`} />
+            <DenseMetric label="Titularidades" value={overview.starts} detail={`${overview.benchEntries} desde banquillo`} />
+            <DenseMetric label="Participación" value={presentation.participation} suffix=" %" detail={presentation.possibleMinutes ? `${overview.minutes} de ${presentation.possibleMinutes} min posibles` : ''} />
           </div>
-          <div className="mt-4 rounded-[1.1rem] border border-white/[0.08] bg-black/15 p-3.5">
-            <div className="flex items-center justify-between gap-3 text-xs font-black text-slate-300">
-              <span>Titularidades</span>
-              <span>{formatMetric(summary.starts)} / {formatMetric(summary.matches)} partidos</span>
-            </div>
-            <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-white/10" role="img" aria-label={presentation.starterPercentage === null ? 'Sin porcentaje de titularidades disponible' : `${presentation.starterPercentage}% de titularidades sobre partidos registrados`}>
-              <div className="h-full rounded-full bg-gradient-to-r from-caudal-electric to-sky-300" style={{ width: `${presentation.starterPercentage ?? 0}%` }} />
-            </div>
-            {presentation.starterPercentage !== null ? <p className="mt-2 text-right text-[10px] font-bold text-slate-500">{presentation.starterPercentage}% como titular</p> : null}
-          </div>
-          <dl className="mt-3 grid grid-cols-2 divide-x divide-white/10 rounded-[1.1rem] border border-white/[0.08] bg-white/[0.035] py-3 text-center">
-            <div className="px-2"><dt className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Titular</dt><dd className="mt-1 text-2xl font-black text-white">{formatMetric(summary.starts)}</dd></div>
-            <div className="px-2"><dt className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Desde banquillo</dt><dd className="mt-1 text-2xl font-black text-white">{formatMetric(summary.benchEntries)}</dd></div>
-          </dl>
         </section>
 
-        <div className="grid min-w-0 gap-3">
-          <section className={`${CARD_CLASS} p-4 sm:p-5`}>
-            <SectionTitle eyebrow="Acciones decisivas" title="Producción" />
-            <div className="mt-4 grid grid-cols-1 gap-2 min-[360px]:grid-cols-3">
-              <MetricCard label="Goles" value={summary.goals} tone="text-emerald-200" partial={presentation.goalsPartial} />
-              <MetricCard label="Asistencias" value={summary.assists} tone="text-sky-200" partial={presentation.assistsPartial} />
-              <MetricCard label="Goles + asist." value={presentation.contributions} tone="text-white" partial={presentation.contributionsPartial} />
+        <div className="grid min-w-0 gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+          <section className={`${PLAYER_ANALYSIS_CARD} p-4 sm:p-5`}>
+            <PlayerAnalysisSectionHeader eyebrow="Complementarias" title="Producción y disciplina" />
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <DenseMetric label="Goles" value={overview.goals} tone="text-emerald-200" partial={presentation.goalsPartial} />
+              <DenseMetric label="Asistencias" value={overview.assists} tone="text-sky-200" partial={presentation.assistsPartial} />
+              <DenseMetric label="Amarillas" value={overview.yellowCards} tone="text-amber-100" />
+              <DenseMetric label="Rojas" value={overview.redCards} tone="text-red-100" />
             </div>
-            {presentation.contributionsPartial ? <p className="mt-3 text-xs leading-5 text-slate-500">El total combina únicamente los datos actualmente disponibles.</p> : null}
           </section>
 
-          <section className={`${CARD_CLASS} p-4 sm:p-5`}>
-            <SectionTitle eyebrow="Registro" title="Disciplina" />
-            <dl className="mt-4 grid grid-cols-2 divide-x divide-white/10 rounded-[1.1rem] border border-white/[0.08] bg-black/15 py-3 text-center">
-              <div className="px-2"><dt className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Amarillas</dt><dd className="mt-1 text-3xl font-black text-amber-200">{formatMetric(summary.yellowCards)}</dd></div>
-              <div className="px-2"><dt className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Rojas</dt><dd className="mt-1 text-3xl font-black text-rose-200">{formatMetric(summary.redCards)}</dd></div>
-            </dl>
+          <section className={`${PLAYER_ANALYSIS_CARD} p-4 sm:p-5`}>
+            <PlayerAnalysisSectionHeader eyebrow="Ritmo ofensivo" title="Producción por 90'" />
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {[
+                ['Goles / 90', overview.goalsPer90, 'text-emerald-200'],
+                ['Asist. / 90', overview.assistsPer90, 'text-sky-200'],
+                ['G+A / 90', overview.goalContributionsPer90, 'text-white'],
+                ['G+A total', overview.goalContributions, 'text-white'],
+              ].map(([label, value, tone]) => (
+                <div key={label} className="rounded-2xl border border-white/[0.08] bg-white/[0.04] px-3 py-3">
+                  <span className="text-[8px] font-black uppercase tracking-[0.1em] text-slate-500">{label}</span>
+                  <strong className={`mt-1 block text-xl ${tone}`}>{label.includes('/ 90') ? formatRatio(value) : formatMetric(value)}</strong>
+                </div>
+              ))}
+            </div>
+            <CoverageNote visible={presentation.contributionsPartial} />
           </section>
         </div>
       </div>
+    </AccordionSection>
+  );
+}
+
+function LiveSection({ state, liveWindow, onWindowChange, onRetry }) {
+  const windowSelector = (
+    <div role="group" aria-label="Ventana de Registro en vivo" className="grid grid-cols-3 gap-1 rounded-xl border border-white/[0.08] bg-black/20 p-1">
+      {PLAYER_ANALYSIS_WINDOW_OPTIONS.map((option) => (
+        <button key={option.value} type="button" aria-pressed={liveWindow === option.value} onClick={() => onWindowChange(option.value)} className={`min-h-[40px] rounded-lg px-2 text-[9px] font-black uppercase tracking-[0.06em] transition ${liveWindow === option.value ? 'bg-caudal-electric text-slate-950' : 'text-slate-400 hover:bg-white/[0.06]'} ${PLAYER_ANALYSIS_FOCUS}`}>{option.label}</button>
+      ))}
     </div>
+  );
+
+  if (state.status === 'loading') return <PlayerAnalysisLoading label="Cargando Registro en vivo" />;
+  if (state.status === 'error') return <PlayerAnalysisError title="Registro en vivo no disponible" kind={state.errorKind} onRetry={onRetry} />;
+  if (state.status === 'empty') return <PlayerAnalysisEmpty title="Sin Registro en vivo" copy="No hay agregados validados para este ámbito." />;
+
+  const live = state.data;
+  const metrics = [
+    ['Partidos con eventos', live.matchesWithEvents, ''],
+    ['Goles / partido', live.goalsPerMatch, 'ratio'],
+    ['Tiros / partido', live.shotsPerMatch, 'ratio'],
+    ['A puerta / partido', live.shotsOnTargetPerMatch, 'ratio'],
+    ['% tiros a puerta', live.shotAccuracyPercentage, 'percent'],
+    ['Centros / partido', live.crossesPerMatch, 'ratio'],
+    ['Pérdidas / partido', live.turnoversPerMatch, 'ratio'],
+    ['Robos / partido', live.stealsPerMatch, 'ratio'],
+    ['Faltas realizadas', live.foulsCommittedPerMatch, 'ratio'],
+    ['Faltas recibidas', live.foulsReceivedPerMatch, 'ratio'],
+  ];
+
+  return (
+    <AccordionSection title="Registro en vivo" subtitle="Indicadores validados" defaultOpen>
+      <section className={`${PLAYER_ANALYSIS_CARD} p-4 sm:p-5`}>
+        <PlayerAnalysisSectionHeader eyebrow="Solo datos validados" title="Registro en vivo" description="Indicadores agregados propios; nunca eventos individuales." />
+        <div className="mt-4">{windowSelector}</div>
+        {live.matchesWithEvents === 0 ? <p className="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs text-slate-500">Sin partidos con eventos validados en esta ventana.</p> : null}
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {metrics.map(([label, value, format]) => (
+            <div key={label} className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-3">
+              <p className="text-[8px] font-black uppercase leading-4 tracking-[0.1em] text-slate-500">{label}</p>
+              <p className="mt-1 text-xl font-black text-white">{format === 'ratio' ? formatRatio(value) : formatMetric(value)}{format === 'percent' ? ' %' : ''}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </AccordionSection>
   );
 }
 
 export default function PlayerAnalysisPanel({ client }) {
-  const [state, setState] = useState(INITIAL_STATE);
-  const [reloadToken, setReloadToken] = useState(0);
+  const [filters, setFilters] = useState(PLAYER_ANALYSIS_DEFAULT_FILTERS);
+  const { competitionScope, venue, liveWindow } = filters;
 
-  useEffect(() => {
-    let cancelled = false;
-    setState(INITIAL_STATE);
-    loadPlayerAnalysisSummary(client)
-      .then((summary) => {
-        if (!cancelled) setState({ status: summary ? 'ready' : 'empty', summary, errorKind: '' });
-      })
-      .catch((error) => {
-        if (!cancelled) setState({ status: 'error', summary: null, errorKind: error?.kind || 'network' });
-      });
-    return () => { cancelled = true; };
-  }, [client, reloadToken]);
+  const [overviewState, retryOverview] = usePlayerAnalysisDomain(
+    () => loadPlayerAnalysisOverview(client, { competitionScope, venue }),
+    [client, competitionScope, venue],
+  );
+  const [liveState, retryLive] = usePlayerAnalysisDomain(
+    () => loadPlayerAnalysisLiveStats(client, { competitionScope, venue, liveWindow }),
+    [client, competitionScope, venue, liveWindow],
+  );
+  const [productionState, retryProduction] = usePlayerAnalysisDomain(
+    () => loadPlayerProductionActions(client, { competitionScope, venue }),
+    [client, competitionScope, venue],
+  );
+  const [historyState, retryHistory, loadMoreHistory] = usePlayerAnalysisHistory(client, competitionScope, venue);
 
-  if (state.status === 'loading') return <AnalysisLoading />;
-  if (state.status === 'empty') return <AnalysisMessage kind="empty" onRetry={() => setReloadToken((current) => current + 1)} />;
-  if (state.status === 'error') return <AnalysisMessage kind={state.errorKind} onRetry={() => setReloadToken((current) => current + 1)} />;
-  return <PlayerAnalysisContent summary={state.summary} />;
+  const updateFilter = (field, value) => setFilters((current) => ({ ...current, [field]: value }));
+
+  return (
+    <div className="min-w-0 space-y-3 sm:space-y-4" data-player-analysis-rich="true">
+      <section className={`${PLAYER_ANALYSIS_CARD} relative overflow-hidden p-4 sm:p-5`}>
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_100%_0%,rgba(61,217,255,0.12),transparent_42%)]" />
+        <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-[9px] font-black uppercase tracking-[0.22em] text-caudal-electric">Mi análisis</p>
+            <h2 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl">Tu ficha deportiva</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">Participación, producción, Registro en vivo e historial propio en un único ámbito coherente.</p>
+          </div>
+          <div className="flex min-w-0 flex-wrap gap-2 sm:flex-nowrap" aria-label="Filtros de Mi análisis">
+            <FilterSelect label="Competición" value={competitionScope} options={PLAYER_ANALYSIS_COMPETITION_OPTIONS} onChange={(value) => updateFilter('competitionScope', value)} />
+            <FilterSelect label="Localía" value={venue} options={PLAYER_ANALYSIS_VENUE_OPTIONS} onChange={(value) => updateFilter('venue', value)} />
+          </div>
+        </div>
+      </section>
+
+      <OverviewSection state={overviewState} onRetry={retryOverview} />
+      <LiveSection state={liveState} liveWindow={liveWindow} onWindowChange={(value) => updateFilter('liveWindow', value)} onRetry={retryLive} />
+      <PlayerAnalysisProduction state={productionState} onRetry={retryProduction} />
+      <PlayerAnalysisHistory state={historyState} onRetry={retryHistory} onLoadMore={loadMoreHistory} />
+    </div>
+  );
 }

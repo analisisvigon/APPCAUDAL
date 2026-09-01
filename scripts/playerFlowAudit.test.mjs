@@ -63,6 +63,9 @@ for (const requiredPath of [
   'src/components/player/PlayerPerformancePanel.jsx',
   'src/data/playerPerformanceStore.js',
   'src/components/player/PlayerAnalysisPanel.jsx',
+  'src/components/player/PlayerAnalysisProduction.jsx',
+  'src/components/player/PlayerAnalysisHistory.jsx',
+  'src/components/player/PlayerAnalysisZoneMap.jsx',
   'src/data/playerAnalysisStore.js',
   'src/utils/playerAnalysisPresentation.js',
   'src/components/player/PlayerMatchesPlaceholder.jsx',
@@ -81,8 +84,14 @@ assert.match(resolver, /client\.rpc\('current_membership'\)/, 'La identidad se r
 assert.match(shell, /authState\.status === 'player'[\s\S]*?<PlayerApp/);
 assert.match(shell, /authState\.status === 'staff'[\s\S]*?<StaffApp/);
 assert.match(playerApp, /client\.rpc\('get_my_player_profile'\)/, 'PlayerApp resuelve únicamente el perfil propio.');
-assert.match(analysisStore, /client\.rpc\(ANALYSIS_RPC\)/, 'Mi análisis usa exclusivamente su RPC segura propia.');
-assert.match(analysisStore, /get_my_player_analysis_summary/);
+assert.match(analysisStore, /client\.rpc\(rpcName, payload\)/, 'Mi análisis usa exclusivamente su ejecutor RPC seguro.');
+for (const rpc of [
+  'get_my_player_analysis_overview',
+  'get_my_player_analysis_live_stats',
+  'get_my_player_production_actions',
+  'get_my_player_match_history',
+]) assert.match(analysisStore, new RegExp(rpc));
+assert.doesNotMatch(analysisStore, /get_my_player_analysis_summary/);
 assert.doesNotMatch(analysisStore, /\.from\s*\(/);
 assert.deepEqual(
   [...performanceStore.matchAll(/^\s*['"](wellness_entries|rpe_entries)['"],$/gm)].map((match) => match[1]),

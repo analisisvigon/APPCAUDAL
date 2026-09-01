@@ -34,6 +34,18 @@ const analysisPresentationSource = fs.readFileSync(
   new URL('../src/utils/playerAnalysisPresentation.js', import.meta.url),
   'utf8',
 );
+const analysisProductionSource = fs.readFileSync(
+  new URL('../src/components/player/PlayerAnalysisProduction.jsx', import.meta.url),
+  'utf8',
+);
+const analysisHistorySource = fs.readFileSync(
+  new URL('../src/components/player/PlayerAnalysisHistory.jsx', import.meta.url),
+  'utf8',
+);
+const analysisZoneMapSource = fs.readFileSync(
+  new URL('../src/components/player/PlayerAnalysisZoneMap.jsx', import.meta.url),
+  'utf8',
+);
 const matchesPlaceholderSource = fs.readFileSync(
   new URL('../src/components/player/PlayerMatchesPlaceholder.jsx', import.meta.url),
   'utf8',
@@ -61,6 +73,9 @@ const playerBranchSource = [
   analysisPanelSource,
   analysisStoreSource,
   analysisPresentationSource,
+  analysisProductionSource,
+  analysisHistorySource,
+  analysisZoneMapSource,
   matchesPlaceholderSource,
 ].join('\n');
 for (const forbiddenImport of forbiddenPlayerImports) {
@@ -75,7 +90,13 @@ assert.equal(
 assert.equal(/\.from\s*\(/.test(playerSource), false, 'PlayerApp no debe consultar tablas directamente');
 assert.equal(/\.from\s*\(/.test(performancePanelSource), false, 'la UI de rendimiento delega sus consultas en el loader PLAYER');
 assert.equal(/\.from\s*\(/.test(analysisStoreSource), false, 'Mi análisis no consulta tablas deportivas');
-assert.match(analysisStoreSource, /client\.rpc\(ANALYSIS_RPC\)/, 'Mi análisis usa su RPC propia sin identidad externa');
+assert.match(analysisStoreSource, /client\.rpc\(rpcName, payload\)/, 'Mi análisis usa un ejecutor RPC PLAYER sin identidad externa');
+assert.deepEqual(
+  [...analysisStoreSource.matchAll(/^\s*(?:overview|live|production|history): '([^']+)'/gm)].map((match) => match[1]),
+  ['get_my_player_analysis_overview', 'get_my_player_analysis_live_stats', 'get_my_player_production_actions', 'get_my_player_match_history'],
+  'Mi análisis solo usa las cuatro RPC PLAYER ricas.',
+);
+assert.doesNotMatch(analysisStoreSource, /p_(?:jugador|user|membership|player)_id/i);
 assert.deepEqual(
   [...playerSource.matchAll(/\.rpc\(\s*['"]([^'"]+)['"]/g)].map((match) => match[1]),
   ['get_my_player_profile'],
