@@ -71,10 +71,12 @@ assert.match(panel, /<RpeStatusCard entry=\{latestRpe\} compact/);
 // Rendimiento: estado actual claro y estados parciales sin repetir cajas vacías.
 assert.match(panel, /function CurrentState/);
 assert.match(panel, /Estado actual/);
-assert.match(panel, /Tu última información/);
-assert.match(panel, /Aún no has registrado el Wellness de hoy/);
-assert.match(panel, /Aún no has registrado el RPE de hoy/);
-assert.match(panel, /Último disponible/);
+assert.doesNotMatch(panel, /Tu última información/);
+assert.match(panel, /Wellness hoy/);
+assert.match(panel, /RPE hoy/);
+assert.match(panel, /Sin respuesta/);
+assert.match(panel, /Último:/);
+assert.match(panel, /lg:grid-cols-\[minmax\(0,7fr\)_minmax\(12rem,3fr\)\]/, 'Estado actual reserva aproximadamente 70/30 para Wellness y RPE.');
 assert.match(panel, /Todavía no tienes registros suficientes/);
 for (const field of ['Wellness', 'Calidad del sueño', 'Horas de sueño', 'Fatiga', 'Dolor muscular', 'Estrés', 'Ánimo', 'Peso']) {
   assert.match(panel, new RegExp(field));
@@ -87,6 +89,7 @@ assert.match(presentation, /PLAYER_WELLNESS_SCORE_SCALE = Object\.freeze\(\{ min
 // Una sola evolución, con selector real y navegación acotada Semana/Mes.
 assert.match(panel, /function EvolutionSection/);
 assert.match(panel, /Tu evolución/);
+assert.doesNotMatch(panel, /Una métrica, un periodo/);
 assert.match(panel, /\[\['week', 'Semana'\], \['month', 'Mes'\]\]/);
 assert.match(panel, /<select value=\{effectiveMetric\}/);
 assert.match(panel, /availableMetrics\.some\(\(metric\) => metric\.key === metricKey\) \? metricKey : availableMetrics\[0\]\?\.key \|\| ''/, 'Una métrica que deja de estar disponible obtiene fallback seguro.');
@@ -109,6 +112,14 @@ assert.match(trendChart, /<circle/);
 assert.match(trendChart, /<title>/);
 assert.match(trendChart, /role="img"/);
 assert.match(trendChart, /metric\.unit/);
+assert.match(trendChart, /const height = 200/, 'La gráfica baja de 270 a 200 unidades de alto.');
+assert.doesNotMatch(trendChart, /const height = 270/);
+assert.match(trendChart, /hasTenPointScale/);
+assert.match(trendChart, /Array\.from\(\{ length: 11 - Number\(scale\.min\) \}/, 'La escala 0–10/1–10 genera ticks enteros densos.');
+assert.match(trendChart, /hidden sm:block/, 'En móvil se aligeran ticks alternos sin perder extremos.');
+assert.match(trendChart, /maximumFractionDigits: 2/, 'Los valores visibles conservan hasta dos decimales reales.');
+assert.match(trendChart, /\{formatNumber\(point\.value\)\}/, 'Cada punto muestra su valor sin depender del hover.');
+assert.match(trendChart, /fullDate\(point\.date\).*metric\.label.*formatValue\(point\.value, metric\.unit\)/s, 'El tooltip conserva fecha, métrica, valor y unidad.');
 assert.match(trendChart, /const axisLabelCount = Math\.min\(points\.length, 5\)/, 'La cantidad de etiquetas se calcula fuera del callback.');
 assert.match(trendChart, /Array\.from\(\{ length: axisLabelCount \}, \(_, index\) =>/, 'Array.from usa únicamente los dos argumentos que realmente entrega.');
 assert.doesNotMatch(trendChart, /Array\.from\([^]*\(_, index, labels\)/, 'Regresión: el tercer argumento de Array.from es undefined y tumbaba el render con puntos.');
@@ -128,8 +139,10 @@ assert.deepEqual(runtimeAxisIndexes(1), [0]);
 assert.deepEqual(runtimeAxisIndexes(7), [0, 2, 3, 5, 6]);
 assert.deepEqual(runtimeAxisIndexes(31), [0, 8, 15, 23, 30]);
 assert.match(presentation, /metric\.scale \|\| getDynamicScale/);
+assert.match(presentation, /metric\.scale \|\| getDynamicScale\(scaleValues\)/, 'Peso mantiene una escala dinámica basada en sus propios valores.');
 assert.match(presentation, /summaryValues\.length > 1/);
 assert.doesNotMatch(presentation, /interpol|imput|value:\s*0/, 'No se imputan días ni valores ausentes.');
+assert.match(trendChart, /splitAvailablePlayerSeries\(points\)/, 'La línea se corta en días sin respuesta.');
 
 // Calendario visual y detalle bajo demanda sustituyen el histórico largo.
 assert.match(panel, /function CalendarSection/);
@@ -145,6 +158,10 @@ assert.match(panel, /Ver mes anterior en el calendario/);
 assert.match(panel, /Ver mes siguiente en el calendario/);
 assert.match(panel, /function DayDetail/);
 assert.match(panel, /Detalle del día/);
+assert.match(panel, /const summaryItems = \[/);
+assert.match(panel, /Wellness \$\{formatMetricValue\(wellnessEntry\.health_ratio/);
+assert.match(panel, /RPE \$\{formatMetricValue\(rpeEntry\.rpe/);
+assert.match(panel, /summaryItems\.join\(' · '\)/);
 assert.match(panel, /Wellness — Sin respuesta/);
 assert.match(panel, /RPE — Sin respuesta/);
 assert.match(panel, /wellnessEntry\.discomfort/);
@@ -162,7 +179,7 @@ assert.doesNotMatch(panel, /Tu carga|Carga de equipo|U\.C\./);
 // Responsive y accesibilidad para 320–430 px sin estructuras de escritorio forzadas.
 assert.match(app, /px-3 py-3[^\"]*sm:px-4/);
 assert.match(app, /max-w-6xl/);
-assert.match(panel, /grid gap-3 lg:grid-cols-\[1\.05fr_0\.95fr\]/);
+assert.match(panel, /grid gap-3 lg:grid-cols-\[minmax\(0,1\.15fr\)_minmax\(18rem,0\.85fr\)\]/);
 assert.match(trendChart, /className="block h-auto w-full"/);
 assert.doesNotMatch(branch, /<table|overflow-x-auto|min-w-\[[4-9]\d\dpx\]/);
 assert.match(panel, /focus-visible:ring-2/);
@@ -175,6 +192,8 @@ assert.match(panel, /\['Wellness', 'RPE'\]\.map/);
 assert.match(panel, /Cargando \{label\}/);
 assert.match(panel, /Reintentar/);
 assert.match(panel, /if \(cancelled\) return/, 'Una respuesta temporal tardía no reemplaza el estado tras cambiar de periodo.');
+assert.match(panel, /const hasOpenedPerformanceRef = useRef\(false\)/);
+assert.match(panel, /setAnchorDateValue\(getLocalPlayerDateKey\(\)\)/, 'La primera entrada abre en la fecha local actual.');
 
 for (const forbiddenLabel of ['Borja', 'Jairo', 'Prioridad', 'Vigilar', 'media de plantilla', 'ranking', 'alerta PF', 'cumplimiento', 'número de respuestas', 'diagnóstico', 'lesión']) {
   assert.equal(branch.toLowerCase().includes(forbiddenLabel.toLowerCase()), false, `Privacidad visual: no mostrar ${forbiddenLabel}.`);

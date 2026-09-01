@@ -5,15 +5,21 @@ const shortDate = (value) => {
   return match ? `${match[2]}/${match[1]}` : '';
 };
 
-const formatValue = (value, unit) => `${Number(value).toLocaleString('es-ES', { maximumFractionDigits: 1 })}${unit === 'kg' ? ' kg' : unit}`;
+const fullDate = (value) => {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : '';
+};
+
+const formatNumber = (value) => Number(value).toLocaleString('es-ES', { maximumFractionDigits: 2 });
+const formatValue = (value, unit) => `${formatNumber(value)}${unit === 'kg' ? ' kg' : unit}`;
 
 export default function PlayerPerformanceTrendChart({ model }) {
   const { metric, points = [], scale = { min: 0, max: 1 }, aggregation = 'daily' } = model || {};
   const available = points.filter((point) => point?.date && point?.value !== null);
   const segments = splitAvailablePlayerSeries(points);
-  const width = 720;
-  const height = 270;
-  const plot = { left: 42, right: 16, top: 18, bottom: 38 };
+  const width = 640;
+  const height = 200;
+  const plot = { left: 38, right: 14, top: 34, bottom: 30 };
   const plotWidth = width - plot.left - plot.right;
   const plotHeight = height - plot.top - plot.bottom;
   const scaleSpan = Math.max(Number(scale.max) - Number(scale.min), 0.1);
@@ -26,11 +32,14 @@ export default function PlayerPerformanceTrendChart({ model }) {
       Math.round((index * Math.max(points.length - 1, 0)) / Math.max(axisLabelCount - 1, 1))
     )),
   );
-  const axisValues = [scale.max, (scale.max + scale.min) / 2, scale.min];
+  const hasTenPointScale = Number(scale.max) === 10 && [0, 1].includes(Number(scale.min));
+  const axisValues = hasTenPointScale
+    ? Array.from({ length: 11 - Number(scale.min) }, (_, index) => 10 - index)
+    : [scale.max, (scale.max + scale.min) / 2, scale.min];
 
   if (!metric || !available.length) {
     return (
-      <div className="flex min-h-[230px] items-center justify-center rounded-2xl border border-dashed border-white/10 bg-black/10 px-5 text-center text-sm text-slate-400">
+      <div className="flex min-h-[170px] items-center justify-center rounded-2xl border border-dashed border-white/10 bg-black/10 px-5 text-center text-sm text-slate-400">
         No hay suficientes registros de esta métrica en el periodo.
       </div>
     );
@@ -44,14 +53,17 @@ export default function PlayerPerformanceTrendChart({ model }) {
         role="img"
         aria-label={`${metric.label}, ${aggregation === 'weekly_average' ? 'medias semanales' : 'valores diarios'}: ${available.map((point) => `${point.date}, ${formatValue(point.value, metric.unit)}`).join('; ')}`}
       >
-        {axisValues.map((value) => (
-          <g key={value}>
+        {axisValues.map((value) => {
+          const hideOnMobile = hasTenPointScale && value % 2 !== 0 && value !== scale.min && value !== scale.max;
+          return (
+          <g key={value} className={hideOnMobile ? 'hidden sm:block' : undefined}>
             <line x1={plot.left} x2={width - plot.right} y1={yFor(value)} y2={yFor(value)} stroke="rgba(148,163,184,0.14)" strokeWidth="1" />
-            <text x={plot.left - 9} y={yFor(value) + 4} textAnchor="end" fill="#64748b" fontSize="10">
-              {Number(value).toLocaleString('es-ES', { maximumFractionDigits: 1 })}
+            <text x={plot.left - 8} y={yFor(value) + 4} textAnchor="end" fill="#64748b" fontSize="11">
+              {formatNumber(value)}
             </text>
           </g>
-        ))}
+          );
+        })}
         {segments.map((segment, segmentIndex) => (
           <polyline
             key={`segment-${segmentIndex}`}
@@ -64,13 +76,17 @@ export default function PlayerPerformanceTrendChart({ model }) {
           />
         ))}
         {available.map((point) => {
+          const index = indexById.get(point.id);
           const pointLabel = point.endDate && point.endDate !== point.date
             ? `${shortDate(point.date)}–${shortDate(point.endDate)}`
             : shortDate(point.date);
           return (
             <g key={point.id}>
-              <title>{`${pointLabel}: ${formatValue(point.value, metric.unit)}${aggregation === 'weekly_average' ? ` · media de ${point.count} días` : ''}`}</title>
-              <circle cx={xFor(indexById.get(point.id))} cy={yFor(point.value)} r="6" fill="#5ee7ff" stroke="#0b1424" strokeWidth="3" />
+              <title>{`${fullDate(point.date)}\n${metric.label}\n${formatValue(point.value, metric.unit)}${aggregation === 'weekly_average' ? ` · media de ${point.count} días (${pointLabel})` : ''}`}</title>
+              <text x={xFor(index)} y={yFor(point.value) - (index % 2 ? 22 : 11)} textAnchor="middle" fill="#e2f8ff" fontSize="15" fontWeight="800" stroke="#0b1424" strokeWidth="3" paintOrder="stroke">
+                {formatNumber(point.value)}
+              </text>
+              <circle cx={xFor(index)} cy={yFor(point.value)} r="5.5" fill="#5ee7ff" stroke="#0b1424" strokeWidth="2.5" />
             </g>
           );
         })}

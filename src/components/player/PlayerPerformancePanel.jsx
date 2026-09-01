@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   loadPlayerPerformancePage,
   loadPlayerPerformanceRange,
@@ -38,6 +38,11 @@ const formatDate = (value, compact = false) => {
 const formatMonth = (value) => {
   const match = String(value || '').match(/^(\d{4})-(\d{2})-\d{2}$/);
   return match ? `${MONTHS[Number(match[2]) - 1]} ${match[1]}` : '';
+};
+
+const formatDayMonth = (value) => {
+  const match = String(value || '').match(/^\d{4}-(\d{2})-(\d{2})$/);
+  return match ? `${match[2]}/${match[1]}` : '';
 };
 
 const formatPeriod = (period, anchorDate) => {
@@ -131,7 +136,7 @@ function AvailableFields({ fields, className = '' }) {
   const visible = fields.filter((field) => field.value !== '');
   if (!visible.length) return null;
   return (
-    <dl className={`grid grid-cols-2 gap-x-4 gap-y-3 min-[430px]:grid-cols-3 ${className}`}>
+    <dl className={`grid grid-cols-2 gap-x-3 gap-y-2 min-[430px]:grid-cols-3 ${className}`}>
       {visible.map((field) => (
         <div key={field.label} className="min-w-0 border-l border-white/10 pl-3">
           <dt className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-500">{field.label}</dt>
@@ -156,29 +161,29 @@ function CurrentState({ wellness, rpe, today }) {
   const workload = getRpeWorkloadAvailability(latestRpe);
 
   return (
-    <section className={`${CARD_CLASS} p-4 sm:p-6`}>
+    <section className={`${CARD_CLASS} p-4 sm:p-5`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <SectionHeading eyebrow="Estado actual" title="Tu última información" description="Tus respuestas propias, sin comparaciones con otros jugadores." />
+        <SectionHeading title="Estado actual" />
         <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{latestDate ? `Última respuesta · ${formatDate(latestDate, true)}` : 'Sin registros todavía'}</p>
       </div>
 
       {!hasRecords ? <p className="mt-5 rounded-2xl border border-dashed border-white/10 px-4 py-5 text-sm text-slate-400">Todavía no tienes registros suficientes.</p> : (
         <>
-          {(!todayWellness || !todayRpe) ? <div className="mt-4 space-y-1.5 rounded-2xl border border-white/[0.07] bg-white/[0.025] px-3.5 py-3 text-xs text-slate-300" role="status">
-            {!todayWellness ? <p>Aún no has registrado el Wellness de hoy.{latestWellness ? ` Último disponible: ${formatDate(latestWellness.entry_date)}.` : ''}</p> : null}
-            {!todayRpe ? <p>Aún no has registrado el RPE de hoy.{latestRpe ? ` Último disponible: ${formatDate(latestRpe.entry_date)}.` : ''}</p> : null}
+          {(!todayWellness || !todayRpe) ? <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold text-slate-400" role="status">
+            {!todayWellness ? <p className="rounded-lg border border-white/[0.07] bg-white/[0.025] px-2.5 py-1.5"><span className="text-slate-300">Wellness hoy</span> · Sin respuesta{latestWellness ? ` · Último: ${formatDayMonth(latestWellness.entry_date)}` : ''}</p> : null}
+            {!todayRpe ? <p className="rounded-lg border border-white/[0.07] bg-white/[0.025] px-2.5 py-1.5"><span className="text-slate-300">RPE hoy</span> · Sin respuesta{latestRpe ? ` · Último: ${formatDayMonth(latestRpe.entry_date)}` : ''}</p> : null}
           </div> : null}
 
-          <div className="mt-5 grid gap-5 lg:grid-cols-[1.45fr_0.75fr] lg:divide-x lg:divide-white/10">
+          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(12rem,3fr)] lg:divide-x lg:divide-white/10">
             <div className="min-w-0">
               <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-black text-white">Wellness</h3>{latestWellness ? <time className="text-[10px] font-bold text-slate-500" dateTime={latestWellness.entry_date}>{formatDate(latestWellness.entry_date)}</time> : null}</div>
-              {latestWellness ? <>{isAvailable(latestWellness.health_ratio) ? <div className="mt-3 flex items-end gap-2"><p className="text-4xl font-black text-white">{latestWellness.health_ratio}</p><span className="pb-1 text-sm font-bold text-slate-500">/10</span></div> : null}<AvailableFields fields={wellnessFields} className="mt-4" /></> : <p className="mt-3 text-sm text-slate-500">Sin respuesta de Wellness disponible.</p>}
-              {latestWellness?.discomfort ? <div className="mt-4 border-l-2 border-rose-200/50 pl-3"><p className="text-[9px] font-black uppercase tracking-[0.12em] text-rose-200/80">Molestia indicada</p><p className="mt-1 text-sm leading-5 text-slate-200">{latestWellness.discomfort}</p></div> : null}
+              {latestWellness ? <>{isAvailable(latestWellness.health_ratio) ? <div className="mt-2 flex items-end gap-2"><p className="text-3xl font-black text-white">{latestWellness.health_ratio}</p><span className="pb-0.5 text-xs font-bold text-slate-500">/10</span></div> : null}<AvailableFields fields={wellnessFields} className="mt-3" /></> : <p className="mt-3 text-sm text-slate-500">Sin respuesta de Wellness disponible.</p>}
+              {latestWellness?.discomfort ? <div className="mt-3 border-l-2 border-rose-200/50 pl-3"><p className="text-[9px] font-black uppercase tracking-[0.12em] text-rose-200/80">Molestia indicada</p><p className="mt-1 text-sm leading-5 text-slate-200">{latestWellness.discomfort}</p></div> : null}
               {latestWellness?.comment ? <div className="mt-3 border-l-2 border-slate-600 pl-3"><p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Tu comentario</p><p className="mt-1 text-sm leading-5 text-slate-300">{latestWellness.comment}</p></div> : null}
             </div>
             <div className="min-w-0 lg:pl-5">
               <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-black text-white">RPE</h3>{latestRpe ? <time className="text-[10px] font-bold text-slate-500" dateTime={latestRpe.entry_date}>{formatDate(latestRpe.entry_date)}</time> : null}</div>
-              {latestRpe ? <div className="mt-3"><p className="text-4xl font-black text-white">{isAvailable(latestRpe.rpe) ? latestRpe.rpe : '—'}<span className="ml-1 text-sm text-slate-500">/10</span></p>
+              {latestRpe ? <div className="mt-2"><p className="text-3xl font-black text-white">{isAvailable(latestRpe.rpe) ? latestRpe.rpe : '—'}<span className="ml-1 text-xs text-slate-500">/10</span></p>
                 {(workload.durationMinutes !== null || workload.load !== null) ? <p className="mt-2 flex flex-wrap gap-x-3 text-xs font-bold text-slate-400">{workload.durationMinutes !== null ? <span>{workload.durationMinutes} min</span> : null}{workload.load !== null ? <span>Carga interna registrada {workload.load}</span> : null}</p> : null}
                 {latestRpe.comment ? <div className="mt-4 border-l-2 border-slate-600 pl-3"><p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Tu comentario</p><p className="mt-1 text-sm leading-5 text-slate-300">{latestRpe.comment}</p></div> : null}
               </div> : <p className="mt-3 text-sm text-slate-500">Sin respuesta de RPE disponible.</p>}
@@ -216,9 +221,9 @@ function EvolutionSection({ rangeState, period, onPeriodChange, anchorDate, onAn
   }, [effectiveMetric, metricKey, onMetricChange]);
 
   return (
-    <section className={`${CARD_CLASS} p-4 sm:p-6`}>
+    <section className={`${CARD_CLASS} p-4 sm:p-5`}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <SectionHeading eyebrow="Tu evolución" title="Una métrica, un periodo" description="Los valores ausentes se mantienen vacíos; no se completan ni se estiman." />
+        <SectionHeading title="Tu evolución" description="Los valores ausentes se mantienen vacíos; no se completan ni se estiman." />
         <div className="flex rounded-xl border border-white/[0.07] bg-black/20 p-1" aria-label="Periodo de evolución">
           {[['week', 'Semana'], ['month', 'Mes']].map(([value, label]) => <button key={value} type="button" onClick={() => onPeriodChange(value)} aria-pressed={period === value} className={`min-h-[42px] rounded-lg px-4 text-xs font-black transition ${period === value ? 'bg-caudal-electric text-[#06101f]' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'} ${FOCUS_RING}`}>{label}</button>)}
         </div>
@@ -234,12 +239,12 @@ function EvolutionSection({ rangeState, period, onPeriodChange, anchorDate, onAn
         </label>
       </div>
 
-      <div className="mt-4 rounded-2xl border border-white/[0.07] bg-black/15 p-2 sm:p-4">
-        {rangeState.status === 'loading' ? <div className="flex min-h-[230px] items-center justify-center text-sm font-bold text-slate-500" role="status">Cargando el periodo…</div> : <PlayerPerformanceTrendChart model={model} />}
+      <div className="mt-3 rounded-2xl border border-white/[0.07] bg-black/15 p-2 sm:p-3">
+        {rangeState.status === 'loading' ? <div className="flex min-h-[170px] items-center justify-center text-sm font-bold text-slate-500" role="status">Cargando el periodo…</div> : <PlayerPerformanceTrendChart model={model} />}
       </div>
 
       {rangeState.status === 'error' ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-300/15 bg-rose-300/[0.04] px-3 py-2.5"><p role="alert" className="text-xs text-rose-200">No se pudo cargar este periodo.</p><button type="button" onClick={() => onAnchorChange(anchorDate)} className={`min-h-[40px] rounded-lg bg-white/[0.07] px-3 text-xs font-black text-white ${FOCUS_RING}`}>Reintentar</button></div> : null}
-      {rangeState.status === 'ready' && summary ? <div className="mt-4 flex flex-wrap gap-x-6 gap-y-3 border-t border-white/[0.07] pt-4">
+      {rangeState.status === 'ready' && summary ? <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 border-t border-white/[0.07] pt-3">
         <p className="text-xs text-slate-400"><span className="block text-[9px] font-black uppercase tracking-[0.12em] text-slate-600">Media</span><strong className="mt-1 block text-base text-white">{formatMetricValue(summary.average, model.metric.unit)}</strong></p>
         <p className="text-xs text-slate-400"><span className="block text-[9px] font-black uppercase tracking-[0.12em] text-slate-600">Último valor</span><strong className="mt-1 block text-base text-white">{formatMetricValue(summary.latest, model.metric.unit)}</strong></p>
         {summary.change !== null ? <p className="text-xs text-slate-400"><span className="block text-[9px] font-black uppercase tracking-[0.12em] text-slate-600">Variación</span><strong className="mt-1 block text-base text-white">{summary.change > 0 ? '+' : ''}{formatMetricValue(summary.change, model.metric.unit)}</strong></p> : <p className="self-end text-xs text-slate-500">No hay suficientes registros para ver una tendencia.</p>}
@@ -269,11 +274,11 @@ function CalendarSection({ anchorDate, wellness, rpe, selectedDate, onSelectDate
           const inMonth = date >= month.startDate && date <= month.endDate;
           const day = Number(date.slice(-2));
           const record = activity.get(date);
-          if (!inMonth) return <span key={date} role="gridcell" aria-hidden="true" className="min-h-[54px]" />;
-          if (!record) return <span key={date} role="gridcell" aria-label={`${formatDate(date)}, sin registro`} className="flex min-h-[54px] flex-col items-center justify-center rounded-xl text-[11px] font-bold text-slate-600"><span>{day}</span><span aria-hidden="true" className="mt-1 text-[9px]">○</span></span>;
+          if (!inMonth) return <span key={date} role="gridcell" aria-hidden="true" className="min-h-[50px]" />;
+          if (!record) return <span key={date} role="gridcell" aria-label={`${formatDate(date)}, sin registro`} className="flex min-h-[50px] flex-col items-center justify-center rounded-xl text-[11px] font-bold text-slate-600"><span>{day}</span><span aria-hidden="true" className="mt-0.5 text-[9px]">○</span></span>;
           const responseLabel = record.wellness && record.rpe ? 'Wellness y RPE' : record.wellness ? 'Wellness' : 'RPE';
           return (
-            <button key={date} type="button" role="gridcell" onClick={() => onSelectDate(date)} aria-pressed={selectedDate === date} aria-label={`${formatDate(date)}, ${responseLabel}${record.hasDiscomfort ? ', molestia indicada' : ''}`} className={`relative flex min-h-[54px] min-w-0 flex-col items-center justify-center rounded-xl border px-0.5 text-[11px] font-black transition ${selectedDate === date ? 'border-caudal-electric bg-caudal-electric/[0.12] text-white' : 'border-white/[0.07] bg-white/[0.035] text-slate-300 hover:bg-white/[0.07]'} ${FOCUS_RING}`}>
+            <button key={date} type="button" role="gridcell" onClick={() => onSelectDate(date)} aria-pressed={selectedDate === date} aria-label={`${formatDate(date)}, ${responseLabel}${record.hasDiscomfort ? ', molestia indicada' : ''}`} className={`relative flex min-h-[50px] min-w-0 flex-col items-center justify-center rounded-xl border px-0.5 text-[11px] font-black transition ${selectedDate === date ? 'border-caudal-electric bg-caudal-electric/[0.12] text-white ring-1 ring-caudal-electric/35' : 'border-white/[0.07] bg-white/[0.035] text-slate-300 hover:bg-white/[0.07]'} ${FOCUS_RING}`}>
               <span>{day}</span>
               <span aria-hidden="true" className="mt-1 text-[8px] tracking-tight text-caudal-electric">{record.wellness && record.rpe ? 'W+R' : record.wellness ? 'W' : 'R'}</span>
               {record.hasDiscomfort ? <span aria-hidden="true" className="absolute right-1 top-0.5 text-[10px] text-rose-200">△</span> : null}
@@ -293,6 +298,12 @@ function DayDetail({ selectedDate, wellness, rpe }) {
   const wellnessEntry = activity?.wellness || null;
   const rpeEntry = activity?.rpe || null;
   const workload = getRpeWorkloadAvailability(rpeEntry);
+  const summaryItems = [
+    selectedDate ? formatDate(selectedDate, true) : '',
+    isAvailable(wellnessEntry?.health_ratio) ? `Wellness ${formatMetricValue(wellnessEntry.health_ratio, '/10')}` : '',
+    isAvailable(rpeEntry?.rpe) ? `RPE ${formatMetricValue(rpeEntry.rpe, '/10')}` : '',
+    wellnessEntry?.discomfort ? 'Molestia indicada' : '',
+  ].filter(Boolean);
   const wellnessFields = [
     { label: 'Wellness', value: formatMetricValue(wellnessEntry?.health_ratio, '/10') },
     { label: 'Calidad del sueño', value: formatMetricValue(wellnessEntry?.sleep_quality, '/10') },
@@ -305,18 +316,19 @@ function DayDetail({ selectedDate, wellness, rpe }) {
   ];
 
   return (
-    <section className={`${CARD_CLASS} p-4 sm:p-5`}>
-      <SectionHeading eyebrow="Detalle del día" title={selectedDate ? formatDate(selectedDate) : 'Elige un registro'} description={selectedDate ? 'Solo se muestran los campos que respondiste ese día.' : 'Pulsa un día con W o R en el calendario.'} />
-      {selectedDate ? <div className="mt-5 space-y-5">
+    <section className={`${CARD_CLASS} p-4`}>
+      <SectionHeading title="Detalle del día" description={!selectedDate ? 'Pulsa un día con W o R en el calendario.' : undefined} />
+      {summaryItems.length ? <p className="mt-2 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">{summaryItems.join(' · ')}</p> : null}
+      {selectedDate ? <div className="mt-3 space-y-4">
         <div>
           <h3 className="text-sm font-black text-white">Wellness</h3>
           {wellnessEntry ? <>
             <AvailableFields fields={wellnessFields} className="mt-3" />
-            {wellnessEntry.discomfort ? <div className="mt-4 border-l-2 border-rose-200/50 pl-3"><p className="text-[9px] font-black uppercase tracking-[0.12em] text-rose-200/80">Molestia indicada</p><p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-slate-200">{wellnessEntry.discomfort}</p></div> : null}
+            {wellnessEntry.discomfort ? <div className="mt-3 border-l-2 border-rose-200/50 pl-3"><p className="text-[9px] font-black uppercase tracking-[0.12em] text-rose-200/80">Molestia indicada</p><p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-slate-200">{wellnessEntry.discomfort}</p></div> : null}
             {wellnessEntry.comment ? <div className="mt-3 border-l-2 border-slate-600 pl-3"><p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Tu comentario</p><p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-slate-300">{wellnessEntry.comment}</p></div> : null}
           </> : <p className="mt-2 text-xs text-slate-500">Wellness — Sin respuesta</p>}
         </div>
-        <div className="border-t border-white/[0.07] pt-5">
+        <div className="border-t border-white/[0.07] pt-4">
           <h3 className="text-sm font-black text-white">RPE</h3>
           {rpeEntry ? <>
             <div className="mt-3 flex flex-wrap items-end gap-x-5 gap-y-2"><p className="text-3xl font-black text-white">{isAvailable(rpeEntry.rpe) ? rpeEntry.rpe : '—'}<span className="ml-1 text-xs text-slate-500">/10</span></p><p className="flex flex-wrap gap-x-3 pb-1 text-xs font-bold text-slate-400">{workload.durationMinutes !== null ? <span>{workload.durationMinutes} min</span> : null}{workload.load !== null ? <span>Carga interna registrada {workload.load}</span> : null}</p></div>
@@ -334,7 +346,7 @@ function PlayerPerformanceView({ state, rangeState, period, setPeriod, anchorDat
     <div className="space-y-3 sm:space-y-4">
       <CurrentState wellness={state.wellness} rpe={state.rpe} today={today} />
       <EvolutionSection rangeState={rangeState} period={period} onPeriodChange={setPeriod} anchorDate={anchorDate} onAnchorChange={setAnchorDate} metricKey={metricKey} onMetricChange={setMetricKey} />
-      <div className="grid gap-3 lg:grid-cols-[1.05fr_0.95fr] lg:items-start">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(18rem,0.85fr)] lg:items-start">
         <CalendarSection anchorDate={anchorDate} wellness={rangeState.wellness} rpe={rangeState.rpe} selectedDate={selectedDate} onSelectDate={setSelectedDate} onMonthChange={(direction) => setAnchorDate(shiftPlayerPerformanceAnchor(anchorDate, 'month', direction))} />
         <DayDetail selectedDate={selectedDate} wellness={rangeState.wellness} rpe={rangeState.rpe} />
       </div>
@@ -351,11 +363,19 @@ export default function PlayerPerformancePanel({ client, view = 'performance', o
   const [anchorDate, setAnchorDateValue] = useState(() => getLocalPlayerDateKey());
   const [metricKey, setMetricKey] = useState('rpe');
   const [selectedDate, setSelectedDate] = useState('');
+  const hasOpenedPerformanceRef = useRef(false);
   const fetchRange = useMemo(() => getPlayerPerformanceFetchRange(anchorDate), [anchorDate]);
   const setAnchorDate = (nextDate) => {
     if (nextDate === anchorDate) setRangeReloadToken((current) => current + 1);
     else setAnchorDateValue(nextDate);
   };
+
+  useEffect(() => {
+    if (view !== 'performance' || hasOpenedPerformanceRef.current) return;
+    hasOpenedPerformanceRef.current = true;
+    setAnchorDateValue(getLocalPlayerDateKey());
+    setSelectedDate('');
+  }, [view]);
 
   useEffect(() => {
     let cancelled = false;

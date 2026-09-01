@@ -14,6 +14,7 @@ import {
   getPlayerCalendarGrid,
   getPlayerChartEntries,
   getPlayerMetricValue,
+  getPlayerMonthBounds,
   getPlayerPerformanceFetchRange,
   getPlayerWeekBounds,
   shiftPlayerPerformanceAnchor,
@@ -54,6 +55,11 @@ assert.deepEqual(getPlayerWeekBounds('2026-09-03'), {
   startDate: '2026-08-31',
   endDate: '2026-09-06',
 });
+const initialPlayerDate = getLocalPlayerDateKey(new Date(2026, 8, 1, 9, 30));
+assert.equal(initialPlayerDate, '2026-09-01');
+assert.deepEqual(getPlayerWeekBounds(initialPlayerDate), { startDate: '2026-08-31', endDate: '2026-09-06' });
+assert.deepEqual(getPlayerMonthBounds(initialPlayerDate), { startDate: '2026-09-01', endDate: '2026-09-30' });
+assert.deepEqual(getPlayerWeekBounds('2027-01-01'), { startDate: '2026-12-28', endDate: '2027-01-03' }, 'La semana inicial puede cruzar de año sin cambiar de zona horaria.');
 assert.equal(getPlayerCalendarGrid('2026-09-03').length, 35);
 assert.deepEqual(getPlayerCalendarGrid('fecha-inválida'), [], 'Una fecha inválida produce un calendario vacío, no una excepción.');
 assert.deepEqual(getPlayerPerformanceFetchRange('2026-09-03'), {
@@ -82,8 +88,24 @@ const weekTrend = buildPlayerPerformanceTrend({
 });
 assert.equal(weekTrend.points.length, 7, 'La semana representa sus siete días reales.');
 assert.deepEqual(weekTrend.points.filter((point) => point.value !== null).map((point) => point.value), [5, 7]);
+assert.deepEqual(
+  splitAvailablePlayerSeries(weekTrend.points).map((segment) => segment.map((point) => point.value)),
+  [[5], [7]],
+  'Dos respuestas separadas por un día vacío se dibujan como segmentos discontinuos.',
+);
 assert.deepEqual(weekTrend.summary, { average: 6, latest: 7, change: 2, count: 2 });
 assert.equal(weekTrend.aggregation, 'daily');
+
+const consecutiveTrend = buildPlayerPerformanceTrend({
+  wellness: [
+    { id: 'consecutive-2', entry_date: '2026-09-02', mood: 10 },
+    { id: 'consecutive-1', entry_date: '2026-09-01', mood: 1 },
+  ],
+  metricKey: 'mood',
+  period: 'week',
+  anchorDate: '2026-09-02',
+});
+assert.deepEqual(splitAvailablePlayerSeries(consecutiveTrend.points).map((segment) => segment.map((point) => point.value)), [[1, 10]]);
 
 const onePointTrend = buildPlayerPerformanceTrend({
   wellness: [ownWellness[0]],
@@ -94,6 +116,16 @@ const onePointTrend = buildPlayerPerformanceTrend({
 assert.equal(onePointTrend.metric.unit, 'kg');
 assert.equal(onePointTrend.summary.change, null, 'Una sola respuesta no inventa tendencia ni divide por cero.');
 assert.deepEqual(onePointTrend.scale, { min: 73.2, max: 75.2 }, 'El peso conserva su unidad y una escala propia.');
+const equalWeightTrend = buildPlayerPerformanceTrend({
+  wellness: [
+    { id: 'weight-2', entry_date: '2026-09-02', weight: 74.2 },
+    { id: 'weight-1', entry_date: '2026-09-01', weight: 74.2 },
+  ],
+  metricKey: 'weight',
+  period: 'week',
+  anchorDate: '2026-09-02',
+});
+assert.deepEqual(equalWeightTrend.scale, { min: 73.2, max: 75.2 }, 'Valores de peso iguales conservan un dominio visible y no usan 0–10.');
 assert.equal(buildPlayerPerformanceTrend({ metricKey: 'rpe', period: 'week', anchorDate: '2026-09-03' }).summary, null);
 assert.deepEqual(
   buildPlayerPerformanceTrend({ metricKey: 'rpe', period: 'month', anchorDate: 'fecha-inválida' }).points,
