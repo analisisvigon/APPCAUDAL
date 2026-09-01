@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import AccordionSection from '../shared/AccordionSection';
+import { isAllowedPlayerAnalysisVideo } from '../../data/playerAnalysisStore';
 import {
   PLAYER_ANALYSIS_ACTION_FILTERS,
   buildPlayerAnalysisConnections,
@@ -7,7 +8,7 @@ import {
   buildPlayerProductionZones,
   filterPlayerProductionActions,
   formatPlayerAnalysisDate,
-  getPlayerAnalysisVideoActions,
+  getPlayerZoneMapGridClass,
 } from '../../utils/playerAnalysisPresentation';
 import {
   PLAYER_ANALYSIS_CARD,
@@ -46,7 +47,7 @@ function CategoryRows({ title, rows }) {
 }
 
 function SafeVideoLink({ action, compact = false }) {
-  if (!action.videoAvailable || !action.videoUrl) return null;
+  if (!action.videoAvailable || !isAllowedPlayerAnalysisVideo(action.videoUrl)) return null;
   return (
     <a
       href={action.videoUrl}
@@ -102,18 +103,23 @@ export default function PlayerAnalysisProduction({ state, onRetry }) {
   const zones = useMemo(() => buildPlayerProductionZones(filteredActions), [filteredActions]);
   const categories = useMemo(() => buildPlayerProductionCategories(filteredActions), [filteredActions]);
   const connections = useMemo(() => buildPlayerAnalysisConnections(filteredActions), [filteredActions]);
-  const videos = useMemo(() => getPlayerAnalysisVideoActions(filteredActions), [filteredActions]);
+  const visibleZoneMaps = useMemo(() => [
+    filter !== 'Asistencias' ? { key: 'shots', title: 'Zonas de tiro', zones: zones.shots, compact: false } : null,
+    filter !== 'Goles' ? { key: 'assists', title: 'Zonas de asistencia', zones: zones.assists, compact: false } : null,
+    filter !== 'Asistencias' ? { key: 'goals', title: 'Zonas de portería', zones: zones.goals, compact: true } : null,
+  ].filter((map) => map && map.zones.some((zone) => zone.count > 0)), [filter, zones]);
+  const zoneGridClass = getPlayerZoneMapGridClass(visibleZoneMaps.length);
 
   if (state.status === 'loading') return <PlayerAnalysisLoading label="Cargando producción" />;
   if (state.status === 'error') return <PlayerAnalysisError title="Producción no disponible" kind={state.errorKind} onRetry={onRetry} />;
 
   return (
     <AccordionSection title="Producción" subtitle="Zonas, conexiones y acciones" defaultOpen>
-      <section className={`${PLAYER_ANALYSIS_CARD} p-4 sm:p-5`}>
+      <section className={`${PLAYER_ANALYSIS_CARD} p-3.5 sm:p-4`}>
         <PlayerAnalysisSectionHeader
           eyebrow="Producción propia"
           title="Zonas y acciones"
-          description="Goles y asistencias sanitizados para los filtros activos."
+          description="Goles y asistencias del periodo seleccionado."
           action={<span className="rounded-xl border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] font-black text-slate-300">{actions.length} acciones</span>}
         />
 
@@ -137,26 +143,16 @@ export default function PlayerAnalysisProduction({ state, onRetry }) {
           <div className="mt-4"><PlayerAnalysisEmpty title={`Sin ${filter.toLowerCase()}`} copy="Prueba otro filtro de acción o ámbito deportivo." /></div>
         ) : (
           <>
-            <div className="mt-5 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {filter !== 'Asistencias' ? (
-                <div className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.025] p-3">
-                  <p className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-white">Zonas de tiro</p>
-                  <PlayerAnalysisZoneMap zones={zones.shots} emptyLabel="Sin zonas de tiro" />
-                </div>
-              ) : null}
-              {filter !== 'Goles' ? (
-                <div className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.025] p-3">
-                  <p className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-white">Zonas de asistencia</p>
-                  <PlayerAnalysisZoneMap zones={zones.assists} emptyLabel="Sin zonas de asistencia" />
-                </div>
-              ) : null}
-              {filter !== 'Asistencias' ? (
-                <div className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.025] p-3">
-                  <p className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-white">Zonas de portería</p>
-                  <PlayerAnalysisZoneMap zones={zones.goals} compact emptyLabel="Sin destino registrado" />
-                </div>
-              ) : null}
-            </div>
+            {visibleZoneMaps.length ? (
+              <div className={`mt-4 grid min-w-0 gap-3 ${zoneGridClass}`}>
+                {visibleZoneMaps.map((map) => (
+                  <div key={map.key} className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.025] p-3">
+                    <p className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-white">{map.title}</p>
+                    <PlayerAnalysisZoneMap zones={map.zones} compact={map.compact} />
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
             {(categories.contacts.length || categories.phases.length || categories.subphases.length) ? (
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -166,13 +162,13 @@ export default function PlayerAnalysisProduction({ state, onRetry }) {
               </div>
             ) : null}
 
-            <div className="mt-5 grid min-w-0 gap-4 xl:grid-cols-[0.75fr_1.25fr]">
-              <section className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.025] p-4">
+            <div className="mt-4 max-w-xl">
+              <section className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.025] p-3.5">
                 <PlayerAnalysisSectionHeader eyebrow="Relaciones" title="Conexiones" />
                 {connections.length ? (
-                  <div className="mt-3 divide-y divide-white/[0.08]">
+                  <div className="mt-2 divide-y divide-white/[0.08]">
                     {connections.map((connection) => (
-                      <div key={connection.name} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                      <div key={connection.name} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-bold text-white">{connection.name}</p>
                           <p className="mt-0.5 text-[11px] text-slate-500">{connection.given} dadas · {connection.received} recibidas</p>
@@ -183,34 +179,15 @@ export default function PlayerAnalysisProduction({ state, onRetry }) {
                   </div>
                 ) : <div className="mt-3"><PlayerAnalysisEmpty title="Sin conexiones registradas" /></div>}
               </section>
-
-              <section className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.025] p-4">
-                <PlayerAnalysisSectionHeader eyebrow="Vídeo permitido" title="Videoteca" />
-                {videos.length ? (
-                  <div className="mt-3 divide-y divide-white/[0.08]">
-                    {videos.map((action, index) => (
-                      <div key={`${action.matchDate}-${action.minute}-${action.actionType}-${index}`} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                        <div className="min-w-0 flex-1">
-                          <p className="font-bold text-white">{actionLabel(action)} · {minuteLabel(action.minute)}</p>
-                          <p className="mt-0.5 truncate text-xs text-slate-400">{action.opponent}{action.result ? ` · ${action.result}` : ''}</p>
-                          <p className="mt-0.5 text-[10px] text-slate-500">{action.competitionName} · {formatPlayerAnalysisDate(action.matchDate)}</p>
-                          <p className="mt-1 text-[10px] text-slate-500">{[action.actionType === 'goal' ? action.shotZoneName : action.assistZoneName, action.counterpartName].filter(Boolean).join(' · ')}</p>
-                        </div>
-                        <SafeVideoLink action={action} compact />
-                      </div>
-                    ))}
-                  </div>
-                ) : <div className="mt-3"><PlayerAnalysisEmpty title="Sin vídeos disponibles" copy="Solo aparecen vídeos autorizados por el backend." /></div>}
-              </section>
             </div>
 
-            <section className="mt-5 border-t border-white/[0.08] pt-5">
+            <section className="mt-4 border-t border-white/[0.08] pt-4">
               <PlayerAnalysisSectionHeader
                 eyebrow="Partido a partido"
                 title="Detalle de acciones"
                 action={<span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{filteredActions.length} acciones</span>}
               />
-              <div className="mt-3 grid gap-3 lg:grid-cols-2">
+              <div className={`mt-3 grid gap-3 ${filteredActions.length === 1 ? 'max-w-2xl' : 'lg:grid-cols-2'}`}>
                 {filteredActions.map((action, index) => <ActionSummary key={`${action.matchDate}-${action.minute}-${action.actionType}-${index}`} action={action} />)}
               </div>
             </section>

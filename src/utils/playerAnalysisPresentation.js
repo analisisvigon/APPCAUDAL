@@ -1,3 +1,5 @@
+import { isAllowedPlayerAnalysisVideo } from '../data/playerAnalysisStore.js';
+
 export const PLAYER_ANALYSIS_PARTIAL_NOTE = 'Dato disponible parcialmente';
 
 export const PLAYER_ANALYSIS_COMPETITION_OPTIONS = Object.freeze([
@@ -113,6 +115,12 @@ export function buildPlayerProductionZones(actions = []) {
   };
 }
 
+export function getPlayerZoneMapGridClass(visibleMapCount) {
+  if (visibleMapCount === 1) return 'max-w-md';
+  if (visibleMapCount === 2) return 'max-w-4xl sm:grid-cols-2';
+  return 'sm:grid-cols-2 xl:grid-cols-3';
+}
+
 const countCategory = (actions, field) => {
   const counts = new Map();
   rows(actions).forEach((action) => {
@@ -155,6 +163,45 @@ export function buildPlayerAnalysisConnections(actions = []) {
 export const getPlayerAnalysisVideoActions = (actions = []) => (
   rows(actions).filter((action) => action.videoAvailable === true && clean(action.videoUrl))
 );
+
+const normalizeMatchIdentityPart = (value) => clean(value).toLocaleLowerCase('es-ES');
+
+const getPlayerAnalysisMatchIdentity = (row = {}) => {
+  const matchDate = normalizeMatchIdentityPart(row.matchDate);
+  const opponent = normalizeMatchIdentityPart(row.opponent);
+  const venue = normalizeMatchIdentityPart(row.venue);
+  const competitionKey = normalizeMatchIdentityPart(row.competitionKey);
+  const competitionName = normalizeMatchIdentityPart(row.competitionName);
+  const competition = competitionKey ? `key:${competitionKey}` : competitionName ? `name:${competitionName}` : '';
+  if (!matchDate || !opponent || !venue || !competition) return '';
+  return JSON.stringify([matchDate, opponent, competition, venue]);
+};
+
+export function resolvePlayerHistoryVideoUrls(historyRows = [], productionActions = []) {
+  const safeHistoryRows = rows(historyRows);
+  const historyIdentityCounts = new Map();
+  const actionsByIdentity = new Map();
+
+  safeHistoryRows.forEach((row) => {
+    const identity = getPlayerAnalysisMatchIdentity(row);
+    if (identity) historyIdentityCounts.set(identity, (historyIdentityCounts.get(identity) || 0) + 1);
+  });
+
+  rows(productionActions).forEach((action) => {
+    const identity = getPlayerAnalysisMatchIdentity(action);
+    if (!identity || action.videoAvailable !== true || !isAllowedPlayerAnalysisVideo(action.videoUrl)) return;
+    if (!actionsByIdentity.has(identity)) actionsByIdentity.set(identity, []);
+    actionsByIdentity.get(identity).push(action.videoUrl);
+  });
+
+  return safeHistoryRows.map((row) => {
+    if (row.hasAllowedVideo !== true) return null;
+    const identity = getPlayerAnalysisMatchIdentity(row);
+    if (!identity || historyIdentityCounts.get(identity) !== 1) return null;
+    const matchingVideoUrls = actionsByIdentity.get(identity) || [];
+    return matchingVideoUrls.length === 1 ? matchingVideoUrls[0] : null;
+  });
+}
 
 export function formatPlayerAnalysisDate(value) {
   const source = clean(value);

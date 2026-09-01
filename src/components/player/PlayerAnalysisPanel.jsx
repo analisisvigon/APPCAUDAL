@@ -172,10 +172,10 @@ function CoverageNote({ visible }) {
 
 function DenseMetric({ label, value, detail = '', tone = 'text-white', partial = false, suffix = '' }) {
   return (
-    <article className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-3 sm:p-3.5">
+    <article className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-2.5 sm:p-3">
       <p className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-[9px]">{label}</p>
-      <p className={`mt-1 text-2xl font-black tracking-tight sm:text-3xl ${tone}`}>{formatMetric(value)}{suffix}</p>
-      {detail ? <p className="mt-1 text-[10px] font-semibold leading-4 text-slate-500">{detail}</p> : null}
+      <p className={`mt-0.5 text-xl font-black tracking-tight sm:text-2xl ${tone}`}>{formatMetric(value)}{suffix}</p>
+      {detail ? <p className="mt-0.5 text-[10px] font-semibold leading-4 text-slate-500">{detail}</p> : null}
       <CoverageNote visible={partial} />
     </article>
   );
@@ -191,9 +191,9 @@ function OverviewSection({ state, onRetry }) {
   return (
     <AccordionSection title="Resumen" subtitle="Principales y complementarias" defaultOpen>
       <div className="space-y-3">
-        <section className={`${PLAYER_ANALYSIS_CARD} p-4 sm:p-5`}>
+        <section className={`${PLAYER_ANALYSIS_CARD} p-3.5 sm:p-4`}>
           <PlayerAnalysisSectionHeader eyebrow="Principales" title="Participación" description={presentation.hasData ? 'Tu presencia en los partidos del ámbito seleccionado.' : 'Todavía no hay participación registrada.'} />
-          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <DenseMetric label="Minutos" value={overview.minutes} detail={overview.matchesPlayed ? `${formatMetric(presentation.minutesPerMatch)} min / partido` : 'Sin partidos jugados'} tone="text-caudal-electric" />
             <DenseMetric label="Partidos" value={overview.matchesPlayed} detail={`${overview.matchRecords} registros`} />
             <DenseMetric label="Titularidades" value={overview.starts} detail={`${overview.benchEntries} desde banquillo`} />
@@ -202,9 +202,9 @@ function OverviewSection({ state, onRetry }) {
         </section>
 
         <div className="grid min-w-0 gap-3 lg:grid-cols-[1.15fr_0.85fr]">
-          <section className={`${PLAYER_ANALYSIS_CARD} p-4 sm:p-5`}>
+          <section className={`${PLAYER_ANALYSIS_CARD} p-3.5 sm:p-4`}>
             <PlayerAnalysisSectionHeader eyebrow="Complementarias" title="Producción y disciplina" />
-            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
               <DenseMetric label="Goles" value={overview.goals} tone="text-emerald-200" partial={presentation.goalsPartial} />
               <DenseMetric label="Asistencias" value={overview.assists} tone="text-sky-200" partial={presentation.assistsPartial} />
               <DenseMetric label="Amarillas" value={overview.yellowCards} tone="text-amber-100" />
@@ -212,16 +212,16 @@ function OverviewSection({ state, onRetry }) {
             </div>
           </section>
 
-          <section className={`${PLAYER_ANALYSIS_CARD} p-4 sm:p-5`}>
+          <section className={`${PLAYER_ANALYSIS_CARD} p-3.5 sm:p-4`}>
             <PlayerAnalysisSectionHeader eyebrow="Ritmo ofensivo" title="Producción por 90'" />
-            <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="mt-3 grid grid-cols-2 gap-2">
               {[
                 ['Goles / 90', overview.goalsPer90, 'text-emerald-200'],
                 ['Asist. / 90', overview.assistsPer90, 'text-sky-200'],
                 ['G+A / 90', overview.goalContributionsPer90, 'text-white'],
                 ['G+A total', overview.goalContributions, 'text-white'],
               ].map(([label, value, tone]) => (
-                <div key={label} className="rounded-2xl border border-white/[0.08] bg-white/[0.04] px-3 py-3">
+                <div key={label} className="rounded-2xl border border-white/[0.08] bg-white/[0.04] px-2.5 py-2.5">
                   <span className="text-[8px] font-black uppercase tracking-[0.1em] text-slate-500">{label}</span>
                   <strong className={`mt-1 block text-xl ${tone}`}>{label.includes('/ 90') ? formatRatio(value) : formatMetric(value)}</strong>
                 </div>
@@ -264,13 +264,13 @@ function LiveSection({ state, liveWindow, onWindowChange, onRetry }) {
 
   return (
     <AccordionSection title="Registro en vivo" subtitle="Indicadores validados" defaultOpen>
-      <section className={`${PLAYER_ANALYSIS_CARD} p-4 sm:p-5`}>
-        <PlayerAnalysisSectionHeader eyebrow="Solo datos validados" title="Registro en vivo" description="Indicadores agregados propios; nunca eventos individuales." />
-        <div className="mt-4">{windowSelector}</div>
+      <section className={`${PLAYER_ANALYSIS_CARD} p-3.5 sm:p-4`}>
+        <PlayerAnalysisSectionHeader title="Registro en vivo" />
+        <div className="mt-3">{windowSelector}</div>
         {live.matchesWithEvents === 0 ? <p className="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs text-slate-500">Sin partidos con eventos validados en esta ventana.</p> : null}
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           {metrics.map(([label, value, format]) => (
-            <div key={label} className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-3">
+            <div key={label} className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-2.5 sm:p-3">
               <p className="text-[8px] font-black uppercase leading-4 tracking-[0.1em] text-slate-500">{label}</p>
               <p className="mt-1 text-xl font-black text-white">{format === 'ratio' ? formatRatio(value) : formatMetric(value)}{format === 'percent' ? ' %' : ''}</p>
             </div>
@@ -303,13 +303,13 @@ export default function PlayerAnalysisPanel({ client }) {
 
   return (
     <div className="min-w-0 space-y-3 sm:space-y-4" data-player-analysis-rich="true">
-      <section className={`${PLAYER_ANALYSIS_CARD} relative overflow-hidden p-4 sm:p-5`}>
+      <section className={`${PLAYER_ANALYSIS_CARD} relative overflow-hidden px-3.5 py-3 sm:px-4 sm:py-3.5`}>
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_100%_0%,rgba(61,217,255,0.12),transparent_42%)]" />
-        <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="relative flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
             <p className="text-[9px] font-black uppercase tracking-[0.22em] text-caudal-electric">Mi análisis</p>
-            <h2 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl">Tu ficha deportiva</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">Participación, producción, Registro en vivo e historial propio en un único ámbito coherente.</p>
+            <h2 className="mt-0.5 text-xl font-black tracking-tight text-white sm:text-2xl">Tu ficha deportiva</h2>
+            <p className="mt-1 text-xs text-slate-400">Tu rendimiento en el periodo seleccionado.</p>
           </div>
           <div className="flex min-w-0 flex-wrap gap-2 sm:flex-nowrap" aria-label="Filtros de Mi análisis">
             <FilterSelect label="Competición" value={competitionScope} options={PLAYER_ANALYSIS_COMPETITION_OPTIONS} onChange={(value) => updateFilter('competitionScope', value)} />
@@ -321,7 +321,12 @@ export default function PlayerAnalysisPanel({ client }) {
       <OverviewSection state={overviewState} onRetry={retryOverview} />
       <LiveSection state={liveState} liveWindow={liveWindow} onWindowChange={(value) => updateFilter('liveWindow', value)} onRetry={retryLive} />
       <PlayerAnalysisProduction state={productionState} onRetry={retryProduction} />
-      <PlayerAnalysisHistory state={historyState} onRetry={retryHistory} onLoadMore={loadMoreHistory} />
+      <PlayerAnalysisHistory
+        state={historyState}
+        productionActions={productionState.status === 'ready' ? productionState.data : []}
+        onRetry={retryHistory}
+        onLoadMore={loadMoreHistory}
+      />
     </div>
   );
 }

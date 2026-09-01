@@ -1,7 +1,9 @@
+import { useMemo } from 'react';
 import AccordionSection from '../shared/AccordionSection';
 import {
   formatPlayerAnalysisDate,
   getPlayerHistoryOutcomePresentation,
+  resolvePlayerHistoryVideoUrls,
 } from '../../utils/playerAnalysisPresentation';
 import {
   PLAYER_ANALYSIS_CARD,
@@ -30,7 +32,25 @@ function ResultBadge({ row }) {
   );
 }
 
-function MobileHistoryCard({ row }) {
+function HistoryVideoIndicator({ row, videoUrl, compact = false }) {
+  if (videoUrl) {
+    return (
+      <a
+        href={videoUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={`Ver vídeo de ${row.opponent || 'este partido'}`}
+        className={`inline-flex items-center justify-center rounded-lg font-black text-caudal-electric transition hover:bg-caudal-electric/10 hover:text-sky-200 ${compact ? 'min-h-[32px] min-w-[32px] text-xs' : 'min-h-[44px] px-3 text-[10px]'} ${PLAYER_ANALYSIS_FOCUS}`}
+      >
+        {compact ? '▶' : '▶ Ver vídeo'}
+      </a>
+    );
+  }
+  if (!row.hasAllowedVideo) return null;
+  return <span className="text-[9px] font-bold text-slate-500">Vídeo en Detalle de acciones</span>;
+}
+
+function MobileHistoryCard({ row, videoUrl }) {
   return (
     <article className="rounded-2xl border border-white/[0.08] bg-white/[0.035] p-3.5">
       <div className="flex min-w-0 items-start justify-between gap-3">
@@ -59,12 +79,17 @@ function MobileHistoryCard({ row }) {
           </div>
         ))}
       </dl>
-      {row.hasAllowedVideo ? <p className="mt-2 text-right text-[10px] font-bold text-caudal-electric">▶ Vídeo disponible en sus acciones</p> : null}
+      {row.hasAllowedVideo ? <div className="mt-1.5 flex justify-end"><HistoryVideoIndicator row={row} videoUrl={videoUrl} /></div> : null}
     </article>
   );
 }
 
-export default function PlayerAnalysisHistory({ state, onRetry, onLoadMore }) {
+export default function PlayerAnalysisHistory({ state, productionActions = [], onRetry, onLoadMore }) {
+  const videoUrls = useMemo(
+    () => resolvePlayerHistoryVideoUrls(state.rows, productionActions),
+    [state.rows, productionActions],
+  );
+
   if (state.status === 'loading') return <PlayerAnalysisLoading label="Cargando historial" />;
   if (state.status === 'error' && !state.rows.length) return <PlayerAnalysisError title="Historial no disponible" kind={state.errorKind} onRetry={onRetry} />;
 
@@ -83,7 +108,7 @@ export default function PlayerAnalysisHistory({ state, onRetry, onLoadMore }) {
         ) : (
           <>
             <div className="mt-4 grid gap-2.5 lg:hidden">
-              {state.rows.map((row, index) => <MobileHistoryCard key={`${row.matchDate}-${row.opponent}-${index}`} row={row} />)}
+              {state.rows.map((row, index) => <MobileHistoryCard key={`${row.matchDate}-${row.opponent}-${index}`} row={row} videoUrl={videoUrls[index]} />)}
             </div>
 
             <div className="mt-4 hidden overflow-x-auto lg:block">
@@ -106,7 +131,10 @@ export default function PlayerAnalysisHistory({ state, onRetry, onLoadMore }) {
                       <td className="px-2.5 py-3 text-emerald-100">{row.goals}</td>
                       <td className="px-2.5 py-3 text-caudal-electric">{row.assists}</td>
                       <td className="px-2.5 py-3 text-amber-100">{row.yellowCards}</td>
-                      <td className="px-2.5 py-3 text-red-100">{row.redCards}{row.hasAllowedVideo ? <span className="ml-2 text-caudal-electric" title="Vídeo permitido disponible">▶</span> : null}</td>
+                      <td className="px-2.5 py-3 text-red-100">
+                        <span>{row.redCards}</span>
+                        {row.hasAllowedVideo ? <span className="ml-1.5 inline-flex align-middle"><HistoryVideoIndicator row={row} videoUrl={videoUrls[index]} compact /></span> : null}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

@@ -71,6 +71,8 @@ assert.match(panel, /PLAYER_ANALYSIS_PARTIAL_NOTE/);
 assert.match(presentation, /Dato disponible parcialmente/);
 assert.doesNotMatch(panel, />\s*(?:PARTIAL|COMPLETE|UUID|legacy)\s*</i);
 assert.doesNotMatch(panel, /Lesi[oó]n/i);
+assert.match(panel, /Tu rendimiento en el periodo seleccionado\./);
+assert.doesNotMatch(panel, /en un único ámbito coherente|Solo datos validados|nunca eventos individuales/i);
 
 for (const label of [
   'Registro en vivo', 'Partidos con eventos', 'Goles / partido', 'Tiros / partido',
@@ -82,15 +84,23 @@ assert.match(panel, /live\.matchesWithEvents === 0/);
 
 for (const label of [
   'Zonas de tiro', 'Zonas de asistencia', 'Zonas de portería', 'Cómo marca', 'Tipo de gol',
-  'Conexiones', 'Videoteca', 'Detalle de acciones', 'Todos', 'Goles', 'Asistencias',
+  'Conexiones', 'Detalle de acciones', 'Todos', 'Goles', 'Asistencias',
 ]) assert.ok(production.includes(label), `Producción sin ${label}.`);
+assert.doesNotMatch(production, /Videoteca|Vídeo permitido/i, 'Videoteca queda eliminada sin duplicar acciones.');
+assert.doesNotMatch(production, /sanitizad/i, 'El copy PLAYER evita terminología técnica.');
 assert.match(production, /target="_blank"/);
 assert.match(production, /rel="noopener noreferrer"/);
-assert.match(production, /!action\.videoAvailable \|\| !action\.videoUrl/);
+assert.match(production, /!action\.videoAvailable \|\| !isAllowedPlayerAnalysisVideo\(action\.videoUrl\)/);
+assert.match(production, /<SafeVideoLink action=\{action\} compact \/>/, 'Detalle de acciones conserva el vídeo autorizado.');
 assert.doesNotMatch(production, /window\.open/);
 assert.doesNotMatch(production, /onClick=.*counterpartName|href=.*counterpartName/);
 assert.match(zoneMap, /grid grid-cols-3 grid-rows-3/);
 assert.match(presentation, /if \(!allowed\.has\(key\)\) return/);
+assert.match(production, /map\.zones\.some\(\(zone\) => zone\.count > 0\)/, 'Los mapas vacíos no se renderizan.');
+assert.match(production, /getPlayerZoneMapGridClass\(visibleZoneMaps\.length\)/);
+assert.match(presentation, /visibleMapCount === 1[\s\S]*max-w-md/);
+assert.match(presentation, /visibleMapCount === 2[\s\S]*max-w-4xl sm:grid-cols-2/);
+assert.match(presentation, /sm:grid-cols-2 xl:grid-cols-3/, 'Tres mapas usan tres columnas solo en desktop ancho.');
 
 for (const label of ['Fecha', 'Rival', 'Resultado', 'Competición', 'L/V', 'Rol', 'Min', 'Goles', 'Asist.', 'TA', 'TR']) {
   assert.ok(history.includes(label), `Historial sin ${label}.`);
@@ -100,6 +110,13 @@ assert.match(history, /hidden overflow-x-auto lg:block/, 'La tabla solo aparece 
 assert.match(history, /Ver más/);
 assert.match(history, /Cargando…/);
 assert.match(history, /Lo ya cargado sigue disponible/);
+assert.match(history, /resolvePlayerHistoryVideoUrls\(state\.rows, productionActions\)/);
+assert.match(history, /href=\{videoUrl\}/);
+assert.match(history, /target="_blank"/);
+assert.match(history, /rel="noopener noreferrer"/);
+assert.match(history, /Vídeo en Detalle de acciones/, 'La ambigüedad queda como indicador no interactivo.');
+assert.doesNotMatch(history, /hasAllowedVideo \? <span[^>]*>\s*▶/, 'Historial no crea un botón falso desde el booleano.');
+assert.match(presentation, /matchingVideoUrls\.length === 1 \? matchingVideoUrls\[0\] : null/);
 assert.doesNotMatch(history, /\b(?:rating|injured|notes|sistema|PRE|POST)\b/i);
 
 assert.match(panel, /usePlayerAnalysisDomain/);
@@ -126,7 +143,9 @@ assert.doesNotMatch(branch, /get_my_player_matches/, 'Partidos sigue sin impleme
 assert.match(panel, /flex min-w-0 flex-wrap gap-2 sm:flex-nowrap/);
 assert.match(panel, /grid grid-cols-2 gap-2 sm:grid-cols-4/);
 assert.match(panel, /grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5/);
-assert.match(production, /sm:grid-cols-2 xl:grid-cols-3/);
+assert.match(production, /filteredActions\.length === 1 \? 'max-w-2xl' : 'lg:grid-cols-2'/);
+assert.match(production, /mt-4 max-w-xl/, 'Una conexión no fuerza una tarjeta sobredimensionada.');
+assert.match(panel, /productionActions=\{productionState\.status === 'ready' \? productionState\.data : \[\]\}/);
 assert.match(history, /grid-cols-3 gap-1\.5 min-\[390px\]:grid-cols-6/);
 assert.doesNotMatch([panel, production, zoneMap].join('\n'), /overflow-x-auto|min-w-\[[4-9]\d\dpx\]/, 'Los bloques móviles no fuerzan scroll horizontal.');
 assert.match(domainState, /min-h-\[44px\]/);
