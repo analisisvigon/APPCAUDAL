@@ -62,6 +62,9 @@ for (const requiredPath of [
   'src/auth/resolveAppIdentity.js',
   'src/components/player/PlayerPerformancePanel.jsx',
   'src/data/playerPerformanceStore.js',
+  'src/components/player/PlayerHomeDashboard.jsx',
+  'src/data/playerHomeStore.js',
+  'src/utils/playerHomePresentation.js',
   'src/components/player/PlayerAnalysisPanel.jsx',
   'src/components/player/PlayerAnalysisProduction.jsx',
   'src/components/player/PlayerAnalysisHistory.jsx',
@@ -81,6 +84,7 @@ const playerApp = fs.readFileSync(path.join(sourceRoot, 'PlayerApp.jsx'), 'utf8'
 const performanceStore = fs.readFileSync(path.join(sourceRoot, 'data', 'playerPerformanceStore.js'), 'utf8');
 const analysisStore = fs.readFileSync(path.join(sourceRoot, 'data', 'playerAnalysisStore.js'), 'utf8');
 const matchesStore = fs.readFileSync(path.join(sourceRoot, 'data', 'playerMatchesStore.js'), 'utf8');
+const homeStore = fs.readFileSync(path.join(sourceRoot, 'data', 'playerHomeStore.js'), 'utf8');
 assert.match(shell, /const StaffApp = lazy\(\(\) => import\('\.\/App'\)\);/);
 assert.match(shell, /auth\.signInWithPassword\(/, 'El flujo empieza en Supabase Auth con email/password.');
 assert.match(resolver, /client\.rpc\('current_membership'\)/, 'La identidad se resuelve con current_membership().');
@@ -99,6 +103,7 @@ assert.doesNotMatch(analysisStore, /\.from\s*\(/);
 assert.match(matchesStore, /client\.rpc\(PLAYER_MATCHES_RPC\)/, 'Partidos termina en get_my_player_matches() sin payload.');
 assert.match(matchesStore, /PLAYER_MATCHES_RPC = 'get_my_player_matches'/);
 assert.doesNotMatch(matchesStore, /\.from\s*\(/);
+assert.doesNotMatch(homeStore, /p_(?:jugador|user|membership|player)_id/i, 'Inicio no acepta identidad deportiva externa.');
 assert.deepEqual(
   [...performanceStore.matchAll(/^\s*['"](wellness_entries|rpe_entries)['"],$/gm)].map((match) => match[1]),
   ['wellness_entries', 'rpe_entries'],

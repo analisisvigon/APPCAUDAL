@@ -56,17 +56,9 @@ assert.deepEqual(
 );
 assert.match(navigation, /'Salir'/);
 assert.match(navigation, /min-h-\[44px\]/);
-assert.match(app, /view=\{activeSection === 'home' \? 'space' : 'performance'\}/);
-assert.match(app, /onOpenPerformance=\{\(\) => setActiveSection\('performance'\)\}/);
-
-// Inicio PLAYER sigue usando exactamente su resumen reciente.
-assert.match(panel, /function PlayerSpaceDashboard/);
-assert.match(panel, /Tu estado/);
-assert.match(panel, /Último esfuerzo/);
-assert.match(panel, /Evolución reciente/);
-assert.match(panel, /Ver Mi rendimiento completo/);
-assert.match(panel, /<WellnessStatusCard entry=\{latestWellness\} compact/);
-assert.match(panel, /<RpeStatusCard entry=\{latestRpe\} compact/);
+assert.match(app, /activeSection === 'home' \? <PlayerHomeDashboard/);
+assert.match(app, /activeSection === 'performance' \? <PlayerPerformancePanel client=\{client\} \/>/);
+assert.doesNotMatch(app, /view=\{activeSection === 'home'/, 'Inicio y Rendimiento ya no comparten la misma vista.');
 
 // Rendimiento: estado actual claro y estados parciales sin repetir cajas vacías.
 assert.match(panel, /function CurrentState/);

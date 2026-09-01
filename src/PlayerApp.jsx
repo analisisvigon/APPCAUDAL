@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import PlayerHeader from './components/player/PlayerHeader';
 import PlayerNavigation from './components/player/PlayerNavigation';
 import PlayerAnalysisPanel from './components/player/PlayerAnalysisPanel';
+import PlayerHomeDashboard from './components/player/PlayerHomeDashboard';
 import PlayerMatchesPanel from './components/player/PlayerMatchesPanel';
 import PlayerPerformancePanel from './components/player/PlayerPerformancePanel';
 
@@ -89,13 +90,8 @@ function PlayerApp({ client, onSignOut, signingOut = false }) {
           <>
             <PlayerHeader profile={profileState.profile} />
             <PlayerNavigation activeSection={activeSection} onChange={setActiveSection} onSignOut={onSignOut} signingOut={signingOut} />
-            {activeSection === 'home' || activeSection === 'performance' ? (
-              <PlayerPerformancePanel
-                client={client}
-                view={activeSection === 'home' ? 'space' : 'performance'}
-                onOpenPerformance={() => setActiveSection('performance')}
-              />
-            ) : null}
+            {activeSection === 'home' ? <PlayerHomeDashboard client={client} profile={profileState.profile} onNavigate={setActiveSection} /> : null}
+            {activeSection === 'performance' ? <PlayerPerformancePanel client={client} /> : null}
             {activeSection === 'analysis' ? <PlayerAnalysisPanel client={client} /> : null}
             {activeSection === 'matches' ? <PlayerMatchesPanel client={client} /> : null}
           </>

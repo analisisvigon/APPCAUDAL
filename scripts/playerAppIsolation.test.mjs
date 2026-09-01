@@ -22,6 +22,18 @@ const performanceStoreSource = fs.readFileSync(
   new URL('../src/data/playerPerformanceStore.js', import.meta.url),
   'utf8',
 );
+const homeDashboardSource = fs.readFileSync(
+  new URL('../src/components/player/PlayerHomeDashboard.jsx', import.meta.url),
+  'utf8',
+);
+const homeStoreSource = fs.readFileSync(
+  new URL('../src/data/playerHomeStore.js', import.meta.url),
+  'utf8',
+);
+const homePresentationSource = fs.readFileSync(
+  new URL('../src/utils/playerHomePresentation.js', import.meta.url),
+  'utf8',
+);
 const analysisPanelSource = fs.readFileSync(
   new URL('../src/components/player/PlayerAnalysisPanel.jsx', import.meta.url),
   'utf8',
@@ -78,6 +90,9 @@ const playerBranchSource = [
   playerNavigationSource,
   playerChartSource,
   performanceStoreSource,
+  homeDashboardSource,
+  homeStoreSource,
+  homePresentationSource,
   analysisPanelSource,
   analysisStoreSource,
   analysisPresentationSource,
@@ -99,6 +114,9 @@ assert.equal(
 );
 assert.equal(/\.from\s*\(/.test(playerSource), false, 'PlayerApp no debe consultar tablas directamente');
 assert.equal(/\.from\s*\(/.test(performancePanelSource), false, 'la UI de rendimiento delega sus consultas en el loader PLAYER');
+assert.equal(/\.from\s*\(/.test(homeDashboardSource), false, 'Inicio delega todas sus consultas en stores PLAYER');
+assert.doesNotMatch(homeStoreSource, /p_(?:jugador|user|membership|player)_id/i, 'Inicio no recibe identidad externa');
+assert.doesNotMatch(homeDashboardSource, /PlayerLineChart|PlayerPerformanceTrendChart|getJugadores|loadPlayerProfileData/);
 assert.equal(/\.from\s*\(/.test(analysisStoreSource), false, 'Mi análisis no consulta tablas deportivas');
 assert.equal(/\.from\s*\(/.test(matchesStoreSource), false, 'Partidos PLAYER no consulta tablas deportivas');
 assert.match(matchesStoreSource, /client\.rpc\(PLAYER_MATCHES_RPC\)/, 'Partidos usa exclusivamente su RPC sin identidad externa');
