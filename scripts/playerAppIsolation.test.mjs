@@ -46,8 +46,16 @@ const analysisZoneMapSource = fs.readFileSync(
   new URL('../src/components/player/PlayerAnalysisZoneMap.jsx', import.meta.url),
   'utf8',
 );
-const matchesPlaceholderSource = fs.readFileSync(
-  new URL('../src/components/player/PlayerMatchesPlaceholder.jsx', import.meta.url),
+const matchesPanelSource = fs.readFileSync(
+  new URL('../src/components/player/PlayerMatchesPanel.jsx', import.meta.url),
+  'utf8',
+);
+const matchesStoreSource = fs.readFileSync(
+  new URL('../src/data/playerMatchesStore.js', import.meta.url),
+  'utf8',
+);
+const matchesPresentationSource = fs.readFileSync(
+  new URL('../src/utils/playerMatchesPresentation.js', import.meta.url),
   'utf8',
 );
 const shellSource = fs.readFileSync(new URL('../src/AppAuthShell.jsx', import.meta.url), 'utf8');
@@ -76,7 +84,9 @@ const playerBranchSource = [
   analysisProductionSource,
   analysisHistorySource,
   analysisZoneMapSource,
-  matchesPlaceholderSource,
+  matchesPanelSource,
+  matchesStoreSource,
+  matchesPresentationSource,
 ].join('\n');
 for (const forbiddenImport of forbiddenPlayerImports) {
   assert.equal(playerBranchSource.includes(forbiddenImport), false, `El branch PLAYER no debe importar ${forbiddenImport}`);
@@ -90,6 +100,10 @@ assert.equal(
 assert.equal(/\.from\s*\(/.test(playerSource), false, 'PlayerApp no debe consultar tablas directamente');
 assert.equal(/\.from\s*\(/.test(performancePanelSource), false, 'la UI de rendimiento delega sus consultas en el loader PLAYER');
 assert.equal(/\.from\s*\(/.test(analysisStoreSource), false, 'Mi análisis no consulta tablas deportivas');
+assert.equal(/\.from\s*\(/.test(matchesStoreSource), false, 'Partidos PLAYER no consulta tablas deportivas');
+assert.match(matchesStoreSource, /client\.rpc\(PLAYER_MATCHES_RPC\)/, 'Partidos usa exclusivamente su RPC sin identidad externa');
+assert.match(matchesStoreSource, /PLAYER_MATCHES_RPC = 'get_my_player_matches'/);
+assert.doesNotMatch(matchesStoreSource, /p_(?:jugador|user|club|partido)_id/i);
 assert.match(analysisStoreSource, /client\.rpc\(rpcName, payload\)/, 'Mi análisis usa un ejecutor RPC PLAYER sin identidad externa');
 assert.deepEqual(
   [...analysisStoreSource.matchAll(/^\s*(?:overview|live|production|history): '([^']+)'/gm)].map((match) => match[1]),

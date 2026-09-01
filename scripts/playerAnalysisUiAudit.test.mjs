@@ -9,10 +9,11 @@ const production = read('src/components/player/PlayerAnalysisProduction.jsx');
 const history = read('src/components/player/PlayerAnalysisHistory.jsx');
 const zoneMap = read('src/components/player/PlayerAnalysisZoneMap.jsx');
 const domainState = read('src/components/player/PlayerAnalysisDomainState.jsx');
-const placeholder = read('src/components/player/PlayerMatchesPlaceholder.jsx');
+const matchesPanel = read('src/components/player/PlayerMatchesPanel.jsx');
+const matchesStore = read('src/data/playerMatchesStore.js');
 const store = read('src/data/playerAnalysisStore.js');
 const presentation = read('src/utils/playerAnalysisPresentation.js');
-const branch = [app, navigation, panel, production, history, zoneMap, domainState, placeholder, store, presentation].join('\n');
+const branch = [app, navigation, panel, production, history, zoneMap, domainState, matchesPanel, matchesStore, store, presentation].join('\n');
 const liveSection = panel.slice(panel.indexOf('function LiveSection'), panel.indexOf('export default function PlayerAnalysisPanel'));
 
 assert.deepEqual(
@@ -150,9 +151,9 @@ assert.deepEqual(
   ['Inicio', 'Mi análisis', 'Partidos', 'Rendimiento'],
 );
 assert.match(app, /activeSection === 'analysis' \? <PlayerAnalysisPanel client=\{client\}/);
-assert.match(app, /activeSection === 'matches' \? <PlayerMatchesPlaceholder/);
-assert.match(placeholder, /Próximamente/);
-assert.doesNotMatch(branch, /get_my_player_matches/, 'Partidos sigue sin implementación.');
+assert.match(app, /activeSection === 'matches' \? <PlayerMatchesPanel client=\{client\}/);
+assert.match(matchesStore, /PLAYER_MATCHES_RPC = 'get_my_player_matches'/);
+assert.doesNotMatch(matchesStore, /\.from\s*\(/, 'Partidos PLAYER solo usa su RPC segura.');
 
 assert.match(panel, /flex min-w-0 flex-wrap gap-2 sm:flex-nowrap/);
 assert.match(panel, /grid grid-cols-2 gap-2 sm:grid-cols-4/);

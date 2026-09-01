@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import PlayerHeader from './components/player/PlayerHeader';
 import PlayerNavigation from './components/player/PlayerNavigation';
 import PlayerAnalysisPanel from './components/player/PlayerAnalysisPanel';
-import PlayerMatchesPlaceholder from './components/player/PlayerMatchesPlaceholder';
+import PlayerMatchesPanel from './components/player/PlayerMatchesPanel';
 import PlayerPerformancePanel from './components/player/PlayerPerformancePanel';
 
 const EMPTY_PROFILE_STATE = { status: 'loading', profile: null, errorKind: '' };
@@ -97,7 +97,7 @@ function PlayerApp({ client, onSignOut, signingOut = false }) {
               />
             ) : null}
             {activeSection === 'analysis' ? <PlayerAnalysisPanel client={client} /> : null}
-            {activeSection === 'matches' ? <PlayerMatchesPlaceholder /> : null}
+            {activeSection === 'matches' ? <PlayerMatchesPanel client={client} /> : null}
           </>
         ) : null}
       </main>
