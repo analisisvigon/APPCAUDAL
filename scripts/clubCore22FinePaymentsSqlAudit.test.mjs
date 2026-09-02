@@ -157,6 +157,25 @@ assert.match(normalizedVerifier, /alter table public\.fine_payments disable trig
 assert.match(normalizedVerifier, /alter table public\.fine_payments enable trigger guard_fine_payment_integrity/);
 assert.match(normalizedVerifier, /\('amount', 'numeric', 'no'\)/);
 assert.match(normalizedVerifier, /numeric_precision = 10[\s\S]*?numeric_scale = 2/);
+assert.match(
+  normalizedVerifier,
+  /count\(\*\) = 2 and pg_catalog\.bool_and\( actual_column\.data_type = 'numeric' and actual_column\.numeric_precision = 10 and actual_column\.numeric_scale = 2 \)[\s\S]*?column_name in \('surcharge_amount', 'surcharge_base_amount'\)/,
+  'El verify debe validar por separado tipo, precision y escala de ambas columnas de recargo.',
+);
+for (const triggerContract of [
+  "'guard_fine_financial_integrity'::text, 'fines'::text, 'guard_fine_financial_integrity'::text, 23::integer",
+  "'guard_fine_payment_integrity', 'fine_payments', 'guard_fine_payment_integrity', 31",
+  "'apply_fine_surcharge_after_refund', 'fine_payments', 'guard_fine_payment_integrity', 5",
+]) {
+  assert.ok(
+    normalizedVerifier.includes(triggerContract),
+    `Falta contrato exacto de trigger: ${triggerContract}`,
+  );
+}
+assert.match(normalizedVerifier, /trigger_row\.tgenabled::text as enabled_state/);
+assert.match(normalizedVerifier, /trigger_row\.tgqual is not null[\s\S]*?payment_kind[\s\S]*?refund/);
+assert.match(normalizedVerifier, /select \* from expected except select \* from actual/);
+assert.match(normalizedVerifier, /select \* from actual except select \* from expected/);
 
 const verificationCount = [...verifier.matchAll(/test_name\s*:=/g)].length;
 assert.equal(verificationCount, 60, `El verificador debe producir 60 checks; produce ${verificationCount}.`);

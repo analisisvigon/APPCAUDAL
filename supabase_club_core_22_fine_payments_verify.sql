@@ -238,15 +238,17 @@ begin
   details := 'due_on plus three surcharge snapshots';
   return next;
 
-  select pg_catalog.count(*) = 3
+  select pg_catalog.count(*) = 2
+    and pg_catalog.bool_and(
+      actual_column.data_type = 'numeric'
+      and actual_column.numeric_precision = 10
+      and actual_column.numeric_scale = 2
+    )
   into test_ok
   from information_schema.columns actual_column
   where actual_column.table_schema = 'public'
     and actual_column.table_name = 'fines'
-    and actual_column.column_name in ('surcharge_amount', 'surcharge_base_amount')
-    and actual_column.data_type = 'numeric'
-    and actual_column.numeric_precision = 10
-    and actual_column.numeric_scale = 2;
+    and actual_column.column_name in ('surcharge_amount', 'surcharge_base_amount');
   test_name := 'E_surcharge_numeric_10_2';
   details := 'surcharge amount/base numeric(10,2)';
   return next;
@@ -455,16 +457,84 @@ begin
   return next;
 
   test_name := 'S_integrity_triggers_exact';
-  select pg_catalog.count(*) = 2
-  into test_ok
-  from pg_catalog.pg_trigger trigger_row
-  where not trigger_row.tgisinternal
-    and trigger_row.tgname in (
-      'guard_fine_financial_integrity',
-      'guard_fine_payment_integrity',
-      'apply_fine_surcharge_after_refund'
-    )
-    and trigger_row.tgrelid in ('public.fines'::regclass, 'public.fine_payments'::regclass);
+  with expected(
+    trigger_name,
+    relation_name,
+    function_name,
+    trigger_type,
+    enabled_state,
+    requires_when
+  ) as (
+    values
+      (
+        'guard_fine_financial_integrity'::text,
+        'fines'::text,
+        'guard_fine_financial_integrity'::text,
+        23::integer, -- ROW + BEFORE + INSERT + UPDATE
+        'O'::text,
+        false
+      ),
+      (
+        'guard_fine_payment_integrity',
+        'fine_payments',
+        'guard_fine_payment_integrity',
+        31, -- ROW + BEFORE + INSERT + DELETE + UPDATE
+        'O',
+        false
+      ),
+      (
+        'apply_fine_surcharge_after_refund',
+        'fine_payments',
+        'guard_fine_payment_integrity',
+        5, -- ROW + AFTER + INSERT
+        'O',
+        true
+      )
+  ), actual as (
+    select
+      trigger_row.tgname as trigger_name,
+      relation.relname as relation_name,
+      procedure_row.proname as function_name,
+      trigger_row.tgtype::integer as trigger_type,
+      trigger_row.tgenabled::text as enabled_state,
+      (
+        trigger_row.tgqual is not null
+        and pg_catalog.strpos(
+          pg_catalog.lower(pg_catalog.pg_get_triggerdef(trigger_row.oid, true)),
+          'payment_kind'
+        ) > 0
+        and pg_catalog.strpos(
+          pg_catalog.lower(pg_catalog.pg_get_triggerdef(trigger_row.oid, true)),
+          'refund'
+        ) > 0
+      ) as requires_when
+    from pg_catalog.pg_trigger trigger_row
+    join pg_catalog.pg_class relation
+      on relation.oid = trigger_row.tgrelid
+    join pg_catalog.pg_namespace relation_namespace
+      on relation_namespace.oid = relation.relnamespace
+    join pg_catalog.pg_proc procedure_row
+      on procedure_row.oid = trigger_row.tgfoid
+    join pg_catalog.pg_namespace procedure_namespace
+      on procedure_namespace.oid = procedure_row.pronamespace
+    where not trigger_row.tgisinternal
+      and relation_namespace.nspname = 'public'
+      and procedure_namespace.nspname = 'public'
+      and trigger_row.tgrelid in (
+        'public.fines'::regclass,
+        'public.fine_payments'::regclass
+      )
+      and trigger_row.tgfoid in (
+        'public.guard_fine_financial_integrity()'::regprocedure,
+        'public.guard_fine_payment_integrity()'::regprocedure
+      )
+  )
+  select not exists (
+    (select * from expected except select * from actual)
+    union all
+    (select * from actual except select * from expected)
+  )
+  into test_ok;
   details := 'financial snapshot, immutable ledger and post-refund surcharge triggers';
   return next;
 
