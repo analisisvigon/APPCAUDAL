@@ -211,6 +211,8 @@ declare
   season_code_value text;
   staff_membership_id uuid;
   staff_user_id uuid;
+  viewer_membership_id uuid;
+  viewer_user_id uuid;
   owner_user_id uuid;
   player_user_id constant uuid := '350615a9-b068-450a-b867-da30a59b9082'::uuid;
   player_jugador_id constant uuid := '2e0146e9-e9fc-45ad-b055-edc138a85f7e'::uuid;
@@ -246,7 +248,10 @@ declare
   refund_reopen_surcharge_amount numeric(10,2);
   refund_reopen_surcharge_base_amount numeric(10,2);
   summary_row record;
+  captain_summary_row record;
   manager_summary record;
+  player_own_fine_ids uuid[];
+  captain_own_fine_ids uuid[];
   own_rows integer;
   admin_own_rows integer;
   other_visible integer;
@@ -260,7 +265,52 @@ declare
   cap_direct_zero boolean := false;
   cap_own boolean := false;
   cap_writes_denied boolean := false;
+  cap_permission_count integer := 0;
+  cap_membership_id uuid;
+  cap_membership_club_id uuid;
+  cap_membership_role text;
+  cap_membership_jugador_id uuid;
+  cap_is_player boolean;
+  cap_is_app_staff boolean;
+  cap_current_jugador_id uuid;
+  cap_can_manage boolean;
+  cap_own_rows integer;
+  cap_other_visible integer;
+  cap_same_own_ids boolean := false;
+  cap_same_own_summary boolean := false;
+  cap_rules_rows integer;
+  cap_subjects_rows integer;
+  cap_incidents_rows integer;
+  cap_fines_rows integer;
+  cap_payments_rows integer;
+  cap_management_allowed integer := 0;
+  cap_management_details text := '';
+  cap_insert_state text := 'NOT_RUN';
+  cap_update_state text := 'NOT_RUN';
+  cap_delete_state text := 'NOT_RUN';
+  cap_scenario_error text := '';
+  captain_created_fine uuid;
   viewer_denied boolean := false;
+  viewer_permission_count integer := 0;
+  viewer_membership_observed uuid;
+  viewer_club_id uuid;
+  viewer_role text;
+  viewer_jugador_id uuid;
+  viewer_is_player boolean;
+  viewer_is_app_staff boolean;
+  viewer_has_permission boolean;
+  viewer_can_manage boolean;
+  viewer_rules_rows integer;
+  viewer_subjects_rows integer;
+  viewer_incidents_rows integer;
+  viewer_fines_rows integer;
+  viewer_payments_rows integer;
+  viewer_management_allowed integer := 0;
+  viewer_management_details text := '';
+  viewer_scenario_error text := '';
+  last_sqlstate text;
+  last_message text;
+  affected_rows bigint;
   cross_denied boolean := false;
   cross_no_leak boolean := false;
   cross_club uuid := 'b4600000-0000-4000-8000-000000000045'::uuid;
@@ -280,6 +330,8 @@ begin
   from public.club_memberships membership
   where membership.club_id = club_id_value and membership.role = 'staff' and membership.is_active
   order by membership.id limit 1;
+  viewer_membership_id := staff_membership_id;
+  viewer_user_id := staff_user_id;
   select membership.user_id into owner_user_id
   from public.club_memberships membership
   where membership.club_id = club_id_value and membership.role = 'owner' and membership.is_active
@@ -700,6 +752,8 @@ begin
   execute 'set local role authenticated';
   select pg_catalog.count(*), pg_catalog.count(*) filter (where own.fine_id = fine_other)
   into own_rows, other_visible from public.get_my_fines(100,0) own;
+  select coalesce(pg_catalog.array_agg(own.fine_id order by own.fine_id), array[]::uuid[])
+  into player_own_fine_ids from public.get_my_fines(100,0) own;
   select * into summary_row from public.get_my_fines_summary();
   execute 'reset role';
   select pg_catalog.count(*) into admin_own_rows
@@ -759,69 +813,262 @@ begin
 
   -- PLAYER + fines_manage is a reversible subtransaction.
   begin
+    execute 'reset role';
+    perform pg_catalog.set_config('request.jwt.claim.sub','',true);
+    perform pg_catalog.set_config('request.jwt.claim.role','',true);
     insert into public.club_member_permissions(membership_id,permission_key) values(player_membership_id,'fines_manage');
+    select pg_catalog.count(*)::integer into cap_permission_count
+    from public.club_member_permissions permission
+    join public.club_memberships membership on membership.id = permission.membership_id
+    where permission.membership_id = player_membership_id
+      and permission.permission_key = 'fines_manage'
+      and membership.club_id = club_id_value;
     perform pg_catalog.set_config('request.jwt.claim.sub',player_user_id::text,true);
     perform pg_catalog.set_config('request.jwt.claim.role','authenticated',true);
     execute 'set local role authenticated';
-    cap_identity := public.is_player() and public.current_jugador_id()=player_jugador_id
-      and public.can_manage_fines() and (select membership.role='player' from public.current_membership() membership);
-    perform 1 from public.get_fine_rules_for_management();
-    perform 1 from public.get_fine_subjects_for_management();
-    perform 1 from public.get_fines_management_list();
-    perform 1 from public.get_fines_financial_summary();
-    perform 1 from public.get_fines_subject_summary();
-    select created.fine_id into fine_other from public.create_fine_individual(rule_ten,subject_b,current_date,null) created;
-    perform 1 from public.record_fine_payment(fine_other,1,current_date,null);
-    perform 1 from public.record_fine_refund(fine_other,0.50,current_date,null);
-    select created.fine_id into fine_other from public.create_fine_individual(rule_ten,subject_b,current_date,null) created;
-    perform 1 from public.cancel_fine(fine_other,'captain');
-    perform 1 from public.create_fine_collective(rule_collective,array[subject_a,subject_b,subject_c],current_date,null);
-    cap_management := true;
-    cap_direct_zero := (select pg_catalog.count(*)=0 from public.fine_rules)
-      and (select pg_catalog.count(*)=0 from public.fine_subjects)
-      and (select pg_catalog.count(*)=0 from public.fine_incidents)
-      and (select pg_catalog.count(*)=0 from public.fines)
-      and (select pg_catalog.count(*)=0 from public.fine_payments);
-    cap_own := (select pg_catalog.count(*) from public.get_my_fines(100,0)) >= own_rows
-      and (select total_fines from public.get_my_fines_summary()) >= summary_row.total_fines;
-    cap_writes_denied := not pg_catalog.has_table_privilege('authenticated','public.fine_incidents','INSERT')
+
+    select membership.membership_id, membership.club_id, membership.role, membership.jugador_id
+    into cap_membership_id, cap_membership_club_id, cap_membership_role, cap_membership_jugador_id
+    from public.current_membership() membership;
+    cap_is_player := public.is_player();
+    cap_is_app_staff := public.is_app_staff();
+    cap_current_jugador_id := public.current_jugador_id();
+    cap_can_manage := public.can_manage_fines();
+    cap_identity := cap_permission_count = 1
+      and cap_membership_id is not distinct from player_membership_id
+      and cap_membership_club_id is not distinct from club_id_value
+      and cap_membership_role is not distinct from 'player'
+      and cap_membership_jugador_id is not distinct from player_jugador_id
+      and cap_is_player is true
+      and cap_is_app_staff is false
+      and cap_current_jugador_id is not distinct from player_jugador_id
+      and cap_can_manage is true;
+
+    select pg_catalog.count(*), pg_catalog.count(*) filter (where own.fine_id = fine_other)
+    into cap_own_rows, cap_other_visible from public.get_my_fines(100,0) own;
+    select coalesce(pg_catalog.array_agg(own.fine_id order by own.fine_id), array[]::uuid[])
+    into captain_own_fine_ids from public.get_my_fines(100,0) own;
+    select * into captain_summary_row from public.get_my_fines_summary();
+    cap_same_own_ids := captain_own_fine_ids is not distinct from player_own_fine_ids;
+    cap_same_own_summary := pg_catalog.to_jsonb(captain_summary_row) is not distinct from pg_catalog.to_jsonb(summary_row);
+    cap_own := cap_own_rows = own_rows
+      and cap_same_own_ids
+      and cap_same_own_summary
+      and cap_other_visible = 0;
+
+    cap_management_allowed := 0;
+    cap_management_details := '';
+    begin
+      perform 1 from public.get_fine_rules_for_management();
+      cap_management_allowed := cap_management_allowed + 1;
+      cap_management_details := cap_management_details || 'rules=allowed; ';
+    exception when others then
+      get stacked diagnostics last_sqlstate = returned_sqlstate, last_message = message_text;
+      cap_management_details := cap_management_details || pg_catalog.format('rules=denied[%s:%s]; ', last_sqlstate, pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120));
+    end;
+    begin
+      perform 1 from public.get_fine_subjects_for_management();
+      cap_management_allowed := cap_management_allowed + 1;
+      cap_management_details := cap_management_details || 'subjects=allowed; ';
+    exception when others then
+      get stacked diagnostics last_sqlstate = returned_sqlstate, last_message = message_text;
+      cap_management_details := cap_management_details || pg_catalog.format('subjects=denied[%s:%s]; ', last_sqlstate, pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120));
+    end;
+    begin
+      select created.fine_id into captain_created_fine from public.create_fine_individual(rule_ten,subject_b,current_date,null) created;
+      cap_management_allowed := cap_management_allowed + 1;
+      cap_management_details := cap_management_details || 'create_individual=allowed; ';
+    exception when others then
+      get stacked diagnostics last_sqlstate = returned_sqlstate, last_message = message_text;
+      cap_management_details := cap_management_details || pg_catalog.format('create_individual=denied[%s:%s]; ', last_sqlstate, pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120));
+    end;
+    begin
+      perform 1 from public.create_fine_collective(rule_collective,array[subject_a,subject_b,subject_c],current_date,null);
+      cap_management_allowed := cap_management_allowed + 1;
+      cap_management_details := cap_management_details || 'create_collective=allowed; ';
+    exception when others then
+      get stacked diagnostics last_sqlstate = returned_sqlstate, last_message = message_text;
+      cap_management_details := cap_management_details || pg_catalog.format('create_collective=denied[%s:%s]; ', last_sqlstate, pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120));
+    end;
+    begin
+      perform 1 from public.record_fine_payment(captain_created_fine,1,current_date,null);
+      cap_management_allowed := cap_management_allowed + 1;
+      cap_management_details := cap_management_details || 'payment=allowed; ';
+    exception when others then
+      get stacked diagnostics last_sqlstate = returned_sqlstate, last_message = message_text;
+      cap_management_details := cap_management_details || pg_catalog.format('payment=denied[%s:%s]; ', last_sqlstate, pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120));
+    end;
+    begin
+      perform 1 from public.record_fine_refund(captain_created_fine,0.50,current_date,null);
+      cap_management_allowed := cap_management_allowed + 1;
+      cap_management_details := cap_management_details || 'refund=allowed; ';
+    exception when others then
+      get stacked diagnostics last_sqlstate = returned_sqlstate, last_message = message_text;
+      cap_management_details := cap_management_details || pg_catalog.format('refund=denied[%s:%s]; ', last_sqlstate, pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120));
+    end;
+    begin
+      perform 1 from public.cancel_fine(fine_staff,'captain');
+      cap_management_allowed := cap_management_allowed + 1;
+      cap_management_details := cap_management_details || 'cancel=allowed; ';
+    exception when others then
+      get stacked diagnostics last_sqlstate = returned_sqlstate, last_message = message_text;
+      cap_management_details := cap_management_details || pg_catalog.format('cancel=denied[%s:%s]; ', last_sqlstate, pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120));
+    end;
+    begin
+      perform 1 from public.get_fines_management_list();
+      cap_management_allowed := cap_management_allowed + 1;
+      cap_management_details := cap_management_details || 'management_list=allowed; ';
+    exception when others then
+      get stacked diagnostics last_sqlstate = returned_sqlstate, last_message = message_text;
+      cap_management_details := cap_management_details || pg_catalog.format('management_list=denied[%s:%s]; ', last_sqlstate, pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120));
+    end;
+    begin
+      perform 1 from public.get_fines_financial_summary();
+      cap_management_allowed := cap_management_allowed + 1;
+      cap_management_details := cap_management_details || 'financial_summary=allowed; ';
+    exception when others then
+      get stacked diagnostics last_sqlstate = returned_sqlstate, last_message = message_text;
+      cap_management_details := cap_management_details || pg_catalog.format('financial_summary=denied[%s:%s]; ', last_sqlstate, pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120));
+    end;
+    begin
+      perform 1 from public.get_fines_subject_summary();
+      cap_management_allowed := cap_management_allowed + 1;
+      cap_management_details := cap_management_details || 'subject_summary=allowed; ';
+    exception when others then
+      get stacked diagnostics last_sqlstate = returned_sqlstate, last_message = message_text;
+      cap_management_details := cap_management_details || pg_catalog.format('subject_summary=denied[%s:%s]; ', last_sqlstate, pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120));
+    end;
+    cap_management := cap_management_allowed = 10;
+
+    select pg_catalog.count(*)::integer into cap_rules_rows from public.fine_rules;
+    select pg_catalog.count(*)::integer into cap_subjects_rows from public.fine_subjects;
+    select pg_catalog.count(*)::integer into cap_incidents_rows from public.fine_incidents;
+    select pg_catalog.count(*)::integer into cap_fines_rows from public.fines;
+    select pg_catalog.count(*)::integer into cap_payments_rows from public.fine_payments;
+    cap_direct_zero := cap_rules_rows = 0 and cap_subjects_rows = 0 and cap_incidents_rows = 0
+      and cap_fines_rows = 0 and cap_payments_rows = 0;
+
+    begin
+      insert into public.fine_incidents(club_id,season_id,fine_rule_id,incident_kind,occurred_on,rule_code_snapshot,reason_snapshot,created_by_membership_id)
+      values(club_id_value,season_id_value,rule_ten,'individual',current_date,'VERIFY46_DIRECT','VERIFY46_DIRECT',player_membership_id);
+      get diagnostics affected_rows = row_count;
+      cap_insert_state := 'ALLOWED_ROWS_' || affected_rows::text;
+    exception when others then
+      get stacked diagnostics cap_insert_state = returned_sqlstate;
+    end;
+    begin
+      update public.fines set subject_name_snapshot = subject_name_snapshot where id = fine_main;
+      get diagnostics affected_rows = row_count;
+      cap_update_state := 'ALLOWED_ROWS_' || affected_rows::text;
+    exception when others then
+      get stacked diagnostics cap_update_state = returned_sqlstate;
+    end;
+    begin
+      delete from public.fine_payments where id = payment_id_value;
+      get diagnostics affected_rows = row_count;
+      cap_delete_state := 'ALLOWED_ROWS_' || affected_rows::text;
+    exception when others then
+      get stacked diagnostics cap_delete_state = returned_sqlstate;
+    end;
+    cap_writes_denied := cap_insert_state = '42501' and cap_update_state = '42501' and cap_delete_state = '42501'
+      and not pg_catalog.has_table_privilege('authenticated','public.fine_incidents','INSERT')
       and not pg_catalog.has_table_privilege('authenticated','public.fines','UPDATE')
       and not pg_catalog.has_table_privilege('authenticated','public.fine_payments','DELETE');
     execute 'reset role';
     raise sqlstate 'P4601' using message='ROLLBACK_PLAYER_MANAGER';
-  exception when sqlstate 'P4601' then null; when others then execute 'reset role'; end;
-  perform pg_temp.add_fines_security_check('CAPTAIN_player_identity_preserved',cap_identity,'role=player; is_player/current_jugador_id unchanged; can_manage=true');
-  perform pg_temp.add_fines_security_check('CAPTAIN_management_e2e',cap_management,'catalogue, subjects, create, collective, payment, refund, cancel, lists and summaries');
-  perform pg_temp.add_fines_security_check('CAPTAIN_direct_five_tables_zero',cap_direct_zero,'fines_manage does not open RLS');
-  perform pg_temp.add_fines_security_check('CAPTAIN_own_context_preserved',cap_own,'own read/summary remain PLAYER-scoped');
-  perform pg_temp.add_fines_security_check('CAPTAIN_direct_writes_denied',cap_writes_denied,'authenticated has no direct mutations');
+  exception
+    when sqlstate 'P4601' then null;
+    when others then
+      get stacked diagnostics last_sqlstate = returned_sqlstate, last_message = message_text;
+      cap_scenario_error := pg_catalog.format('%s:%s',last_sqlstate,pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),160));
+      execute 'reset role';
+  end;
+  perform pg_temp.add_fines_security_check('CAPTAIN_player_identity_preserved',cap_identity,
+    pg_catalog.format('membership=%s club=%s role=%s jugador_id=%s permission_count=%s is_player=%s is_app_staff=%s current_jugador_id=%s can_manage=%s scenario_error=%s',
+      coalesce(cap_membership_id::text,'NULL'),coalesce(cap_membership_club_id::text,'NULL'),coalesce(cap_membership_role,'NULL'),
+      coalesce(cap_membership_jugador_id::text,'NULL'),cap_permission_count,coalesce(cap_is_player::text,'NULL'),coalesce(cap_is_app_staff::text,'NULL'),
+      coalesce(cap_current_jugador_id::text,'NULL'),coalesce(cap_can_manage::text,'NULL'),coalesce(nullif(cap_scenario_error,''),'none')));
+  perform pg_temp.add_fines_security_check('CAPTAIN_management_e2e',cap_management,
+    pg_catalog.format('allowed=%s denied=%s; %s scenario_error=%s',cap_management_allowed,10-cap_management_allowed,cap_management_details,coalesce(nullif(cap_scenario_error,''),'none')));
+  perform pg_temp.add_fines_security_check('CAPTAIN_direct_five_tables_zero',cap_direct_zero,
+    pg_catalog.format('fine_rules=%s fine_subjects=%s fine_incidents=%s fines=%s fine_payments=%s',
+      coalesce(cap_rules_rows::text,'NULL'),coalesce(cap_subjects_rows::text,'NULL'),coalesce(cap_incidents_rows::text,'NULL'),coalesce(cap_fines_rows::text,'NULL'),coalesce(cap_payments_rows::text,'NULL')));
+  perform pg_temp.add_fines_security_check('CAPTAIN_own_context_preserved',cap_own,
+    pg_catalog.format('baseline_rows=%s captain_rows=%s same_ids=%s same_summary=%s other_visible=%s',own_rows,coalesce(cap_own_rows::text,'NULL'),
+      cap_same_own_ids,cap_same_own_summary,coalesce(cap_other_visible::text,'NULL')));
+  perform pg_temp.add_fines_security_check('CAPTAIN_direct_writes_denied',cap_writes_denied,
+    pg_catalog.format('INSERT fine_incidents=%s; UPDATE fines=%s; DELETE fine_payments=%s; expected SQLSTATE=42501',cap_insert_state,cap_update_state,cap_delete_state));
   perform pg_temp.add_fines_security_check('CAPTAIN_permission_rolled_back',
     not exists(select 1 from public.club_member_permissions permission where permission.permission_key='fines_manage'), 'no persistent permission');
 
   -- VIEWER + permission remains fail-closed.
   begin
-    update public.club_memberships set role='viewer' where id=staff_membership_id;
-    insert into public.club_member_permissions(membership_id,permission_key) values(staff_membership_id,'fines_manage');
-    perform pg_catalog.set_config('request.jwt.claim.sub',staff_user_id::text,true);
+    execute 'reset role';
+    perform pg_catalog.set_config('request.jwt.claim.sub','',true);
+    perform pg_catalog.set_config('request.jwt.claim.role','',true);
+    update public.club_memberships set role='viewer' where id=viewer_membership_id;
+    insert into public.club_member_permissions(membership_id,permission_key) values(viewer_membership_id,'fines_manage');
+    select pg_catalog.count(*)::integer into viewer_permission_count
+    from public.club_member_permissions permission
+    join public.club_memberships membership on membership.id = permission.membership_id
+    where permission.membership_id = viewer_membership_id
+      and permission.permission_key = 'fines_manage'
+      and membership.club_id = club_id_value;
+    perform pg_catalog.set_config('request.jwt.claim.sub',viewer_user_id::text,true);
     perform pg_catalog.set_config('request.jwt.claim.role','authenticated',true);
     execute 'set local role authenticated';
-    denied_count:=0;
-    if public.is_player() or public.can_manage_fines() then raise exception 'viewer authority'; end if;
-    begin perform 1 from public.get_fine_rules_for_management(); exception when others then denied_count:=denied_count+1; end;
-    begin perform 1 from public.get_fine_subjects_for_management(); exception when others then denied_count:=denied_count+1; end;
-    begin perform 1 from public.create_fine_individual(rule_ten,subject_a,current_date,null); exception when others then denied_count:=denied_count+1; end;
-    begin perform 1 from public.create_fine_collective(rule_collective,array[subject_a],current_date,null); exception when others then denied_count:=denied_count+1; end;
-    begin perform 1 from public.cancel_fine(fine_other,'denied'); exception when others then denied_count:=denied_count+1; end;
-    begin perform 1 from public.record_fine_payment(fine_other,1,current_date,null); exception when others then denied_count:=denied_count+1; end;
-    begin perform 1 from public.record_fine_refund(fine_main,1,current_date,null); exception when others then denied_count:=denied_count+1; end;
-    begin perform 1 from public.get_fines_management_list(); exception when others then denied_count:=denied_count+1; end;
-    begin perform 1 from public.get_fines_financial_summary(); exception when others then denied_count:=denied_count+1; end;
-    begin perform 1 from public.get_fines_subject_summary(); exception when others then denied_count:=denied_count+1; end;
-    viewer_denied := denied_count=10 and (select pg_catalog.count(*)=0 from public.fines);
+
+    select membership.membership_id, membership.club_id, membership.role, membership.jugador_id
+    into viewer_membership_observed, viewer_club_id, viewer_role, viewer_jugador_id
+    from public.current_membership() membership;
+    viewer_is_player := public.is_player();
+    viewer_is_app_staff := public.is_app_staff();
+    viewer_has_permission := public.has_club_permission(viewer_club_id,'fines_manage');
+    viewer_can_manage := public.can_manage_fines();
+    viewer_management_allowed := 0;
+    viewer_management_details := '';
+    begin perform 1 from public.get_fine_rules_for_management(); viewer_management_allowed:=viewer_management_allowed+1; viewer_management_details:=viewer_management_details||'rules=ALLOWED; '; exception when others then get stacked diagnostics last_sqlstate=returned_sqlstate,last_message=message_text; viewer_management_details:=viewer_management_details||pg_catalog.format('rules=denied[%s:%s]; ',last_sqlstate,pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120)); end;
+    begin perform 1 from public.get_fine_subjects_for_management(); viewer_management_allowed:=viewer_management_allowed+1; viewer_management_details:=viewer_management_details||'subjects=ALLOWED; '; exception when others then get stacked diagnostics last_sqlstate=returned_sqlstate,last_message=message_text; viewer_management_details:=viewer_management_details||pg_catalog.format('subjects=denied[%s:%s]; ',last_sqlstate,pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120)); end;
+    begin perform 1 from public.create_fine_individual(rule_ten,subject_a,current_date,null); viewer_management_allowed:=viewer_management_allowed+1; viewer_management_details:=viewer_management_details||'create_individual=ALLOWED; '; exception when others then get stacked diagnostics last_sqlstate=returned_sqlstate,last_message=message_text; viewer_management_details:=viewer_management_details||pg_catalog.format('create_individual=denied[%s:%s]; ',last_sqlstate,pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120)); end;
+    begin perform 1 from public.create_fine_collective(rule_collective,array[subject_a],current_date,null); viewer_management_allowed:=viewer_management_allowed+1; viewer_management_details:=viewer_management_details||'create_collective=ALLOWED; '; exception when others then get stacked diagnostics last_sqlstate=returned_sqlstate,last_message=message_text; viewer_management_details:=viewer_management_details||pg_catalog.format('create_collective=denied[%s:%s]; ',last_sqlstate,pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120)); end;
+    begin perform 1 from public.record_fine_payment(fine_other,1,current_date,null); viewer_management_allowed:=viewer_management_allowed+1; viewer_management_details:=viewer_management_details||'payment=ALLOWED; '; exception when others then get stacked diagnostics last_sqlstate=returned_sqlstate,last_message=message_text; viewer_management_details:=viewer_management_details||pg_catalog.format('payment=denied[%s:%s]; ',last_sqlstate,pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120)); end;
+    begin perform 1 from public.record_fine_refund(fine_main,1,current_date,null); viewer_management_allowed:=viewer_management_allowed+1; viewer_management_details:=viewer_management_details||'refund=ALLOWED; '; exception when others then get stacked diagnostics last_sqlstate=returned_sqlstate,last_message=message_text; viewer_management_details:=viewer_management_details||pg_catalog.format('refund=denied[%s:%s]; ',last_sqlstate,pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120)); end;
+    begin perform 1 from public.cancel_fine(fine_other,'denied'); viewer_management_allowed:=viewer_management_allowed+1; viewer_management_details:=viewer_management_details||'cancel=ALLOWED; '; exception when others then get stacked diagnostics last_sqlstate=returned_sqlstate,last_message=message_text; viewer_management_details:=viewer_management_details||pg_catalog.format('cancel=denied[%s:%s]; ',last_sqlstate,pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120)); end;
+    begin perform 1 from public.get_fines_management_list(); viewer_management_allowed:=viewer_management_allowed+1; viewer_management_details:=viewer_management_details||'management_list=ALLOWED; '; exception when others then get stacked diagnostics last_sqlstate=returned_sqlstate,last_message=message_text; viewer_management_details:=viewer_management_details||pg_catalog.format('management_list=denied[%s:%s]; ',last_sqlstate,pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120)); end;
+    begin perform 1 from public.get_fines_financial_summary(); viewer_management_allowed:=viewer_management_allowed+1; viewer_management_details:=viewer_management_details||'financial_summary=ALLOWED; '; exception when others then get stacked diagnostics last_sqlstate=returned_sqlstate,last_message=message_text; viewer_management_details:=viewer_management_details||pg_catalog.format('financial_summary=denied[%s:%s]; ',last_sqlstate,pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120)); end;
+    begin perform 1 from public.get_fines_subject_summary(); viewer_management_allowed:=viewer_management_allowed+1; viewer_management_details:=viewer_management_details||'subject_summary=ALLOWED; '; exception when others then get stacked diagnostics last_sqlstate=returned_sqlstate,last_message=message_text; viewer_management_details:=viewer_management_details||pg_catalog.format('subject_summary=denied[%s:%s]; ',last_sqlstate,pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),120)); end;
+
+    select pg_catalog.count(*)::integer into viewer_rules_rows from public.fine_rules;
+    select pg_catalog.count(*)::integer into viewer_subjects_rows from public.fine_subjects;
+    select pg_catalog.count(*)::integer into viewer_incidents_rows from public.fine_incidents;
+    select pg_catalog.count(*)::integer into viewer_fines_rows from public.fines;
+    select pg_catalog.count(*)::integer into viewer_payments_rows from public.fine_payments;
+    viewer_denied := viewer_permission_count = 1
+      and viewer_membership_observed is not distinct from viewer_membership_id
+      and viewer_role is not distinct from 'viewer'
+      and viewer_is_player is false
+      and viewer_is_app_staff is false
+      and viewer_has_permission is true
+      and viewer_can_manage is false
+      and viewer_management_allowed = 0
+      and viewer_rules_rows = 0 and viewer_subjects_rows = 0 and viewer_incidents_rows = 0
+      and viewer_fines_rows = 0 and viewer_payments_rows = 0;
     execute 'reset role';
     raise sqlstate 'P4602' using message='ROLLBACK_VIEWER';
-  exception when sqlstate 'P4602' then null; when others then execute 'reset role'; end;
-  perform pg_temp.add_fines_security_check('VIEWER_permission_fail_closed',viewer_denied,'is_player=false; can_manage=false; 10 RPCs denied; direct zero');
+  exception
+    when sqlstate 'P4602' then null;
+    when others then
+      get stacked diagnostics last_sqlstate = returned_sqlstate, last_message = message_text;
+      viewer_scenario_error := pg_catalog.format('%s:%s',last_sqlstate,pg_catalog.left(pg_catalog.regexp_replace(last_message,'[[:space:]]+',' ','g'),160));
+      execute 'reset role';
+  end;
+  perform pg_temp.add_fines_security_check('VIEWER_permission_fail_closed',viewer_denied,
+    pg_catalog.format('membership=%s role=%s jugador_id=%s permission_count=%s has_permission=%s is_player=%s is_app_staff=%s can_manage=%s; RPC allowed=%s denied=%s; direct rules/subjects/incidents/fines/payments=%s/%s/%s/%s/%s; %s scenario_error=%s',
+      coalesce(viewer_membership_observed::text,'NULL'),coalesce(viewer_role,'NULL'),coalesce(viewer_jugador_id::text,'NULL'),viewer_permission_count,
+      coalesce(viewer_has_permission::text,'NULL'),coalesce(viewer_is_player::text,'NULL'),coalesce(viewer_is_app_staff::text,'NULL'),coalesce(viewer_can_manage::text,'NULL'),
+      viewer_management_allowed,10-viewer_management_allowed,coalesce(viewer_rules_rows::text,'NULL'),coalesce(viewer_subjects_rows::text,'NULL'),
+      coalesce(viewer_incidents_rows::text,'NULL'),coalesce(viewer_fines_rows::text,'NULL'),coalesce(viewer_payments_rows::text,'NULL'),
+      viewer_management_details,coalesce(nullif(viewer_scenario_error,''),'none')));
 
   -- No membership and anon.
   perform pg_catalog.set_config('request.jwt.claim.sub',no_membership_user_id::text,true);

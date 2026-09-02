@@ -85,6 +85,37 @@ assert.match(normalizedVerifier, /player_normal_management_denied/);
 assert.match(normalizedVerifier, /captain_player_identity_preserved/);
 assert.match(normalizedVerifier, /captain_direct_five_tables_zero/);
 assert.match(normalizedVerifier, /viewer_permission_fail_closed/);
+assert.match(
+  normalizedVerifier,
+  /player \+ fines_manage is a reversible subtransaction\. begin execute 'reset role'; perform pg_catalog\.set_config\('request\.jwt\.claim\.sub','',true\)/,
+);
+assert.match(
+  normalizedVerifier,
+  /viewer \+ permission remains fail-closed\. begin execute 'reset role'; perform pg_catalog\.set_config\('request\.jwt\.claim\.sub','',true\)/,
+);
+assert.match(normalizedVerifier, /viewer_membership_id := staff_membership_id/);
+assert.match(normalizedVerifier, /permission_count=%s is_player=%s is_app_staff=%s current_jugador_id=%s can_manage=%s scenario_error=%s/);
+assert.match(normalizedVerifier, /allowed=%s denied=%s; %s scenario_error=%s/);
+assert.match(normalizedVerifier, /fine_rules=%s fine_subjects=%s fine_incidents=%s fines=%s fine_payments=%s/);
+assert.match(normalizedVerifier, /insert fine_incidents=%s; update fines=%s; delete fine_payments=%s; expected sqlstate=42501/);
+assert.match(normalizedVerifier, /viewer_management_allowed = 0/);
+for (const operation of [
+  'rules',
+  'subjects',
+  'create_individual',
+  'create_collective',
+  'payment',
+  'refund',
+  'cancel',
+  'management_list',
+  'financial_summary',
+  'subject_summary',
+]) {
+  assert.ok(
+    normalizedVerifier.includes(`${operation}=allowed`) && normalizedVerifier.includes(`${operation}=denied[`),
+    `Falta el diagnÃ³stico allowed/denied de ${operation} para CAPTAIN.`,
+  );
+}
 assert.match(normalizedVerifier, /uid_without_membership_fail_closed/);
 assert.match(normalizedVerifier, /anon_all_function_paths_denied/);
 assert.match(normalizedVerifier, /idor_cross_club_five_paths_denied/);
