@@ -91,6 +91,19 @@ assert.match(normalizedVerifier, /idor_cross_club_five_paths_denied/);
 assert.match(normalizedVerifier, /payment_4_partial/);
 assert.match(normalizedVerifier, /refund_3_partial/);
 assert.match(normalizedVerifier, /surcharge_original_outstanding/);
+assert.match(
+  normalizedVerifier,
+  /select fine\.surcharge_amount, fine\.surcharge_base_amount into refund_reopen_surcharge_amount, refund_reopen_surcharge_base_amount from public\.fines fine where fine\.id = refund_reopen_fine/,
+);
+assert.match(
+  normalizedVerifier,
+  /refund_reopen_surcharge_base_amount = 3\.00 and refund_reopen_surcharge_amount = 1\.50/,
+);
+assert.doesNotMatch(
+  normalizedVerifier,
+  /record_fine_refund\(refund_reopen_fine[\s\S]{0,800}?result_row\.surcharge_amount/,
+  'record_fine_refund no devuelve surcharge_amount; debe comprobarse en public.fines.',
+);
 assert.match(normalizedVerifier, /cancelled_with_surcharge_zero_cash/);
 assert.match(normalizedVerifier, /ledger_update_immutable/);
 assert.match(normalizedVerifier, /snapshot_rule_immutable/);

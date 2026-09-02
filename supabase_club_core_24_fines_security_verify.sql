@@ -243,6 +243,8 @@ declare
   refund_reopen_fine uuid;
   payment_id_value uuid;
   result_row record;
+  refund_reopen_surcharge_amount numeric(10,2);
+  refund_reopen_surcharge_base_amount numeric(10,2);
   summary_row record;
   manager_summary record;
   own_rows integer;
@@ -591,10 +593,16 @@ begin
   execute 'set local role authenticated';
   select * into result_row from public.record_fine_refund(refund_reopen_fine,3,current_date,null);
   execute 'reset role';
+  select fine.surcharge_amount, fine.surcharge_base_amount
+    into refund_reopen_surcharge_amount, refund_reopen_surcharge_base_amount
+  from public.fines fine
+  where fine.id = refund_reopen_fine;
   perform pg_temp.add_fines_security_check('SURCHARGE_refund_reopens_debt',
-    result_row.surcharge_amount = 1.50 and result_row.generated_amount = 11.50
+    refund_reopen_surcharge_base_amount = 3.00
+      and refund_reopen_surcharge_amount = 1.50
+      and result_row.generated_amount = 11.50
       and result_row.collected_amount = 7 and result_row.pending_amount = 4.50,
-    'refund 3 reopens base 3 and materializes surcharge 1.50 once');
+    'refund 3 reopens base 3.00 and materializes surcharge 1.50 once');
 
   execute 'set local role authenticated';
   select created.fine_id into surcharge_cancel_fine from public.create_fine_individual(rule_ten,subject_c,date '2026-08-01',null) created;
