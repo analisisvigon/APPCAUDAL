@@ -25,6 +25,7 @@ import GlobalPlayerDatabase from './components/players/GlobalPlayerDatabase';
 import DailyLoadCard from './components/performance/DailyLoadCard';
 import LoadEvolutionSection from './components/performance/LoadEvolutionSection';
 import DelegatedStatsDashboard from './components/delegated/DelegatedStatsDashboard';
+import FinesManagementPage from './components/fines/FinesManagementPage';
 import AccordionSection from './components/shared/AccordionSection';
 import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
@@ -28956,7 +28957,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   };
 
   const authUser = session?.user ?? null;
-  const desktopTabs = ['Inicio', 'Plantilla', 'Perfiles', 'Equipos', 'Partidos', 'Biblioteca', 'Rendimiento', 'Registro Delegado', 'Análisis Grupal'];
+  const desktopTabs = ['Inicio', 'Plantilla', 'Perfiles', 'Equipos', 'Partidos', 'Biblioteca', 'Rendimiento', 'Multas', 'Registro Delegado', 'Análisis Grupal'];
   const mobilePrimaryTabs = [
     ['Inicio', 'Inicio'],
     ['Partidos', 'Partidos'],
@@ -28964,7 +28965,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     ['Registro Delegado', 'Deleg.'],
     ['Análisis Grupal', 'Análisis'],
   ];
-  const mobileMoreTabs = ['Perfiles', 'Equipos', 'Rendimiento', 'Biblioteca'];
+  const mobileMoreTabs = ['Perfiles', 'Equipos', 'Rendimiento', 'Multas', 'Biblioteca'];
   const goToTab = (tab) => {
     if (tab === activeTab) {
       setIsMobileMoreOpen(false);
@@ -32268,6 +32269,10 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
 
         {activeTab === 'Rendimiento' ? (
           <main>{renderPerformanceSection()}</main>
+        ) : null}
+
+        {activeTab === 'Multas' ? (
+          <FinesManagementPage client={supabase} />
         ) : null}
 
         {activeTab === 'Registro Delegado' ? renderDelegatedRegistrySection() : null}
