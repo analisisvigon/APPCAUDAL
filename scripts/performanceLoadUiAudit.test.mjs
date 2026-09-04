@@ -57,10 +57,9 @@ assert.doesNotMatch(app, /performanceDayTooltipDate|setPerformanceDayTooltipDate
 assert.doesNotMatch(app, /Pulso diario del equipo|Resumen por día/);
 
 const microcycleNavigation = app.match(/<nav aria-label="Navegación del microciclo"[\s\S]*?<\/nav>/)?.[0] || '';
-assert.match(microcycleNavigation, /day\.dayStatus\.label/);
 assert.match(microcycleNavigation, /day\.avgRpe/);
-assert.match(microcycleNavigation, /day\.rpeResponseCount/);
-assert.match(microcycleNavigation, /day\.relevantCount/);
+assert.match(microcycleNavigation, /day\.avgWellness/);
+assert.doesNotMatch(microcycleNavigation, /day\.dayStatus\.label|Prioridad|Vigilancia|Sin alertas/);
 assert.match(microcycleNavigation, /Carga registrada/);
 assert.doesNotMatch(microcycleNavigation, /day\.maxRpe|day\.highRpeCount|Máximo|RPE altos/);
 

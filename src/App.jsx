@@ -131,6 +131,7 @@ import {
   resolveRpeRefreshEntries,
   summarizeRpeEntries,
 } from './utils/performanceRpe';
+import { getDailyQuestionnaireRequirement, getMissingDailyPlayers } from './utils/performanceDaily';
 import {
   getTrainingLoadForDate,
   loadTrainingLoadsRange,
@@ -9769,7 +9770,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const getPerformanceDashboard = (
     wellnessSource = wellnessEntries,
     rpeSource = rpeEntries,
-    weekStart = performanceWeekStart
+    weekStart = performanceWeekStart,
   ) => {
     const rows = getPerformancePlayerRows(wellnessSource, rpeSource, {
       includeActivity: weekStart === performanceWeekStart,
@@ -9799,6 +9800,16 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         wellnessEntries: dayWellnessEntries,
         rpeEntries: dayRpeEntries,
       });
+      const dayTrainingSessions = trainingSessionsSource.filter((session) => session.session_date === entryDate);
+      const wellnessRequirement = getDailyQuestionnaireRequirement({
+        type: 'wellness',
+        entries: dayWellnessEntries,
+      });
+      const rpeRequirement = getDailyQuestionnaireRequirement({
+        type: 'rpe',
+        entries: dayRpeEntries,
+        trainingSessions: dayTrainingSessions,
+      });
       const date = new Date(`${entryDate}T12:00:00`);
       return {
         key: entryDate,
@@ -9817,6 +9828,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         avgWellness: dayWellnessValues.length ? dayWellnessValues.reduce((sum, value) => sum + value, 0) / dayWellnessValues.length : null,
         relevantCount: commentEntries.length,
         hasData: dayRpeEntries.length > 0 || dayWellnessEntries.length > 0,
+        wellnessRequirement,
+        rpeRequirement,
         dayStatus,
       };
     });
@@ -22318,7 +22331,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     ]
   );
   const previousPerformanceDashboard = useMemo(
-    () => getPerformanceDashboard(previousWellnessEntries, previousRpeEntries, addDays(performanceWeekStart, -7)),
+    () => getPerformanceDashboard(previousWellnessEntries, previousRpeEntries, addDays(performanceWeekStart, -7), []),
     [
       players,
       previousWellnessEntries,
@@ -27458,6 +27471,40 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         ];
     const activeDayTooltip = selectedDay || null;
     const activeChartPoint = performanceChartPoints.find((point) => point.key === selectedChartKey) || null;
+    const selectedDayWellnessRequirement = selectedDay
+      ? getDailyQuestionnaireRequirement({ type: 'wellness', entries: selectedDay.wellnessEntries })
+      : 'unknown';
+    const selectedDayRpeRequirement = selectedDay
+      ? getDailyQuestionnaireRequirement({
+        type: 'rpe',
+        entries: selectedDay.rpeEntries,
+      })
+      : 'unknown';
+    const selectedDayMissingWellness = getMissingDailyPlayers(players, selectedDay?.wellnessEntries, selectedDayWellnessRequirement);
+    const selectedDayMissingRpe = getMissingDailyPlayers(players, selectedDay?.rpeEntries, selectedDayRpeRequirement);
+    const renderDailyQuestionnaire = (label, requirement, missingPlayers) => (
+      <div className="min-w-0 rounded-2xl border border-white/[0.07] bg-black/15 p-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-300">{label}</p>
+          {requirement === 'required' ? (
+            <span className="text-[10px] font-bold text-slate-500">{missingPlayers.length} pendientes</span>
+          ) : null}
+        </div>
+        {requirement === 'unknown' ? (
+          <p className="mt-3 text-xs font-bold text-slate-500">Sin datos</p>
+        ) : missingPlayers.length ? (
+          <div className="mt-3 grid max-h-32 gap-1 overflow-y-auto pr-1 sm:grid-cols-2">
+            {missingPlayers.map((player) => (
+              <span key={player.id} className="truncate text-xs font-semibold text-slate-300" title={displayPlayerName(player)}>
+                {displayPlayerName(player)}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-xs font-bold text-emerald-200">✓ Todos completados</p>
+        )}
+      </div>
+    );
 
     return (
       <section className="space-y-5">
@@ -27543,7 +27590,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
             <nav aria-label="Navegación del microciclo" className="grid min-w-[770px] grid-cols-7 gap-1.5 rounded-2xl border border-white/[0.07] bg-black/15 p-1.5 lg:min-w-0">
               {dashboard.days.map((day) => {
                 const selected = day.entryDate === selectedDay?.entryDate;
-                const dayPresentation = dayStatusPresentation[day.dayStatus.status];
                 const hasTrainingLoad = Boolean(getTrainingLoadForDate(performanceTrainingLoads, day.entryDate));
                 return (
                   <button
@@ -27571,52 +27617,28 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                         className={`mt-1 h-1 w-5 rounded-full ${hasTrainingLoad ? 'bg-sky-300 shadow-[0_0_8px_rgba(125,211,252,0.45)]' : 'bg-transparent'}`}
                       />
                     </span>
-                    <span className={`mt-2 inline-flex max-w-full items-center gap-1 rounded-full border px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.06em] ${dayPresentation.badge}`}>
-                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dayPresentation.dot}`} />
-                      <span className="truncate">{day.dayStatus.label}</span>
-                    </span>
                     <span className="mt-2 block space-y-0.5 text-[8px] font-bold leading-3 text-slate-400">
                       <span className="block text-[9px] font-black text-slate-200">RPE {day.avgRpe === null ? '—' : day.avgRpe.toFixed(1)}</span>
-                      <span className="block">{day.rpeResponseCount} {day.rpeResponseCount === 1 ? 'respuesta' : 'respuestas'}</span>
-                      <span className="block">{day.relevantCount} {day.relevantCount === 1 ? 'observación' : 'observaciones'}</span>
+                      <span className="block">Wellness {day.avgWellness === null ? '—' : day.avgWellness.toFixed(1)}</span>
                     </span>
                   </button>
                 );
               })}
             </nav>
           </div>
-          <div className="relative mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[9px] font-black uppercase tracking-[0.11em] text-slate-400">
-            {[
-              ['green', 'Verde · Sin alertas'],
-              ['orange', 'Naranja · Vigilancia'],
-              ['red', 'Rojo · Prioridad'],
-              ['gray', 'Gris · Sin datos'],
-            ].map(([status, label]) => (
-              <span key={status} className="inline-flex items-center gap-1.5">
-                <span className={`h-2.5 w-2.5 rounded-full ${dayStatusPresentation[status].dot}`} />
-                {label}
-              </span>
-            ))}
-          </div>
           {activeDayTooltip ? (
-            <div className="relative mt-2 grid gap-3 rounded-2xl border border-white/[0.08] bg-black/20 p-3 text-left sm:grid-cols-[1.2fr_0.8fr]">
+            <div className="relative mt-2 grid gap-3 rounded-2xl border border-white/[0.08] bg-black/20 p-3 text-left sm:grid-cols-[0.8fr_1.2fr]">
               <div>
-                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-caudal-electric">Estado físico del día</p>
-                <p className="mt-1 text-sm font-black capitalize text-white">{activeDayTooltip.label} · {activeDayTooltip.dayStatus.label}</p>
-                <p className="mt-1 text-xs font-bold text-slate-300">
-                  {activeDayTooltip.dayStatus.priorityCount} prioridad · {activeDayTooltip.dayStatus.watchCount} en vigilancia
-                </p>
-                <p className="mt-1 text-[10px] leading-4 text-slate-500">{activeDayTooltip.dayStatus.reasons.join(' · ')}</p>
-                <p className="mt-1 text-[10px] font-bold text-slate-400">
-                  RPE medio {activeDayTooltip.avgRpe === null ? 'sin dato' : activeDayTooltip.avgRpe.toFixed(1)} · Wellness medio {activeDayTooltip.avgWellness === null ? 'sin dato' : activeDayTooltip.avgWellness.toFixed(1)} · {activeDayTooltip.dayStatus.responseCount} respuestas
-                </p>
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-caudal-electric">Media del día</p>
+                <p className="mt-2 flex items-center justify-between gap-3 text-xs font-bold text-slate-300"><span>RPE medio</span><strong className="text-lg text-white">{activeDayTooltip.avgRpe === null ? '—' : activeDayTooltip.avgRpe.toFixed(1)}</strong></p>
+                <p className="mt-2 flex items-center justify-between gap-3 text-xs font-bold text-slate-300"><span>Wellness medio</span><strong className="text-lg text-white">{activeDayTooltip.avgWellness === null ? '—' : activeDayTooltip.avgWellness.toFixed(1)}</strong></p>
               </div>
               <div className="border-t border-white/[0.07] pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
-                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-amber-200">Cumplimiento actual de formularios</p>
-                <p className="mt-1 text-xs font-bold text-slate-300">{dashboard.upToDateCount} al día · {dashboard.requiresNoticeCount} requieren aviso</p>
-                <p className="mt-1 text-[10px] leading-4 text-slate-500">
-                  Falta de respuesta: {dashboard.wellnessPendingCount} sin Wellness · {dashboard.rpePendingCount} sin RPE. Esta actividad actual no modifica el color histórico.
-                </p>
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-amber-200">Cuestionarios pendientes</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {renderDailyQuestionnaire('Wellness', selectedDayWellnessRequirement, selectedDayMissingWellness)}
+                  {renderDailyQuestionnaire('RPE', selectedDayRpeRequirement, selectedDayMissingRpe)}
+                </div>
               </div>
             </div>
           ) : null}
@@ -27908,68 +27930,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
             )}
           </section>
         </div>
-
-        <section className="rounded-[1.75rem] border border-white/[0.07] bg-[#091428] p-4 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Detalle del día</p>
-              <h3 className="mt-1 text-base font-black capitalize text-white">{formatLongDate(selectedDay?.entryDate)}</h3>
-              {selectedDay ? (
-                <p className="mt-1 text-[10px] leading-4 text-slate-500">
-                  Estado físico del día · {selectedDay.dayStatus.reasons.join(' · ')}
-                </p>
-              ) : null}
-            </div>
-            {selectedDay ? (
-              <div className="text-right">
-                <span className={`inline-flex rounded-full border px-2.5 py-1 text-[9px] font-black uppercase ${dayStatusPresentation[selectedDay.dayStatus.status].badge}`}>
-                  {selectedDay.dayStatus.label}
-                </span>
-                <p className="mt-1 text-xs font-bold text-slate-400">
-                  {selectedDay.rpeResponseCount} RPE · {selectedDay.wellnessResponseCount} Wellness
-                </p>
-              </div>
-            ) : null}
-          </div>
-          {selectedDayRows.length ? (
-            <div className="mt-3 grid auto-rows-fr gap-2 lg:grid-cols-2">
-              {selectedDayRows.map((row) => (
-                <button
-                  key={row.player.id}
-                  type="button"
-                  onClick={() => openPerformancePlayer(row.player.id)}
-                  className="grid h-28 min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-1.5 overflow-hidden rounded-xl border border-white/[0.07] bg-white/[0.025] px-2.5 py-2 text-left transition hover:border-caudal-electric/25 hover:bg-white/[0.05] sm:h-20 sm:grid-cols-[auto_minmax(0,1fr)_9rem] sm:gap-y-0"
-                >
-                  <PerformanceStatusRing player={row.player} status={row.status} tooltip={row.tooltip} signals={row.signals} size="sm" />
-                  <span className="min-w-0">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="truncate text-xs font-black text-white">{displayPlayerName(row.player)}</span>
-                      <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[7px] font-black uppercase ${statusPresentation[row.status].badge}`}>
-                        {statusPresentation[row.status].label}
-                      </span>
-                    </span>
-                    <span className="mt-0.5 block text-[10px] font-bold text-slate-400">
-                      Wellness {row.dayWellness === null ? '—' : row.dayWellness.toFixed(1)} · RPE {row.dayRpe === null ? '—' : row.dayRpe.toFixed(1)}
-                    </span>
-                    <span
-                      title={row.dayComments.length ? row.dayComments.join(' · ') : undefined}
-                      className={`mt-0.5 block h-3 truncate text-[9px] text-slate-500 ${row.dayComments.length ? '' : 'invisible'}`}
-                    >
-                      {row.dayComments.length ? row.dayComments.join(' · ') : 'Sin observaciones'}
-                    </span>
-                  </span>
-                  <span className="col-span-2 min-w-0 sm:col-span-1 sm:w-36">
-                    {renderActivityBadges(row, true, true)}
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-3 rounded-xl border border-dashed border-white/10 px-5 py-6 text-center text-sm text-slate-500">
-              Sin información para este día.
-            </div>
-          )}
-        </section>
 
         <section className="rounded-[1.75rem] border border-white/[0.07] bg-[#091428] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
