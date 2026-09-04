@@ -9800,7 +9800,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         wellnessEntries: dayWellnessEntries,
         rpeEntries: dayRpeEntries,
       });
-      const dayTrainingSessions = trainingSessionsSource.filter((session) => session.session_date === entryDate);
       const wellnessRequirement = getDailyQuestionnaireRequirement({
         type: 'wellness',
         entries: dayWellnessEntries,
@@ -9808,7 +9807,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       const rpeRequirement = getDailyQuestionnaireRequirement({
         type: 'rpe',
         entries: dayRpeEntries,
-        trainingSessions: dayTrainingSessions,
       });
       const date = new Date(`${entryDate}T12:00:00`);
       return {
