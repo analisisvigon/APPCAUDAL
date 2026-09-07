@@ -11,7 +11,7 @@ const sharedPresentation = read('src/utils/finesPresentation.js');
 const playerSource = [app, navigation, panel, store, presentation].join('\n');
 
 assert.match(app, /import PlayerFinesPanel from '\.\/components\/player\/PlayerFinesPanel';/);
-assert.match(app, /activeSection === 'fines' \? <PlayerFinesPanel client=\{client\} \/>/);
+assert.match(app, /activeSection === 'fines' \? \([\s\S]*?<PlayerFinesPanel client=\{client\} \/>[\s\S]*?<PlayerFinesTransparencyPanel client=\{client\} \/>[\s\S]*?\) : null/);
 assert.equal((navigation.match(/\['fines', 'Multas'\]/g) || []).length, 1, 'Multas aparece una sola vez en la navegación PLAYER.');
 assert.match(navigation, /sm:grid-cols-5/);
 

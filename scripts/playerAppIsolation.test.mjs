@@ -82,6 +82,14 @@ const finesPresentationSource = fs.readFileSync(
   new URL('../src/utils/playerFinesPresentation.js', import.meta.url),
   'utf8',
 );
+const finesTransparencyPanelSource = fs.readFileSync(
+  new URL('../src/components/player/PlayerFinesTransparencyPanel.jsx', import.meta.url),
+  'utf8',
+);
+const finesTransparencyStoreSource = fs.readFileSync(
+  new URL('../src/data/finesTransparencyStore.js', import.meta.url),
+  'utf8',
+);
 const shellSource = fs.readFileSync(new URL('../src/AppAuthShell.jsx', import.meta.url), 'utf8');
 const resolverSource = fs.readFileSync(new URL('../src/auth/resolveAppIdentity.js', import.meta.url), 'utf8');
 
@@ -117,6 +125,8 @@ const playerBranchSource = [
   finesPanelSource,
   finesStoreSource,
   finesPresentationSource,
+  finesTransparencyPanelSource,
+  finesTransparencyStoreSource,
 ].join('\n');
 for (const forbiddenImport of forbiddenPlayerImports) {
   assert.equal(playerBranchSource.includes(forbiddenImport), false, `El branch PLAYER no debe importar ${forbiddenImport}`);
@@ -144,6 +154,13 @@ assert.deepEqual(
   'Mis multas solo usa las dos RPC propias.',
 );
 assert.doesNotMatch(finesStoreSource, /p_(?:jugador|subject|club|membership|user|player)_id/i);
+assert.equal(/\.from\s*\(/.test(finesTransparencyStoreSource), false, 'Transparencia PLAYER no consulta tablas');
+assert.deepEqual(
+  [...finesTransparencyStoreSource.matchAll(/^\s*(?:summary|subjects|rules|list): '([^']+)'/gm)].map((match) => match[1]),
+  ['get_fines_transparency_summary', 'get_fines_transparency_subjects', 'get_fines_transparency_rules', 'get_fines_transparency_list'],
+  'Transparencia solo usa sus cuatro RPC sanitizadas.',
+);
+assert.doesNotMatch(finesTransparencyStoreSource, /\b(?:club_id|subject_id|jugador_id|membership_id|created_by|cancelled_by)\b/i);
 assert.match(analysisStoreSource, /client\.rpc\(rpcName, payload\)/, 'Mi análisis usa un ejecutor RPC PLAYER sin identidad externa');
 assert.deepEqual(
   [...analysisStoreSource.matchAll(/^\s*(?:overview|live|production|history): '([^']+)'/gm)].map((match) => match[1]),

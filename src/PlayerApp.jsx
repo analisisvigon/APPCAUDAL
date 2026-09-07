@@ -6,6 +6,7 @@ import PlayerHomeDashboard from './components/player/PlayerHomeDashboard';
 import PlayerMatchesPanel from './components/player/PlayerMatchesPanel';
 import PlayerPerformancePanel from './components/player/PlayerPerformancePanel';
 import PlayerFinesPanel from './components/player/PlayerFinesPanel';
+import PlayerFinesTransparencyPanel from './components/player/PlayerFinesTransparencyPanel';
 import { canPlayerManageFines, guardPlayerSection } from './utils/playerCapabilities';
 
 const FinesManagementPage = lazy(() => import('./components/fines/FinesManagementPage'));
@@ -107,7 +108,12 @@ function PlayerApp({ client, identity, onRefreshIdentity, onSignOut, signingOut 
             {activeSection === 'performance' ? <PlayerPerformancePanel client={client} /> : null}
             {activeSection === 'analysis' ? <PlayerAnalysisPanel client={client} /> : null}
             {activeSection === 'matches' ? <PlayerMatchesPanel client={client} /> : null}
-            {activeSection === 'fines' ? <PlayerFinesPanel client={client} /> : null}
+            {activeSection === 'fines' ? (
+              <>
+                <PlayerFinesPanel client={client} />
+                <PlayerFinesTransparencyPanel client={client} />
+              </>
+            ) : null}
             {canManageFines && activeSection === 'fines-management' ? (
               <Suspense fallback={<section role="status" className="rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 px-5 py-10 text-center text-sm font-black text-slate-300">Cargando gestión de multas…</section>}>
                 <FinesManagementPage client={client} title="Gestión de multas" unavailableMessage="Gestión de multas no disponible." onAccessDenied={onRefreshIdentity} />

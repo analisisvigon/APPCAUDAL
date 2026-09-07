@@ -27,6 +27,7 @@ import {
   sortFineSubjectSummary,
   validateFineAmount,
 } from '../../utils/finesPresentation';
+import { FinesStatusDistribution } from './FinesTransparencyVisuals';
 
 const PAGE_SIZE = 50;
 const CARD = 'rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.88] shadow-[0_16px_42px_rgba(0,0,0,0.18)]';
@@ -542,6 +543,7 @@ export default function FinesManagementPage({ client, title = 'Multas', unavaila
           {subjectSummaryState.status === 'loading' ? <div className="mt-4 h-36 animate-pulse rounded-2xl bg-white/[0.045]" /> : null}
           {subjectSummaryState.status === 'ready' && !pendingSubjects.length ? <div className="mt-4 rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center"><p className="text-sm font-black text-slate-300">No hay importes pendientes.</p></div> : null}
           {subjectSummaryState.status === 'ready' && pendingSubjects.length ? <div className="mt-5 space-y-3" role="img" aria-label="Gráfico de barras: pendiente por jugador">{pendingSubjects.slice(0, 12).map((row) => { const amount = numberValue(row.pending_total); const width = maxPending > 0 ? Math.max(4, (amount / maxPending) * 100) : 0; return <div key={`${row.subject_type}-${row.subject_name}`}><div className="mb-1 flex items-center justify-between gap-3 text-xs"><span className="truncate font-bold text-slate-300">{row.subject_name}</span><span className="shrink-0 font-black text-amber-100">{formatFinesCurrency(amount)}</span></div><div className="h-2.5 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-caudal-electric" style={{ width: `${width}%` }} /></div></div>; })}</div> : null}
+          {summaryState.status === 'ready' ? <div className="mt-5"><FinesStatusDistribution summary={summary} /></div> : null}
         </div>
       </section>
 

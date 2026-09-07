@@ -78,6 +78,9 @@ for (const requiredPath of [
   'src/data/playerFinesStore.js',
   'src/utils/playerFinesPresentation.js',
   'src/utils/playerCapabilities.js',
+  'src/components/player/PlayerFinesTransparencyPanel.jsx',
+  'src/components/fines/FinesTransparencyVisuals.jsx',
+  'src/data/finesTransparencyStore.js',
 ]) {
   assert.equal(relativeFiles.includes(requiredPath), true, `${requiredPath} debe formar parte del flujo PLAYER.`);
 }
