@@ -67,6 +67,7 @@ assert.doesNotMatch(executable, /club_member_permissions|fines_manage|can_manage
 assert.doesNotMatch(executable, /fine_fund_expenses|pg_cron|cron\./);
 
 const normalizedVerify = compact(verifySql);
+const executableVerify = compact(verifySql.replace(/--.*$/gm, ''));
 assert.match(normalizedVerify, /begin;.*rollback;/s);
 assert.match(normalizedVerify, /create temporary table fines_transparency_results/);
 assert.match(normalizedVerify, /public\.get_fines_transparency_summary\(\)/);
@@ -77,11 +78,30 @@ assert.match(normalizedVerify, /not pg_catalog\.has_function_privilege\('anon'/)
 assert.match(normalizedVerify, /not pg_catalog\.has_function_privilege\('authenticated', helper\.oid, 'execute'\)/);
 assert.match(normalizedVerify, /actual\.actual_columns = actual\.expected_columns/);
 assert.match(normalizedVerify, /not pg_catalog\.has_table_privilege\('authenticated'.*'insert'\).*not pg_catalog\.has_table_privilege\('authenticated'.*'update'\).*not pg_catalog\.has_table_privilege\('authenticated'.*'delete'\)/s);
-assert.match(normalizedVerify, /role_player_read_allowed/);
-assert.match(normalizedVerify, /role_staff_read_allowed/);
-assert.match(normalizedVerify, /role_viewer_denied/);
+assert.match(normalizedVerify, /role_player_transparency_allowed/);
+assert.match(normalizedVerify, /role_player_management_denied/);
+assert.match(normalizedVerify, /role_player_manager_capability/);
+assert.match(normalizedVerify, /role_player_manager_transparency_allowed/);
+assert.match(normalizedVerify, /role_player_manager_management_reads_allowed/);
+assert.match(normalizedVerify, /role_staff_transparency_allowed/);
+assert.match(normalizedVerify, /role_staff_management_reads_allowed/);
+assert.match(normalizedVerify, /role_viewer_fixture_fail_closed/);
+assert.match(normalizedVerify, /role_viewer_transparency_denied/);
+assert.match(normalizedVerify, /role_viewer_management_denied/);
+assert.match(normalizedVerify, /role_viewer_direct_tables_zero/);
 assert.match(normalizedVerify, /role_no_membership_denied/);
-assert.match(normalizedVerify, /update public\.club_memberships set role = 'viewer'.*update public\.club_memberships set role = 'staff'/s);
+assert.match(normalizedVerify, /role_anon_denied/);
+assert.match(normalizedVerify, /insert into auth\.users/);
+assert.match(normalizedVerify, /insert into public\.club_memberships \( club_id, user_id, role, jugador_id, is_active \) values \( club_id_value, viewer_user_id, 'viewer', null, true \)/);
+assert.match(normalizedVerify, /insert into public\.club_member_permissions \(membership_id, permission_key\) values \(viewer_membership_id, 'fines_manage'\)/);
+assert.match(normalizedVerify, /jsonb_build_object\('sub', owner_user_id, 'role', 'authenticated'\)/);
+assert.match(normalizedVerify, /transaction_viewer_fixture_scoped/);
+assert.match(normalizedVerify, /checks_before_counter=%s; expected=32; total_output=33/);
+assert.doesNotMatch(executableVerify, /update public\.club_memberships\b/, 'El verify 25 no puede mutar memberships reales para simular VIEWER.');
+assert.doesNotMatch(executableVerify, /delete from public\.club_memberships\b/);
+assert.equal((executableVerify.match(/insert into public\.club_memberships\b/g) || []).length, 1, 'Solo se permite la membership VIEWER transitoria.');
+assert.doesNotMatch(executableVerify, /(update|delete from) auth\.users\b/);
+assert.doesNotMatch(executableVerify, /disable trigger|drop trigger|alter function public\.guard_club_membership_mutation|grant [^;]*club_memberships/);
 assert.doesNotMatch(normalizedVerify, /role\s*=\s*'captain'/);
 
-console.log('Club Core 25 fines transparency SQL audit: 4 RPC sanitizadas de solo lectura y acceso PLAYER/STAFF validado.');
+console.log('Club Core 25 fines transparency SQL audit: fixture VIEWER transitoria y verifier de 33 checks validados.');
