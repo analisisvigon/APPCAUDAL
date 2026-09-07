@@ -70,6 +70,18 @@ const matchesPresentationSource = fs.readFileSync(
   new URL('../src/utils/playerMatchesPresentation.js', import.meta.url),
   'utf8',
 );
+const finesPanelSource = fs.readFileSync(
+  new URL('../src/components/player/PlayerFinesPanel.jsx', import.meta.url),
+  'utf8',
+);
+const finesStoreSource = fs.readFileSync(
+  new URL('../src/data/playerFinesStore.js', import.meta.url),
+  'utf8',
+);
+const finesPresentationSource = fs.readFileSync(
+  new URL('../src/utils/playerFinesPresentation.js', import.meta.url),
+  'utf8',
+);
 const shellSource = fs.readFileSync(new URL('../src/AppAuthShell.jsx', import.meta.url), 'utf8');
 const resolverSource = fs.readFileSync(new URL('../src/auth/resolveAppIdentity.js', import.meta.url), 'utf8');
 
@@ -102,6 +114,9 @@ const playerBranchSource = [
   matchesPanelSource,
   matchesStoreSource,
   matchesPresentationSource,
+  finesPanelSource,
+  finesStoreSource,
+  finesPresentationSource,
 ].join('\n');
 for (const forbiddenImport of forbiddenPlayerImports) {
   assert.equal(playerBranchSource.includes(forbiddenImport), false, `El branch PLAYER no debe importar ${forbiddenImport}`);
@@ -122,6 +137,13 @@ assert.equal(/\.from\s*\(/.test(matchesStoreSource), false, 'Partidos PLAYER no 
 assert.match(matchesStoreSource, /client\.rpc\(PLAYER_MATCHES_RPC\)/, 'Partidos usa exclusivamente su RPC sin identidad externa');
 assert.match(matchesStoreSource, /PLAYER_MATCHES_RPC = 'get_my_player_matches'/);
 assert.doesNotMatch(matchesStoreSource, /p_(?:jugador|user|club|partido)_id/i);
+assert.equal(/\.from\s*\(/.test(finesStoreSource), false, 'Mis multas PLAYER no consulta tablas');
+assert.deepEqual(
+  [...finesStoreSource.matchAll(/^\s*(?:list|summary): '([^']+)'/gm)].map((match) => match[1]),
+  ['get_my_fines', 'get_my_fines_summary'],
+  'Mis multas solo usa las dos RPC propias.',
+);
+assert.doesNotMatch(finesStoreSource, /p_(?:jugador|subject|club|membership|user|player)_id/i);
 assert.match(analysisStoreSource, /client\.rpc\(rpcName, payload\)/, 'Mi análisis usa un ejecutor RPC PLAYER sin identidad externa');
 assert.deepEqual(
   [...analysisStoreSource.matchAll(/^\s*(?:overview|live|production|history): '([^']+)'/gm)].map((match) => match[1]),

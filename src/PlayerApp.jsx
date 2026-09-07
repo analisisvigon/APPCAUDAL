@@ -5,6 +5,7 @@ import PlayerAnalysisPanel from './components/player/PlayerAnalysisPanel';
 import PlayerHomeDashboard from './components/player/PlayerHomeDashboard';
 import PlayerMatchesPanel from './components/player/PlayerMatchesPanel';
 import PlayerPerformancePanel from './components/player/PlayerPerformancePanel';
+import PlayerFinesPanel from './components/player/PlayerFinesPanel';
 
 const EMPTY_PROFILE_STATE = { status: 'loading', profile: null, errorKind: '' };
 const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric focus-visible:ring-offset-2 focus-visible:ring-offset-[#02070f]';
@@ -94,6 +95,7 @@ function PlayerApp({ client, onSignOut, signingOut = false }) {
             {activeSection === 'performance' ? <PlayerPerformancePanel client={client} /> : null}
             {activeSection === 'analysis' ? <PlayerAnalysisPanel client={client} /> : null}
             {activeSection === 'matches' ? <PlayerMatchesPanel client={client} /> : null}
+            {activeSection === 'fines' ? <PlayerFinesPanel client={client} /> : null}
           </>
         ) : null}
       </main>
