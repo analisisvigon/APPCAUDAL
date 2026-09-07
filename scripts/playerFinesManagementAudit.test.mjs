@@ -41,7 +41,8 @@ assert.equal((navigation.match(/\['fines', 'Multas'\]/g) || []).length, 1);
 assert.equal((navigation.match(/\['fines-management', 'Gestión de multas'\]/g) || []).length, 1);
 assert.match(navigation, /canManageFines \? 'lg:grid-cols-6' : 'sm:grid-cols-5'/);
 
-assert.match(managementPage, /export default function FinesManagementPage\(\{ client, title = 'Multas', unavailableMessage = '', onAccessDenied = null \}\)/);
+assert.match(managementPage, /export default function FinesManagementPage\(\{ client, title = 'Multas', unavailableMessage = '', onAccessDenied = null, staffPresentation = false \}\)/);
+assert.doesNotMatch(app, /staffPresentation/, 'PLAYER conserva la presentaciÃ³n de gestiÃ³n existente.');
 assert.match(managementPage, /<h2[^>]*>\{title\}<\/h2>/);
 assert.match(managementPage, /isFinesManagementAccessDenied\(error\)/);
 assert.match(managementPage, /onAccessDenied\?\.\(\)/);

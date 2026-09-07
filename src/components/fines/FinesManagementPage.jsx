@@ -128,15 +128,76 @@ function KpiLoading() {
   return <div role="status" aria-label="Cargando resumen económico" className="grid animate-pulse grid-cols-2 gap-2 lg:grid-cols-4">{[0, 1, 2, 3].map((item) => <div key={item} className={`${CARD} h-[84px] bg-white/[0.045]`} />)}</div>;
 }
 
-function FineActions({ fine, onAction }) {
+function FineActions({ fine, onAction, staffPresentation = false }) {
   const availability = getFineActionAvailability(fine);
-  if (fine.lifecycle_status === 'cancelled') return <span className="text-[10px] font-bold text-slate-600">Sin acciones</span>;
+  if (fine.lifecycle_status === 'cancelled') return staffPresentation ? null : <span className="text-[10px] font-bold text-slate-600">Sin acciones</span>;
   return (
     <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap">
       {availability.payment ? <button type="button" onClick={() => onAction('payment', fine)} className="min-h-11 rounded-xl bg-caudal-electric/15 px-3 py-2 text-xs font-black text-caudal-electric hover:bg-caudal-electric/20">Registrar pago</button> : null}
       {availability.refund ? <button type="button" onClick={() => onAction('refund', fine)} className="min-h-11 rounded-xl bg-violet-300/10 px-3 py-2 text-xs font-black text-violet-200 hover:bg-violet-300/15">Reembolso</button> : null}
       {availability.cancel ? <button type="button" onClick={() => onAction('cancel', fine)} className="min-h-11 rounded-xl bg-white/[0.07] px-3 py-2 text-xs font-black text-slate-300 hover:bg-white/10">Anular</button> : null}
       {availability.cancelBlockedByCollection ? <button type="button" disabled title="Primero debe resolverse el importe cobrado." className="min-h-11 rounded-xl bg-white/[0.04] px-3 py-2 text-xs font-black text-slate-600">Anular</button> : null}
+    </div>
+  );
+}
+
+function DesktopFineRow({ fine, onAction, staffPresentation = false }) {
+  const isCancelled = fine.lifecycle_status === 'cancelled';
+  return (
+    <tr className={`align-top ${staffPresentation ? `transition ${isCancelled ? 'bg-slate-950/25 opacity-60' : 'hover:bg-white/[0.025]'}` : 'hover:bg-white/[0.025]'}`}>
+      <td className="whitespace-nowrap px-3 py-3 font-bold text-slate-400">{formatFinesDate(fine.occurred_on)}</td>
+      <td className={`max-w-40 px-3 py-3 font-black ${staffPresentation && isCancelled ? 'text-slate-400' : 'text-white'}`}>{fine.subject_name}</td>
+      <td className="max-w-52 px-3 py-3 text-slate-300"><span className="line-clamp-2">{fine.rule_name}</span></td>
+      <td className={`whitespace-nowrap px-3 py-3 font-bold ${staffPresentation && isCancelled ? 'text-slate-500 line-through decoration-slate-600' : 'text-white'}`}>{formatFinesCurrency(fine.generated_amount)}</td>
+      <td className={`whitespace-nowrap px-3 py-3 font-bold ${staffPresentation && isCancelled ? 'text-slate-500' : 'text-emerald-200'}`}>{formatFinesCurrency(fine.collected_amount)}</td>
+      <td className={`whitespace-nowrap px-3 py-3 font-black ${staffPresentation && isCancelled ? 'text-slate-500' : 'text-amber-100'}`}>{staffPresentation && isCancelled ? 'No exigible' : formatFinesCurrency(fine.pending_amount)}</td>
+      <td className="px-3 py-3"><StatusBadges fine={fine} /></td>
+      <td className="whitespace-nowrap px-3 py-3 text-slate-400">{formatFinesDate(fine.due_on)}</td>
+      <td className="min-w-52 px-3 py-3"><FineActions fine={fine} onAction={onAction} staffPresentation={staffPresentation} /></td>
+    </tr>
+  );
+}
+
+function MobileFineCard({ fine, onAction, staffPresentation = false }) {
+  const isCancelled = fine.lifecycle_status === 'cancelled';
+  return (
+    <article className={`rounded-2xl border p-3 ${staffPresentation && isCancelled ? 'border-white/[0.045] bg-slate-950/25 opacity-65 transition' : 'border-white/[0.07] bg-white/[0.03]'}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className={`text-sm font-black leading-5 ${staffPresentation && isCancelled ? 'text-slate-400' : 'text-white'}`}>{fine.subject_name}</p>
+          <p className="mt-1 line-clamp-2 text-xs font-semibold text-slate-400">{fine.rule_name}</p>
+        </div>
+        <StatusBadges fine={fine} />
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 border-y border-white/[0.055] py-2">
+        <div><p className="text-[10px] font-black uppercase text-slate-600">Generado</p><p className={`mt-1 text-xs font-black ${staffPresentation && isCancelled ? 'text-slate-500 line-through decoration-slate-600' : 'text-white'}`}>{formatFinesCurrency(fine.generated_amount)}</p></div>
+        <div><p className="text-[10px] font-black uppercase text-slate-600">Cobrado</p><p className={`mt-1 text-xs font-black ${staffPresentation && isCancelled ? 'text-slate-500' : 'text-emerald-200'}`}>{formatFinesCurrency(fine.collected_amount)}</p></div>
+        <div><p className="text-[10px] font-black uppercase text-slate-600">Pendiente</p><p className={`mt-1 text-xs font-black ${staffPresentation && isCancelled ? 'text-slate-500' : 'text-amber-100'}`}>{staffPresentation && isCancelled ? 'No exigible' : formatFinesCurrency(fine.pending_amount)}</p></div>
+      </div>
+      <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs font-bold text-slate-500"><span>Fecha {formatFinesDate(fine.occurred_on)}</span><span>Vence {formatFinesDate(fine.due_on)}</span></div>
+      {!staffPresentation || !isCancelled ? <div className="mt-3"><FineActions fine={fine} onAction={onAction} staffPresentation={staffPresentation} /></div> : null}
+    </article>
+  );
+}
+
+function SubjectSituationRows({ rows }) {
+  return (
+    <div className="mt-3 space-y-1.5">
+      {rows.map((row) => (
+        <article key={`${row.subject_type}-${row.subject_name}`} className="grid gap-2 rounded-xl border border-white/[0.065] bg-white/[0.025] px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_repeat(3,minmax(5.5rem,auto))] sm:items-center sm:gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-black text-white">{row.subject_name}</p>
+            <p className="mt-0.5 text-[10px] font-bold uppercase text-slate-600">{row.fine_count} {numberValue(row.fine_count) === 1 ? 'multa' : 'multas'}</p>
+          </div>
+          <dl className="grid grid-cols-3 gap-2 sm:contents">
+            {[
+              ['Generado', formatFinesCurrency(row.generated_total), 'text-slate-200'],
+              ['Pagado', formatFinesCurrency(row.collected_total), 'text-emerald-200'],
+              ['Pendiente', formatFinesCurrency(row.pending_total), numberValue(row.pending_total) > 0 ? 'text-amber-100' : 'text-slate-400'],
+            ].map(([label, value, tone]) => <div key={label} className="min-w-0 sm:text-right"><dt className="text-[10px] font-black uppercase text-slate-600">{label}</dt><dd className={`mt-0.5 truncate text-xs font-black tabular-nums ${tone}`}>{value}</dd></div>)}
+          </dl>
+        </article>
+      ))}
     </div>
   );
 }
@@ -298,7 +359,7 @@ function FinancialActionModal({ kind, fine, onClose, onSubmit, saving }) {
   );
 }
 
-export default function FinesManagementPage({ client, title = 'Multas', unavailableMessage = '', onAccessDenied = null }) {
+export default function FinesManagementPage({ client, title = 'Multas', unavailableMessage = '', onAccessDenied = null, staffPresentation = false }) {
   const [summaryState, setSummaryState] = useState({ status: 'loading', data: null, error: '' });
   const [listState, setListState] = useState({ status: 'loading', rows: [], error: '', hasMore: false });
   const [subjectSummaryState, setSubjectSummaryState] = useState({ status: 'loading', rows: [], error: '' });
@@ -495,7 +556,7 @@ export default function FinesManagementPage({ client, title = 'Multas', unavaila
       </section>
 
       <section aria-labelledby="fines-list-title" className={`${CARD} overflow-hidden`}>
-        <div className="border-b border-white/10 p-4 sm:p-5">
+        <div className={`border-b border-white/10 p-4 ${staffPresentation ? '' : 'sm:p-5'}`}>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div><h3 id="fines-list-title" className="text-sm font-black uppercase tracking-[0.14em] text-white">Listado y gestión</h3><p className="mt-1 text-xs text-slate-500">Resultados paginados del backend · máximo {PAGE_SIZE} por carga</p></div>
              <div className="flex max-w-full snap-x snap-mandatory gap-1.5 overflow-x-auto scroll-smooth pb-1" aria-label="Filtrar multas por estado">
@@ -507,7 +568,7 @@ export default function FinesManagementPage({ client, title = 'Multas', unavaila
         {listState.status === 'loading' ? <div role="status" className="grid animate-pulse gap-2 p-4"><div className="h-14 rounded-xl bg-white/[0.045]" /><div className="h-14 rounded-xl bg-white/[0.045]" /><div className="h-14 rounded-xl bg-white/[0.045]" /></div> : null}
         {listState.status === 'error' ? <div className="p-4"><BlockError message={listState.error} onRetry={refreshFinesData} /></div> : null}
         {listState.status === 'ready' && !listState.rows.length ? (
-          <div className="px-4 py-5 text-center"><p className="text-sm font-black text-slate-200">No hay multas registradas esta temporada.</p><button type="button" onClick={openNewFine} className={`${SECONDARY_BUTTON} mt-3`}>Crear primera multa</button></div>
+          <div className={staffPresentation ? 'flex min-h-[104px] flex-col items-center justify-center px-4 py-4 text-center' : 'px-4 py-5 text-center'}><p className="text-sm font-black text-slate-200">No hay multas registradas esta temporada.</p><button type="button" onClick={openNewFine} className={`${SECONDARY_BUTTON} ${staffPresentation ? 'mt-2' : 'mt-3'}`}>Crear primera multa</button></div>
         ) : null}
         {listState.status === 'ready' && listState.rows.length ? (
           <>
@@ -515,37 +576,62 @@ export default function FinesManagementPage({ client, title = 'Multas', unavaila
               <table className="w-full min-w-[1120px] text-left text-xs">
                 <thead className="bg-black/15 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500"><tr>{['Fecha', 'Persona', 'Motivo', 'Importe', 'Pagado', 'Pendiente', 'Estado', 'Vence', 'Acciones'].map((label) => <th key={label} className="px-3 py-3">{label}</th>)}</tr></thead>
                 <tbody className="divide-y divide-white/[0.055]">
-                  {listState.rows.map((fine) => <tr key={fine.fine_id} className="align-top hover:bg-white/[0.025]"><td className="whitespace-nowrap px-3 py-3 font-bold text-slate-400">{formatFinesDate(fine.occurred_on)}</td><td className="max-w-40 px-3 py-3 font-black text-white">{fine.subject_name}</td><td className="max-w-52 px-3 py-3 text-slate-300"><span className="line-clamp-2">{fine.rule_name}</span></td><td className="whitespace-nowrap px-3 py-3 font-bold text-white">{formatFinesCurrency(fine.generated_amount)}</td><td className="whitespace-nowrap px-3 py-3 font-bold text-emerald-200">{formatFinesCurrency(fine.collected_amount)}</td><td className="whitespace-nowrap px-3 py-3 font-black text-amber-100">{formatFinesCurrency(fine.pending_amount)}</td><td className="px-3 py-3"><StatusBadges fine={fine} /></td><td className="whitespace-nowrap px-3 py-3 text-slate-400">{formatFinesDate(fine.due_on)}</td><td className="min-w-52 px-3 py-3"><FineActions fine={fine} onAction={openAction} /></td></tr>)}
+                  {listState.rows.map((fine) => <DesktopFineRow key={fine.fine_id} fine={fine} onAction={openAction} staffPresentation={staffPresentation} />)}
                 </tbody>
               </table>
             </div>
             <div className="grid gap-2 p-3 lg:hidden">
-              {listState.rows.map((fine) => <article key={fine.fine_id} className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-sm font-black leading-5 text-white">{fine.subject_name}</p><p className="mt-1 line-clamp-2 text-xs font-semibold text-slate-400">{fine.rule_name}</p></div><StatusBadges fine={fine} /></div><div className="mt-3 grid grid-cols-3 gap-2 border-y border-white/[0.055] py-2"><div><p className="text-[10px] font-black uppercase text-slate-600">Generado</p><p className="mt-1 text-xs font-black text-white">{formatFinesCurrency(fine.generated_amount)}</p></div><div><p className="text-[10px] font-black uppercase text-slate-600">Cobrado</p><p className="mt-1 text-xs font-black text-emerald-200">{formatFinesCurrency(fine.collected_amount)}</p></div><div><p className="text-[10px] font-black uppercase text-slate-600">Pendiente</p><p className="mt-1 text-xs font-black text-amber-100">{formatFinesCurrency(fine.pending_amount)}</p></div></div><div className="mt-2 flex flex-wrap justify-between gap-2 text-xs font-bold text-slate-500"><span>Fecha {formatFinesDate(fine.occurred_on)}</span><span>Vence {formatFinesDate(fine.due_on)}</span></div><div className="mt-3"><FineActions fine={fine} onAction={openAction} /></div></article>)}
+              {listState.rows.map((fine) => <MobileFineCard key={fine.fine_id} fine={fine} onAction={openAction} staffPresentation={staffPresentation} />)}
             </div>
             {listState.hasMore ? <div className="border-t border-white/10 p-4 text-center"><button type="button" onClick={loadMore} disabled={loadingMore} className={SECONDARY_BUTTON}>{loadingMore ? 'Cargando…' : 'Cargar más'}</button></div> : null}
           </>
         ) : null}
       </section>
 
-      <section aria-labelledby="fines-subject-title" className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-        <div className={`${CARD} p-4 sm:p-5`}>
+      {staffPresentation ? (
+        <section aria-labelledby="fines-subject-title" className="grid items-start gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)]">
+        <div className={`${CARD} p-4`}>
           <h3 id="fines-subject-title" className="text-sm font-black uppercase tracking-[0.14em] text-white">Situación por jugador</h3>
           <p className="mt-1 text-xs text-slate-500">Ordenado por importe pendiente</p>
-          {subjectSummaryState.status === 'loading' ? <div role="status" className="mt-4 h-36 animate-pulse rounded-2xl bg-white/[0.045]" /> : null}
-          {subjectSummaryState.status === 'error' ? <div className="mt-4"><BlockError message={subjectSummaryState.error} onRetry={refreshFinesData} /></div> : null}
-          {subjectSummaryState.status === 'ready' && !subjectSummaryState.rows.length ? <p className="mt-3 rounded-2xl border border-dashed border-white/10 px-4 py-4 text-center text-sm font-bold text-slate-500">Todavía no hay datos por jugador.</p> : null}
-          {subjectSummaryState.status === 'ready' && subjectSummaryState.rows.length ? <><div className="mt-3 grid gap-2 lg:hidden">{subjectSummaryState.rows.map((row) => <article key={`${row.subject_type}-${row.subject_name}`} className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-3"><p className="text-sm font-black text-white">{row.subject_name}</p><dl className="mt-2 grid grid-cols-2 gap-2">{[['Generado', formatFinesCurrency(row.generated_total), 'text-slate-200'], ['Pagado', formatFinesCurrency(row.collected_total), 'text-emerald-200'], ['Pendiente', formatFinesCurrency(row.pending_total), 'text-amber-100'], ['Multas', row.fine_count, 'text-white']].map(([label, value, tone]) => <div key={label}><dt className="text-[10px] font-black uppercase text-slate-600">{label}</dt><dd className={`mt-1 text-sm font-black tabular-nums ${tone}`}>{value}</dd></div>)}</dl></article>)}</div><div className="mt-4 hidden overflow-x-auto lg:block"><table className="w-full min-w-[520px] text-left text-xs"><thead className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-600"><tr><th className="pb-2">Jugador</th><th className="pb-2">Multas</th><th className="pb-2">Generado</th><th className="pb-2">Pagado</th><th className="pb-2">Pendiente</th></tr></thead><tbody className="divide-y divide-white/[0.055]">{subjectSummaryState.rows.map((row) => <tr key={`${row.subject_type}-${row.subject_name}`}><td className="py-2.5 pr-3 font-black text-white">{row.subject_name}</td><td className="py-2.5 text-slate-400">{row.fine_count}</td><td className="py-2.5 font-bold text-slate-300">{formatFinesCurrency(row.generated_total)}</td><td className="py-2.5 font-bold text-emerald-200">{formatFinesCurrency(row.collected_total)}</td><td className="py-2.5 font-black text-amber-100">{formatFinesCurrency(row.pending_total)}</td></tr>)}</tbody></table></div></> : null}
+          {subjectSummaryState.status === 'loading' ? <div role="status" className="mt-3 h-24 animate-pulse rounded-2xl bg-white/[0.045]" /> : null}
+          {subjectSummaryState.status === 'error' ? <div className="mt-3"><BlockError message={subjectSummaryState.error} onRetry={refreshFinesData} /></div> : null}
+          {subjectSummaryState.status === 'ready' && !subjectSummaryState.rows.length ? <p className="mt-3 flex min-h-[96px] items-center justify-center rounded-2xl border border-dashed border-white/10 px-4 py-3 text-center text-sm font-bold text-slate-500">Todavía no hay datos por jugador.</p> : null}
+          {subjectSummaryState.status === 'ready' && subjectSummaryState.rows.length ? <SubjectSituationRows rows={subjectSummaryState.rows} /> : null}
         </div>
 
-        <div className={`${CARD} p-4 sm:p-5`}>
-          <h3 className="text-sm font-black uppercase tracking-[0.14em] text-white">Pendiente por jugador</h3>
-          <p className="mt-1 text-xs text-slate-500">Solo importes pendientes mayores que cero</p>
-          {subjectSummaryState.status === 'loading' ? <div className="mt-4 h-36 animate-pulse rounded-2xl bg-white/[0.045]" /> : null}
-          {subjectSummaryState.status === 'ready' && !pendingSubjects.length ? <div className="mt-3 rounded-2xl border border-dashed border-white/10 px-4 py-4 text-center"><p className="text-sm font-black text-slate-300">No hay importes pendientes.</p></div> : null}
-          {subjectSummaryState.status === 'ready' && pendingSubjects.length ? <div className="mt-5 space-y-3" role="img" aria-label="Gráfico de barras: pendiente por jugador">{pendingSubjects.slice(0, 12).map((row) => { const amount = numberValue(row.pending_total); const width = maxPending > 0 ? Math.max(4, (amount / maxPending) * 100) : 0; return <div key={`${row.subject_type}-${row.subject_name}`}><div className="mb-1 flex items-center justify-between gap-3 text-xs"><span className="truncate font-bold text-slate-300">{row.subject_name}</span><span className="shrink-0 font-black text-amber-100">{formatFinesCurrency(amount)}</span></div><div className="h-2.5 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-caudal-electric" style={{ width: `${width}%` }} /></div></div>; })}</div> : null}
-          {summaryState.status === 'ready' ? <div className="mt-5"><FinesStatusDistribution summary={summary} /></div> : null}
+        <div className="grid content-start gap-3">
+          {summaryState.status === 'ready' ? <FinesStatusDistribution summary={summary} /> : null}
+          {summaryState.status === 'loading' ? <div className={`${CARD} h-32 animate-pulse bg-white/[0.045]`} /> : null}
+          <div className={`${CARD} p-4`}>
+            <h3 className="text-sm font-black uppercase tracking-[0.14em] text-white">Pendiente por jugador</h3>
+            <p className="mt-1 text-xs text-slate-500">Solo importes pendientes mayores que cero</p>
+            {subjectSummaryState.status === 'loading' ? <div className="mt-3 h-24 animate-pulse rounded-2xl bg-white/[0.045]" /> : null}
+            {subjectSummaryState.status === 'ready' && !pendingSubjects.length ? <div className="mt-3 flex min-h-[96px] items-center justify-center rounded-2xl border border-dashed border-white/10 px-4 py-3 text-center"><p className="text-sm font-black text-slate-300">No hay importes pendientes.</p></div> : null}
+            {subjectSummaryState.status === 'ready' && pendingSubjects.length ? <div className="mt-3 space-y-2" role="img" aria-label="Gráfico de barras: pendiente por jugador">{pendingSubjects.slice(0, 8).map((row) => { const amount = numberValue(row.pending_total); const width = maxPending > 0 ? Math.max(4, (amount / maxPending) * 100) : 0; return <div key={`${row.subject_type}-${row.subject_name}`}><div className="mb-1 flex items-center justify-between gap-3 text-xs"><span className="truncate font-bold text-slate-300">{row.subject_name}</span><span className="shrink-0 font-black tabular-nums text-amber-100">{formatFinesCurrency(amount)}</span></div><div className="h-2 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-caudal-electric" style={{ width: `${width}%` }} /></div></div>; })}</div> : null}
+          </div>
         </div>
-      </section>
+        </section>
+      ) : (
+        <section aria-labelledby="fines-subject-title" className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+          <div className={`${CARD} p-4 sm:p-5`}>
+            <h3 id="fines-subject-title" className="text-sm font-black uppercase tracking-[0.14em] text-white">Situación por jugador</h3>
+            <p className="mt-1 text-xs text-slate-500">Ordenado por importe pendiente</p>
+            {subjectSummaryState.status === 'loading' ? <div role="status" className="mt-4 h-36 animate-pulse rounded-2xl bg-white/[0.045]" /> : null}
+            {subjectSummaryState.status === 'error' ? <div className="mt-4"><BlockError message={subjectSummaryState.error} onRetry={refreshFinesData} /></div> : null}
+            {subjectSummaryState.status === 'ready' && !subjectSummaryState.rows.length ? <p className="mt-3 rounded-2xl border border-dashed border-white/10 px-4 py-4 text-center text-sm font-bold text-slate-500">Todavía no hay datos por jugador.</p> : null}
+            {subjectSummaryState.status === 'ready' && subjectSummaryState.rows.length ? <><div className="mt-3 grid gap-2 lg:hidden">{subjectSummaryState.rows.map((row) => <article key={`${row.subject_type}-${row.subject_name}`} className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-3"><p className="text-sm font-black text-white">{row.subject_name}</p><dl className="mt-2 grid grid-cols-2 gap-2">{[['Generado', formatFinesCurrency(row.generated_total), 'text-slate-200'], ['Pagado', formatFinesCurrency(row.collected_total), 'text-emerald-200'], ['Pendiente', formatFinesCurrency(row.pending_total), 'text-amber-100'], ['Multas', row.fine_count, 'text-white']].map(([label, value, tone]) => <div key={label}><dt className="text-[10px] font-black uppercase text-slate-600">{label}</dt><dd className={`mt-1 text-sm font-black tabular-nums ${tone}`}>{value}</dd></div>)}</dl></article>)}</div><div className="mt-4 hidden overflow-x-auto lg:block"><table className="w-full min-w-[520px] text-left text-xs"><thead className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-600"><tr><th className="pb-2">Jugador</th><th className="pb-2">Multas</th><th className="pb-2">Generado</th><th className="pb-2">Pagado</th><th className="pb-2">Pendiente</th></tr></thead><tbody className="divide-y divide-white/[0.055]">{subjectSummaryState.rows.map((row) => <tr key={`${row.subject_type}-${row.subject_name}`}><td className="py-2.5 pr-3 font-black text-white">{row.subject_name}</td><td className="py-2.5 text-slate-400">{row.fine_count}</td><td className="py-2.5 font-bold text-slate-300">{formatFinesCurrency(row.generated_total)}</td><td className="py-2.5 font-bold text-emerald-200">{formatFinesCurrency(row.collected_total)}</td><td className="py-2.5 font-black text-amber-100">{formatFinesCurrency(row.pending_total)}</td></tr>)}</tbody></table></div></> : null}
+          </div>
+
+          <div className={`${CARD} p-4 sm:p-5`}>
+            <h3 className="text-sm font-black uppercase tracking-[0.14em] text-white">Pendiente por jugador</h3>
+            <p className="mt-1 text-xs text-slate-500">Solo importes pendientes mayores que cero</p>
+            {subjectSummaryState.status === 'loading' ? <div className="mt-4 h-36 animate-pulse rounded-2xl bg-white/[0.045]" /> : null}
+            {subjectSummaryState.status === 'ready' && !pendingSubjects.length ? <div className="mt-3 rounded-2xl border border-dashed border-white/10 px-4 py-4 text-center"><p className="text-sm font-black text-slate-300">No hay importes pendientes.</p></div> : null}
+            {subjectSummaryState.status === 'ready' && pendingSubjects.length ? <div className="mt-5 space-y-3" role="img" aria-label="Gráfico de barras: pendiente por jugador">{pendingSubjects.slice(0, 12).map((row) => { const amount = numberValue(row.pending_total); const width = maxPending > 0 ? Math.max(4, (amount / maxPending) * 100) : 0; return <div key={`${row.subject_type}-${row.subject_name}`}><div className="mb-1 flex items-center justify-between gap-3 text-xs"><span className="truncate font-bold text-slate-300">{row.subject_name}</span><span className="shrink-0 font-black text-amber-100">{formatFinesCurrency(amount)}</span></div><div className="h-2.5 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-caudal-electric" style={{ width: `${width}%` }} /></div></div>; })}</div> : null}
+            {summaryState.status === 'ready' ? <div className="mt-5"><FinesStatusDistribution summary={summary} /></div> : null}
+          </div>
+        </section>
+      )}
 
       {modal?.kind === 'create' ? <NewFineModal rulesState={rulesState} subjectsState={subjectsState} onRetryCatalog={() => loadCatalog(true)} onClose={() => !saving && setModal(null)} onSubmit={submitNewFine} saving={saving} /> : null}
       {modal && modal.kind !== 'create' ? <FinancialActionModal kind={modal.kind} fine={modal.fine} onClose={() => !saving && setModal(null)} onSubmit={submitFinancialAction} saving={saving} /> : null}

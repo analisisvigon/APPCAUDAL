@@ -32230,7 +32230,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         ) : null}
 
         {activeTab === 'Multas' ? (
-          <FinesManagementPage client={supabase} />
+          <FinesManagementPage client={supabase} staffPresentation />
         ) : null}
 
         {activeTab === 'Registro Delegado' ? renderDelegatedRegistrySection() : null}

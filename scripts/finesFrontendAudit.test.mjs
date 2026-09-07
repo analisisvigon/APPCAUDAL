@@ -12,6 +12,7 @@ assert.match(app, /import FinesManagementPage from '\.\/components\/fines\/Fines
 assert.match(app, /desktopTabs = \[[^\]]*'Multas'/);
 assert.match(app, /mobileMoreTabs = \[[^\]]*'Multas'/);
 assert.match(app, /activeTab === 'Multas' \? \(\s*<FinesManagementPage client=\{supabase\}/);
+assert.match(app, /<FinesManagementPage client=\{supabase\} staffPresentation \/>/);
 
 const managementRpcs = [
   'get_fine_rules_for_management',
@@ -59,6 +60,14 @@ assert.match(page, /role="dialog"/);
 assert.match(page, /aria-modal="true"/);
 assert.match(page, /event\.key === 'Escape'/);
 assert.match(page, /role="img" aria-label="Gráfico de barras: pendiente por jugador"/);
+assert.match(page, /function SubjectSituationRows/);
+assert.match(page, /min-h-\[96px\]/, 'Los vacios analiticos deben ser compactos.');
+assert.match(page, /xl:grid-cols-\[minmax\(0,1\.25fr\)_minmax\(20rem,0\.75fr\)\]/, 'La zona inferior debe priorizar la situacion por jugador.');
+assert.match(page, /pendingSubjects\.slice\(0, 8\)/, 'El ranking pendiente debe mantenerse compacto.');
+assert.match(page, /fine\.lifecycle_status === 'cancelled'/);
+assert.match(page, /No exigible/);
+assert.match(page, /line-through/);
+assert.match(page, /staffPresentation \? null : <span[^>]*>Sin acciones<\/span>/, 'Solo STAFF debe retirar el texto de acciones de una multa anulada.');
 assert.match(page, /listState\.status === 'loading'/);
 assert.match(page, /listState\.status === 'error'/);
 assert.match(page, /listState\.status === 'ready' && !listState\.rows\.length/);
