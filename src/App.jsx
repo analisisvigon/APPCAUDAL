@@ -226,6 +226,7 @@ import { loadOwnCaptainPriorities, saveOwnCaptainPriorities } from './utils/capt
 import { getCaptainResolutionLabel, resolveMatchCaptain } from './utils/matchCaptain';
 import { formatStatsPitchPlayerName, resolveStatsVisualIdentity } from './utils/statsVisualIdentity';
 import { sortStatsIndividualPlayers } from './utils/statsIndividualOrder';
+import { resolveStatsWorkingMinutes } from './utils/statsWorkingMinutes';
 import {
   calculateStatsCallupCounts,
   getStatsCallupPositionGroup,
@@ -16003,8 +16004,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       role: isStarter ? 'Titular' : stored.role || 'Suplente',
       minutes: hasStoredMinutes ? stored.minutes : '',
       minutesReal,
-      minutesEstimated: !hasStoredMinutes && isStarter ? 90 : 0,
-      minutesPending: !hasStoredMinutes && isStarter,
       yellow: yellowCount > 0,
       yellowCount,
       red: stored.red || false,
@@ -19303,7 +19302,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                     const minutes = Number(stats.minutes || 0);
                     const canReplace = stats.role === 'Titular' && minutes > 0 && minutes < 90;
                     const substituteMinutes = stats.role === 'Suplente' ? getStatsSubstituteMinutes(player.name) : 0;
-                    const displayedMinutes = substituteMinutes || stats.minutes;
+                    const minutesInput = resolveStatsWorkingMinutes({ role: stats.role, minutes: stats.minutes, substituteMinutes });
+                    const displayedMinutes = minutesInput.value;
                     const enteredAsSub = substituteMinutes > 0;
                     return (
                       <tr key={player.id} className={`group transition hover:bg-white/[0.07] ${stats.red ? 'bg-red-500/[0.06]' : stats.injured ? 'bg-rose-500/[0.06]' : enteredAsSub ? 'bg-emerald-400/[0.05]' : stats.role === 'Titular' ? 'bg-caudal-electric/10' : 'bg-white/[0.02]'}`}>
@@ -19324,7 +19324,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                             {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((rating) => <option key={rating} value={rating}>{rating}</option>)}
                           </select>
                         </td>
-                        <td className="border-t border-white/10 px-2 py-2 text-center"><input type="number" min="0" max="90" value={displayedMinutes} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value, replacementName: Number(event.target.value) >= 90 ? '' : stats.replacementName })} className="w-14 bg-white px-2 py-2 text-center font-black text-slate-950" /></td>
+                        <td className="border-t border-white/10 px-2 py-2 text-center"><input type="number" min="0" max="90" value={displayedMinutes} title={minutesInput.isUnconfirmedStarterValue ? '90 inicial de trabajo; entra en el campo para confirmarlo' : undefined} onFocus={() => minutesInput.isUnconfirmedStarterValue && updateStatsPlayerData(player.name, { minutes: String(minutesInput.value), replacementName: '' })} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value, replacementName: Number(event.target.value) >= 90 ? '' : stats.replacementName })} className="w-14 bg-white px-2 py-2 text-center font-black text-slate-950" /></td>
                         <td className="border-t border-white/10 px-2 py-2 text-center text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{enteredAsSub ? 'Entrado' : stats.role}</td>
                         <td className="border-t border-white/10 px-2 py-2 text-center">
                           <select value={stats.replacementName} disabled={!canReplace} onChange={(event) => updateStatsPlayerData(player.name, { replacementName: event.target.value })} className="w-44 bg-white px-2 py-2 text-[11px] font-bold text-slate-950 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500">
@@ -34939,7 +34939,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                               const minutes = Number(stats.minutes || 0);
                               const canReplace = stats.role === 'Titular' && minutes > 0 && minutes < 90;
                               const substituteMinutes = stats.role === 'Suplente' ? getStatsSubstituteMinutes(player.name) : 0;
-                              const displayedMinutes = substituteMinutes || stats.minutes;
+                              const minutesInput = resolveStatsWorkingMinutes({ role: stats.role, minutes: stats.minutes, substituteMinutes });
+                              const displayedMinutes = minutesInput.value;
                               const enteredAsSub = substituteMinutes > 0;
                               const rowSummary = `${displayPlayerName(player)}: ${displayedMinutes || 0}' · G${stats.goals} A${stats.assists}${stats.yellow ? ` · AM ${stats.yellowCount}` : ''}${stats.red ? ' · RJ' : ''}${stats.injured ? ' · LES' : ''}`;
                               return (
@@ -34952,7 +34953,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                                   </td>
                                   <td className="border-t border-white/10 px-2 py-2 text-center text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{enteredAsSub ? 'Entrado' : stats.role}</td>
                                   <td className="border-t border-white/10 px-2 py-2 text-center text-[11px] font-semibold text-slate-300">{getStatsPlayedPosition(player.name)}</td>
-                                  <td className="border-t border-white/10 px-2 py-2 text-center"><input type="number" min="0" max="90" value={displayedMinutes} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value, replacementName: Number(event.target.value) >= 90 ? '' : stats.replacementName })} className="w-14 rounded-lg bg-white px-2 py-1.5 text-center font-black text-slate-950" /></td>
+                                  <td className="border-t border-white/10 px-2 py-2 text-center"><input type="number" min="0" max="90" value={displayedMinutes} title={minutesInput.isUnconfirmedStarterValue ? '90 inicial de trabajo; entra en el campo para confirmarlo' : undefined} onFocus={() => minutesInput.isUnconfirmedStarterValue && updateStatsPlayerData(player.name, { minutes: String(minutesInput.value), replacementName: '' })} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value, replacementName: Number(event.target.value) >= 90 ? '' : stats.replacementName })} className="w-14 rounded-lg bg-white px-2 py-1.5 text-center font-black text-slate-950" /></td>
                                   <td className="border-t border-white/10 px-2 py-2 text-center">
                                     <select
                                       value={stats.replacementName}
