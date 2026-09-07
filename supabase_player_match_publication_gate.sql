@@ -140,7 +140,11 @@ declare
   original_definition text;
   transformed_definition text;
   source_offset integer;
-  condition_count integer;
+  helper_name_count integer;
+  canonical_call_count integer;
+  structural_call_count integer;
+  legacy_condition_count integer;
+  code_source text;
   legacy_finalized_condition constant text := E'pg_catalog.lower(pg_catalog.btrim(coalesce(serialized.payload ->> ''status'', ''''))) in\n        (''finalizado'', ''jugado'', ''played'', ''finished'', ''cerrado'', ''closed'', ''revisado'', ''reviewed'')';
   publishable_condition constant text :=
     'public.is_player_match_publishable(serialized.payload ->> ''status'', serialized.payload ->> ''date'')';
@@ -160,38 +164,74 @@ begin
     end if;
 
     original_source := function_row.prosrc;
-    condition_count := (
-      pg_catalog.length(original_source)
-      - pg_catalog.length(pg_catalog.replace(original_source, publishable_condition, ''))
-    ) / pg_catalog.length(publishable_condition);
+    select pg_catalog.count(*)::integer into helper_name_count
+    from pg_catalog.regexp_matches(
+      original_source,
+      'public[.]is_player_match_publishable[[:space:]]*[(]',
+      'g'
+    );
+    select pg_catalog.count(*)::integer into canonical_call_count
+    from pg_catalog.regexp_matches(
+      original_source,
+      $regex$public[.]is_player_match_publishable[[:space:]]*[(][[:space:]]*serialized[.]payload[[:space:]]*->>[[:space:]]*'status'[[:space:]]*,[[:space:]]*serialized[.]payload[[:space:]]*->>[[:space:]]*'date'[[:space:]]*[)]$regex$,
+      'g'
+    );
+    code_source := pg_catalog.regexp_replace(
+      original_source,
+      $quoted$'(?:''|[^'])*'$quoted$,
+      '__literal__',
+      'g'
+    );
+    code_source := pg_catalog.regexp_replace(
+      code_source, '[/][*].*?[*][/]', ' ', 'gs'
+    );
+    code_source := pg_catalog.regexp_replace(
+      code_source, E'--[^\n\r]*', ' ', 'g'
+    );
+    select pg_catalog.count(*)::integer into structural_call_count
+    from pg_catalog.regexp_matches(
+      code_source,
+      'and[[:space:]]+public[.]is_player_match_publishable[[:space:]]*[(][[:space:]]*serialized[.]payload[[:space:]]*->>[[:space:]]*__literal__[[:space:]]*,[[:space:]]*serialized[.]payload[[:space:]]*->>[[:space:]]*__literal__[[:space:]]*[)]',
+      'g'
+    );
 
-    if condition_count = 0 then
-      condition_count := (
+    if helper_name_count = 1
+       and canonical_call_count = 1
+       and structural_call_count = 1 then
+      continue;
+    end if;
+
+    if helper_name_count <> 0
+       or canonical_call_count <> 0
+       or structural_call_count <> 0 then
+      raise exception
+        'Publication gate: llamada canonica al helper ausente, ambigua o fuera del WHERE en %',
+        target;
+    end if;
+
+    legacy_condition_count := (
         pg_catalog.length(original_source)
         - pg_catalog.length(pg_catalog.replace(original_source, legacy_finalized_condition, ''))
       ) / pg_catalog.length(legacy_finalized_condition);
 
-      if condition_count <> 1 then
-        raise exception 'Publication gate: condicion finalizada ausente o ambigua en %', target;
-      end if;
-
-      transformed_source := pg_catalog.replace(
-        original_source,
-        legacy_finalized_condition,
-        publishable_condition
-      );
-      original_definition := pg_catalog.pg_get_functiondef(function_row.oid);
-      source_offset := pg_catalog.strpos(original_definition, original_source);
-      if source_offset = 0 then
-        raise exception 'Publication gate: no se pudo aislar el cuerpo de %', target;
-      end if;
-      transformed_definition := pg_catalog.substr(original_definition, 1, source_offset - 1)
-        || transformed_source
-        || pg_catalog.substr(original_definition, source_offset + pg_catalog.length(original_source));
-      execute transformed_definition;
-    elsif condition_count <> 1 then
-      raise exception 'Publication gate: condicion publishable ambigua en %', target;
+    if legacy_condition_count <> 1 then
+      raise exception 'Publication gate: condicion finalizada ausente o ambigua en %', target;
     end if;
+
+    transformed_source := pg_catalog.replace(
+      original_source,
+      legacy_finalized_condition,
+      publishable_condition
+    );
+    original_definition := pg_catalog.pg_get_functiondef(function_row.oid);
+    source_offset := pg_catalog.strpos(original_definition, original_source);
+    if source_offset = 0 then
+      raise exception 'Publication gate: no se pudo aislar el cuerpo de %', target;
+    end if;
+    transformed_definition := pg_catalog.substr(original_definition, 1, source_offset - 1)
+      || transformed_source
+      || pg_catalog.substr(original_definition, source_offset + pg_catalog.length(original_source));
+    execute transformed_definition;
   end loop;
 end;
 $publication_gate$;
@@ -206,7 +246,10 @@ declare
   source_offset integer;
   legacy_compact_count integer;
   legacy_expanded_count integer;
-  publishable_condition_count integer;
+  helper_name_count integer;
+  canonical_call_count integer;
+  structural_call_count integer;
+  code_source text;
   legacy_compact_condition constant text := 'pg_catalog.lower(pg_catalog.btrim(coalesce(match_json ->> ''status'', ''''))) in (''finalizado'', ''jugado'', ''played'', ''finished'', ''cerrado'', ''closed'', ''revisado'', ''reviewed'')';
   legacy_expanded_condition constant text := E'pg_catalog.lower(pg_catalog.btrim(coalesce(match_json ->> ''status'', ''''))) in\n      (''finalizado'', ''jugado'', ''played'', ''finished'', ''cerrado'', ''closed'', ''revisado'', ''reviewed'')';
   publishable_condition constant text :=
@@ -221,10 +264,36 @@ begin
   end if;
 
   original_source := function_row.prosrc;
-  publishable_condition_count := (
-    pg_catalog.length(original_source)
-    - pg_catalog.length(pg_catalog.replace(original_source, publishable_condition, ''))
-  ) / pg_catalog.length(publishable_condition);
+  select pg_catalog.count(*)::integer into helper_name_count
+  from pg_catalog.regexp_matches(
+    original_source,
+    'public[.]is_player_match_publishable[[:space:]]*[(]',
+    'g'
+  );
+  select pg_catalog.count(*)::integer into canonical_call_count
+  from pg_catalog.regexp_matches(
+    original_source,
+    $regex$public[.]is_player_match_publishable[[:space:]]*[(][[:space:]]*match_json[[:space:]]*->>[[:space:]]*'status'[[:space:]]*,[[:space:]]*match_json[[:space:]]*->>[[:space:]]*'date'[[:space:]]*[)]$regex$,
+    'g'
+  );
+  code_source := pg_catalog.regexp_replace(
+    original_source,
+    $quoted$'(?:''|[^'])*'$quoted$,
+    '__literal__',
+    'g'
+  );
+  code_source := pg_catalog.regexp_replace(
+    code_source, '[/][*].*?[*][/]', ' ', 'gs'
+  );
+  code_source := pg_catalog.regexp_replace(
+    code_source, E'--[^\n\r]*', ' ', 'g'
+  );
+  select pg_catalog.count(*)::integer into structural_call_count
+  from pg_catalog.regexp_matches(
+    code_source,
+    'case[[:space:]]+when[[:space:]]+public[.]is_player_match_publishable[[:space:]]*[(][[:space:]]*match_json[[:space:]]*->>[[:space:]]*__literal__[[:space:]]*,[[:space:]]*match_json[[:space:]]*->>[[:space:]]*__literal__[[:space:]]*[)]',
+    'g'
+  );
   legacy_compact_count := (
     pg_catalog.length(original_source)
     - pg_catalog.length(pg_catalog.replace(original_source, legacy_compact_condition, ''))
@@ -234,8 +303,19 @@ begin
     - pg_catalog.length(pg_catalog.replace(original_source, legacy_expanded_condition, ''))
   ) / pg_catalog.length(legacy_expanded_condition);
 
-  if publishable_condition_count = 0
-     and legacy_compact_count + legacy_expanded_count = 3 then
+  if helper_name_count = 3
+     and canonical_call_count = 3
+     and structural_call_count = 3
+     and legacy_compact_count = 0
+     and legacy_expanded_count = 0 then
+    null;
+  elsif helper_name_count <> 0
+        or canonical_call_count <> 0
+        or structural_call_count <> 0 then
+    raise exception
+      'Publication gate: llamadas canonicas ambiguas o fuera de CASE WHEN en get_my_player_matches (refs=%, canonicas=%, estructurales=%)',
+      helper_name_count, canonical_call_count, structural_call_count;
+  elsif legacy_compact_count + legacy_expanded_count = 3 then
     transformed_source := pg_catalog.replace(
       original_source,
       legacy_compact_condition,
@@ -255,9 +335,7 @@ begin
       || transformed_source
       || pg_catalog.substr(original_definition, source_offset + pg_catalog.length(original_source));
     execute transformed_definition;
-  elsif publishable_condition_count = 0
-        and legacy_compact_count = 0
-        and legacy_expanded_count = 0 then
+  elsif legacy_compact_count = 0 and legacy_expanded_count = 0 then
     if pg_catalog.strpos(original_source, 'match_json ->> ''home_score'',') = 0
        or pg_catalog.strpos(original_source, 'match_json ->> ''away_score'',') = 0
        or pg_catalog.strpos(original_source, 'coalesce(public_timeline.events, ''[]''::jsonb)') = 0 then
@@ -287,12 +365,10 @@ begin
       || transformed_source
       || pg_catalog.substr(original_definition, source_offset + pg_catalog.length(original_source));
     execute transformed_definition;
-  elsif publishable_condition_count <> 3
-        or legacy_compact_count <> 0
-        or legacy_expanded_count <> 0 then
+  else
     raise exception
-      'Publication gate: condiciones ambiguas en get_my_player_matches (publishable=%, compactas=%, expandidas=%)',
-      publishable_condition_count, legacy_compact_count, legacy_expanded_count;
+      'Publication gate: condiciones legacy ambiguas en get_my_player_matches (compactas=%, expandidas=%)',
+      legacy_compact_count, legacy_expanded_count;
   end if;
 end;
 $matches_gate$;
@@ -305,7 +381,10 @@ declare
   original_definition text;
   transformed_definition text;
   source_offset integer;
-  publishable_condition_count integer;
+  helper_name_count integer;
+  canonical_call_count integer;
+  structural_call_count integer;
+  code_source text;
   legacy_stats_source constant text :=
     E'from public.partido_estadisticas_jugador stats\n    where stats.jugador_id = own_jugador_id';
   guarded_stats_source constant text :=
@@ -336,14 +415,48 @@ begin
   end if;
 
   original_source := function_row.prosrc;
-  publishable_condition_count := (
-    pg_catalog.length(original_source)
-    - pg_catalog.length(pg_catalog.replace(
-        original_source, 'public.is_player_match_publishable(', ''
-      ))
-  ) / pg_catalog.length('public.is_player_match_publishable(');
+  select pg_catalog.count(*)::integer into helper_name_count
+  from pg_catalog.regexp_matches(
+    original_source,
+    'public[.]is_player_match_publishable[[:space:]]*[(]',
+    'g'
+  );
+  select pg_catalog.count(*)::integer into canonical_call_count
+  from pg_catalog.regexp_matches(
+    original_source,
+    $regex$public[.]is_player_match_publishable[[:space:]]*[(][[:space:]]*match_json[[:space:]]*->>[[:space:]]*'status'[[:space:]]*,[[:space:]]*match_json[[:space:]]*->>[[:space:]]*'date'[[:space:]]*[)]$regex$,
+    'g'
+  );
+  code_source := pg_catalog.regexp_replace(
+    original_source,
+    $quoted$'(?:''|[^'])*'$quoted$,
+    '__literal__',
+    'g'
+  );
+  code_source := pg_catalog.regexp_replace(
+    code_source, '[/][*].*?[*][/]', ' ', 'gs'
+  );
+  code_source := pg_catalog.regexp_replace(
+    code_source, E'--[^\n\r]*', ' ', 'g'
+  );
+  select pg_catalog.count(*)::integer into structural_call_count
+  from pg_catalog.regexp_matches(
+    code_source,
+    'where[[:space:]]+public[.]is_player_match_publishable[[:space:]]*[(][[:space:]]*match_json[[:space:]]*->>[[:space:]]*__literal__[[:space:]]*,[[:space:]]*match_json[[:space:]]*->>[[:space:]]*__literal__[[:space:]]*[)]',
+    'g'
+  );
 
-  if publishable_condition_count = 0 then
+  if helper_name_count = 2
+     and canonical_call_count = 2
+     and structural_call_count = 2 then
+    null;
+  elsif helper_name_count <> 0
+        or canonical_call_count <> 0
+        or structural_call_count <> 0 then
+    raise exception
+      'Publication gate: llamadas canonicas ambiguas o fuera del WHERE en get_my_player_analysis_summary (refs=%, canonicas=%, estructurales=%)',
+      helper_name_count, canonical_call_count, structural_call_count;
+  else
     if (
       pg_catalog.length(original_source)
       - pg_catalog.length(pg_catalog.replace(original_source, legacy_stats_source, ''))
@@ -375,10 +488,6 @@ begin
         source_offset + pg_catalog.length(original_source)
       );
     execute transformed_definition;
-  elsif publishable_condition_count <> 2 then
-    raise exception
-      'Publication gate: condiciones ambiguas en get_my_player_analysis_summary (%)',
-      publishable_condition_count;
   end if;
 end;
 $legacy_summary_gate$;
@@ -429,7 +538,11 @@ declare
   target regprocedure;
   function_row pg_catalog.pg_proc%rowtype;
   source text;
-  condition_count integer;
+  code_source text;
+  helper_name_count integer;
+  canonical_call_count integer;
+  structural_call_count integer;
+  required_status text;
 begin
   foreach target in array array[
     'public.get_my_player_analysis_overview(text,text)'::regprocedure,
@@ -438,56 +551,122 @@ begin
     'public.get_my_player_match_history(text,text,integer,integer)'::regprocedure
   ] loop
     select procedure.prosrc into source from pg_catalog.pg_proc procedure where procedure.oid = target;
-    condition_count := (
-      pg_catalog.length(source)
-      - pg_catalog.length(pg_catalog.replace(
-          source,
-          'public.is_player_match_publishable(serialized.payload ->> ''status'', serialized.payload ->> ''date'')',
-          ''
-        ))
-    ) / pg_catalog.length(
-      'public.is_player_match_publishable(serialized.payload ->> ''status'', serialized.payload ->> ''date'')'
+    select pg_catalog.count(*)::integer into helper_name_count
+    from pg_catalog.regexp_matches(
+      source,
+      'public[.]is_player_match_publishable[[:space:]]*[(]',
+      'g'
     );
-    if condition_count <> 1
-       or pg_catalog.strpos(
-         source,
-         'pg_catalog.lower(pg_catalog.btrim(coalesce(serialized.payload ->> ''status'''
-       ) <> 0 then
-      raise exception 'Publication gate: gate unico ausente en %', target;
+    select pg_catalog.count(*)::integer into canonical_call_count
+    from pg_catalog.regexp_matches(
+      source,
+      $regex$public[.]is_player_match_publishable[[:space:]]*[(][[:space:]]*serialized[.]payload[[:space:]]*->>[[:space:]]*'status'[[:space:]]*,[[:space:]]*serialized[.]payload[[:space:]]*->>[[:space:]]*'date'[[:space:]]*[)]$regex$,
+      'g'
+    );
+    code_source := pg_catalog.regexp_replace(
+      source,
+      $quoted$'(?:''|[^'])*'$quoted$,
+      '__literal__',
+      'g'
+    );
+    code_source := pg_catalog.regexp_replace(
+      code_source, '[/][*].*?[*][/]', ' ', 'gs'
+    );
+    code_source := pg_catalog.regexp_replace(
+      code_source, E'--[^\n\r]*', ' ', 'g'
+    );
+    select pg_catalog.count(*)::integer into structural_call_count
+    from pg_catalog.regexp_matches(
+      code_source,
+      'and[[:space:]]+public[.]is_player_match_publishable[[:space:]]*[(][[:space:]]*serialized[.]payload[[:space:]]*->>[[:space:]]*__literal__[[:space:]]*,[[:space:]]*serialized[.]payload[[:space:]]*->>[[:space:]]*__literal__[[:space:]]*[)]',
+      'g'
+    );
+    if helper_name_count <> 1
+       or canonical_call_count <> 1
+       or structural_call_count <> 1 then
+      raise exception
+        'Publication gate: gate canonico ausente, ambiguo o fuera del WHERE en %',
+        target;
     end if;
   end loop;
 
   select procedure.prosrc into source
   from pg_catalog.pg_proc procedure
   where procedure.oid = 'public.get_my_player_matches()'::regprocedure;
+  select pg_catalog.count(*)::integer into helper_name_count
+  from pg_catalog.regexp_matches(
+    source,
+    'public[.]is_player_match_publishable[[:space:]]*[(]',
+    'g'
+  );
+  select pg_catalog.count(*)::integer into canonical_call_count
+  from pg_catalog.regexp_matches(
+    source,
+    $regex$public[.]is_player_match_publishable[[:space:]]*[(][[:space:]]*match_json[[:space:]]*->>[[:space:]]*'status'[[:space:]]*,[[:space:]]*match_json[[:space:]]*->>[[:space:]]*'date'[[:space:]]*[)]$regex$,
+    'g'
+  );
+  code_source := pg_catalog.regexp_replace(
+    source,
+    $quoted$'(?:''|[^'])*'$quoted$,
+    '__literal__',
+    'g'
+  );
+  code_source := pg_catalog.regexp_replace(
+    code_source, '[/][*].*?[*][/]', ' ', 'gs'
+  );
+  code_source := pg_catalog.regexp_replace(
+    code_source, E'--[^\n\r]*', ' ', 'g'
+  );
+  select pg_catalog.count(*)::integer into structural_call_count
+  from pg_catalog.regexp_matches(
+    code_source,
+    'case[[:space:]]+when[[:space:]]+public[.]is_player_match_publishable[[:space:]]*[(][[:space:]]*match_json[[:space:]]*->>[[:space:]]*__literal__[[:space:]]*,[[:space:]]*match_json[[:space:]]*->>[[:space:]]*__literal__[[:space:]]*[)]',
+    'g'
+  );
   if pg_catalog.strpos(source, 'then match_json ->> ''home_score'' else null end') = 0
      or pg_catalog.strpos(source, 'else ''[]''::jsonb end') = 0
-     or pg_catalog.strpos(
-       source,
-       'pg_catalog.lower(pg_catalog.btrim(coalesce(match_json ->> ''status'''
-     ) <> 0
-     or (
-       pg_catalog.length(source)
-       - pg_catalog.length(pg_catalog.replace(
-           source,
-           'public.is_player_match_publishable(match_json ->> ''status'', match_json ->> ''date'')',
-           ''
-         ))
-       ) / pg_catalog.length(
-         'public.is_player_match_publishable(match_json ->> ''status'', match_json ->> ''date'')'
-       ) <> 3 then
+     or helper_name_count <> 3
+     or canonical_call_count <> 3
+     or structural_call_count <> 3 then
     raise exception 'Publication gate: partidos PLAYER no quedaron sanitizados';
   end if;
 
   select procedure.prosrc into source
   from pg_catalog.pg_proc procedure
   where procedure.oid = 'public.get_my_player_analysis_summary()'::regprocedure;
-  if (
-    pg_catalog.length(source)
-    - pg_catalog.length(pg_catalog.replace(
-        source, 'public.is_player_match_publishable(', ''
-      ))
-    ) / pg_catalog.length('public.is_player_match_publishable(') <> 2 then
+  select pg_catalog.count(*)::integer into helper_name_count
+  from pg_catalog.regexp_matches(
+    source,
+    'public[.]is_player_match_publishable[[:space:]]*[(]',
+    'g'
+  );
+  select pg_catalog.count(*)::integer into canonical_call_count
+  from pg_catalog.regexp_matches(
+    source,
+    $regex$public[.]is_player_match_publishable[[:space:]]*[(][[:space:]]*match_json[[:space:]]*->>[[:space:]]*'status'[[:space:]]*,[[:space:]]*match_json[[:space:]]*->>[[:space:]]*'date'[[:space:]]*[)]$regex$,
+    'g'
+  );
+  code_source := pg_catalog.regexp_replace(
+    source,
+    $quoted$'(?:''|[^'])*'$quoted$,
+    '__literal__',
+    'g'
+  );
+  code_source := pg_catalog.regexp_replace(
+    code_source, '[/][*].*?[*][/]', ' ', 'gs'
+  );
+  code_source := pg_catalog.regexp_replace(
+    code_source, E'--[^\n\r]*', ' ', 'g'
+  );
+  select pg_catalog.count(*)::integer into structural_call_count
+  from pg_catalog.regexp_matches(
+    code_source,
+    'where[[:space:]]+public[.]is_player_match_publishable[[:space:]]*[(][[:space:]]*match_json[[:space:]]*->>[[:space:]]*__literal__[[:space:]]*,[[:space:]]*match_json[[:space:]]*->>[[:space:]]*__literal__[[:space:]]*[)]',
+    'g'
+  );
+  if helper_name_count <> 2
+     or canonical_call_count <> 2
+     or structural_call_count <> 2 then
     raise exception 'Publication gate: resumen PLAYER antiguo no quedo protegido';
   end if;
 
@@ -506,6 +685,27 @@ begin
      or pg_catalog.has_function_privilege('authenticated', function_row.oid, 'EXECUTE')
      or pg_catalog.has_function_privilege('service_role', function_row.oid, 'EXECUTE') then
     raise exception 'Publication gate: helper publishable inseguro o incompatible';
+  end if;
+
+  source := function_row.prosrc;
+  foreach required_status in array array[
+    'finalizado', 'jugado', 'played', 'finished',
+    'cerrado', 'closed', 'revisado', 'reviewed'
+  ] loop
+    if pg_catalog.strpos(source, '''' || required_status || '''') = 0 then
+      raise exception
+        'Publication gate: helper sin estado finalizado requerido %',
+        required_status;
+    end if;
+  end loop;
+  if pg_catalog.strpos(source, 'Europe/Madrid') = 0
+     or pg_catalog.strpos(source, 'pg_catalog.statement_timestamp()') = 0
+     or pg_catalog.strpos(source, 'madrid_today > match_day') = 0
+     or pg_catalog.strpos(source, '^[0-9]{4}-[0-9]{2}-[0-9]{2}$') = 0
+     or pg_catalog.strpos(source, 'invalid_datetime_format') = 0
+     or pg_catalog.strpos(source, 'datetime_field_overflow') = 0 then
+    raise exception
+      'Publication gate: helper sin fecha Madrid, comparacion posterior o cierre ante fecha invalida';
   end if;
 
   if public.is_player_match_publishable(
@@ -531,6 +731,15 @@ begin
      )
      or not public.is_player_match_publishable(
        'Finalizado', '2026-09-09', '2026-09-09 22:00:00+00'::timestamptz
+     )
+     or public.is_player_match_publishable(
+       'Finalizado', null, '2026-09-10 10:00:00+02'::timestamptz
+     )
+     or public.is_player_match_publishable(
+       'Finalizado', 'NO_ES_FECHA', '2026-09-10 10:00:00+02'::timestamptz
+     )
+     or public.is_player_match_publishable(
+       'Finalizado', '2026-99-99', '2026-09-10 10:00:00+02'::timestamptz
      ) then
     raise exception 'Publication gate: casos calendario A-E o medianoche Madrid incorrectos';
   end if;

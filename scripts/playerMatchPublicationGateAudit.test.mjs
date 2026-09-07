@@ -102,4 +102,52 @@ assert.match(publicationMigration, /2026-09-09 21:59:59\+00/);
 assert.match(publicationMigration, /2026-09-09 22:00:00\+00/);
 assert.match(publicationMigration, /placeholder_count not in \(0, 4\)/);
 
-console.log('player match next-day publication gate A-E and Madrid-midnight tests passed');
+const helperDefinition = publicationMigration.match(
+  /create or replace function public\.is_player_match_publishable[\s\S]*?\n\$function\$;/i,
+)?.[0] || '';
+const helperAuditPasses = (source) => [
+  'finalizado', 'jugado', 'played', 'finished',
+  'cerrado', 'closed', 'revisado', 'reviewed',
+].every((status) => source.includes(`'${status}'`))
+  && /not in\s*\(/i.test(source)
+  && source.includes("at time zone 'Europe/Madrid'")
+  && source.includes('madrid_today > match_day')
+  && source.includes('invalid_datetime_format')
+  && source.includes('datetime_field_overflow')
+  && /security invoker/i.test(source);
+assert.equal(helperAuditPasses(helperDefinition), true, 'F: el helper canonico completo pasa');
+assert.equal(helperAuditPasses(helperDefinition.replace('not in', 'in')), false, 'C: perder la condicion de status falla');
+assert.equal(helperAuditPasses(helperDefinition.replace('madrid_today > match_day', 'madrid_today = match_day')), false, 'D: perder el dia posterior falla');
+assert.equal(helperAuditPasses(helperDefinition.replace('Europe/Madrid', 'UTC')), false, 'E: perder Europe/Madrid falla');
+
+const scrubSql = (source) => source
+  .replace(/'(?:''|[^'])*'/g, '__literal__')
+  .replace(/\/\*[\s\S]*?\*\//g, ' ')
+  .replace(/--[^\n\r]*/g, ' ');
+const rpcGateAuditPasses = (source, rawCall, structuralCall, expectedCount) => {
+  const helperReferences = source.match(/public\.is_player_match_publishable\s*\(/g)?.length || 0;
+  const canonicalCalls = source.match(rawCall)?.length || 0;
+  const structuralCalls = scrubSql(source).match(structuralCall)?.length || 0;
+  return helperReferences === expectedCount
+    && canonicalCalls === expectedCount
+    && structuralCalls === expectedCount;
+};
+const analysisRawCall = /public\.is_player_match_publishable\s*\(\s*serialized\.payload\s*->>\s*'status'\s*,\s*serialized\.payload\s*->>\s*'date'\s*\)/g;
+const analysisStructuralCall = /and\s+public\.is_player_match_publishable\s*\(\s*serialized\.payload\s*->>\s*__literal__\s*,\s*serialized\.payload\s*->>\s*__literal__\s*\)/g;
+const validAnalysisGate = "where true\n      and public.is_player_match_publishable(\n        serialized.payload ->> 'status',\n        serialized.payload ->> 'date'\n      )";
+assert.equal(rpcGateAuditPasses(validAnalysisGate, analysisRawCall, analysisStructuralCall, 1), true, 'A: una llamada canonica dentro del WHERE pasa');
+assert.equal(rpcGateAuditPasses('where true', analysisRawCall, analysisStructuralCall, 1), false, 'B: una RPC sin helper falla');
+assert.equal(rpcGateAuditPasses(`where true\n/* ${validAnalysisGate} */`, analysisRawCall, analysisStructuralCall, 1), false, 'B: mencionar el helper solo en comentario falla');
+
+const matchesRawCall = /public\.is_player_match_publishable\s*\(\s*match_json\s*->>\s*'status'\s*,\s*match_json\s*->>\s*'date'\s*\)/g;
+const matchesStructuralCall = /case\s+when\s+public\.is_player_match_publishable\s*\(\s*match_json\s*->>\s*__literal__\s*,\s*match_json\s*->>\s*__literal__\s*\)/g;
+const oneMatchGate = "case when public.is_player_match_publishable(match_json ->> 'status', match_json ->> 'date') then value else null end";
+const summaryStructuralCall = /where\s+public\.is_player_match_publishable\s*\(\s*match_json\s*->>\s*__literal__\s*,\s*match_json\s*->>\s*__literal__\s*\)/g;
+const oneSummaryGate = "where public.is_player_match_publishable(match_json ->> 'status', match_json ->> 'date')";
+assert.equal([
+  ...Array.from({ length: 4 }, () => rpcGateAuditPasses(validAnalysisGate, analysisRawCall, analysisStructuralCall, 1)),
+  rpcGateAuditPasses(Array.from({ length: 3 }, () => oneMatchGate).join('\n'), matchesRawCall, matchesStructuralCall, 3),
+  rpcGateAuditPasses(Array.from({ length: 2 }, () => oneSummaryGate).join('\n'), matchesRawCall, summaryStructuralCall, 2),
+].every(Boolean), true, 'F: helper correcto y las seis rutas RPC protegidas pasan');
+
+console.log('player match publication helper and fail-closed RPC audits A-F passed');
