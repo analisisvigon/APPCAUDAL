@@ -10,6 +10,7 @@ import {
   getFinesFinancialSummary,
   getFinesManagementList,
   getFinesSubjectSummary,
+  isFinesManagementAccessDenied,
   recordFinePayment,
   recordFineRefund,
 } from '../../data/finesManagementStore';
@@ -296,7 +297,7 @@ function FinancialActionModal({ kind, fine, onClose, onSubmit, saving }) {
   );
 }
 
-export default function FinesManagementPage({ client }) {
+export default function FinesManagementPage({ client, title = 'Multas', unavailableMessage = '', onAccessDenied = null }) {
   const [summaryState, setSummaryState] = useState({ status: 'loading', data: null, error: '' });
   const [listState, setListState] = useState({ status: 'loading', rows: [], error: '', hasMore: false });
   const [subjectSummaryState, setSubjectSummaryState] = useState({ status: 'loading', rows: [], error: '' });
@@ -313,6 +314,14 @@ export default function FinesManagementPage({ client }) {
   const requestRef = useRef(0);
 
   const refreshFinesData = () => setRefreshToken((current) => current + 1);
+  const getManagementErrorMessage = (error, operation) => (
+    unavailableMessage && isFinesManagementAccessDenied(error)
+      ? unavailableMessage
+      : getFinesUserMessage(operation)
+  );
+  const refreshCapabilityIfDenied = (errors) => {
+    if (errors.some((error) => isFinesManagementAccessDenied(error))) onAccessDenied?.();
+  };
 
   useEffect(() => {
     const requestId = ++requestRef.current;
@@ -331,9 +340,10 @@ export default function FinesManagementPage({ client }) {
       } catch (error) {
         if (cancelled || requestId !== requestRef.current) return;
         console.error('[FINES_SUMMARY_LOAD_ERROR]', error);
-        setSummaryState({ status: 'error', data: null, error: getFinesUserMessage('financialSummary') });
-        setListState({ status: 'error', rows: [], error: getFinesUserMessage('list'), hasMore: false });
-        setSubjectSummaryState({ status: 'error', rows: [], error: getFinesUserMessage('subjectSummary') });
+        setSummaryState({ status: 'error', data: null, error: getManagementErrorMessage(error, 'financialSummary') });
+        setListState({ status: 'error', rows: [], error: getManagementErrorMessage(error, 'list'), hasMore: false });
+        setSubjectSummaryState({ status: 'error', rows: [], error: getManagementErrorMessage(error, 'subjectSummary') });
+        refreshCapabilityIfDenied([error]);
         return;
       }
       const resolvedSeason = summary.season_code;
@@ -342,15 +352,16 @@ export default function FinesManagementPage({ client }) {
         getFinesSubjectSummary(client, resolvedSeason),
       ]);
       if (cancelled || requestId !== requestRef.current) return;
+      refreshCapabilityIfDenied([listResult.reason, subjectResult.reason]);
       if (listResult.status === 'fulfilled') setListState({ status: 'ready', rows: listResult.value, error: '', hasMore: listResult.value.length === PAGE_SIZE });
       else {
         console.error('[FINES_LIST_LOAD_ERROR]', listResult.reason);
-        setListState({ status: 'error', rows: [], error: getFinesUserMessage('list'), hasMore: false });
+        setListState({ status: 'error', rows: [], error: getManagementErrorMessage(listResult.reason, 'list'), hasMore: false });
       }
       if (subjectResult.status === 'fulfilled') setSubjectSummaryState({ status: 'ready', rows: sortFineSubjectSummary(subjectResult.value), error: '' });
       else {
         console.error('[FINES_SUBJECT_SUMMARY_LOAD_ERROR]', subjectResult.reason);
-        setSubjectSummaryState({ status: 'error', rows: [], error: getFinesUserMessage('subjectSummary') });
+        setSubjectSummaryState({ status: 'error', rows: [], error: getManagementErrorMessage(subjectResult.reason, 'subjectSummary') });
       }
     };
     void load();
@@ -371,15 +382,16 @@ export default function FinesManagementPage({ client }) {
       getFineRulesForManagement(client),
       getFineSubjectsForManagement(client),
     ]);
+    refreshCapabilityIfDenied([rulesResult.reason, subjectsResult.reason]);
     if (rulesResult.status === 'fulfilled') setRulesState({ status: 'ready', rows: rulesResult.value, error: '' });
     else {
       console.error('[FINES_RULES_LOAD_ERROR]', rulesResult.reason);
-      setRulesState({ status: 'error', rows: [], error: getFinesUserMessage('rules') });
+      setRulesState({ status: 'error', rows: [], error: getManagementErrorMessage(rulesResult.reason, 'rules') });
     }
     if (subjectsResult.status === 'fulfilled') setSubjectsState({ status: 'ready', rows: subjectsResult.value, error: '' });
     else {
       console.error('[FINES_SUBJECTS_LOAD_ERROR]', subjectsResult.reason);
-      setSubjectsState({ status: 'error', rows: [], error: getFinesUserMessage('subjects') });
+      setSubjectsState({ status: 'error', rows: [], error: getManagementErrorMessage(subjectsResult.reason, 'subjects') });
     }
   };
 
@@ -404,7 +416,8 @@ export default function FinesManagementPage({ client }) {
       refreshFinesData();
     } catch (error) {
       console.error(`[FINES_${operation.toUpperCase()}_ERROR]`, error);
-      setMutationError(getFinesUserMessage(operation));
+      setMutationError(getManagementErrorMessage(error, operation));
+      refreshCapabilityIfDenied([error]);
     } finally {
       setSaving(false);
     }
@@ -433,7 +446,8 @@ export default function FinesManagementPage({ client }) {
       setListState((current) => ({ ...current, rows: [...current.rows, ...rows], hasMore: rows.length === PAGE_SIZE }));
     } catch (error) {
       console.error('[FINES_LOAD_MORE_ERROR]', error);
-      setToast('No se han podido cargar más multas.');
+      setToast(unavailableMessage && isFinesManagementAccessDenied(error) ? unavailableMessage : 'No se han podido cargar más multas.');
+      refreshCapabilityIfDenied([error]);
     } finally {
       setLoadingMore(false);
     }
@@ -450,7 +464,7 @@ export default function FinesManagementPage({ client }) {
       <header className="flex flex-col gap-4 border-b border-white/10 pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="flex items-center gap-2 text-caudal-electric"><ReceiptIcon /><p className="text-[10px] font-black uppercase tracking-[0.22em]">Gestión económica</p></div>
-          <h2 className="mt-2 text-2xl font-black text-white sm:text-3xl">Multas</h2>
+          <h2 className="mt-2 text-2xl font-black text-white sm:text-3xl">{title}</h2>
           <p className="mt-1 text-sm text-slate-400">Control de sanciones y pagos del equipo</p>
         </div>
         <button type="button" onClick={openNewFine} className={`${PRIMARY_BUTTON} min-w-36`}>+ Nueva multa</button>

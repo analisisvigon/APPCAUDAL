@@ -10,6 +10,7 @@ import {
   getFinesFinancialSummary,
   getFinesManagementList,
   getFinesSubjectSummary,
+  isFinesManagementAccessDenied,
   recordFinePayment,
   recordFineRefund,
 } from './finesManagementStore.js';
@@ -57,5 +58,8 @@ await assert.rejects(
   (error) => error instanceof FinesManagementError && error.operation === 'rules',
 );
 await assert.rejects(() => getFineRulesForManagement(null), FinesManagementError);
+assert.equal(isFinesManagementAccessDenied(new FinesManagementError('list', { code: '42501' })), true);
+assert.equal(isFinesManagementAccessDenied(new FinesManagementError('list', { status: 403 })), true);
+assert.equal(isFinesManagementAccessDenied(new FinesManagementError('list', { code: 'PGRST_ERROR' })), false);
 
 console.log('finesManagementStore: 10 RPC, parámetros exactos, respuestas y errores validados.');

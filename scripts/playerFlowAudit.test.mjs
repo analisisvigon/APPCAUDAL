@@ -77,6 +77,7 @@ for (const requiredPath of [
   'src/components/player/PlayerFinesPanel.jsx',
   'src/data/playerFinesStore.js',
   'src/utils/playerFinesPresentation.js',
+  'src/utils/playerCapabilities.js',
 ]) {
   assert.equal(relativeFiles.includes(requiredPath), true, `${requiredPath} debe formar parte del flujo PLAYER.`);
 }
@@ -92,6 +93,7 @@ const finesStore = fs.readFileSync(path.join(sourceRoot, 'data', 'playerFinesSto
 assert.match(shell, /const StaffApp = lazy\(\(\) => import\('\.\/App'\)\);/);
 assert.match(shell, /auth\.signInWithPassword\(/, 'El flujo empieza en Supabase Auth con email/password.');
 assert.match(resolver, /client\.rpc\('current_membership'\)/, 'La identidad se resuelve con current_membership().');
+assert.match(resolver, /client\.rpc\('can_manage_fines'\)/, 'La capability se resuelve con el helper backend seguro.');
 assert.match(shell, /authState\.status === 'player'[\s\S]*?<PlayerApp/);
 assert.match(shell, /authState\.status === 'staff'[\s\S]*?<StaffApp/);
 assert.match(playerApp, /client\.rpc\('get_my_player_profile'\)/, 'PlayerApp resuelve únicamente el perfil propio.');

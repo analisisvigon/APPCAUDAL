@@ -163,8 +163,8 @@ assert.equal(/\.rpc\s*\(/.test(shellSource), false, 'el shell delega la única R
 assert.equal(/\.from\s*\(/.test(resolverSource), false, 'el resolver no debe consultar tablas');
 assert.deepEqual(
   [...resolverSource.matchAll(/\.rpc\(\s*['"]([^'"]+)['"]/g)].map((match) => match[1]),
-  ['current_membership'],
-  'current_membership debe ser la única RPC previa al branch'
+  ['current_membership', 'can_manage_fines'],
+  'Solo current_membership y la capability segura de Multas pueden ejecutarse antes del branch'
 );
 assert.match(shellSource, /lazy\(\(\) => import\('\.\/App'\)\)/, 'StaffApp debe cargarse de forma diferida');
 assert.match(

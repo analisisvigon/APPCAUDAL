@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import PlayerHeader from './components/player/PlayerHeader';
 import PlayerNavigation from './components/player/PlayerNavigation';
 import PlayerAnalysisPanel from './components/player/PlayerAnalysisPanel';
@@ -6,6 +6,9 @@ import PlayerHomeDashboard from './components/player/PlayerHomeDashboard';
 import PlayerMatchesPanel from './components/player/PlayerMatchesPanel';
 import PlayerPerformancePanel from './components/player/PlayerPerformancePanel';
 import PlayerFinesPanel from './components/player/PlayerFinesPanel';
+import { canPlayerManageFines, guardPlayerSection } from './utils/playerCapabilities';
+
+const FinesManagementPage = lazy(() => import('./components/fines/FinesManagementPage'));
 
 const EMPTY_PROFILE_STATE = { status: 'loading', profile: null, errorKind: '' };
 const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric focus-visible:ring-offset-2 focus-visible:ring-offset-[#02070f]';
@@ -19,10 +22,19 @@ const getProfileErrorKind = (error) => {
     : 'profile_unavailable';
 };
 
-function PlayerApp({ client, onSignOut, signingOut = false }) {
+function PlayerApp({ client, identity, onRefreshIdentity, onSignOut, signingOut = false }) {
   const [profileState, setProfileState] = useState(EMPTY_PROFILE_STATE);
   const [reloadToken, setReloadToken] = useState(0);
   const [activeSection, setActiveSection] = useState('home');
+  const canManageFines = canPlayerManageFines(identity);
+
+  useEffect(() => {
+    setActiveSection((current) => guardPlayerSection(current, canManageFines));
+  }, [canManageFines]);
+
+  const navigateToSection = (section) => {
+    setActiveSection(guardPlayerSection(section, canManageFines));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -90,12 +102,17 @@ function PlayerApp({ client, onSignOut, signingOut = false }) {
         {profileState.status === 'ready' ? (
           <>
             <PlayerHeader profile={profileState.profile} />
-            <PlayerNavigation activeSection={activeSection} onChange={setActiveSection} onSignOut={onSignOut} signingOut={signingOut} />
-            {activeSection === 'home' ? <PlayerHomeDashboard client={client} profile={profileState.profile} onNavigate={setActiveSection} /> : null}
+            <PlayerNavigation activeSection={activeSection} canManageFines={canManageFines} onChange={navigateToSection} onSignOut={onSignOut} signingOut={signingOut} />
+            {activeSection === 'home' ? <PlayerHomeDashboard client={client} profile={profileState.profile} onNavigate={navigateToSection} /> : null}
             {activeSection === 'performance' ? <PlayerPerformancePanel client={client} /> : null}
             {activeSection === 'analysis' ? <PlayerAnalysisPanel client={client} /> : null}
             {activeSection === 'matches' ? <PlayerMatchesPanel client={client} /> : null}
             {activeSection === 'fines' ? <PlayerFinesPanel client={client} /> : null}
+            {canManageFines && activeSection === 'fines-management' ? (
+              <Suspense fallback={<section role="status" className="rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 px-5 py-10 text-center text-sm font-black text-slate-300">Cargando gestión de multas…</section>}>
+                <FinesManagementPage client={client} title="Gestión de multas" unavailableMessage="Gestión de multas no disponible." onAccessDenied={onRefreshIdentity} />
+              </Suspense>
+            ) : null}
           </>
         ) : null}
       </main>

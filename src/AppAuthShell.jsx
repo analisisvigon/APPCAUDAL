@@ -312,7 +312,7 @@ function AppAuthShell() {
     );
   }
   if (authState.status === 'player') {
-    return <PlayerApp client={supabase} onSignOut={handleSignOut} signingOut={signingOut} />;
+    return <PlayerApp client={supabase} identity={authState.identity} onRefreshIdentity={retryIdentity} onSignOut={handleSignOut} signingOut={signingOut} />;
   }
   if (authState.status === 'staff') {
     return (

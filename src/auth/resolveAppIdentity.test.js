@@ -13,10 +13,11 @@ const membership = (overrides = {}) => ({
   is_active: true,
   ...overrides,
 });
-const clientWith = (data, error = null) => ({
+const clientWith = (data, error = null, canManageFines = false) => ({
   rpc: async (name) => {
-    assert.equal(name, 'current_membership');
-    return { data, error };
+    if (name === 'current_membership') return { data, error };
+    assert.equal(name, 'can_manage_fines');
+    return { data: canManageFines, error: null };
   },
 });
 
@@ -31,6 +32,23 @@ const player = await resolveAppIdentity(
 );
 assert.equal(player.kind, 'player');
 assert.equal(player.membership.jugador_id, playerId);
+assert.deepEqual(player.capabilities, { canManageFines: false });
+
+const playerManager = await resolveAppIdentity(
+  clientWith([membership({ role: 'player', jugador_id: playerId })], null, true),
+  session
+);
+assert.equal(playerManager.kind, 'player');
+assert.equal(playerManager.membership.role, 'player');
+assert.deepEqual(playerManager.capabilities, { canManageFines: true });
+
+const capabilityFailure = await resolveAppIdentity({
+  rpc: async (name) => {
+    if (name === 'current_membership') return { data: [membership({ role: 'player', jugador_id: playerId })], error: null };
+    throw new Error('capability unavailable');
+  },
+}, session);
+assert.deepEqual(capabilityFailure.capabilities, { canManageFines: false }, 'La capability debe fallar cerrada.');
 
 const incompletePlayer = await resolveAppIdentity(
   clientWith([membership({ role: 'player', jugador_id: null })]),
@@ -81,4 +99,3 @@ assert.equal(unknownRole.kind, 'denied');
 assert.equal(unknownRole.reason, 'role_unknown');
 
 console.log('resolveAppIdentity tests: OK');
-

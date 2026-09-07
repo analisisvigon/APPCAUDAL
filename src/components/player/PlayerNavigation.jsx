@@ -1,16 +1,18 @@
 const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric focus-visible:ring-offset-2 focus-visible:ring-offset-[#02070f]';
 
-export default function PlayerNavigation({ activeSection, onChange, onSignOut, signingOut = false }) {
+export default function PlayerNavigation({ activeSection, canManageFines = false, onChange, onSignOut, signingOut = false }) {
+  const sections = [
+    ['home', 'Inicio'],
+    ['analysis', 'Mi análisis'],
+    ['matches', 'Partidos'],
+    ['performance', 'Rendimiento'],
+    ['fines', 'Multas'],
+    ...(canManageFines ? [['fines-management', 'Gestión de multas']] : []),
+  ];
   return (
     <nav className="flex items-center gap-2" aria-label="Espacio de jugador">
-      <div className="grid min-w-0 flex-1 grid-cols-2 gap-1 rounded-[1.05rem] border border-white/[0.07] bg-black/20 p-1 min-[410px]:grid-cols-3 sm:grid-cols-5">
-        {[
-          ['home', 'Inicio'],
-          ['analysis', 'Mi análisis'],
-          ['matches', 'Partidos'],
-          ['performance', 'Rendimiento'],
-          ['fines', 'Multas'],
-        ].map(([section, label]) => (
+      <div className={`grid min-w-0 flex-1 grid-cols-2 gap-1 rounded-[1.05rem] border border-white/[0.07] bg-black/20 p-1 min-[410px]:grid-cols-3 ${canManageFines ? 'lg:grid-cols-6' : 'sm:grid-cols-5'}`}>
+        {sections.map(([section, label]) => (
           <button
             key={section}
             type="button"

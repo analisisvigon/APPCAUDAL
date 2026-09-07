@@ -20,6 +20,17 @@ export class FinesManagementError extends Error {
   }
 }
 
+export const isFinesManagementAccessDenied = (error) => {
+  let current = error;
+  const visited = new Set();
+  while (current && typeof current === 'object' && !visited.has(current)) {
+    visited.add(current);
+    if (String(current.code || '').toUpperCase() === '42501' || Number(current.status || current.statusCode) === 403) return true;
+    current = current.cause;
+  }
+  return false;
+};
+
 const assertClient = (client, operation) => {
   if (!client || typeof client.rpc !== 'function') throw new FinesManagementError(operation);
 };

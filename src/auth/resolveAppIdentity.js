@@ -62,9 +62,19 @@ export const resolveAppIdentity = async (client, session) => {
     if (!String(membership.jugador_id || '').trim()) {
       return denied('player_identity_incomplete', normalizedMembership);
     }
-    return { kind: 'player', membership: normalizedMembership };
+    let canManageFines = false;
+    try {
+      const capabilityResponse = await client.rpc('can_manage_fines');
+      canManageFines = !capabilityResponse?.error && capabilityResponse?.data === true;
+    } catch {
+      canManageFines = false;
+    }
+    return {
+      kind: 'player',
+      membership: normalizedMembership,
+      capabilities: { canManageFines },
+    };
   }
 
   return denied(role === 'viewer' ? 'role_not_enabled' : 'role_unknown', normalizedMembership);
 };
-
