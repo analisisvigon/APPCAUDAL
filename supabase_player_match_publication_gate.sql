@@ -1,4 +1,5 @@
--- APPCAUDAL - Publicacion PLAYER solo tras cierre oficial y cambio de dia en Espana
+-- APPCAUDAL - Publicacion PLAYER desde el dia natural siguiente en Espana.
+-- Aplazados, suspendidos y cancelados permanecen cerrados.
 -- No crea tablas, columnas ni politicas. Ajusta exclusivamente los cuerpos de
 -- RPC PLAYER existentes y conserva sus firmas, propietarios y ACL. El helper
 -- central queda sin EXECUTE para roles de API.
@@ -227,8 +228,11 @@ declare
   match_day date;
   madrid_today date;
 begin
-  if pg_catalog.lower(pg_catalog.btrim(coalesce(p_status, ''))) not in
-    ('finalizado', 'jugado', 'played', 'finished', 'cerrado', 'closed', 'revisado', 'reviewed')
+  -- La fecha es la compuerta positiva. Los estados especiales que el producto
+  -- ya permite guardar siguen cerrados aunque su fecha original haya pasado.
+  if pg_catalog.lower(pg_catalog.btrim(coalesce(p_status, ''))) in
+    ('aplazado', 'postponed', 'suspendido', 'suspended',
+     'cancelado', 'cancelled', 'canceled')
   then
     return false;
   end if;
@@ -662,7 +666,8 @@ declare
   canonical_call_count integer;
   structural_call_count integer;
   unexpected_execute integer;
-  required_status text;
+  blocked_status text;
+  forbidden_finalized_status text;
   legacy_analysis_pattern constant text := $post_analysis$pg_catalog[.]lower[[:space:]]*[(][[:space:]]*pg_catalog[.]btrim[[:space:]]*[(][[:space:]]*coalesce[[:space:]]*[(][[:space:]]*serialized[.]payload[[:space:]]*->>[[:space:]]*'status'[[:space:]]*,[[:space:]]*''[[:space:]]*[)][[:space:]]*[)][[:space:]]*[)][[:space:]]+in[[:space:]]*[(][[:space:]]*'finalizado'[[:space:]]*,[[:space:]]*'jugado'[[:space:]]*,[[:space:]]*'played'[[:space:]]*,[[:space:]]*'finished'[[:space:]]*,[[:space:]]*'cerrado'[[:space:]]*,[[:space:]]*'closed'[[:space:]]*,[[:space:]]*'revisado'[[:space:]]*,[[:space:]]*'reviewed'[[:space:]]*[)]$post_analysis$;
   legacy_matches_pattern constant text := $post_matches$pg_catalog[.]lower[[:space:]]*[(][[:space:]]*pg_catalog[.]btrim[[:space:]]*[(][[:space:]]*coalesce[[:space:]]*[(][[:space:]]*match_json[[:space:]]*->>[[:space:]]*'status'[[:space:]]*,[[:space:]]*''[[:space:]]*[)][[:space:]]*[)][[:space:]]*[)][[:space:]]+in[[:space:]]*[(][[:space:]]*'finalizado'[[:space:]]*,[[:space:]]*'jugado'[[:space:]]*,[[:space:]]*'played'[[:space:]]*,[[:space:]]*'finished'[[:space:]]*,[[:space:]]*'cerrado'[[:space:]]*,[[:space:]]*'closed'[[:space:]]*,[[:space:]]*'revisado'[[:space:]]*,[[:space:]]*'reviewed'[[:space:]]*[)]$post_matches$;
 begin
@@ -949,14 +954,26 @@ begin
   end if;
 
   source := function_row.prosrc;
-  foreach required_status in array array[
+  foreach blocked_status in array array[
+    'aplazado', 'postponed', 'suspendido', 'suspended',
+    'cancelado', 'cancelled', 'canceled'
+  ] loop
+    if pg_catalog.strpos(source, '''' || blocked_status || '''') = 0 then
+      raise exception
+        'Publication gate: helper sin veto para estado especial %',
+        blocked_status;
+    end if;
+  end loop;
+  foreach forbidden_finalized_status in array array[
     'finalizado', 'jugado', 'played', 'finished',
     'cerrado', 'closed', 'revisado', 'reviewed'
   ] loop
-    if pg_catalog.strpos(source, '''' || required_status || '''') = 0 then
+    if pg_catalog.strpos(
+      source, '''' || forbidden_finalized_status || ''''
+    ) <> 0 then
       raise exception
-        'Publication gate: helper sin estado finalizado requerido %',
-        required_status;
+        'Publication gate: helper aun exige estado finalizado %',
+        forbidden_finalized_status;
     end if;
   end loop;
   if pg_catalog.strpos(source, 'Europe/Madrid') = 0
@@ -969,40 +986,47 @@ begin
       'Publication gate: helper sin fecha Madrid, comparacion posterior o cierre ante fecha invalida';
   end if;
 
-  if public.is_player_match_publishable(
-       'Previa', '2026-09-09', '2026-09-10 10:00:00+02'::timestamptz
+  if not public.is_player_match_publishable(
+       'Previa', '2026-09-06', '2026-09-07 10:00:00+02'::timestamptz
      )
      or public.is_player_match_publishable(
        'Finalizado', '2026-09-09', '2026-09-09 23:59:59+02'::timestamptz
      )
-     or not public.is_player_match_publishable(
-       'Finalizado', '2026-09-09', '2026-09-10 00:00:00+02'::timestamptz
-     )
-     or not public.is_player_match_publishable(
-       'Revisado', '2026-09-09', '2026-09-10 10:00:00+02'::timestamptz
-     )
      or public.is_player_match_publishable(
-       'Finalizado', '2026-09-12', '2026-09-10 10:00:00+02'::timestamptz
+       'Previa', '2026-09-08', '2026-09-07 10:00:00+02'::timestamptz
      )
      or not public.is_player_match_publishable(
-       'Finalizado', '2025-05-01', '2026-09-10 10:00:00+02'::timestamptz
-     )
-     or public.is_player_match_publishable(
-       'Finalizado', '2026-09-09', '2026-09-09 21:59:59+00'::timestamptz
+       'Finalizado', '2026-09-06', '2026-09-07 10:00:00+02'::timestamptz
      )
      or not public.is_player_match_publishable(
-       'Finalizado', '2026-09-09', '2026-09-09 22:00:00+00'::timestamptz
+       'Previa', '2026-08-23', '2026-09-07 10:00:00+02'::timestamptz
      )
      or public.is_player_match_publishable(
-       'Finalizado', null, '2026-09-10 10:00:00+02'::timestamptz
+       'Previa', null, '2026-09-07 10:00:00+02'::timestamptz
      )
      or public.is_player_match_publishable(
-       'Finalizado', 'NO_ES_FECHA', '2026-09-10 10:00:00+02'::timestamptz
+       'Previa', 'NO_ES_FECHA', '2026-09-07 10:00:00+02'::timestamptz
      )
      or public.is_player_match_publishable(
-       'Finalizado', '2026-99-99', '2026-09-10 10:00:00+02'::timestamptz
+       'Previa', '2026-99-99', '2026-09-07 10:00:00+02'::timestamptz
+     )
+     or public.is_player_match_publishable(
+       'Previa', '2026-09-09', '2026-09-09 21:59:59+00'::timestamptz
+     )
+     or not public.is_player_match_publishable(
+       'Previa', '2026-09-09', '2026-09-09 22:00:00+00'::timestamptz
+     )
+     or public.is_player_match_publishable(
+       'Aplazado', '2026-09-06', '2026-09-07 10:00:00+02'::timestamptz
+     )
+     or public.is_player_match_publishable(
+       'Suspendido', '2026-09-06', '2026-09-07 10:00:00+02'::timestamptz
+     )
+     or public.is_player_match_publishable(
+       'Cancelado', '2026-09-06', '2026-09-07 10:00:00+02'::timestamptz
      ) then
-    raise exception 'Publication gate: casos calendario A-E o medianoche Madrid incorrectos';
+    raise exception
+      'Publication gate: casos fecha A-I, medianoche Madrid o estados especiales incorrectos';
   end if;
 
   select procedure.prosrc into source

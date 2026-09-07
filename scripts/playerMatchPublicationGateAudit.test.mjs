@@ -7,6 +7,7 @@ const sportsRpc = fs.readFileSync(new URL('../supabase_club_core_16_player_sport
 const analysisRpc = fs.readFileSync(new URL('../supabase_club_core_17_player_analysis_backend.sql', import.meta.url), 'utf8');
 const allMatchesPatch = fs.readFileSync(new URL('../supabase_club_core_18_player_all_matches_backend.sql', import.meta.url), 'utf8');
 const squadRpc = fs.readFileSync(new URL('../supabase_match_squad_lineup_atomic.sql', import.meta.url), 'utf8');
+const availabilityRpc = fs.readFileSync(new URL('../supabase_player_availability.sql', import.meta.url), 'utf8');
 const publicationMigration = fs.readFileSync(new URL('../supabase_player_match_publication_gate.sql', import.meta.url), 'utf8');
 
 const countOccurrences = (source, fragment) => source.split(fragment).length - 1;
@@ -16,7 +17,10 @@ for (const tag of new Set(dollarTags)) {
   assert.equal(dollarTags.filter((candidate) => candidate === tag).length % 2, 0, `${tag} sin pareja`);
 }
 
-const finalizedStatuses = new Set(['finalizado', 'jugado', 'played', 'finished', 'cerrado', 'closed', 'revisado', 'reviewed']);
+const blockedSpecialStatuses = new Set([
+  'aplazado', 'postponed', 'suspendido', 'suspended',
+  'cancelado', 'cancelled', 'canceled',
+]);
 const madridDayNumber = (instant) => {
   const values = Object.fromEntries(
     new Intl.DateTimeFormat('en-GB', {
@@ -27,9 +31,19 @@ const madridDayNumber = (instant) => {
 };
 const matchDayNumber = (value) => {
   const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return match ? Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : Number.NaN;
+  if (!match) return Number.NaN;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const result = new Date(Date.UTC(year, month - 1, day));
+  return result.getUTCFullYear() === year
+    && result.getUTCMonth() === month - 1
+    && result.getUTCDate() === day
+    ? result.getTime()
+    : Number.NaN;
 };
-const publishable = (match, now) => finalizedStatuses.has(String(match.status || '').trim().toLowerCase())
+const publishable = (match, now) => !blockedSpecialStatuses.has(String(match.status || '').trim().toLowerCase())
+  && Number.isFinite(matchDayNumber(match.date))
   && madridDayNumber(now) > matchDayNumber(match.date);
 const playerView = ({ match, now, role = '', minutes = 0, hasPartialEvents = false }) => ({
   played: publishable(match, now) && (Number(minutes) > 0 || String(role).toLowerCase() === 'titular'),
@@ -38,21 +52,36 @@ const playerView = ({ match, now, role = '', minutes = 0, hasPartialEvents = fal
   timelineVisible: publishable(match, now) && hasPartialEvents,
 });
 
+const madridToday = new Date('2026-09-07T10:00:00Z');
 const madridSameDay = new Date('2026-09-09T20:00:00Z');
 const madridNextDay = new Date('2026-09-09T22:00:00Z');
-const caseA = playerView({ match: { date: '2026-09-09', status: 'Previa' }, now: madridNextDay, role: 'Titular', minutes: 90 });
-assert.deepEqual(caseA, { played: false, role: '', scoreVisible: false, timelineVisible: false }, 'A: no finalizado al dia siguiente no publica');
+const caseA = playerView({ match: { date: '2026-09-06', status: 'Previa' }, now: madridToday, role: 'Titular', minutes: 90, hasPartialEvents: true });
+assert.deepEqual(caseA, { played: true, role: 'Titular', scoreVisible: true, timelineVisible: true }, 'A: ayer con Previa publica por fecha');
 const caseB = playerView({ match: { date: '2026-09-09', status: 'Finalizado' }, now: madridSameDay, role: 'Titular', minutes: 90, hasPartialEvents: true });
 assert.deepEqual(caseB, { played: false, role: '', scoreVisible: false, timelineVisible: false }, 'B: finalizado el mismo dia sigue privado');
-const caseC = playerView({ match: { date: '2026-09-09', status: 'Finalizado' }, now: madridNextDay, role: 'Titular', minutes: 90, hasPartialEvents: true });
-assert.deepEqual(caseC, { played: true, role: 'Titular', scoreVisible: true, timelineVisible: true }, 'C: finalizado al dia siguiente publica');
-const caseD = playerView({ match: { date: '2026-09-09', status: 'Revisado' }, now: madridNextDay, role: 'Suplente', minutes: 24 });
-assert.deepEqual(caseD, { played: true, role: 'Suplente', scoreVisible: true, timelineVisible: false }, 'D: revisado al dia siguiente publica');
-const caseE = playerView({ match: { date: '2026-09-12', status: 'Previa' }, now: madridNextDay, role: 'Titular', minutes: 0 });
-assert.deepEqual(caseE, { played: false, role: '', scoreVisible: false, timelineVisible: false }, 'E: XI futuro sigue siendo STAFF-only');
-assert.equal(publishable({ date: '2025-05-01', status: 'Finalizado' }, madridNextDay), true, 'el historico antiguo finalizado sigue publicado');
-assert.equal(publishable({ date: '2026-09-09', status: 'Finalizado' }, new Date('2026-09-09T21:59:59Z')), false, '23:59:59 de Madrid sigue siendo el mismo dia');
-assert.equal(publishable({ date: '2026-09-09', status: 'Finalizado' }, new Date('2026-09-09T22:00:00Z')), true, '00:00:00 de Madrid desbloquea el dia siguiente');
+const caseC = playerView({ match: { date: '2026-09-08', status: 'Previa' }, now: madridToday, role: 'Titular', minutes: 90, hasPartialEvents: true });
+assert.deepEqual(caseC, { played: false, role: '', scoreVisible: false, timelineVisible: false }, 'C: manana con Previa sigue privado');
+assert.equal(publishable({ date: '2026-09-06', status: 'Finalizado' }, madridToday), true, 'D: ayer con Finalizado publica');
+assert.equal(publishable({ date: '2026-08-23', status: 'Previa' }, madridToday), true, 'E: el historico antiguo con Previa vuelve a publicarse');
+assert.equal(publishable({ date: null, status: 'Previa' }, madridToday), false, 'F: fecha null falla cerrada');
+assert.equal(publishable({ date: 'NO_ES_FECHA', status: 'Previa' }, madridToday), false, 'G: fecha invalida falla cerrada');
+assert.equal(publishable({ date: '2026-99-99', status: 'Previa' }, madridToday), false, 'G: fecha de calendario imposible falla cerrada');
+assert.equal(publishable({ date: '2026-09-09', status: 'Previa' }, new Date('2026-09-09T21:59:59Z')), false, 'H: 23:59:59 de Madrid sigue siendo el mismo dia');
+assert.equal(publishable({ date: '2026-09-09', status: 'Previa' }, madridNextDay), true, 'H: 00:00:00 de Madrid desbloquea el dia siguiente');
+for (const status of blockedSpecialStatuses) {
+  assert.equal(publishable({ date: '2026-09-06', status }, madridToday), false, `I: ${status} permanece no publicable`);
+}
+for (const date of ['2026-08-23', '2026-08-26', '2026-08-30', '2026-09-06']) {
+  assert.equal(publishable({ date, status: 'Previa' }, madridToday), true, `${date} con Previa vuelve al historico`);
+}
+for (const instant of [
+  new Date('2026-09-07T10:00:00Z'),
+  new Date('2026-09-08T10:00:00Z'),
+  new Date('2026-09-09T21:59:59Z'),
+]) {
+  assert.equal(publishable({ date: '2026-09-09', status: 'Previa' }, instant), false, 'Salamanca permanece privado hasta terminar el 09/09 en Madrid');
+}
+assert.equal(publishable({ date: '2026-09-09', status: 'Previa' }, madridNextDay), true, 'Salamanca se publica desde el 10/09 en Madrid');
 
 assert.match(app, /allowsCalledPlayerSelection = Number\(interval\.fromMinute\) === 0/);
 assert.match(app, /knownPlayers\.length >= 11/);
@@ -64,7 +93,7 @@ assert.match(editor, /removeTacticalDispositionPlayer/);
 
 assert.match(sportsRpc, /case when[\s\S]*?status[\s\S]*?then match_json ->> 'home_score' else null end/);
 assert.match(sportsRpc, /then coalesce\(public_timeline\.events, '\[\]'::jsonb\) else '\[\]'::jsonb end/);
-assert.equal((analysisRpc.match(/serialized\.payload ->> 'status'/g) || []).length, 4, 'los cuatro RPC de analisis exigen cierre explicito');
+assert.equal((analysisRpc.match(/serialized\.payload ->> 'status'/g) || []).length, 4, 'las cuatro RPC de analisis contienen el gate legado que la migracion reemplaza');
 const legacyAnalysisCondition = "pg_catalog.lower(pg_catalog.btrim(coalesce(serialized.payload ->> 'status', ''))) in\n        ('finalizado', 'jugado', 'played', 'finished', 'cerrado', 'closed', 'revisado', 'reviewed')";
 const legacyMatchesCondition = "pg_catalog.lower(pg_catalog.btrim(coalesce(match_json ->> 'status', ''))) in\n      ('finalizado', 'jugado', 'played', 'finished', 'cerrado', 'closed', 'revisado', 'reviewed')";
 const legacySummaryRpc = sportsRpc.match(/create or replace function public\.get_my_player_analysis_summary\(\)[\s\S]*?\n\$function\$;/i)?.[0] || '';
@@ -75,6 +104,8 @@ assert.equal(countOccurrences(legacySummaryRpc, 'from public.partido_estadistica
 assert.equal(countOccurrences(legacySummaryRpc, 'from public.partido_eventos_gol goal'), 1, 'la migracion puede proteger los goles del resumen legado');
 assert.match(allMatchesPatch, /new_predicate constant text := 'where true'/, 'el parche all-matches conserva el resto del predicado finalizado');
 assert.doesNotMatch(squadRpc, /then '90'/, 'preparar el XI no crea minutos oficiales');
+assert.match(app, /\['Aplazado', 'Suspendido', 'Cancelado'\]\.includes\(matchFormState\.status\)/, 'el producto permite guardar los tres estados especiales canonicos');
+assert.match(availabilityRpc, /'aplazado', 'postponed', 'suspendido', 'suspended',[\s\S]*?'cancelado', 'cancelled', 'canceled'/, 'el backend existente reconoce tambien sus equivalentes ingleses');
 
 [
   'get_my_player_matches',
@@ -129,19 +160,23 @@ const helperDefinition = publicationMigration.match(
   /create or replace function public\.is_player_match_publishable[\s\S]*?\n\$function\$;/i,
 )?.[0] || '';
 const helperAuditPasses = (source) => [
-  'finalizado', 'jugado', 'played', 'finished',
-  'cerrado', 'closed', 'revisado', 'reviewed',
+  'aplazado', 'postponed', 'suspendido', 'suspended',
+  'cancelado', 'cancelled', 'canceled',
 ].every((status) => source.includes(`'${status}'`))
-  && /not in\s*\(/i.test(source)
+  && ![
+    'finalizado', 'jugado', 'played', 'finished',
+    'cerrado', 'closed', 'revisado', 'reviewed',
+  ].some((status) => source.includes(`'${status}'`))
+  && /p_status[\s\S]*?\)\s*in\s*\(/i.test(source)
   && source.includes("at time zone 'Europe/Madrid'")
   && source.includes('madrid_today > match_day')
   && source.includes('invalid_datetime_format')
   && source.includes('datetime_field_overflow')
   && /security invoker/i.test(source);
-assert.equal(helperAuditPasses(helperDefinition), true, 'F: el helper canonico completo pasa');
-assert.equal(helperAuditPasses(helperDefinition.replace('not in', 'in')), false, 'C: perder la condicion de status falla');
-assert.equal(helperAuditPasses(helperDefinition.replace('madrid_today > match_day', 'madrid_today = match_day')), false, 'D: perder el dia posterior falla');
-assert.equal(helperAuditPasses(helperDefinition.replace('Europe/Madrid', 'UTC')), false, 'E: perder Europe/Madrid falla');
+assert.equal(helperAuditPasses(helperDefinition), true, 'el helper canonico por fecha y con vetos especiales pasa');
+assert.equal(helperAuditPasses(helperDefinition.replace("'aplazado'", "'otro'")), false, 'perder un veto especial falla');
+assert.equal(helperAuditPasses(helperDefinition.replace('madrid_today > match_day', 'madrid_today = match_day')), false, 'perder el dia posterior falla');
+assert.equal(helperAuditPasses(helperDefinition.replace('Europe/Madrid', 'UTC')), false, 'perder Europe/Madrid falla');
 
 const scrubSql = (source) => source
   .replace(/'(?:''|[^'])*'/g, '__literal__')
@@ -239,4 +274,4 @@ assert.equal([
   rpcGateAuditPasses(Array.from({ length: 2 }, () => oneSummaryGate).join('\n'), matchesRawCall, summaryStructuralCall, 2),
 ].every(Boolean), true, 'F: helper correcto y las seis rutas RPC protegidas pasan');
 
-console.log('player match publication helper and fail-closed RPC audits A-F passed');
+console.log('player match publication date gate and fail-closed RPC audits A-I passed');
