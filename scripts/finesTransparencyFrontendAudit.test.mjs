@@ -72,4 +72,4 @@ for (const forbiddenAction of ['Registrar pago', 'Reembolso', 'Anular', 'Editar'
 assert.doesNotMatch(source, /club_member_permissions|role\s*=\s*['"]captain['"]|\bfines_manage\b/i);
 assert.doesNotMatch(source, /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
 
-console.log('Transparencia de multas: PLAYER universal, 8 KPI, 4 rankings, distribución, tarjetas sanitizadas y reutilización STAFF validadas.');
+console.log('Transparencia de multas: PLAYER universal, 4 KPI principales, 4 rankings, distribución, tarjetas sanitizadas y reutilización STAFF validadas.');

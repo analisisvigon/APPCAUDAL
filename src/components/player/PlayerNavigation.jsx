@@ -18,7 +18,7 @@ export default function PlayerNavigation({ activeSection, canManageFines = false
             type="button"
             onClick={() => onChange(section)}
             aria-current={activeSection === section ? 'page' : undefined}
-            className={`min-h-12 min-w-0 rounded-xl px-2 py-2 text-xs font-black leading-4 transition sm:px-4 sm:text-sm ${FOCUS_RING} ${
+            className={`min-h-[44px] min-w-0 rounded-xl px-2 py-2 text-xs font-black leading-4 transition sm:min-h-12 sm:px-4 sm:text-sm ${FOCUS_RING} ${
               activeSection === section
                 ? 'bg-caudal-electric text-slate-950 shadow-[0_8px_24px_rgba(79,140,255,0.22)]'
                 : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'

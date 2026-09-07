@@ -124,11 +124,11 @@ export default function PlayerFinesTransparencyPanel({ client }) {
           <FinesHorizontalRanking title="Motivos más frecuentes" rows={state.rules} labelKey="rule_name" valueKey="fine_count" formatValue={(value) => `${value} multas`} tone="bg-violet-300" />
         </section>
 
-        <FinesStatusDistribution summary={summary} />
-
         <section aria-labelledby="subject-transparency-title" className={`${CARD} p-3.5 sm:p-5`}><div><h3 id="subject-transparency-title" className="text-sm font-black uppercase tracking-[0.13em] text-white">Resumen por jugador</h3><p className="mt-1 text-xs text-slate-500">Ordenado por importe pendiente</p></div>{!byPending.length ? <p className="mt-3 rounded-xl border border-dashed border-white/[0.08] px-3 py-3 text-center text-xs font-bold text-slate-500">No hay datos por jugador esta temporada.</p> : <div className="mt-3 grid gap-2 sm:grid-cols-2">{byPending.map((subject, index) => <SubjectSummaryCard key={`${subject.subject_name}-${index}`} subject={subject} />)}</div>}</section>
 
         <section aria-labelledby="group-fines-list-title" className="space-y-3"><div><h3 id="group-fines-list-title" className="text-sm font-black uppercase tracking-[0.13em] text-white">Multas del grupo</h3><p className="mt-1 text-xs text-slate-500">Información visible de la temporada actual</p></div>{!state.rows.length ? <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] px-4 py-4 text-center"><p className="text-sm font-black text-slate-200">No hay multas registradas en el grupo.</p></div> : <div className="grid items-start gap-3 lg:grid-cols-2">{state.rows.map((fine, index) => <TransparencyFineCard key={`${fine.subject_name}-${fine.occurred_on}-${index}`} fine={fine} />)}</div>}{loadMoreError ? <p role="alert" className="rounded-xl border border-red-300/15 bg-red-400/[0.07] px-3 py-2 text-center text-xs font-bold text-red-100">{loadMoreError}</p> : null}{state.hasMore ? <div className="text-center"><button type="button" onClick={loadMore} disabled={loadingMore} className={`min-h-[44px] rounded-xl border border-white/10 bg-white/[0.06] px-5 py-2 text-xs font-black text-white hover:bg-white/10 disabled:opacity-50 ${FOCUS_RING}`}>{loadingMore ? 'Cargando…' : 'Cargar más'}</button></div> : null}</section>
+
+        <FinesStatusDistribution summary={summary} />
       </> : null}
     </section>
   );

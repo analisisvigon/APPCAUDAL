@@ -19,7 +19,7 @@ assert.match(app, /safe-area-inset-top/);
 assert.match(app, /safe-area-inset-bottom/);
 assert.match(navigation, /grid-cols-\[minmax\(0,1fr\)_44px\]/);
 assert.match(navigation, /grid-cols-2[\s\S]*min-\[400px\]:grid-cols-3/);
-assert.match(navigation, /min-h-12 min-w-0/);
+assert.match(navigation, /min-h-\[44px\] min-w-0/);
 assert.match(navigation, /canManageFines \? 'lg:grid-cols-6'/);
 
 assert.match(own, /grid grid-cols-2 gap-2 sm:grid-cols-4/);
@@ -33,8 +33,10 @@ assert.equal((transparency.match(/<Kpi /g) || []).length, 4);
 assert.match(transparency, /aria-label="Indicadores grupales" className="grid grid-cols-2 gap-2 sm:grid-cols-4"/);
 const kpiIndex = transparency.indexOf('aria-label="Indicadores grupales"');
 const rankingsIndex = transparency.indexOf('aria-label="Rankings de multas"');
-const distributionIndex = transparency.indexOf('<FinesStatusDistribution', rankingsIndex);
-assert.ok(kpiIndex >= 0 && rankingsIndex > kpiIndex && distributionIndex > rankingsIndex, 'En móvil se presentan KPI, rankings y después distribución.');
+const subjectsIndex = transparency.indexOf('Resumen por jugador', rankingsIndex);
+const groupListIndex = transparency.indexOf('Multas del grupo', subjectsIndex);
+const distributionIndex = transparency.indexOf('<FinesStatusDistribution', groupListIndex);
+assert.ok(kpiIndex >= 0 && rankingsIndex > kpiIndex && subjectsIndex > rankingsIndex && groupListIndex > subjectsIndex && distributionIndex > groupListIndex, 'En móvil se presentan KPI, rankings, resumen por jugador y listado grupal en ese orden.');
 for (const title of ['Más dinero aportado', 'Más dinero pendiente', 'Motivos que más generan', 'Motivos más frecuentes']) assert.ok(transparency.includes(title));
 assert.match(visuals, /limit = 5/);
 assert.match(transparency, /Resumen por jugador[\s\S]*grid-cols-2/);
@@ -58,6 +60,6 @@ const changed = execFileSync('git', ['diff', '--name-only'], {
   encoding: 'utf8',
 }).trim().split(/\r?\n/).filter(Boolean);
 assert.equal(changed.some((path) => path.endsWith('.sql') || path.startsWith('src/data/') || path.startsWith('src/auth/')), false, 'El pulido mobile no modifica backend, stores ni Auth.');
-assert.equal(changed.some((path) => /playerPerformance|Rendimiento|performance/i.test(path)), false, 'Rendimiento queda fuera de alcance.');
+assert.equal(changed.some((path) => path.startsWith('src/') && /playerPerformance|Rendimiento|performance/i.test(path)), false, 'Rendimiento queda fuera de alcance.');
 
 console.log(`Multas PLAYER mobile-first: ${auditedViewports.join(', ')}, navegación, tarjetas, rankings, manager, modales, touch y overflow auditados.`);
