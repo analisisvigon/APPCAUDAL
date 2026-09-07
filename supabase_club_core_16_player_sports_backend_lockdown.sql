@@ -350,14 +350,20 @@ begin
     end,
     match_json ->> 'home_team',
     match_json ->> 'away_team',
-    match_json ->> 'home_score',
-    match_json ->> 'away_score',
+    case when pg_catalog.lower(pg_catalog.btrim(coalesce(match_json ->> 'status', ''))) in
+      ('finalizado', 'jugado', 'played', 'finished', 'cerrado', 'closed', 'revisado', 'reviewed')
+      then match_json ->> 'home_score' else null end,
+    case when pg_catalog.lower(pg_catalog.btrim(coalesce(match_json ->> 'status', ''))) in
+      ('finalizado', 'jugado', 'played', 'finished', 'cerrado', 'closed', 'revisado', 'reviewed')
+      then match_json ->> 'away_score' else null end,
     match_json ->> 'stadium',
     match_json ->> 'competition_key',
     competition.name,
     competition.logo_url,
     match_json ->> 'round',
-    coalesce(public_timeline.events, '[]'::jsonb)
+    case when pg_catalog.lower(pg_catalog.btrim(coalesce(match_json ->> 'status', ''))) in
+      ('finalizado', 'jugado', 'played', 'finished', 'cerrado', 'closed', 'revisado', 'reviewed')
+      then coalesce(public_timeline.events, '[]'::jsonb) else '[]'::jsonb end
   from public.partidos match_row
   cross join lateral (
     select pg_catalog.to_jsonb(match_row) as match_json

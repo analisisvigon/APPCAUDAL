@@ -117,6 +117,7 @@ import {
   getTacticalParticipantKey,
   moveTacticalDispositionPlayer,
   normalizeTacticalParticipant,
+  removeTacticalDispositionPlayer,
   tacticalSnapshotMatchesDisposition,
   validateTacticalDisposition,
 } from './utils/tacticalDispositionEditor';
@@ -18324,11 +18325,30 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       .map(enrichTacticalParticipant)
       .filter((player) => getTacticalParticipantKey(player));
     const persistedKeys = persistedPlayers.map(getTacticalParticipantKey);
-    const knownPlayers = persistedPlayers.length === 11 && new Set(persistedKeys).size === 11
-      ? persistedPlayers
-      : reconstructed.players.map(enrichTacticalParticipant);
-    if ((!interval.isComplete && !reconstructed.valid) || knownPlayers.length !== 11 || new Set(knownPlayers.map(getTacticalParticipantKey)).size !== 11) {
-      const detail = reconstructed.errors.join(' ') || 'No se conocen con certeza los 11 jugadores de este intervalo.';
+    const calledPlayerNames = getActiveStatsCalledPlayerNames({
+      calledPlayerNames: safeArray(match.statsCalledPlayers),
+      lineupNames: safeArray(match.statsLineup),
+    });
+    const calledPlayers = calledPlayerNames.map((playerName) => enrichTacticalParticipant({
+      playerId: match.statsCalledPlayerIds?.[playerName],
+      playerName,
+    }));
+    const uniqueCalledPlayers = Array.from(new Map(calledPlayers
+      .filter((player) => getTacticalParticipantKey(player))
+      .map((player) => [getTacticalParticipantKey(player), player])).values());
+    const allowsCalledPlayerSelection = Number(interval.fromMinute) === 0;
+    const knownPlayers = allowsCalledPlayerSelection
+      ? uniqueCalledPlayers
+      : persistedPlayers.length === 11 && new Set(persistedKeys).size === 11
+        ? persistedPlayers
+        : reconstructed.players.map(enrichTacticalParticipant);
+    const validKnownPlayers = allowsCalledPlayerSelection
+      ? knownPlayers.length >= 11
+      : reconstructed.valid && knownPlayers.length === 11 && new Set(knownPlayers.map(getTacticalParticipantKey)).size === 11;
+    if (!validKnownPlayers) {
+      const detail = allowsCalledPlayerSelection
+        ? `Se necesitan al menos 11 convocados y ahora hay ${knownPlayers.length}.`
+        : reconstructed.errors.join(' ') || 'No se conocen con certeza los 11 jugadores de este intervalo.';
       setStatsError(`No se puede registrar esta disposición: ${detail}`);
       return;
     }
@@ -18351,6 +18371,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       reason: interval.reason || '',
       sourceSystemEventId: interval.sourceSystemEventId || '',
       knownPlayers,
+      allowKnownPlayerSubset: allowsCalledPlayerSelection,
       lineup: draft.lineup,
       saving: false,
       error: '',
@@ -18370,6 +18391,17 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     setDraggedPlayer(null);
   };
 
+  const sendTacticalEditorPlayerToBench = (player) => {
+    setTacticalDispositionEditor((current) => current ? {
+      ...current,
+      lineup: removeTacticalDispositionPlayer({ lineup: current.lineup, player }),
+      error: '',
+    } : current);
+    setDraggedPlayer(null);
+    setMobileTacticalSelection(null);
+    setMobileTacticalFeedback({ scope: 'stats', message: `${player?.playerName || 'Jugador'} pasa a suplente.` });
+  };
+
   const cancelTacticalDispositionEditor = () => {
     setTacticalDispositionEditor(null);
     setDraggedPlayer(null);
@@ -18381,7 +18413,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     const editor = tacticalDispositionEditor;
     if (!selectedMatch || !editor || editor.matchId !== selectedMatch.id || editor.saving) return;
     const systemSlots = getTacticalSnapshotFormationSlots(editor.system);
-    const validation = validateTacticalDisposition({ lineup: editor.lineup, knownPlayers: editor.knownPlayers });
+    const validation = validateTacticalDisposition({
+      lineup: editor.lineup,
+      knownPlayers: editor.knownPlayers,
+      allowKnownPlayerSubset: editor.allowKnownPlayerSubset,
+    });
     if (!hasFormationSlotsForSavedLineup(editor.system) || systemSlots.length !== 11) {
       setTacticalDispositionEditor((current) => current ? { ...current, error: 'El sistema no dispone de 11 slots tácticos compatibles.' } : current);
       return;
@@ -18398,6 +18434,27 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     setStatsError('');
     setStatsSaveStatus('Guardando disposición…');
     try {
+      if (editor.allowKnownPlayerSubset) {
+        const initialLineup = persistedSlots
+          .slice()
+          .sort((left, right) => left.slot - right.slot)
+          .map((slot) => slot.playerName);
+        const calledPlayers = safeArray(editor.knownPlayers).map((participant) => ({
+          id: participant.playerId,
+          name: participant.playerName,
+        }));
+        const squadSnapshot = buildMatchSquadSnapshot({
+          matchId: editor.matchId,
+          system: editor.system,
+          lineup: initialLineup,
+          rosterPlayers: players,
+          calledPlayers,
+          calledPlayerIds: selectedMatch.statsCalledPlayerIds,
+          statsPlayerData: selectedMatch.statsPlayerData,
+        });
+        const { error: squadError } = await supabase.rpc('save_match_squad_lineup_atomic', squadSnapshot);
+        if (squadError) throw squadError;
+      }
       const { error: rpcError } = await supabase.rpc('save_match_tactical_snapshot', {
         p_partido_id: editor.matchId,
         p_minute: editor.minute,
@@ -18485,10 +18542,33 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     const coordinates = tacticalFormationSlots.map(({ x, y }) => ({ x, y }));
     const pendingTacticalPlayers = editingDisposition ? getTacticalEditorPendingPlayers() : [];
     const editorValidation = editingDisposition
-      ? validateTacticalDisposition({ lineup: tacticalDispositionEditor.lineup, knownPlayers: tacticalDispositionEditor.knownPlayers })
+      ? validateTacticalDisposition({
+          lineup: tacticalDispositionEditor.lineup,
+          knownPlayers: tacticalDispositionEditor.knownPlayers,
+          allowKnownPlayerSubset: tacticalDispositionEditor.allowKnownPlayerSubset,
+        })
       : null;
     const statsReadonlyMode = !editingDisposition && !hasLocalProposal;
     const statsMobileSelection = mobileTacticalSelection?.scope === 'stats' ? mobileTacticalSelection : null;
+    const activateTacticalEditorSlot = ({ participant, slotIndex, playerName }) => {
+      if (!editingDisposition || tacticalDispositionEditor.saving) return;
+      const participantKey = getTacticalParticipantKey(participant);
+      if (statsMobileSelection?.participant) {
+        if (statsMobileSelection.key === participantKey) {
+          setMobileTacticalSelection(null);
+          return;
+        }
+        moveTacticalEditorPlayer(statsMobileSelection.participant, slotIndex);
+        setMobileTacticalFeedback({
+          scope: 'stats',
+          message: participantKey ? `${statsMobileSelection.name} intercambiado con ${playerName}.` : `${statsMobileSelection.name} colocado.`,
+        });
+        setMobileTacticalSelection(null);
+      } else if (participantKey) {
+        setMobileTacticalSelection({ scope: 'stats', key: participantKey, name: playerName, participant, source: 'field' });
+        setMobileTacticalFeedback({ scope: '', message: '' });
+      }
+    };
     const mobileStatsSlots = dispositionAvailable ? tacticalFormationSlots.map((slot, slotIndex) => {
       const participant = normalizeTacticalParticipant(visibleParticipants[slotIndex] || {});
       const playerName = participant.playerName || '';
@@ -18598,6 +18678,13 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                       type="button"
                       draggable
                       onDragStart={() => setDraggedPlayer(participant)}
+                      aria-pressed={statsMobileSelection?.key === getTacticalParticipantKey(participant)}
+                      onClick={() => {
+                        const key = getTacticalParticipantKey(participant);
+                        const selected = statsMobileSelection?.key === key;
+                        setMobileTacticalSelection(selected ? null : { scope: 'stats', key, name: label, participant, source: 'pending' });
+                        setMobileTacticalFeedback({ scope: '', message: '' });
+                      }}
                       className="cursor-grab border border-amber-200/30 bg-amber-300/10 px-2 py-1 text-[9px] font-black text-amber-100"
                       title="Arrastra al slot real que ocupó"
                     >
@@ -18607,6 +18694,19 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 })}
               </div>
             ) : null}
+            <button
+              type="button"
+              disabled={tacticalDispositionEditor.saving}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                if (draggedPlayer) sendTacticalEditorPlayerToBench(draggedPlayer);
+              }}
+              onClick={() => statsMobileSelection?.participant && sendTacticalEditorPlayerToBench(statsMobileSelection.participant)}
+              className="mt-2 min-h-10 w-full border border-dashed border-white/15 bg-black/20 px-3 text-[9px] font-black uppercase tracking-[0.12em] text-slate-300 disabled:opacity-45"
+            >
+              Titular seleccionado → enviar al banquillo
+            </button>
             {tacticalDispositionEditor.error ? <p className="mt-2 text-[10px] font-bold text-red-200">{tacticalDispositionEditor.error}</p> : null}
           </div>
         ) : dispositionAvailable && !hasLocalProposal && selectedInterval ? (
@@ -18740,8 +18840,17 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
           return (
             <div
               key={`stats-slot-${slotIndex}`}
+              role={editingDisposition ? 'button' : undefined}
+              tabIndex={editingDisposition ? 0 : undefined}
+              aria-label={editingDisposition ? (playerName ? `Seleccionar o intercambiar ${playerIdentityTitle}` : `Colocar jugador en ${playerIdentityLabel}`) : undefined}
               draggable={Boolean(getTacticalParticipantKey(participant)) && !historyBrowsing && !statsSquadSaving}
               onDragStart={() => getTacticalParticipantKey(participant) && setDraggedPlayer(participant)}
+              onClick={() => activateTacticalEditorSlot({ participant, slotIndex, playerName: playerIdentityTitle })}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                activateTacticalEditorSlot({ participant, slotIndex, playerName: playerIdentityTitle });
+              }}
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
                 event.stopPropagation();

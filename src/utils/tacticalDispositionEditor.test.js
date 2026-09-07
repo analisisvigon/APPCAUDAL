@@ -4,6 +4,7 @@ import {
   buildKnownOnFieldPlayers,
   buildTacticalDispositionDraft,
   moveTacticalDispositionPlayer,
+  removeTacticalDispositionPlayer,
   tacticalSnapshotMatchesDisposition,
   validateTacticalDisposition,
 } from './tacticalDispositionEditor.js';
@@ -69,6 +70,23 @@ assert.equal(placed[6].playerId, 'isma');
 assert.equal(validateTacticalDisposition({ lineup: placed, knownPlayers: at71.players }).valid, true, 'mover la propuesta intercambia slots sin duplicar jugadores');
 const completed = propagated.lineup;
 assert.equal(validateTacticalDisposition({ lineup: completed, knownPlayers: at71.players }).valid, true);
+
+const calledPlayers = Array.from({ length: 20 }, (_, index) => ({ playerId: `called-${index}`, playerName: `Convocado ${index}` }));
+let manualInitialLineup = Array.from({ length: 11 }, () => null);
+calledPlayers.slice(0, 11).forEach((player, slot) => {
+  manualInitialLineup = moveTacticalDispositionPlayer({ lineup: manualInitialLineup, player, targetSlot: slot });
+});
+assert.equal(validateTacticalDisposition({
+  lineup: manualInitialLineup,
+  knownPlayers: calledPlayers,
+  allowKnownPlayerSubset: true,
+}).valid, true, 'un XI inicial puede elegirse manualmente entre todos los convocados');
+manualInitialLineup = moveTacticalDispositionPlayer({ lineup: manualInitialLineup, player: calledPlayers[11], targetSlot: 4 });
+assert.equal(manualInitialLineup[4].playerId, 'called-11', 'un suplente puede ocupar un slot titular');
+assert.equal(validateTacticalDisposition({ lineup: manualInitialLineup, knownPlayers: calledPlayers, allowKnownPlayerSubset: true }).valid, true, 'el titular desplazado vuelve al grupo disponible');
+manualInitialLineup = removeTacticalDispositionPlayer({ lineup: manualInitialLineup, player: calledPlayers[11] });
+assert.equal(manualInitialLineup.filter(Boolean).length, 10, 'un titular puede volver al banquillo');
+assert.equal(validateTacticalDisposition({ lineup: manualInitialLineup, knownPlayers: calledPlayers, allowKnownPlayerSubset: true }).valid, false, 'no se guarda un XI inicial incompleto');
 
 const duplicate = completed.slice();
 duplicate[0] = duplicate[1];

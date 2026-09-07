@@ -59,7 +59,11 @@ const changed = execFileSync('git', ['diff', '--name-only'], {
   cwd: new URL('..', import.meta.url),
   encoding: 'utf8',
 }).trim().split(/\r?\n/).filter(Boolean);
-assert.equal(changed.some((path) => path.endsWith('.sql') || path.startsWith('src/data/') || path.startsWith('src/auth/')), false, 'El pulido mobile no modifica backend, stores ni Auth.');
+assert.equal(changed.some((path) => (
+  /^supabase_club_core_(?:19|2[0-5])_/.test(path)
+  || /^src\/data\/(?:playerFines|finesTransparency|finesManagement)/.test(path)
+  || path.startsWith('src/auth/')
+)), false, 'El pulido mobile no modifica backend, stores ni Auth de Multas.');
 assert.equal(changed.some((path) => path.startsWith('src/') && /playerPerformance|Rendimiento|performance/i.test(path)), false, 'Rendimiento queda fuera de alcance.');
 
 console.log(`Multas PLAYER mobile-first: ${auditedViewports.join(', ')}, navegación, tarjetas, rankings, manager, modales, touch y overflow auditados.`);

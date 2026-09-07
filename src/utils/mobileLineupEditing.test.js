@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { applyPlayerMove } from './rivalTactics.js';
 import { moveStatsLineupPlayer, removeStatsLineupPlayer } from './statsLineup.js';
-import { moveTacticalDispositionPlayer, validateTacticalDisposition } from './tacticalDispositionEditor.js';
+import { moveTacticalDispositionPlayer, removeTacticalDispositionPlayer, validateTacticalDisposition } from './tacticalDispositionEditor.js';
 import { getFormationSlotsForSavedLineup } from './formationSlotCoordinates.js';
 import { buildMobileReadonlyPitchLayout } from './mobileReadonlyPitchLayout.js';
 
@@ -49,6 +49,8 @@ assert.equal(validateTacticalDisposition({ lineup: statsSwap, knownPlayers: part
 let consecutive = moveTacticalDispositionPlayer({ lineup: participants, player: participants[0], targetSlot: 1 });
 consecutive = moveTacticalDispositionPlayer({ lineup: consecutive, player: participants[0], targetSlot: 5 });
 assert.equal(validateTacticalDisposition({ lineup: consecutive, knownPlayers: participants }).valid, true, 'F: varios movimientos consecutivos conservan invariantes');
+const statsBench = removeTacticalDispositionPlayer({ lineup: participants, player: participants[0] });
+assert.equal(statsBench[0], null, 'ESTADÍSTICAS D: titular a banquillo libera el slot en el mismo draft');
 
 ['4-4-2', '4-3-3', '4-2-3-1', '5-3-2', '3-4-3', '3-5-2', '3-4-1-2', '5-4-1', 'Otro'].forEach((system) => {
   const slots = buildMobileReadonlyPitchLayout(getFormationSlotsForSavedLineup(system));
@@ -63,6 +65,7 @@ const cssSource = fs.readFileSync(new URL('../index.css', import.meta.url), 'utf
 assert.match(appSource, /moveSelectedTeamPlayerOnMobile[\s\S]*?placePlayer\(player, destination\)/, 'EQUIPOS móvil reutiliza placePlayer');
 assert.match(appSource, /movePreCaudalPlayerOnMobile[\s\S]*?moveStatsLineupPlayer/, 'PRE móvil reutiliza la transición con swap');
 assert.match(appSource, /onSelectTarget=\{\(targetSlot, slotIndex\)[\s\S]*?moveTacticalEditorPlayer/, 'ESTADÍSTICAS móvil modifica el mismo draft del editor');
+assert.match(appSource, /sendTacticalEditorPlayerToBench[\s\S]*?removeTacticalDispositionPlayer/, 'ESTADÍSTICAS móvil y desktop devuelven el titular al grupo de convocados del mismo editor');
 assert.match(componentSource, /<button[\s\S]*?aria-pressed=/, 'los slots son controles accesibles con estado de selección');
 assert.match(componentSource, /if \(isSelected\) onCancelSelection/, 'E: tocar de nuevo el jugador seleccionado cancela la selección');
 assert.doesNotMatch(componentSource, /draggable|onDragStart|onDrop/, 'la variante móvil no depende de HTML Drag & Drop');

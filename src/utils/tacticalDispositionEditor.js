@@ -216,16 +216,30 @@ export const moveTacticalDispositionPlayer = ({ lineup = [], player, targetSlot 
   return next;
 };
 
-export const validateTacticalDisposition = ({ lineup = [], knownPlayers = [] } = {}) => {
+export const removeTacticalDispositionPlayer = ({ lineup = [], player } = {}) => {
+  const playerKey = getTacticalParticipantKey(player);
+  return Array.from({ length: 11 }, (_, slot) => {
+    const participant = lineup[slot] ? normalizeTacticalParticipant(lineup[slot]) : null;
+    return participant && getTacticalParticipantKey(participant) === playerKey ? null : participant;
+  });
+};
+
+export const validateTacticalDisposition = ({ lineup = [], knownPlayers = [], allowKnownPlayerSubset = false } = {}) => {
   const placed = lineup.filter(Boolean).map(normalizeTacticalParticipant);
   const placedKeys = placed.map(getTacticalParticipantKey);
   const knownKeys = knownPlayers.map(getTacticalParticipantKey).filter(Boolean);
+  const knownSet = new Set(knownKeys);
   const errors = [];
   if (placed.length !== 11) errors.push(`Debes colocar los 11 jugadores (${placed.length}/11).`);
   if (new Set(placedKeys).size !== placedKeys.length) errors.push('Hay un jugador duplicado en la disposición.');
-  if (knownKeys.length !== 11 || new Set(knownKeys).size !== 11) errors.push('No se conocen con certeza los 11 jugadores del intervalo.');
-  if (placedKeys.some((key) => !knownKeys.includes(key)) || knownKeys.some((key) => !placedKeys.includes(key))) {
-    errors.push('Los jugadores colocados no coinciden exactamente con los que estaban en el campo.');
+  if (allowKnownPlayerSubset) {
+    if (knownSet.size < 11) errors.push('Se necesitan al menos 11 convocados únicos para completar la disposición.');
+    if (placedKeys.some((key) => !knownSet.has(key))) errors.push('La disposición contiene un jugador que no está convocado.');
+  } else {
+    if (knownKeys.length !== 11 || knownSet.size !== 11) errors.push('No se conocen con certeza los 11 jugadores del intervalo.');
+    if (placedKeys.some((key) => !knownSet.has(key)) || knownKeys.some((key) => !placedKeys.includes(key))) {
+      errors.push('Los jugadores colocados no coinciden exactamente con los que estaban en el campo.');
+    }
   }
   return {
     valid: errors.length === 0,

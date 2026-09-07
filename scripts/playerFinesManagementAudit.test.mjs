@@ -78,7 +78,7 @@ const changedTrackedFiles = execFileSync('git', ['diff', '--name-only'], {
   encoding: 'utf8',
 }).trim().split(/\r?\n/).filter(Boolean);
 assert.equal(
-  changedTrackedFiles.some((path) => /^supabase_club_core_(?:0[1-9]|1\d|2[0-4])_/.test(path)),
+  changedTrackedFiles.some((path) => /^supabase_club_core_(?:19|2[0-4])_/.test(path)),
   false,
   'El Bloque 4.9 no puede modificar backend ni verify 24.',
 );

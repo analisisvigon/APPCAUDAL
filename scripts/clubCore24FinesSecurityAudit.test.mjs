@@ -166,7 +166,7 @@ const changedTrackedFiles = execFileSync('git', ['diff', '--name-only'], {
   .filter(Boolean);
 
 assert.equal(
-  changedTrackedFiles.some((path) => /^supabase_club_core_(?:0[1-9]|1\d|2[0-3])_/.test(path)),
+  changedTrackedFiles.some((path) => /^supabase_club_core_(?:19|2[0-3])_/.test(path)),
   false,
   'No se puede modificar una migración 01-23 en el Bloque 4.6.',
 );

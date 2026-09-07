@@ -43,6 +43,7 @@ assert.match(sql, /on conflict \(partido_id, scope, slot\) do update/i, 'slots r
 
 assert.doesNotMatch(sql, /delete from public\.partido_estadisticas_jugador/i, 'Fuera nunca elimina estadisticas historicas');
 assert.match(sql, /else minutes[\s\S]*where partido_id = p_partido_id/i, 'los minutos existentes se preservan');
+assert.doesNotMatch(sql, /then '90'/, 'un titular planificado no recibe minutos oficiales por defecto');
 ['yellow', 'yellow_count', 'red', 'injured', 'rating', 'replacement_name', 'raw_data'].forEach((column) => {
   const updates = [...sql.matchAll(new RegExp(`set[\\s\\S]{0,500}\\b${column}\\s*=`, 'gi'))];
   assert.equal(updates.length, 0, `${column} no debe sobrescribirse en updates de snapshot`);

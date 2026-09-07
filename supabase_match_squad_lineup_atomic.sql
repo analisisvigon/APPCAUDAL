@@ -362,7 +362,7 @@ begin
           minutes = case
             when nullif(btrim(coalesce(minutes, '')), '') is null
               and squad_row.role = 'Titular'
-              then '90'
+              then ''
             else minutes
           end
       where partido_id = p_partido_id
@@ -376,7 +376,7 @@ begin
             minutes = case
               when nullif(btrim(coalesce(minutes, '')), '') is null
                 and squad_row.role = 'Titular'
-                then '90'
+                then ''
               else minutes
             end
         where partido_id = p_partido_id
@@ -391,7 +391,7 @@ begin
           minutes = case
             when nullif(btrim(coalesce(minutes, '')), '') is null
               and squad_row.role = 'Titular'
-              then '90'
+              then ''
             else minutes
           end
       where partido_id = p_partido_id
@@ -418,7 +418,7 @@ begin
         squad_row.jugador_id,
         normalized_name,
         squad_row.role,
-        case when squad_row.role = 'Titular' then '90' else '' end,
+        '',
         false,
         0,
         false,

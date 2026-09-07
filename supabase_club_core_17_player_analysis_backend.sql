@@ -216,6 +216,8 @@ begin
       limit 1
     ) competition on true
     where match_row.player_visible
+      and pg_catalog.lower(pg_catalog.btrim(coalesce(serialized.payload ->> 'status', ''))) in
+        ('finalizado', 'jugado', 'played', 'finished', 'cerrado', 'closed', 'revisado', 'reviewed')
       and (normalized_venue = 'all'
         or (normalized_venue = 'home' and pg_catalog.lower(coalesce(serialized.payload ->> 'is_home', '')) = 'true')
         or (normalized_venue = 'away' and pg_catalog.lower(coalesce(serialized.payload ->> 'is_home', '')) = 'false'))
@@ -393,6 +395,8 @@ begin
       limit 1
     ) competition on true
     where match_row.player_visible
+      and pg_catalog.lower(pg_catalog.btrim(coalesce(serialized.payload ->> 'status', ''))) in
+        ('finalizado', 'jugado', 'played', 'finished', 'cerrado', 'closed', 'revisado', 'reviewed')
       and match_row.delegated_data_status = 'Validado'
       and (normalized_venue = 'all'
         or (normalized_venue = 'home' and pg_catalog.lower(coalesce(serialized.payload ->> 'is_home', '')) = 'true')
@@ -550,6 +554,8 @@ begin
       limit 1
     ) competition on true
     where match_row.player_visible
+      and pg_catalog.lower(pg_catalog.btrim(coalesce(serialized.payload ->> 'status', ''))) in
+        ('finalizado', 'jugado', 'played', 'finished', 'cerrado', 'closed', 'revisado', 'reviewed')
       and (normalized_venue = 'all'
         or (normalized_venue = 'home' and pg_catalog.lower(coalesce(serialized.payload ->> 'is_home', '')) = 'true')
         or (normalized_venue = 'away' and pg_catalog.lower(coalesce(serialized.payload ->> 'is_home', '')) = 'false'))
@@ -766,6 +772,8 @@ begin
       limit 1
     ) competition on true
     where match_row.player_visible
+      and pg_catalog.lower(pg_catalog.btrim(coalesce(serialized.payload ->> 'status', ''))) in
+        ('finalizado', 'jugado', 'played', 'finished', 'cerrado', 'closed', 'revisado', 'reviewed')
       and (normalized_venue = 'all'
         or (normalized_venue = 'home' and pg_catalog.lower(coalesce(serialized.payload ->> 'is_home', '')) = 'true')
         or (normalized_venue = 'away' and pg_catalog.lower(coalesce(serialized.payload ->> 'is_home', '')) = 'false'))

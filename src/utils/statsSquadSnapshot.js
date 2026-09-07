@@ -170,13 +170,13 @@ export const applyMatchSquadSnapshotModel = (state, snapshot, availabilityById =
         jugador_id: player.jugador_id,
         player_name: player.player_name,
         role: player.role,
-        minutes: cleanName(existing.minutes) || (player.role === 'Titular' ? '90' : ''),
+        minutes: cleanName(existing.minutes),
       };
     } else {
       next.stats.push({
         row_id: `stats:${identity}`,
         ...player,
-        minutes: player.role === 'Titular' ? '90' : '',
+        minutes: '',
         yellow: false,
         yellow_count: 0,
         red: false,

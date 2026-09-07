@@ -57,6 +57,7 @@ assert.throws(() => validateMatchSquadSnapshot(inconsistent), /do not match/);
 });
 
 const initial = applyMatchSquadSnapshotModel(emptyState, snapshot);
+assert.equal(initial.stats.find((row) => row.jugador_id === roster[0].id).minutes, '', 'preparar un titular no inventa 90 minutos jugados');
 const swapLineup = [...lineup];
 swapLineup[0] = roster[11].name;
 const swapSnapshot = buildMatchSquadSnapshot({
