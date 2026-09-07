@@ -82,6 +82,17 @@ for (const instant of [
   assert.equal(publishable({ date: '2026-09-09', status: 'Previa' }, instant), false, 'Salamanca permanece privado hasta terminar el 09/09 en Madrid');
 }
 assert.equal(publishable({ date: '2026-09-09', status: 'Previa' }, madridNextDay), true, 'Salamanca se publica desde el 10/09 en Madrid');
+const ownPlayerMatchVisible = ({ match, actorPlayerId, rowPlayerId }) => (
+  actorPlayerId === rowPlayerId && publishable(match, madridToday)
+);
+const hiddenHistoricalMatch = { date: '2026-09-06', status: 'Previa', player_visible: false };
+assert.equal(ownPlayerMatchVisible({ match: hiddenHistoricalMatch, actorPlayerId: 'borja', rowPlayerId: 'borja' }), true, 'A/B: player_visible=false no bloquea analisis ni historial ya publicables');
+assert.equal(ownPlayerMatchVisible({ match: hiddenHistoricalMatch, actorPlayerId: 'borja', rowPlayerId: 'otro' }), false, 'J: PLAYER no obtiene datos de otro jugador');
+assert.deepEqual(
+  playerView({ match: { date: '2026-09-09', status: 'Previa', player_visible: false }, now: madridSameDay, role: 'Titular', minutes: 90, hasPartialEvents: true }),
+  { played: false, role: '', scoreVisible: false, timelineVisible: false },
+  'C/D: player_visible deja de mandar, pero el gate temporal oculta XI y datos sensibles',
+);
 
 assert.match(app, /allowsCalledPlayerSelection = Number\(interval\.fromMinute\) === 0/);
 assert.match(app, /knownPlayers\.length >= 11/);
@@ -139,6 +150,7 @@ const migrationOrder = [
   publicationMigration.indexOf('do $player_rpc_preconditions$'),
   publicationMigration.indexOf('do $publishable_helper_precondition$'),
   publicationMigration.indexOf('create or replace function public.is_player_match_publishable'),
+  publicationMigration.indexOf('do $remove_player_visible_gate$'),
   publicationMigration.indexOf('do $migrate_analysis_rpcs$'),
   publicationMigration.indexOf('do $migrate_matches_rpc$'),
   publicationMigration.indexOf('do $migrate_summary_rpc$'),
@@ -155,6 +167,22 @@ assert.match(publicationMigration, /falta % con su firma exacta; no se modifica 
 assert.match(publicationMigration, /contrato incompatible en %;[\s\S]*?no se modifica nada/);
 assert.match(publicationMigration, /if helper_row\.oid is not null[\s\S]*?contrato incompatible en public\.is_player_match_publishable/,
   'un helper compatible ya existente se valida antes de CREATE OR REPLACE');
+const removeManualGateBlock = publicationMigration.match(
+  /do \$remove_player_visible_gate\$[\s\S]*?\$remove_player_visible_gate\$;/,
+)?.[0] || '';
+assert.ok(removeManualGateBlock, 'existe la fase explicita que retira la compuerta manual');
+for (const rpc of [
+  'get_my_player_matches',
+  'get_my_player_analysis_overview',
+  'get_my_player_analysis_live_stats',
+  'get_my_player_production_actions',
+  'get_my_player_match_history',
+]) assert.ok(removeManualGateBlock.includes(`public.${rpc}`), `${rpc} deja de depender de player_visible`);
+assert.ok(!removeManualGateBlock.includes('public.get_my_player_analysis_summary'), 'summary nunca dependio de player_visible');
+assert.match(removeManualGateBlock, /where\[\[:space:\]\]\+match_row\[\.\]player_visible/);
+assert.match(removeManualGateBlock, /'where true'/);
+assert.match(publicationMigration, /pg_catalog\.strpos\(source, 'player_visible'\) <> 0[\s\S]*?source !~ 'where\[\[:space:\]\]\+true'/,
+  'la postcondicion prohibe restaurar player_visible');
 
 const helperDefinition = publicationMigration.match(
   /create or replace function public\.is_player_match_publishable[\s\S]*?\n\$function\$;/i,
@@ -207,16 +235,22 @@ const legacyAnalysisPattern = new RegExp(
 );
 const canonicalAnalysisGate = "public.is_player_match_publishable(serialized.payload ->> 'status', serialized.payload ->> 'date')";
 const migrateAnalysisBody = (source) => {
-  const helperReferences = source.match(/public\.is_player_match_publishable\s*\(/g)?.length || 0;
+  const visibilityMatches = source.match(/where\s+match_row\.player_visible/g)?.length || 0;
+  if (visibilityMatches > 1) throw new Error('player_visible ambiguo');
+  const withoutManualGate = source.replace(/where\s+match_row\.player_visible/g, 'where true');
+  if (withoutManualGate.includes('player_visible') || !/where\s+true/.test(withoutManualGate)) {
+    throw new Error('estado ambiguo de player_visible');
+  }
+  const helperReferences = withoutManualGate.match(/public\.is_player_match_publishable\s*\(/g)?.length || 0;
   if (helperReferences > 0) {
-    if (!rpcGateAuditPasses(source, analysisRawCall, analysisStructuralCall, 1)) {
+    if (!rpcGateAuditPasses(withoutManualGate, analysisRawCall, analysisStructuralCall, 1)) {
       throw new Error('migracion parcial o llamada al helper ambigua');
     }
-    return source;
+    return withoutManualGate;
   }
-  const legacyMatches = source.match(legacyAnalysisPattern)?.length || 0;
+  const legacyMatches = withoutManualGate.match(legacyAnalysisPattern)?.length || 0;
   if (legacyMatches !== 1) throw new Error('condicion finalizada ausente o ambigua');
-  return source.replace(legacyAnalysisPattern, canonicalAnalysisGate);
+  return withoutManualGate.replace(legacyAnalysisPattern, canonicalAnalysisGate);
 };
 const deployedOverviewBody = `begin
   return query
@@ -248,7 +282,8 @@ end;`;
 const migratedOverviewBody = migrateAnalysisBody(deployedOverviewBody);
 assert.equal(rpcGateAuditPasses(migratedOverviewBody, analysisRawCall, analysisStructuralCall, 1), true, 'la definicion real se migra antes de auditar');
 assert.doesNotMatch(migratedOverviewBody, legacyAnalysisPattern, 'desaparece el predicado inline antiguo');
-assert.match(migratedOverviewBody, /where match_row\.player_visible\s+and public\.is_player_match_publishable/);
+assert.doesNotMatch(migratedOverviewBody, /player_visible/, 'desaparece la compuerta manual siempre falsa');
+assert.match(migratedOverviewBody, /where true\s+and public\.is_player_match_publishable/);
 assert.match(migratedOverviewBody, /p_competition_scope = 'all'/, 'se conserva competition_scope');
 assert.match(migratedOverviewBody, /p_venue = 'all'/, 'se conserva venue');
 assert.match(migratedOverviewBody, /match_row\.club_id = membership_club_id/, 'se conserva el filtro de club');
@@ -274,4 +309,4 @@ assert.equal([
   rpcGateAuditPasses(Array.from({ length: 2 }, () => oneSummaryGate).join('\n'), matchesRawCall, summaryStructuralCall, 2),
 ].every(Boolean), true, 'F: helper correcto y las seis rutas RPC protegidas pasan');
 
-console.log('player match publication date gate and fail-closed RPC audits A-I passed');
+console.log('player match publication date gate and fail-closed RPC audits A-J passed');

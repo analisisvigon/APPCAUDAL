@@ -261,6 +261,87 @@ alter function public.is_player_match_publishable(text,text,timestamp with time 
 revoke all on function public.is_player_match_publishable(text,text,timestamp with time zone)
   from public, anon, authenticated, service_role;
 
+-- player_visible fue una compuerta manual con DEFAULT false. El contrato de
+-- producto vigente publica automaticamente por fecha, asi que las cinco RPC
+-- que aun lo usaban conservan el resto del cuerpo y sustituyen solo ese
+-- predicado por una base neutra. La columna permanece intacta en el esquema.
+do $remove_player_visible_gate$
+declare
+  target regprocedure;
+  function_row pg_catalog.pg_proc%rowtype;
+  original_source text;
+  transformed_source text;
+  original_definition text;
+  transformed_definition text;
+  source_offset integer;
+  legacy_gate_count integer;
+  legacy_gate_pattern constant text :=
+    'where[[:space:]]+match_row[.]player_visible';
+begin
+  foreach target in array array[
+    'public.get_my_player_matches()'::regprocedure,
+    'public.get_my_player_analysis_overview(text,text)'::regprocedure,
+    'public.get_my_player_analysis_live_stats(text,text,text)'::regprocedure,
+    'public.get_my_player_production_actions(text,text)'::regprocedure,
+    'public.get_my_player_match_history(text,text,integer,integer)'::regprocedure
+  ] loop
+    select procedure.* into function_row
+    from pg_catalog.pg_proc procedure
+    where procedure.oid = target;
+
+    original_source := function_row.prosrc;
+    select pg_catalog.count(*)::integer into legacy_gate_count
+    from pg_catalog.regexp_matches(
+      original_source,
+      legacy_gate_pattern,
+      'g'
+    );
+
+    if legacy_gate_count = 0 then
+      if pg_catalog.strpos(original_source, 'player_visible') <> 0
+         or original_source !~ 'where[[:space:]]+true' then
+        raise exception
+          'Publication gate: estado ambiguo de player_visible en %',
+          target;
+      end if;
+      continue;
+    elsif legacy_gate_count <> 1 then
+      raise exception
+        'Publication gate: player_visible aparece de forma ambigua en % (encontrados=%)',
+        target, legacy_gate_count;
+    end if;
+
+    transformed_source := pg_catalog.regexp_replace(
+      original_source,
+      legacy_gate_pattern,
+      'where true',
+      'g'
+    );
+    if pg_catalog.strpos(transformed_source, 'player_visible') <> 0 then
+      raise exception
+        'Publication gate: player_visible no se retiro completamente de %',
+        target;
+    end if;
+
+    original_definition := pg_catalog.pg_get_functiondef(function_row.oid);
+    source_offset := pg_catalog.strpos(original_definition, original_source);
+    if source_offset = 0 then
+      raise exception
+        'Publication gate: no se pudo aislar el cuerpo de % al retirar player_visible',
+        target;
+    end if;
+    transformed_definition :=
+      pg_catalog.substr(original_definition, 1, source_offset - 1)
+      || transformed_source
+      || pg_catalog.substr(
+        original_definition,
+        source_offset + pg_catalog.length(original_source)
+      );
+    execute transformed_definition;
+  end loop;
+end;
+$remove_player_visible_gate$;
+
 do $migrate_analysis_rpcs$
 declare
   target regprocedure;
@@ -803,7 +884,18 @@ begin
        or canonical_call_count <> 1
        or structural_call_count <> 1
        or source ~ legacy_analysis_pattern
-       or pg_catalog.strpos(source, 'player_visible') = 0 then
+       or pg_catalog.strpos(source, 'player_visible') <> 0
+       or source !~ 'where[[:space:]]+true'
+       or pg_catalog.strpos(source, 'auth.uid()') = 0
+       or pg_catalog.strpos(source, 'public.current_membership()') = 0
+       or pg_catalog.strpos(
+         source, 'membership_role is distinct from ''player'''
+       ) = 0
+       or pg_catalog.strpos(source, 'public.current_jugador_id()') = 0
+       or pg_catalog.strpos(source, 'public.is_player()') = 0
+       or pg_catalog.strpos(source, 'supported_club_id') = 0
+       or pg_catalog.strpos(source, 'own_jugador_id') = 0
+       or source ~* '(partido_convocados|partido_notas_individuales_pre|partido_alineacion_slots|partido_snapshots_tacticos|partido_snapshot_tactico_slots)' then
       raise exception
         'Publication gate: gate canonico ausente, ambiguo o fuera del WHERE en %',
         target;
@@ -869,7 +961,15 @@ begin
      or helper_name_count <> 3
      or canonical_call_count <> 3
      or structural_call_count <> 3
-     or source ~ legacy_matches_pattern then
+     or source ~ legacy_matches_pattern
+     or pg_catalog.strpos(source, 'player_visible') <> 0
+     or source !~ 'where[[:space:]]+true'
+     or pg_catalog.strpos(source, 'public.current_membership()') = 0
+     or pg_catalog.strpos(source, 'membership_role <> ''player''') = 0
+     or pg_catalog.strpos(source, 'membership_jugador_id') = 0
+     or pg_catalog.strpos(source, 'public.is_player()') = 0
+     or pg_catalog.strpos(source, 'supported_club_id') = 0
+     or source ~* '(partido_convocados|partido_notas_individuales_pre|partido_alineacion_slots|partido_snapshots_tacticos|partido_snapshot_tactico_slots)' then
     raise exception 'Publication gate: partidos PLAYER no quedaron sanitizados';
   end if;
 
@@ -908,7 +1008,13 @@ begin
   );
   if helper_name_count <> 2
      or canonical_call_count <> 2
-     or structural_call_count <> 2 then
+     or structural_call_count <> 2
+     or pg_catalog.strpos(source, 'public.current_membership()') = 0
+     or pg_catalog.strpos(source, 'membership_role <> ''player''') = 0
+     or pg_catalog.strpos(source, 'public.current_jugador_id()') = 0
+     or pg_catalog.strpos(source, 'public.is_player()') = 0
+     or pg_catalog.strpos(source, 'supported_club_id') = 0
+     or pg_catalog.strpos(source, 'own_jugador_id') = 0 then
     raise exception 'Publication gate: resumen PLAYER antiguo no quedo protegido';
   end if;
 
