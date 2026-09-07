@@ -20,11 +20,11 @@ const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visibl
 const INITIAL_STATE = { status: 'loading', summary: null, subjects: [], rules: [], rows: [], hasMore: false };
 
 function Kpi({ label, value, tone = 'text-white' }) {
-  return <article className={`${CARD} px-3.5 py-3 sm:px-4`}><p className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-[9px]">{label}</p><p className={`mt-1.5 truncate text-lg font-black tabular-nums sm:text-xl ${tone}`}>{value}</p></article>;
+  return <article className={`${CARD} px-3 py-2.5 sm:px-4 sm:py-3`}><p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">{label}</p><p className={`mt-1 truncate text-lg font-black tabular-nums sm:text-xl ${tone}`}>{value}</p></article>;
 }
 
 function TransparencyLoading() {
-  return <div role="status" aria-label="Cargando transparencia del grupo" className="space-y-3"><div className="grid animate-pulse grid-cols-2 gap-2 lg:grid-cols-4">{Array.from({ length: 8 }, (_, index) => <div key={index} className={`${CARD} h-20 bg-white/[0.045]`} />)}</div><div className="grid animate-pulse gap-3 lg:grid-cols-2"><div className={`${CARD} h-64 bg-white/[0.045]`} /><div className={`${CARD} h-64 bg-white/[0.045]`} /></div><span className="sr-only">Cargando transparencia del grupo…</span></div>;
+  return <div role="status" aria-label="Cargando transparencia del grupo" className="space-y-3"><div className="grid animate-pulse grid-cols-2 gap-2 sm:grid-cols-4">{Array.from({ length: 4 }, (_, index) => <div key={index} className={`${CARD} h-[76px] bg-white/[0.045]`} />)}</div><div className="grid animate-pulse gap-3 sm:grid-cols-2"><div className={`${CARD} h-40 bg-white/[0.045]`} /><div className={`${CARD} h-40 bg-white/[0.045]`} /></div><span className="sr-only">Cargando transparencia del grupo…</span></div>;
 }
 
 function SubjectState({ subject }) {
@@ -32,16 +32,16 @@ function SubjectState({ subject }) {
   const pending = Number(subject.pending_total) > 0;
   const label = overdue ? 'Con vencidas' : pending ? 'Pendiente' : Number(subject.active_count) > 0 ? 'Al día' : 'Sin activas';
   const tone = overdue ? 'border-red-300/20 bg-red-400/10 text-red-100' : pending ? 'border-amber-300/20 bg-amber-300/10 text-amber-100' : 'border-emerald-300/20 bg-emerald-300/10 text-emerald-200';
-  return <span className={`rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-[0.08em] ${tone}`}>{label}</span>;
+  return <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.06em] ${tone}`}>{label}</span>;
 }
 
 function SubjectSummaryCard({ subject }) {
   return (
-    <article className="rounded-2xl border border-white/[0.07] bg-black/15 p-3.5">
-      <div className="flex items-start justify-between gap-3"><h4 className="min-w-0 truncate text-sm font-black text-white">{subject.subject_name || 'Jugador'}</h4><SubjectState subject={subject} /></div>
-      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 min-[420px]:grid-cols-3">
-        {[['Multas', subject.fine_count], ['Activas', subject.active_count], ['Pagadas', subject.paid_count]].map(([label, value]) => <div key={label}><dt className="text-[8px] font-black uppercase text-slate-600">{label}</dt><dd className="mt-1 text-sm font-black text-white">{value}</dd></div>)}
-        {[['Generado', subject.generated_total, 'text-white'], ['Pagado', subject.collected_total, 'text-emerald-200'], ['Pendiente', subject.pending_total, 'text-amber-100']].map(([label, value, tone]) => <div key={label}><dt className="text-[8px] font-black uppercase text-slate-600">{label}</dt><dd className={`mt-1 truncate text-sm font-black tabular-nums ${tone}`}>{formatFinesCurrency(value)}</dd></div>)}
+    <article className="rounded-2xl border border-white/[0.07] bg-black/15 p-3">
+      <div className="flex items-start justify-between gap-3"><h4 className="min-w-0 text-sm font-black leading-5 text-white">{subject.subject_name || 'Jugador'}</h4><SubjectState subject={subject} /></div>
+      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
+        {[['Generado', subject.generated_total, 'text-white'], ['Pagado', subject.collected_total, 'text-emerald-200'], ['Pendiente', subject.pending_total, 'text-amber-100']].map(([label, value, tone]) => <div key={label}><dt className="text-[10px] font-black uppercase text-slate-600">{label}</dt><dd className={`mt-1 truncate text-sm font-black tabular-nums ${tone}`}>{formatFinesCurrency(value)}</dd></div>)}
+        <div><dt className="text-[10px] font-black uppercase text-slate-600">Multas</dt><dd className="mt-1 text-sm font-black text-white">{subject.fine_count}</dd></div>
       </dl>
     </article>
   );
@@ -51,13 +51,14 @@ function TransparencyFineCard({ fine }) {
   const status = getFineStatusPresentation(fine);
   const surcharge = Number(fine.surcharge_amount) > 0;
   return (
-    <article className={`${CARD} p-4 sm:p-5`}>
-      <header className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-black text-caudal-electric">{fine.subject_name || 'Sujeto'}</p><h4 className="mt-1 text-base font-black leading-5 text-white">{fine.rule_name || 'Multa'}</h4><time dateTime={fine.occurred_on || undefined} className="mt-1 block text-[10px] font-bold text-slate-500">{formatFinesDate(fine.occurred_on)}</time></div><div className="flex flex-wrap justify-end gap-1"><span className={`rounded-full border px-2 py-1 text-[8px] font-black uppercase ${status.tone}`}>{status.label}</span>{fine.is_overdue && fine.lifecycle_status === 'active' ? <span className="rounded-full border border-red-300/20 bg-red-400/10 px-2 py-1 text-[8px] font-black uppercase text-red-100">Vencida</span> : null}</div></header>
-      <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-3 border-y border-white/[0.06] py-3 min-[420px]:grid-cols-3">
-        {[['Original', fine.original_amount, 'text-white'], ...(surcharge ? [['Recargo', fine.surcharge_amount, 'text-red-100'], ['Total generado', fine.generated_amount, 'text-white']] : []), ['Cobrado', fine.collected_amount, 'text-emerald-200'], ['Pendiente', fine.pending_amount, 'text-amber-100']].map(([label, value, tone]) => <div key={label}><dt className="text-[8px] font-black uppercase text-slate-600">{label}</dt><dd className={`mt-1 truncate text-sm font-black tabular-nums ${tone}`}>{formatFinesCurrency(value)}</dd></div>)}
-        <div><dt className="text-[8px] font-black uppercase text-slate-600">Vence</dt><dd className="mt-1 text-sm font-black text-white"><time dateTime={fine.due_on || undefined}>{formatFinesDate(fine.due_on)}</time></dd></div>
+    <article className={`${CARD} p-3.5 sm:p-5`}>
+      <header><p className="text-sm font-black text-caudal-electric">{fine.subject_name || 'Sujeto'}</p><h4 className="mt-1 text-base font-black leading-5 text-white">{fine.rule_name || 'Multa'}</h4><div className="mt-2 flex flex-wrap items-center justify-between gap-2"><time dateTime={fine.occurred_on || undefined} className="text-xs font-bold text-slate-500">{formatFinesDate(fine.occurred_on)}</time><div className="flex flex-wrap gap-1"><span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${status.tone}`}>{status.label}</span>{fine.is_overdue && fine.lifecycle_status === 'active' ? <span className="rounded-full border border-red-300/20 bg-red-400/10 px-2 py-1 text-[10px] font-black uppercase text-red-100">Vencida</span> : null}</div></div></header>
+      <div className="mt-3 flex items-end justify-between gap-3 rounded-xl border border-amber-300/15 bg-amber-300/[0.07] px-3 py-2.5"><p className="text-[10px] font-black uppercase text-amber-200/75">Pendiente</p><p className="text-lg font-black tabular-nums text-amber-100">{formatFinesCurrency(fine.pending_amount)}</p></div>
+      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-3 border-y border-white/[0.06] py-3">
+        {[['Generado', fine.generated_amount, 'text-white'], ['Pagado', fine.collected_amount, 'text-emerald-200'], ...(surcharge ? [['Recargo', fine.surcharge_amount, 'text-red-100']] : [])].map(([label, value, tone]) => <div key={label}><dt className="text-[10px] font-black uppercase text-slate-600">{label}</dt><dd className={`mt-1 truncate text-sm font-black tabular-nums ${tone}`}>{formatFinesCurrency(value)}</dd></div>)}
+        <div><dt className="text-[10px] font-black uppercase text-slate-600">Vence</dt><dd className="mt-1 text-sm font-black text-white"><time dateTime={fine.due_on || undefined}>{formatFinesDate(fine.due_on)}</time></dd></div>
       </dl>
-      {fine.note ? <section className="mt-3 border-l-2 border-caudal-electric/40 pl-3"><h5 className="text-[8px] font-black uppercase tracking-[0.12em] text-caudal-electric/80">Nota</h5><p className="mt-1 whitespace-pre-wrap break-words text-sm leading-5 text-slate-300">{fine.note}</p></section> : null}
+      {fine.note ? <section className="mt-3 border-l-2 border-caudal-electric/40 pl-3"><h5 className="text-[10px] font-black uppercase tracking-[0.1em] text-caudal-electric/80">Nota</h5><p className="mt-1 whitespace-pre-wrap break-words text-sm leading-5 text-slate-300">{fine.note}</p></section> : null}
     </article>
   );
 }
@@ -104,7 +105,6 @@ export default function PlayerFinesTransparencyPanel({ client }) {
   };
 
   const summary = state.summary || {};
-  const pendingCount = Number(summary.unpaid_count || 0) + Number(summary.partial_count || 0);
   const byPending = [...state.subjects].sort((left, right) => right.pending_total - left.pending_total);
 
   return (
@@ -115,19 +115,20 @@ export default function PlayerFinesTransparencyPanel({ client }) {
       {state.status === 'error' ? <div className={`${CARD} p-5 text-center`}><p role="alert" className="text-sm font-black text-white">No se pudo cargar la transparencia del grupo.</p><p className="mt-1 text-xs text-slate-400">Vuelve a intentarlo en unos instantes.</p><button type="button" onClick={() => setReloadToken((current) => current + 1)} className={`mt-4 min-h-[44px] rounded-xl border border-white/10 bg-white/[0.06] px-4 py-2 text-xs font-black text-white hover:bg-white/10 ${FOCUS_RING}`}>Reintentar</button></div> : null}
 
       {state.status === 'ready' ? <>
-        <section aria-label="Indicadores grupales" className="space-y-2"><div className="grid grid-cols-2 gap-2 lg:grid-cols-3"><Kpi label="Total generado" value={formatFinesCurrency(summary.generated_total)} /><Kpi label="Total cobrado" value={formatFinesCurrency(summary.collected_total)} tone="text-emerald-200" /><Kpi label="Total pendiente" value={formatFinesCurrency(summary.pending_total)} tone="text-amber-100" /></div><div className="grid grid-cols-2 gap-2 min-[430px]:grid-cols-3 lg:grid-cols-5"><Kpi label="Total multas" value={String(summary.total_fines)} /><Kpi label="Pendientes" value={String(pendingCount)} tone="text-amber-100" /><Kpi label="Pagadas" value={String(summary.paid_count)} tone="text-emerald-200" /><Kpi label="Anuladas" value={String(summary.cancelled_count)} tone="text-slate-300" /><Kpi label="Vencidas" value={String(summary.overdue_count)} tone="text-red-100" /></div></section>
+        <section aria-label="Indicadores grupales" className="grid grid-cols-2 gap-2 sm:grid-cols-4"><Kpi label="Generado" value={formatFinesCurrency(summary.generated_total)} /><Kpi label="Cobrado" value={formatFinesCurrency(summary.collected_total)} tone="text-emerald-200" /><Kpi label="Pendiente" value={formatFinesCurrency(summary.pending_total)} tone="text-amber-100" /><Kpi label="Total multas" value={String(summary.total_fines)} /></section>
 
-        <section aria-label="Gráficas y rankings de multas" className="grid gap-3 xl:grid-cols-2">
-          <FinesStatusDistribution summary={summary} />
-          <FinesHorizontalRanking title="Quién ha aportado más" subtitle="Importe cobrado registrado" rows={state.subjects} labelKey="subject_name" valueKey="collected_total" tone="bg-emerald-300" />
-          <FinesHorizontalRanking title="Mayor importe pendiente" rows={state.subjects} labelKey="subject_name" valueKey="pending_total" tone="bg-amber-300" />
-          <FinesHorizontalRanking title="Motivos con mayor importe" subtitle="Total generado por motivo" rows={state.rules} labelKey="rule_name" valueKey="generated_total" />
+        <section aria-label="Rankings de multas" className="grid gap-3 sm:grid-cols-2">
+          <FinesHorizontalRanking title="Más dinero aportado" subtitle="Importe cobrado registrado" rows={state.subjects} labelKey="subject_name" valueKey="collected_total" tone="bg-emerald-300" />
+          <FinesHorizontalRanking title="Más dinero pendiente" rows={state.subjects} labelKey="subject_name" valueKey="pending_total" tone="bg-amber-300" />
+          <FinesHorizontalRanking title="Motivos que más generan" subtitle="Total generado por motivo" rows={state.rules} labelKey="rule_name" valueKey="generated_total" />
           <FinesHorizontalRanking title="Motivos más frecuentes" rows={state.rules} labelKey="rule_name" valueKey="fine_count" formatValue={(value) => `${value} multas`} tone="bg-violet-300" />
         </section>
 
-        <section aria-labelledby="subject-transparency-title" className={`${CARD} p-4 sm:p-5`}><div><h3 id="subject-transparency-title" className="text-sm font-black uppercase tracking-[0.13em] text-white">Resumen por jugador</h3><p className="mt-1 text-[10px] text-slate-500">Ordenado por importe pendiente</p></div>{!byPending.length ? <p className="mt-4 rounded-xl border border-dashed border-white/[0.08] px-3 py-7 text-center text-xs font-bold text-slate-500">No hay datos por jugador esta temporada.</p> : <div className="mt-4 grid gap-2 lg:grid-cols-2">{byPending.map((subject, index) => <SubjectSummaryCard key={`${subject.subject_name}-${index}`} subject={subject} />)}</div>}</section>
+        <FinesStatusDistribution summary={summary} />
 
-        <section aria-labelledby="group-fines-list-title" className="space-y-3"><div><h3 id="group-fines-list-title" className="text-sm font-black uppercase tracking-[0.13em] text-white">Multas del grupo</h3><p className="mt-1 text-[10px] text-slate-500">Información visible y sanitizada de la temporada actual</p></div>{!state.rows.length ? <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] px-4 py-9 text-center"><p className="text-sm font-black text-slate-200">No hay multas registradas en el grupo.</p></div> : <div className="grid items-start gap-3 lg:grid-cols-2">{state.rows.map((fine, index) => <TransparencyFineCard key={`${fine.subject_name}-${fine.occurred_on}-${index}`} fine={fine} />)}</div>}{loadMoreError ? <p role="alert" className="rounded-xl border border-red-300/15 bg-red-400/[0.07] px-3 py-2 text-center text-xs font-bold text-red-100">{loadMoreError}</p> : null}{state.hasMore ? <div className="text-center"><button type="button" onClick={loadMore} disabled={loadingMore} className={`min-h-[44px] rounded-xl border border-white/10 bg-white/[0.06] px-5 py-2 text-xs font-black text-white hover:bg-white/10 disabled:opacity-50 ${FOCUS_RING}`}>{loadingMore ? 'Cargando…' : 'Cargar más'}</button></div> : null}</section>
+        <section aria-labelledby="subject-transparency-title" className={`${CARD} p-3.5 sm:p-5`}><div><h3 id="subject-transparency-title" className="text-sm font-black uppercase tracking-[0.13em] text-white">Resumen por jugador</h3><p className="mt-1 text-xs text-slate-500">Ordenado por importe pendiente</p></div>{!byPending.length ? <p className="mt-3 rounded-xl border border-dashed border-white/[0.08] px-3 py-3 text-center text-xs font-bold text-slate-500">No hay datos por jugador esta temporada.</p> : <div className="mt-3 grid gap-2 sm:grid-cols-2">{byPending.map((subject, index) => <SubjectSummaryCard key={`${subject.subject_name}-${index}`} subject={subject} />)}</div>}</section>
+
+        <section aria-labelledby="group-fines-list-title" className="space-y-3"><div><h3 id="group-fines-list-title" className="text-sm font-black uppercase tracking-[0.13em] text-white">Multas del grupo</h3><p className="mt-1 text-xs text-slate-500">Información visible de la temporada actual</p></div>{!state.rows.length ? <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] px-4 py-4 text-center"><p className="text-sm font-black text-slate-200">No hay multas registradas en el grupo.</p></div> : <div className="grid items-start gap-3 lg:grid-cols-2">{state.rows.map((fine, index) => <TransparencyFineCard key={`${fine.subject_name}-${fine.occurred_on}-${index}`} fine={fine} />)}</div>}{loadMoreError ? <p role="alert" className="rounded-xl border border-red-300/15 bg-red-400/[0.07] px-3 py-2 text-center text-xs font-bold text-red-100">{loadMoreError}</p> : null}{state.hasMore ? <div className="text-center"><button type="button" onClick={loadMore} disabled={loadingMore} className={`min-h-[44px] rounded-xl border border-white/10 bg-white/[0.06] px-5 py-2 text-xs font-black text-white hover:bg-white/10 disabled:opacity-50 ${FOCUS_RING}`}>{loadingMore ? 'Cargando…' : 'Cargar más'}</button></div> : null}</section>
       </> : null}
     </section>
   );

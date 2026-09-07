@@ -32,7 +32,7 @@ import { FinesStatusDistribution } from './FinesTransparencyVisuals';
 const PAGE_SIZE = 50;
 const CARD = 'rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.88] shadow-[0_16px_42px_rgba(0,0,0,0.18)]';
 const INPUT = 'min-h-11 w-full rounded-xl border border-white/10 bg-white/[0.065] px-3 py-2 text-sm font-semibold text-white outline-none transition placeholder:text-slate-600 focus:border-caudal-electric focus:ring-2 focus:ring-caudal-electric/15 disabled:cursor-not-allowed disabled:opacity-50';
-const SECONDARY_BUTTON = 'inline-flex min-h-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.065] px-3 py-2 text-xs font-black text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-45';
+const SECONDARY_BUTTON = 'inline-flex min-h-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.065] px-3 py-2 text-xs font-black text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-45';
 const PRIMARY_BUTTON = 'inline-flex min-h-11 items-center justify-center rounded-xl bg-caudal-electric px-4 py-2 text-xs font-black text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-50';
 
 const numberValue = (value) => {
@@ -63,17 +63,17 @@ function ModalShell({ title, eyebrow, onClose, children, busy = false }) {
   if (typeof document === 'undefined') return null;
   return createPortal(
     <div
-      className="fixed inset-0 z-[140] flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      className="fixed inset-0 z-[140] flex items-end justify-center bg-black/75 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-sm sm:items-center sm:p-4"
       role="presentation"
       onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}
     >
-      <section role="dialog" aria-modal="true" aria-labelledby="fines-modal-title" className="max-h-[94vh] w-full overflow-y-auto rounded-t-[1.6rem] border border-white/10 bg-[#071225] shadow-2xl sm:max-w-2xl sm:rounded-[1.6rem]">
-        <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-[#071225]/95 px-5 py-4 backdrop-blur sm:px-6">
+      <section role="dialog" aria-modal="true" aria-labelledby="fines-modal-title" className="mobile-form-controls max-h-[calc(100dvh-0.75rem)] w-full overflow-y-auto overscroll-contain rounded-t-[1.6rem] border border-white/10 bg-[#071225] shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-2xl sm:rounded-[1.6rem]">
+        <header className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-white/10 bg-[#071225]/95 px-4 py-3 backdrop-blur sm:px-6 sm:py-4">
           <div>
-            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-caudal-electric">{eyebrow}</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">{eyebrow}</p>
             <h2 id="fines-modal-title" className="mt-1 text-xl font-black text-white">{title}</h2>
           </div>
-          <button ref={closeRef} type="button" onClick={onClose} disabled={busy} aria-label="Cerrar" className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-lg font-black text-slate-200 hover:bg-white/15 disabled:opacity-40">×</button>
+          <button ref={closeRef} type="button" onClick={onClose} disabled={busy} aria-label="Cerrar" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/10 text-xl font-black text-slate-200 hover:bg-white/15 disabled:opacity-40">×</button>
         </header>
         {children}
       </section>
@@ -85,9 +85,9 @@ function ModalShell({ title, eyebrow, onClose, children, busy = false }) {
 function Field({ label, hint, error, children }) {
   return (
     <label className="block space-y-2 text-sm font-bold text-slate-200">
-      <span>{label}</span>
+      <span className="text-sm">{label}</span>
       {children}
-      {hint ? <span className="block text-[11px] font-medium leading-4 text-slate-500">{hint}</span> : null}
+      {hint ? <span className="block text-xs font-medium leading-4 text-slate-500">{hint}</span> : null}
       {error ? <span role="alert" className="block text-xs font-bold text-red-200">{error}</span> : null}
     </label>
   );
@@ -97,8 +97,8 @@ function StatusBadges({ fine }) {
   const status = getFineStatusPresentation(fine);
   return (
     <span className="flex flex-wrap gap-1.5">
-      <span className={`inline-flex rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] ${status.tone}`}>{status.label}</span>
-      {fine.is_overdue && fine.lifecycle_status === 'active' ? <span className="inline-flex rounded-full border border-red-300/20 bg-red-400/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-red-100">Vencida</span> : null}
+      <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] ${status.tone}`}>{status.label}</span>
+      {fine.is_overdue && fine.lifecycle_status === 'active' ? <span className="inline-flex rounded-full border border-red-300/20 bg-red-400/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-red-100">Vencida</span> : null}
     </span>
   );
 }
@@ -116,7 +116,7 @@ function KpiCard({ label, value, tone = 'text-white', badge = null }) {
   return (
     <article className={`${CARD} min-w-0 px-4 py-3.5`}>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</p>
         {badge}
       </div>
       <p className={`mt-1.5 truncate text-xl font-black tabular-nums sm:text-2xl ${tone}`}>{value}</p>
@@ -132,11 +132,11 @@ function FineActions({ fine, onAction }) {
   const availability = getFineActionAvailability(fine);
   if (fine.lifecycle_status === 'cancelled') return <span className="text-[10px] font-bold text-slate-600">Sin acciones</span>;
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {availability.payment ? <button type="button" onClick={() => onAction('payment', fine)} className="rounded-lg bg-caudal-electric/15 px-2.5 py-2 text-[10px] font-black text-caudal-electric hover:bg-caudal-electric/20">Registrar pago</button> : null}
-      {availability.refund ? <button type="button" onClick={() => onAction('refund', fine)} className="rounded-lg bg-violet-300/10 px-2.5 py-2 text-[10px] font-black text-violet-200 hover:bg-violet-300/15">Reembolso</button> : null}
-      {availability.cancel ? <button type="button" onClick={() => onAction('cancel', fine)} className="rounded-lg bg-white/[0.07] px-2.5 py-2 text-[10px] font-black text-slate-300 hover:bg-white/10">Anular</button> : null}
-      {availability.cancelBlockedByCollection ? <button type="button" disabled title="Primero debe resolverse el importe cobrado." className="rounded-lg bg-white/[0.04] px-2.5 py-2 text-[10px] font-black text-slate-600">Anular</button> : null}
+    <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap">
+      {availability.payment ? <button type="button" onClick={() => onAction('payment', fine)} className="min-h-11 rounded-xl bg-caudal-electric/15 px-3 py-2 text-xs font-black text-caudal-electric hover:bg-caudal-electric/20">Registrar pago</button> : null}
+      {availability.refund ? <button type="button" onClick={() => onAction('refund', fine)} className="min-h-11 rounded-xl bg-violet-300/10 px-3 py-2 text-xs font-black text-violet-200 hover:bg-violet-300/15">Reembolso</button> : null}
+      {availability.cancel ? <button type="button" onClick={() => onAction('cancel', fine)} className="min-h-11 rounded-xl bg-white/[0.07] px-3 py-2 text-xs font-black text-slate-300 hover:bg-white/10">Anular</button> : null}
+      {availability.cancelBlockedByCollection ? <button type="button" disabled title="Primero debe resolverse el importe cobrado." className="min-h-11 rounded-xl bg-white/[0.04] px-3 py-2 text-xs font-black text-slate-600">Anular</button> : null}
     </div>
   );
 }
@@ -171,7 +171,7 @@ function NewFineModal({ rulesState, subjectsState, onRetryCatalog, onClose, onSu
 
   return (
     <ModalShell title="Nueva multa" eyebrow="Gestión" onClose={onClose} busy={saving}>
-      <form onSubmit={submit} className="space-y-5 p-5 sm:p-6">
+      <form onSubmit={submit} className="space-y-4 p-4 sm:space-y-5 sm:p-6">
         <fieldset>
           <legend className="text-sm font-bold text-slate-200">Tipo</legend>
           <div className="mt-2 grid grid-cols-2 gap-2">
@@ -205,12 +205,12 @@ function NewFineModal({ rulesState, subjectsState, onRetryCatalog, onClose, onSu
               <fieldset className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
                   <legend className="text-sm font-bold text-slate-200">Personas</legend>
-                  <button type="button" onClick={() => setSubjectIds(allSelected ? [] : subjectsState.rows.map((subject) => subject.subject_id))} className="text-xs font-black text-caudal-electric">{allSelected ? 'Quitar selección' : `Seleccionar todos (${subjectsState.rows.length})`}</button>
+                   <button type="button" onClick={() => setSubjectIds(allSelected ? [] : subjectsState.rows.map((subject) => subject.subject_id))} className="min-h-11 rounded-xl px-2 text-xs font-black text-caudal-electric">{allSelected ? 'Quitar selección' : `Seleccionar todos (${subjectsState.rows.length})`}</button>
                 </div>
                 <div className="max-h-52 space-y-1 overflow-y-auto rounded-xl border border-white/10 bg-black/15 p-2">
                   {subjectsState.rows.map((subject) => {
                     const checked = subjectIds.includes(subject.subject_id);
-                    return <label key={subject.subject_id} className="flex min-h-10 cursor-pointer items-center gap-3 rounded-lg px-2 text-sm font-semibold text-slate-200 hover:bg-white/[0.05]"><input type="checkbox" checked={checked} onChange={() => setSubjectIds((current) => checked ? current.filter((id) => id !== subject.subject_id) : [...current, subject.subject_id])} className="h-4 w-4 accent-caudal-electric" /><span>{subject.display_name}</span></label>;
+                    return <label key={subject.subject_id} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-2 text-sm font-semibold text-slate-200 hover:bg-white/[0.05]"><input type="checkbox" checked={checked} onChange={() => setSubjectIds((current) => checked ? current.filter((id) => id !== subject.subject_id) : [...current, subject.subject_id])} className="h-5 w-5 shrink-0 accent-caudal-electric" /><span>{subject.display_name}</span></label>;
                   })}
                 </div>
                 <p className="text-xs font-bold text-slate-400">{subjectIds.length} personas seleccionadas{selectedRule ? ` · ${formatFinesCurrency(selectedRule.default_amount)} por persona · Total orientativo ${formatFinesCurrency(numberValue(selectedRule.default_amount) * subjectIds.length)}` : ''}</p>
@@ -224,7 +224,7 @@ function NewFineModal({ rulesState, subjectsState, onRetryCatalog, onClose, onSu
           </>
         ) : null}
         {error ? <p role="alert" className="rounded-xl bg-red-400/10 p-3 text-sm font-bold text-red-100">{error}</p> : null}
-        <footer className="flex flex-col-reverse gap-2 border-t border-white/10 pt-4 sm:flex-row sm:justify-end">
+        <footer className="app-safe-area-footer sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-col-reverse gap-2 border-t border-white/10 bg-[#071225]/95 px-4 pt-3 backdrop-blur sm:static sm:-mx-6 sm:-mb-6 sm:flex-row sm:justify-end sm:px-6 sm:pt-4">
           <button type="button" onClick={onClose} disabled={saving} className={SECONDARY_BUTTON}>Cancelar</button>
           <button type="submit" disabled={saving || rulesState.status !== 'ready' || subjectsState.status !== 'ready'} className={PRIMARY_BUTTON}>{saving ? 'Creando…' : mode === 'collective' && subjectIds.length ? `Crear ${subjectIds.length} multas` : 'Crear multa'}</button>
         </footer>
@@ -260,12 +260,12 @@ function FinancialActionModal({ kind, fine, onClose, onSubmit, saving }) {
 
   return (
     <ModalShell title={title} eyebrow={`${fine.subject_name} · ${fine.rule_name}`} onClose={onClose} busy={saving}>
-      <form onSubmit={submit} className="space-y-5 p-5 sm:p-6">
+      <form onSubmit={submit} className="space-y-4 p-4 sm:space-y-5 sm:p-6">
         <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-          <div><p className="text-[9px] font-black uppercase text-slate-500">Persona</p><p className="mt-1 text-sm font-black text-white">{fine.subject_name}</p></div>
-          <div><p className="text-[9px] font-black uppercase text-slate-500">Motivo</p><p className="mt-1 text-sm font-black text-white">{fine.rule_name}</p></div>
-          <div><p className="text-[9px] font-black uppercase text-slate-500">Cobrado</p><p className="mt-1 text-sm font-black text-emerald-200">{formatFinesCurrency(fine.collected_amount)}</p></div>
-          <div><p className="text-[9px] font-black uppercase text-slate-500">Pendiente</p><p className="mt-1 text-sm font-black text-amber-100">{formatFinesCurrency(fine.pending_amount)}</p></div>
+          <div><p className="text-[10px] font-black uppercase text-slate-500">Persona</p><p className="mt-1 text-sm font-black text-white">{fine.subject_name}</p></div>
+          <div><p className="text-[10px] font-black uppercase text-slate-500">Motivo</p><p className="mt-1 text-sm font-black text-white">{fine.rule_name}</p></div>
+          <div><p className="text-[10px] font-black uppercase text-slate-500">Cobrado</p><p className="mt-1 text-sm font-black text-emerald-200">{formatFinesCurrency(fine.collected_amount)}</p></div>
+          <div><p className="text-[10px] font-black uppercase text-slate-500">Pendiente</p><p className="mt-1 text-sm font-black text-amber-100">{formatFinesCurrency(fine.pending_amount)}</p></div>
         </div>
 
         {kind === 'cancel' ? (
@@ -289,7 +289,7 @@ function FinancialActionModal({ kind, fine, onClose, onSubmit, saving }) {
           </>
         )}
         {error ? <p role="alert" className="rounded-xl bg-red-400/10 p-3 text-sm font-bold text-red-100">{error}</p> : null}
-        <footer className="flex flex-col-reverse gap-2 border-t border-white/10 pt-4 sm:flex-row sm:justify-end">
+        <footer className="app-safe-area-footer sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-col-reverse gap-2 border-t border-white/10 bg-[#071225]/95 px-4 pt-3 backdrop-blur sm:static sm:-mx-6 sm:-mb-6 sm:flex-row sm:justify-end sm:px-6 sm:pt-4">
           <button type="button" onClick={onClose} disabled={saving} className={SECONDARY_BUTTON}>Volver</button>
           <button type="submit" disabled={saving} className={kind === 'cancel' ? `${PRIMARY_BUTTON} bg-red-300 text-red-950 hover:bg-red-200` : PRIMARY_BUTTON}>{saving ? 'Guardando…' : isPayment ? 'Registrar pago' : isRefund ? 'Registrar reembolso' : 'Anular multa'}</button>
         </footer>
@@ -461,17 +461,17 @@ export default function FinesManagementPage({ client, title = 'Multas', unavaila
   const maxPending = Math.max(0, ...pendingSubjects.map((row) => numberValue(row.pending_total)));
 
   return (
-    <main className="space-y-4 pb-8 sm:space-y-5">
-      <header className="flex flex-col gap-4 border-b border-white/10 pb-4 sm:flex-row sm:items-end sm:justify-between">
+    <main className="space-y-4 pb-[max(2rem,env(safe-area-inset-bottom))] sm:space-y-5">
+      <header className="flex flex-col gap-3 border-b border-white/10 pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="flex items-center gap-2 text-caudal-electric"><ReceiptIcon /><p className="text-[10px] font-black uppercase tracking-[0.22em]">Gestión económica</p></div>
-          <h2 className="mt-2 text-2xl font-black text-white sm:text-3xl">{title}</h2>
+          <h2 className="mt-2 text-xl font-black text-white sm:text-3xl">{title}</h2>
           <p className="mt-1 text-sm text-slate-400">Control de sanciones y pagos del equipo</p>
         </div>
-        <button type="button" onClick={openNewFine} className={`${PRIMARY_BUTTON} min-w-36`}>+ Nueva multa</button>
+        <button type="button" onClick={openNewFine} className={`${PRIMARY_BUTTON} w-full sm:w-auto sm:min-w-36`}>+ Nueva multa</button>
       </header>
 
-      {toast ? <div role="status" aria-live="polite" className="fixed right-4 top-4 z-[160] max-w-sm rounded-2xl border border-emerald-300/20 bg-emerald-950/95 px-4 py-3 text-sm font-bold text-emerald-100 shadow-2xl">{toast}</div> : null}
+      {toast ? <div role="status" aria-live="polite" className="fixed left-3 right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-[160] rounded-2xl border border-emerald-300/20 bg-emerald-950/95 px-4 py-3 text-center text-sm font-bold text-emerald-100 shadow-2xl sm:left-auto sm:right-4 sm:max-w-sm">{toast}</div> : null}
 
       <section aria-labelledby="fines-summary-title" className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -488,7 +488,7 @@ export default function FinesManagementPage({ client, title = 'Multas', unavaila
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
             <KpiCard label="Generado" value={formatFinesCurrency(summary.generated_total)} />
             <KpiCard label="Cobrado" value={formatFinesCurrency(summary.collected_total)} tone="text-emerald-200" />
-            <KpiCard label="Pendiente" value={formatFinesCurrency(summary.pending_total)} tone={numberValue(summary.pending_total) > 0 ? 'text-amber-100' : 'text-white'} badge={overdueCount > 0 ? <span className="rounded-full bg-red-400/15 px-2 py-1 text-[8px] font-black uppercase text-red-100">{overdueCount} vencidas</span> : null} />
+            <KpiCard label="Pendiente" value={formatFinesCurrency(summary.pending_total)} tone={numberValue(summary.pending_total) > 0 ? 'text-amber-100' : 'text-white'} badge={overdueCount > 0 ? <span className="rounded-full bg-red-400/15 px-2 py-1 text-[10px] font-black uppercase text-red-100">{overdueCount} vencidas</span> : null} />
             <KpiCard label="Multas pendientes" value={String(pendingCount)} />
           </div>
         ) : null}
@@ -498,8 +498,8 @@ export default function FinesManagementPage({ client, title = 'Multas', unavaila
         <div className="border-b border-white/10 p-4 sm:p-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div><h3 id="fines-list-title" className="text-sm font-black uppercase tracking-[0.14em] text-white">Listado y gestión</h3><p className="mt-1 text-xs text-slate-500">Resultados paginados del backend · máximo {PAGE_SIZE} por carga</p></div>
-            <div className="flex max-w-full gap-1 overflow-x-auto pb-1" aria-label="Filtrar multas por estado">
-              {FINE_STATUS_FILTERS.map((filter) => <button key={filter.value} type="button" onClick={() => setStatusFilter(filter.value)} className={`min-h-9 shrink-0 rounded-xl px-3 text-[10px] font-black ${statusFilter === filter.value ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.065] text-slate-300 hover:bg-white/10'}`}>{filter.label}</button>)}
+             <div className="flex max-w-full snap-x snap-mandatory gap-1.5 overflow-x-auto scroll-smooth pb-1" aria-label="Filtrar multas por estado">
+               {FINE_STATUS_FILTERS.map((filter) => <button key={filter.value} type="button" onClick={() => setStatusFilter(filter.value)} className={`min-h-11 shrink-0 snap-start rounded-xl px-3 text-xs font-black ${statusFilter === filter.value ? 'bg-caudal-electric text-slate-950' : 'bg-white/[0.065] text-slate-300 hover:bg-white/10'}`}>{filter.label}</button>)}
             </div>
           </div>
         </div>
@@ -507,20 +507,20 @@ export default function FinesManagementPage({ client, title = 'Multas', unavaila
         {listState.status === 'loading' ? <div role="status" className="grid animate-pulse gap-2 p-4"><div className="h-14 rounded-xl bg-white/[0.045]" /><div className="h-14 rounded-xl bg-white/[0.045]" /><div className="h-14 rounded-xl bg-white/[0.045]" /></div> : null}
         {listState.status === 'error' ? <div className="p-4"><BlockError message={listState.error} onRetry={refreshFinesData} /></div> : null}
         {listState.status === 'ready' && !listState.rows.length ? (
-          <div className="px-5 py-10 text-center"><ReceiptIcon className="mx-auto h-9 w-9 text-slate-600" /><p className="mt-3 text-sm font-black text-slate-200">No hay multas registradas esta temporada.</p><button type="button" onClick={openNewFine} className={`${SECONDARY_BUTTON} mt-4`}>Crear primera multa</button></div>
+          <div className="px-4 py-5 text-center"><p className="text-sm font-black text-slate-200">No hay multas registradas esta temporada.</p><button type="button" onClick={openNewFine} className={`${SECONDARY_BUTTON} mt-3`}>Crear primera multa</button></div>
         ) : null}
         {listState.status === 'ready' && listState.rows.length ? (
           <>
             <div className="hidden overflow-x-auto lg:block">
               <table className="w-full min-w-[1120px] text-left text-xs">
-                <thead className="bg-black/15 text-[9px] font-black uppercase tracking-[0.12em] text-slate-500"><tr>{['Fecha', 'Persona', 'Motivo', 'Importe', 'Pagado', 'Pendiente', 'Estado', 'Vence', 'Acciones'].map((label) => <th key={label} className="px-3 py-3">{label}</th>)}</tr></thead>
+                <thead className="bg-black/15 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500"><tr>{['Fecha', 'Persona', 'Motivo', 'Importe', 'Pagado', 'Pendiente', 'Estado', 'Vence', 'Acciones'].map((label) => <th key={label} className="px-3 py-3">{label}</th>)}</tr></thead>
                 <tbody className="divide-y divide-white/[0.055]">
                   {listState.rows.map((fine) => <tr key={fine.fine_id} className="align-top hover:bg-white/[0.025]"><td className="whitespace-nowrap px-3 py-3 font-bold text-slate-400">{formatFinesDate(fine.occurred_on)}</td><td className="max-w-40 px-3 py-3 font-black text-white">{fine.subject_name}</td><td className="max-w-52 px-3 py-3 text-slate-300"><span className="line-clamp-2">{fine.rule_name}</span></td><td className="whitespace-nowrap px-3 py-3 font-bold text-white">{formatFinesCurrency(fine.generated_amount)}</td><td className="whitespace-nowrap px-3 py-3 font-bold text-emerald-200">{formatFinesCurrency(fine.collected_amount)}</td><td className="whitespace-nowrap px-3 py-3 font-black text-amber-100">{formatFinesCurrency(fine.pending_amount)}</td><td className="px-3 py-3"><StatusBadges fine={fine} /></td><td className="whitespace-nowrap px-3 py-3 text-slate-400">{formatFinesDate(fine.due_on)}</td><td className="min-w-52 px-3 py-3"><FineActions fine={fine} onAction={openAction} /></td></tr>)}
                 </tbody>
               </table>
             </div>
             <div className="grid gap-2 p-3 lg:hidden">
-              {listState.rows.map((fine) => <article key={fine.fine_id} className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-black text-white">{fine.subject_name}</p><p className="mt-1 line-clamp-2 text-xs font-semibold text-slate-400">{fine.rule_name}</p></div><StatusBadges fine={fine} /></div><div className="mt-3 grid grid-cols-3 gap-2 border-y border-white/[0.055] py-2"><div><p className="text-[8px] font-black uppercase text-slate-600">Generado</p><p className="mt-1 text-xs font-black text-white">{formatFinesCurrency(fine.generated_amount)}</p></div><div><p className="text-[8px] font-black uppercase text-slate-600">Cobrado</p><p className="mt-1 text-xs font-black text-emerald-200">{formatFinesCurrency(fine.collected_amount)}</p></div><div><p className="text-[8px] font-black uppercase text-slate-600">Pendiente</p><p className="mt-1 text-xs font-black text-amber-100">{formatFinesCurrency(fine.pending_amount)}</p></div></div><div className="mt-2 flex justify-between gap-3 text-[10px] font-bold text-slate-500"><span>Fecha {formatFinesDate(fine.occurred_on)}</span><span>Vence {formatFinesDate(fine.due_on)}</span></div><div className="mt-3"><FineActions fine={fine} onAction={openAction} /></div></article>)}
+              {listState.rows.map((fine) => <article key={fine.fine_id} className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-sm font-black leading-5 text-white">{fine.subject_name}</p><p className="mt-1 line-clamp-2 text-xs font-semibold text-slate-400">{fine.rule_name}</p></div><StatusBadges fine={fine} /></div><div className="mt-3 grid grid-cols-3 gap-2 border-y border-white/[0.055] py-2"><div><p className="text-[10px] font-black uppercase text-slate-600">Generado</p><p className="mt-1 text-xs font-black text-white">{formatFinesCurrency(fine.generated_amount)}</p></div><div><p className="text-[10px] font-black uppercase text-slate-600">Cobrado</p><p className="mt-1 text-xs font-black text-emerald-200">{formatFinesCurrency(fine.collected_amount)}</p></div><div><p className="text-[10px] font-black uppercase text-slate-600">Pendiente</p><p className="mt-1 text-xs font-black text-amber-100">{formatFinesCurrency(fine.pending_amount)}</p></div></div><div className="mt-2 flex flex-wrap justify-between gap-2 text-xs font-bold text-slate-500"><span>Fecha {formatFinesDate(fine.occurred_on)}</span><span>Vence {formatFinesDate(fine.due_on)}</span></div><div className="mt-3"><FineActions fine={fine} onAction={openAction} /></div></article>)}
             </div>
             {listState.hasMore ? <div className="border-t border-white/10 p-4 text-center"><button type="button" onClick={loadMore} disabled={loadingMore} className={SECONDARY_BUTTON}>{loadingMore ? 'Cargando…' : 'Cargar más'}</button></div> : null}
           </>
@@ -533,15 +533,15 @@ export default function FinesManagementPage({ client, title = 'Multas', unavaila
           <p className="mt-1 text-xs text-slate-500">Ordenado por importe pendiente</p>
           {subjectSummaryState.status === 'loading' ? <div role="status" className="mt-4 h-36 animate-pulse rounded-2xl bg-white/[0.045]" /> : null}
           {subjectSummaryState.status === 'error' ? <div className="mt-4"><BlockError message={subjectSummaryState.error} onRetry={refreshFinesData} /></div> : null}
-          {subjectSummaryState.status === 'ready' && !subjectSummaryState.rows.length ? <p className="mt-4 rounded-2xl border border-dashed border-white/10 px-4 py-8 text-center text-sm font-bold text-slate-500">Todavía no hay datos por jugador.</p> : null}
-          {subjectSummaryState.status === 'ready' && subjectSummaryState.rows.length ? <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[520px] text-left text-xs"><thead className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-600"><tr><th className="pb-2">Jugador</th><th className="pb-2">Multas</th><th className="pb-2">Generado</th><th className="pb-2">Pagado</th><th className="pb-2">Pendiente</th></tr></thead><tbody className="divide-y divide-white/[0.055]">{subjectSummaryState.rows.map((row) => <tr key={`${row.subject_type}-${row.subject_name}`}><td className="py-2.5 pr-3 font-black text-white">{row.subject_name}</td><td className="py-2.5 text-slate-400">{row.fine_count}</td><td className="py-2.5 font-bold text-slate-300">{formatFinesCurrency(row.generated_total)}</td><td className="py-2.5 font-bold text-emerald-200">{formatFinesCurrency(row.collected_total)}</td><td className="py-2.5 font-black text-amber-100">{formatFinesCurrency(row.pending_total)}</td></tr>)}</tbody></table></div> : null}
+          {subjectSummaryState.status === 'ready' && !subjectSummaryState.rows.length ? <p className="mt-3 rounded-2xl border border-dashed border-white/10 px-4 py-4 text-center text-sm font-bold text-slate-500">Todavía no hay datos por jugador.</p> : null}
+          {subjectSummaryState.status === 'ready' && subjectSummaryState.rows.length ? <><div className="mt-3 grid gap-2 lg:hidden">{subjectSummaryState.rows.map((row) => <article key={`${row.subject_type}-${row.subject_name}`} className="rounded-xl border border-white/[0.07] bg-white/[0.03] p-3"><p className="text-sm font-black text-white">{row.subject_name}</p><dl className="mt-2 grid grid-cols-2 gap-2">{[['Generado', formatFinesCurrency(row.generated_total), 'text-slate-200'], ['Pagado', formatFinesCurrency(row.collected_total), 'text-emerald-200'], ['Pendiente', formatFinesCurrency(row.pending_total), 'text-amber-100'], ['Multas', row.fine_count, 'text-white']].map(([label, value, tone]) => <div key={label}><dt className="text-[10px] font-black uppercase text-slate-600">{label}</dt><dd className={`mt-1 text-sm font-black tabular-nums ${tone}`}>{value}</dd></div>)}</dl></article>)}</div><div className="mt-4 hidden overflow-x-auto lg:block"><table className="w-full min-w-[520px] text-left text-xs"><thead className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-600"><tr><th className="pb-2">Jugador</th><th className="pb-2">Multas</th><th className="pb-2">Generado</th><th className="pb-2">Pagado</th><th className="pb-2">Pendiente</th></tr></thead><tbody className="divide-y divide-white/[0.055]">{subjectSummaryState.rows.map((row) => <tr key={`${row.subject_type}-${row.subject_name}`}><td className="py-2.5 pr-3 font-black text-white">{row.subject_name}</td><td className="py-2.5 text-slate-400">{row.fine_count}</td><td className="py-2.5 font-bold text-slate-300">{formatFinesCurrency(row.generated_total)}</td><td className="py-2.5 font-bold text-emerald-200">{formatFinesCurrency(row.collected_total)}</td><td className="py-2.5 font-black text-amber-100">{formatFinesCurrency(row.pending_total)}</td></tr>)}</tbody></table></div></> : null}
         </div>
 
         <div className={`${CARD} p-4 sm:p-5`}>
           <h3 className="text-sm font-black uppercase tracking-[0.14em] text-white">Pendiente por jugador</h3>
           <p className="mt-1 text-xs text-slate-500">Solo importes pendientes mayores que cero</p>
           {subjectSummaryState.status === 'loading' ? <div className="mt-4 h-36 animate-pulse rounded-2xl bg-white/[0.045]" /> : null}
-          {subjectSummaryState.status === 'ready' && !pendingSubjects.length ? <div className="mt-4 rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center"><p className="text-sm font-black text-slate-300">No hay importes pendientes.</p></div> : null}
+          {subjectSummaryState.status === 'ready' && !pendingSubjects.length ? <div className="mt-3 rounded-2xl border border-dashed border-white/10 px-4 py-4 text-center"><p className="text-sm font-black text-slate-300">No hay importes pendientes.</p></div> : null}
           {subjectSummaryState.status === 'ready' && pendingSubjects.length ? <div className="mt-5 space-y-3" role="img" aria-label="Gráfico de barras: pendiente por jugador">{pendingSubjects.slice(0, 12).map((row) => { const amount = numberValue(row.pending_total); const width = maxPending > 0 ? Math.max(4, (amount / maxPending) * 100) : 0; return <div key={`${row.subject_type}-${row.subject_name}`}><div className="mb-1 flex items-center justify-between gap-3 text-xs"><span className="truncate font-bold text-slate-300">{row.subject_name}</span><span className="shrink-0 font-black text-amber-100">{formatFinesCurrency(amount)}</span></div><div className="h-2.5 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-caudal-electric" style={{ width: `${width}%` }} /></div></div>; })}</div> : null}
           {summaryState.status === 'ready' ? <div className="mt-5"><FinesStatusDistribution summary={summary} /></div> : null}
         </div>

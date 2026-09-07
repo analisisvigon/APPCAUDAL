@@ -73,7 +73,7 @@ function PlayerApp({ client, identity, onRefreshIdentity, onSignOut, signingOut 
   }, [client, reloadToken]);
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_50%_0%,rgba(61,217,255,0.10),transparent_30%),linear-gradient(180deg,#02070f_0%,#071225_52%,#030812_100%)] px-3 py-3 text-slate-100 sm:px-4 sm:py-5 lg:py-7">
+    <div className="min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_50%_0%,rgba(61,217,255,0.10),transparent_30%),linear-gradient(180deg,#02070f_0%,#071225_52%,#030812_100%)] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] text-slate-100 sm:px-4 sm:py-5 lg:py-7">
       <main className="mx-auto w-full max-w-6xl space-y-3 sm:space-y-4">
         {profileState.status === 'loading' ? (
           <section role="status" className="rounded-[1.35rem] border border-white/10 bg-[#0b1220] px-5 py-12 text-center shadow-[0_16px_48px_rgba(0,0,0,0.24)]">

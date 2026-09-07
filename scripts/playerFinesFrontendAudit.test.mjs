@@ -41,9 +41,9 @@ assert.doesNotMatch(playerSource, /ranking|comparaci[oó]n con compañeros|situa
 assert.doesNotMatch(store, /subject_name|jugador_id|club_id|created_by|cancelled_by/i, 'La allowlist PLAYER no expone identidad o actor de terceros.');
 
 for (const copy of [
-  'Mis multas', 'Consulta tus sanciones y pagos.', 'Pendiente', 'Cobrado',
-  'Multas activas', 'Pagadas', 'Histórico', 'Vencida', 'Original', 'Recargo',
-  'Total generado', 'Vence', 'Nota', 'Motivo de anulación', 'Cargar más',
+  'Mis multas', 'Consulta tus sanciones y pagos.', 'Pendiente', 'Pagado',
+  'Activas', 'Pagadas', 'Histórico', 'Vencida', 'Original', 'Recargo',
+  'Vence', 'Nota', 'Motivo de anulación', 'Cargar más',
   'No tienes multas registradas.', 'Cuando exista alguna, aparecerá aquí.',
   'No se pudieron cargar tus multas.', 'Reintentar',
 ]) assert.ok(panel.includes(copy), `Falta contenido o estado PLAYER: ${copy}.`);
@@ -76,9 +76,10 @@ assert.match(panel, /summaryState\.status === 'error'/);
 assert.match(panel, /listState\.status === 'error'/);
 assert.match(panel, /listState\.rows\.length === 0/);
 assert.match(panel, /grid grid-cols-2 gap-2 sm:grid-cols-4/);
-assert.match(panel, /grid grid-cols-3 gap-1 sm:grid-cols-6/);
+assert.match(panel, /snap-x snap-mandatory[^"]*overflow-x-auto[^"]*scroll-smooth/);
+assert.match(panel, /min-h-11 shrink-0 snap-start/);
 assert.match(panel, /lg:grid-cols-2/);
-assert.doesNotMatch(panel, /<table|overflow-x-auto|min-w-\[[4-9]\d\dpx\]/, 'Mis multas no introduce tabla ni overflow horizontal.');
+assert.doesNotMatch(panel, /<table|min-w-\[[4-9]\d\dpx\]/, 'Mis multas no introduce tabla ni contenido con ancho fijo desbordante.');
 assert.match(panel, /formatFinesCurrency\(/);
 assert.match(panel, /formatFinesDate\(/);
 

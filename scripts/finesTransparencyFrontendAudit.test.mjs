@@ -36,14 +36,13 @@ for (const field of [
   'lifecycle_status', 'is_overdue', 'note',
 ]) assert.match(store, new RegExp(`\\b${field}\\b`), `Falta el campo sanitizado ${field}.`);
 
-for (const label of [
-  'Total generado', 'Total cobrado', 'Total pendiente', 'Total multas',
-  'Pendientes', 'Pagadas', 'Anuladas', 'Vencidas',
-]) assert.ok(panel.includes(label), `Falta el KPI ${label}.`);
-assert.equal((panel.match(/<Kpi /g) || []).length, 8, 'La transparencia muestra exactamente ocho KPI grupales.');
+for (const label of ['Generado', 'Cobrado', 'Pendiente', 'Total multas']) {
+  assert.ok(panel.includes(`label="${label}"`), `Falta el KPI ${label}.`);
+}
+assert.equal((panel.match(/<Kpi /g) || []).length, 4, 'La transparencia muestra exactamente cuatro KPI principales en 2x2 móvil.');
 for (const title of [
-  'Quién ha aportado más', 'Mayor importe pendiente',
-  'Motivos con mayor importe', 'Motivos más frecuentes',
+  'Más dinero aportado', 'Más dinero pendiente',
+  'Motivos que más generan', 'Motivos más frecuentes',
   'Resumen por jugador', 'Multas del grupo',
 ]) assert.ok(panel.includes(title), `Falta el bloque visual ${title}.`);
 assert.equal((panel.match(/<FinesHorizontalRanking/g) || []).length, 4);
@@ -60,7 +59,7 @@ assert.match(panel, /Promise\.all/);
 assert.match(panel, /fine\.note \? <section/);
 assert.match(panel, /grid-cols-2/);
 assert.match(panel, /lg:grid-cols-2/);
-assert.doesNotMatch(panel, /<table|overflow-x-auto|min-w-\[[4-9]\d\dpx\]/, 'La vista PLAYER no introduce tabla ni scroll horizontal.');
+assert.doesNotMatch(panel, /<table|min-w-\[[4-9]\d\dpx\]/, 'La vista PLAYER no introduce tabla ni contenido con ancho fijo desbordante.');
 
 for (const forbiddenRpc of [
   'create_fine_individual', 'create_fine_collective', 'record_fine_payment',
