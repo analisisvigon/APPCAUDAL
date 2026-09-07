@@ -7,7 +7,9 @@ do $preconditions$
 declare
   required_relation text;
   required_column record;
-  target_name text;
+  target record;
+  function_row pg_catalog.pg_proc%rowtype;
+  unexpected_execute integer;
 begin
   if auth.uid() is not null then
     raise exception 'Bloque 2.7C debe ejecutarse sin una identidad JWT activa';
@@ -80,28 +82,117 @@ begin
     raise exception 'Bloque 2.7C: faltan helpers de identidad cerrados';
   end if;
 
-  foreach target_name in array array[
-    'get_my_player_analysis_overview',
-    'get_my_player_analysis_live_stats',
-    'get_my_player_production_actions',
-    'get_my_player_match_history',
-    'get_my_player_position_distribution'
-  ] loop
-    if exists (
-      select 1
-      from pg_catalog.pg_proc procedure
-      join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
-      where namespace.nspname = 'public'
-        and procedure.proname = target_name
-    ) then
-      raise exception 'Bloque 2.7C: ya existe public.%: revisar antes de reemplazar', target_name;
-    end if;
-  end loop;
-
   if not exists (select 1 from pg_catalog.pg_roles where rolname = 'authenticated')
      or not exists (select 1 from pg_catalog.pg_roles where rolname = 'anon')
      or not exists (select 1 from pg_catalog.pg_roles where rolname = 'service_role') then
     raise exception 'Bloque 2.7C: faltan roles Supabase requeridos';
+  end if;
+
+  for target in
+    select * from (values
+      ('public.get_my_player_analysis_overview(text,text)', 2,
+       'p_competition_scope text, p_venue text',
+       'TABLE(competition_scope text, venue text, match_records integer, matches_played integer, minutes integer, possible_minutes integer, minutes_per_match numeric, starts integer, bench_entries integer, participation_percentage numeric, goals integer, goals_coverage text, assists integer, assists_coverage text, goal_contributions integer, goal_contributions_coverage text, goals_per_90 numeric, assists_per_90 numeric, goal_contributions_per_90 numeric, yellow_cards integer, red_cards integer)'),
+      ('public.get_my_player_analysis_live_stats(text,text,text)', 3,
+       'p_competition_scope text, p_venue text, p_window text',
+       'TABLE(competition_scope text, venue text, "window" text, matches_with_events integer, event_count integer, goals integer, goals_per_match numeric, shots integer, shots_per_match numeric, shots_on_target integer, shots_on_target_per_match numeric, shot_accuracy_percentage numeric, crosses integer, crosses_per_match numeric, turnovers integer, turnovers_per_match numeric, steals integer, steals_per_match numeric, fouls_committed integer, fouls_committed_per_match numeric, fouls_received integer, fouls_received_per_match numeric)'),
+      ('public.get_my_player_production_actions(text,text)', 2,
+       'p_competition_scope text, p_venue text',
+       'TABLE(action_type text, minute integer, match_date date, opponent text, opponent_crest text, result text, competition_key text, competition_name text, venue text, phase text, subphase text, contact text, shot_zone_key text, shot_zone_name text, assist_zone_key text, assist_zone_name text, goal_zone_key text, goal_zone_name text, counterpart_role text, counterpart_name text, video_url text, video_available boolean)'),
+      ('public.get_my_player_match_history(text,text,integer,integer)', 4,
+       'p_competition_scope text, p_venue text, p_limit integer, p_offset integer',
+       'TABLE(match_date date, opponent text, opponent_crest text, result text, outcome text, competition_key text, competition_name text, competition_logo_url text, venue text, role text, minutes integer, goals integer, goals_coverage text, assists integer, assists_coverage text, yellow_cards integer, red_cards integer, has_allowed_video boolean)')
+    ) specifications(signature, input_count, expected_arguments, expected_result)
+  loop
+    select procedure.* into function_row
+    from pg_catalog.pg_proc procedure
+    where procedure.oid = pg_catalog.to_regprocedure(target.signature);
+
+    if function_row.oid is null then
+      if exists (
+        select 1
+        from pg_catalog.pg_proc procedure
+        join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
+        where namespace.nspname = 'public'
+          and procedure.proname = pg_catalog.split_part(
+            pg_catalog.split_part(target.signature, '.', 2), '(', 1
+          )
+      ) then
+        raise exception
+          'Bloque 2.7C: existe public.% con firma incompatible; se esperaba % y no se modifica nada',
+          pg_catalog.split_part(pg_catalog.split_part(target.signature, '.', 2), '(', 1),
+          target.signature;
+      end if;
+
+      continue;
+    end if;
+
+    if function_row.prokind <> 'f'
+       or function_row.proowner <> 'postgres'::regrole
+       or function_row.prolang <> (
+         select language.oid
+         from pg_catalog.pg_language language
+         where language.lanname = 'plpgsql'
+       )
+       or not function_row.prosecdef
+       or function_row.provolatile <> 's'
+       or function_row.pronargs <> target.input_count
+       or function_row.pronargdefaults <> target.input_count
+       or pg_catalog.pg_get_function_identity_arguments(function_row.oid) <> target.expected_arguments
+       or pg_catalog.replace(pg_catalog.pg_get_function_result(function_row.oid), '"', '')
+          <> pg_catalog.replace(target.expected_result, '"', '')
+       or function_row.proconfig is distinct from array['search_path=pg_catalog']::text[] then
+      raise exception
+        'Bloque 2.7C: contrato existente incompatible en %; se esperaba firma, retorno, SECURITY DEFINER y search_path originales; no se modifica nada',
+        target.signature;
+    end if;
+
+    if pg_catalog.has_function_privilege('anon', function_row.oid, 'EXECUTE')
+       or not pg_catalog.has_function_privilege('authenticated', function_row.oid, 'EXECUTE')
+       or not pg_catalog.has_function_privilege('service_role', function_row.oid, 'EXECUTE')
+       or exists (
+         select 1
+         from pg_catalog.aclexplode(coalesce(
+           function_row.proacl,
+           pg_catalog.acldefault('f', function_row.proowner)
+         )) acl
+         where acl.grantee = 0
+           and acl.privilege_type = 'EXECUTE'
+       ) then
+      raise exception
+        'Bloque 2.7C: ACL existente incompatible en %; no se modifica nada',
+        target.signature;
+    end if;
+
+    select pg_catalog.count(*)::integer into unexpected_execute
+    from pg_catalog.aclexplode(coalesce(
+      function_row.proacl,
+      pg_catalog.acldefault('f', function_row.proowner)
+    )) acl
+    where acl.privilege_type = 'EXECUTE'
+      and acl.grantee <> 0
+      and acl.grantee not in (
+        function_row.proowner,
+        'authenticated'::regrole::oid,
+        'service_role'::regrole::oid
+      );
+
+    if unexpected_execute <> 0 then
+      raise exception
+        'Bloque 2.7C: ACL existente incompatible en % (EXECUTE adicional); no se modifica nada',
+        target.signature;
+    end if;
+  end loop;
+
+  if exists (
+    select 1
+    from pg_catalog.pg_proc procedure
+    join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
+    where namespace.nspname = 'public'
+      and procedure.proname = 'get_my_player_position_distribution'
+  ) then
+    raise exception
+      'Bloque 2.7C: ya existe public.get_my_player_position_distribution; posiciones debe permanecer fail-closed';
   end if;
 
   if exists (
@@ -122,7 +213,7 @@ begin
 end;
 $preconditions$;
 
-create function public.get_my_player_analysis_overview(
+create or replace function public.get_my_player_analysis_overview(
   p_competition_scope text default 'season',
   p_venue text default 'all'
 )
@@ -305,7 +396,7 @@ begin
 end;
 $function$;
 
-create function public.get_my_player_analysis_live_stats(
+create or replace function public.get_my_player_analysis_live_stats(
   p_competition_scope text default 'season',
   p_venue text default 'all',
   p_window text default 'last_5_event_matches'
@@ -467,7 +558,7 @@ begin
 end;
 $function$;
 
-create function public.get_my_player_production_actions(
+create or replace function public.get_my_player_production_actions(
   p_competition_scope text default 'season',
   p_venue text default 'all'
 )
@@ -676,7 +767,7 @@ begin
 end;
 $function$;
 
-create function public.get_my_player_match_history(
+create or replace function public.get_my_player_match_history(
   p_competition_scope text default 'season',
   p_venue text default 'all',
   p_limit integer default 25,

@@ -162,7 +162,7 @@ const auditKnownAliasReferences = (source) => {
 
 const extractFunction = (signaturePattern) => {
   const match = migration.match(new RegExp(
-    `create\\s+function\\s+public\\.${signaturePattern}[\\s\\S]*?\\n\\$function\\$;`,
+    `create\\s+or\\s+replace\\s+function\\s+public\\.${signaturePattern}[\\s\\S]*?\\n\\$function\\$;`,
     'i',
   ));
   assert.ok(match, `Falta ${signaturePattern}`);
@@ -200,8 +200,22 @@ const rpcDefinitions = [
 ];
 
 const functions = rpcDefinitions.map(([pattern, args]) => [extractFunction(pattern), args]);
-assert.equal((migration.match(/create function public\.get_my_player_/gi) || []).length, 4);
+assert.equal((migration.match(/create or replace function public\.get_my_player_/gi) || []).length, 4);
 assert.doesNotMatch(migration, /create\s+function\s+public\.get_my_player_position_distribution/i);
+assert.doesNotMatch(migration, /drop\s+function/i);
+for (const signature of [
+  'public.get_my_player_analysis_overview(text,text)',
+  'public.get_my_player_analysis_live_stats(text,text,text)',
+  'public.get_my_player_production_actions(text,text)',
+  'public.get_my_player_match_history(text,text,integer,integer)',
+]) {
+  assert.ok(migration.includes(`'${signature}'`), `Falta guarda compatible para ${signature}`);
+}
+assert.match(migration, /pg_catalog\.to_regprocedure\(target\.signature\)/i);
+assert.match(migration, /pg_catalog\.pg_get_function_identity_arguments\(function_row\.oid\)/i);
+assert.match(migration, /pg_catalog\.pg_get_function_result\(function_row\.oid\)/i);
+assert.match(migration, /contrato existente incompatible[\s\S]*?no se modifica nada/i);
+assert.match(migration, /ACL existente incompatible[\s\S]*?no se modifica nada/i);
 
 for (const [body, args] of functions) {
   assert.match(body, /language plpgsql[\s\S]*?stable[\s\S]*?security definer[\s\S]*?set search_path = pg_catalog/i);
@@ -278,7 +292,7 @@ for (const body of functions.map(([definition]) => definition)) {
   assert.doesNotMatch(returnsSection, /\b(jugador_id|user_id|membership_id|partido_id|event_id|scorer_id|assistant_id|snapshot_id|slot_id|rating|injured|notes|description|post_video_link)\b/i);
 }
 
-assert.match(migration, /get_my_player_position_distribution[\s\S]*?revisar antes de reemplazar/i);
+assert.match(migration, /get_my_player_position_distribution[\s\S]*?posiciones debe permanecer fail-closed/i);
 assert.match(migration, /posiciones debe permanecer fail-closed/i);
 assert.doesNotMatch(migration, /create\s+(?:or\s+replace\s+)?function\s+public\.(?:get_my_player_profile|get_my_player_analysis_summary|get_my_player_matches)/i);
 assert.doesNotMatch(stripSqlCommentsAndQuotedText(migration), /\b(?:alter table|create policy|drop policy|grant .+ on table|revoke .+ on table)\b/i);
