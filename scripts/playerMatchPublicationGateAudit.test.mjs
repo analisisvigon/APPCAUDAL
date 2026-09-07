@@ -101,6 +101,29 @@ assert.match(publicationMigration, /public\.is_player_match_publishable\(match_j
 assert.match(publicationMigration, /2026-09-09 21:59:59\+00/);
 assert.match(publicationMigration, /2026-09-09 22:00:00\+00/);
 assert.match(publicationMigration, /placeholder_count not in \(0, 4\)/);
+assert.doesNotMatch(publicationMigration, /drop\s+function/i, 'la migracion nunca elimina RPC ni helper');
+
+const migrationOrder = [
+  publicationMigration.indexOf('begin;'),
+  publicationMigration.indexOf('do $player_rpc_preconditions$'),
+  publicationMigration.indexOf('do $publishable_helper_precondition$'),
+  publicationMigration.indexOf('create or replace function public.is_player_match_publishable'),
+  publicationMigration.indexOf('do $migrate_analysis_rpcs$'),
+  publicationMigration.indexOf('do $migrate_matches_rpc$'),
+  publicationMigration.indexOf('do $migrate_summary_rpc$'),
+  publicationMigration.indexOf('do $postconditions$'),
+  publicationMigration.lastIndexOf('commit;'),
+];
+assert.equal(migrationOrder.every((offset) => offset >= 0), true, 'estan todas las fases de la transaccion');
+assert.deepEqual(
+  migrationOrder,
+  [...migrationOrder].sort((left, right) => left - right),
+  'precondiciones, helper, migraciones y auditoria se ejecutan en ese orden',
+);
+assert.match(publicationMigration, /falta % con su firma exacta; no se modifica nada/);
+assert.match(publicationMigration, /contrato incompatible en %;[\s\S]*?no se modifica nada/);
+assert.match(publicationMigration, /if helper_row\.oid is not null[\s\S]*?contrato incompatible en public\.is_player_match_publishable/,
+  'un helper compatible ya existente se valida antes de CREATE OR REPLACE');
 
 const helperDefinition = publicationMigration.match(
   /create or replace function public\.is_player_match_publishable[\s\S]*?\n\$function\$;/i,
@@ -138,6 +161,72 @@ const validAnalysisGate = "where true\n      and public.is_player_match_publisha
 assert.equal(rpcGateAuditPasses(validAnalysisGate, analysisRawCall, analysisStructuralCall, 1), true, 'A: una llamada canonica dentro del WHERE pasa');
 assert.equal(rpcGateAuditPasses('where true', analysisRawCall, analysisStructuralCall, 1), false, 'B: una RPC sin helper falla');
 assert.equal(rpcGateAuditPasses(`where true\n/* ${validAnalysisGate} */`, analysisRawCall, analysisStructuralCall, 1), false, 'B: mencionar el helper solo en comentario falla');
+
+const sqlLegacyAnalysisPattern = publicationMigration.match(
+  /\$legacy_analysis\$([\s\S]*?)\$legacy_analysis\$/,
+)?.[1] || '';
+assert.ok(sqlLegacyAnalysisPattern, 'la migracion declara el patron legacy de analisis');
+const legacyAnalysisPattern = new RegExp(
+  sqlLegacyAnalysisPattern.replaceAll('[[:space:]]', '\\s'),
+  'g',
+);
+const canonicalAnalysisGate = "public.is_player_match_publishable(serialized.payload ->> 'status', serialized.payload ->> 'date')";
+const migrateAnalysisBody = (source) => {
+  const helperReferences = source.match(/public\.is_player_match_publishable\s*\(/g)?.length || 0;
+  if (helperReferences > 0) {
+    if (!rpcGateAuditPasses(source, analysisRawCall, analysisStructuralCall, 1)) {
+      throw new Error('migracion parcial o llamada al helper ambigua');
+    }
+    return source;
+  }
+  const legacyMatches = source.match(legacyAnalysisPattern)?.length || 0;
+  if (legacyMatches !== 1) throw new Error('condicion finalizada ausente o ambigua');
+  return source.replace(legacyAnalysisPattern, canonicalAnalysisGate);
+};
+const deployedOverviewBody = `begin
+  return query
+  with filtered_matches as (
+    select match_row.id
+    from public.partidos match_row
+    cross join lateral (select pg_catalog.to_jsonb(match_row) as payload) serialized
+    where match_row.player_visible
+      and pg_catalog.lower(
+            pg_catalog.btrim(
+              coalesce(serialized.payload ->> 'status', '')
+            )
+          ) in (
+            'finalizado',
+            'jugado',
+            'played',
+            'finished',
+            'cerrado',
+            'closed',
+            'revisado',
+            'reviewed'
+          )
+      and (p_competition_scope = 'all' or serialized.payload ->> 'competition_key' = p_competition_scope)
+      and (p_venue = 'all' or serialized.payload ->> 'venue' = p_venue)
+      and match_row.club_id = membership_club_id
+  )
+  select 1;
+end;`;
+const migratedOverviewBody = migrateAnalysisBody(deployedOverviewBody);
+assert.equal(rpcGateAuditPasses(migratedOverviewBody, analysisRawCall, analysisStructuralCall, 1), true, 'la definicion real se migra antes de auditar');
+assert.doesNotMatch(migratedOverviewBody, legacyAnalysisPattern, 'desaparece el predicado inline antiguo');
+assert.match(migratedOverviewBody, /where match_row\.player_visible\s+and public\.is_player_match_publishable/);
+assert.match(migratedOverviewBody, /p_competition_scope = 'all'/, 'se conserva competition_scope');
+assert.match(migratedOverviewBody, /p_venue = 'all'/, 'se conserva venue');
+assert.match(migratedOverviewBody, /match_row\.club_id = membership_club_id/, 'se conserva el filtro de club');
+assert.equal(migrateAnalysisBody(migratedOverviewBody), migratedOverviewBody, 'la segunda ejecucion deja igual una RPC ya migrada');
+assert.equal(migrateAnalysisBody(validAnalysisGate), validAnalysisGate, 'una RPC que ya usa el helper es idempotente');
+
+const appliedMutations = [];
+const simulateSignaturePrecondition = (compatible) => {
+  if (!compatible) throw new Error('firma incompatible; no se modifica nada');
+  appliedMutations.push('helper', 'rpcs');
+};
+assert.throws(() => simulateSignaturePrecondition(false), /firma incompatible/);
+assert.deepEqual(appliedMutations, [], 'una firma incompatible falla antes de la primera mutacion y la transaccion queda sin cambios');
 
 const matchesRawCall = /public\.is_player_match_publishable\s*\(\s*match_json\s*->>\s*'status'\s*,\s*match_json\s*->>\s*'date'\s*\)/g;
 const matchesStructuralCall = /case\s+when\s+public\.is_player_match_publishable\s*\(\s*match_json\s*->>\s*__literal__\s*,\s*match_json\s*->>\s*__literal__\s*\)/g;
