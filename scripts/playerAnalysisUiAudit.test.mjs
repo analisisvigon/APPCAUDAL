@@ -153,6 +153,8 @@ for (const label of ['Fecha', 'Rival', 'Resultado', 'Competición', 'L/V', 'Rol'
 }
 assert.match(history, /lg:hidden/, 'El historial móvil usa cards.');
 assert.match(history, /hidden overflow-x-auto lg:block/, 'La tabla solo aparece en desktop.');
+assert.equal((history.match(/row\.minutes \?\? '—'/g) || []).length, 2, 'Fuera muestra minutos no aplicables como guion en movil y desktop.');
+assert.match(store, /minutes: normalizeNumber\(row\.minutes, \{ integer: true, nullable: true \}\)/, 'El adaptador no convierte NULL de Fuera en cero.');
 assert.match(history, /Ver más/);
 assert.match(history, /Cargando…/);
 assert.match(history, /Lo ya cargado sigue disponible/);

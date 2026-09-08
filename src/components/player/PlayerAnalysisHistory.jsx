@@ -67,7 +67,7 @@ function MobileHistoryCard({ row, videoUrl }) {
       <dl className="mt-3 grid grid-cols-3 gap-1.5 min-[390px]:grid-cols-6">
         {[
           ['Rol', row.role || 'Sin dato'],
-          ['Min', row.minutes],
+          ['Min', row.minutes ?? '—'],
           ['Goles', row.goals],
           ['Asist.', row.assists],
           ['TA', row.yellowCards],
@@ -127,7 +127,7 @@ export default function PlayerAnalysisHistory({ state, productionActions = [], o
                       <td className="max-w-[170px] truncate px-2.5 py-3 text-slate-300">{row.competitionName || 'Sin competición'}</td>
                       <td className="whitespace-nowrap px-2.5 py-3 text-slate-300">{row.venue === 'home' ? 'Local' : row.venue === 'away' ? 'Visit.' : '—'}</td>
                       <td className="whitespace-nowrap px-2.5 py-3 font-bold text-slate-200">{row.role || '—'}</td>
-                      <td className="px-2.5 py-3 font-black text-white">{row.minutes}</td>
+                      <td className="px-2.5 py-3 font-black text-white">{row.minutes ?? '—'}</td>
                       <td className="px-2.5 py-3 text-emerald-100">{row.goals}</td>
                       <td className="px-2.5 py-3 text-caudal-electric">{row.assists}</td>
                       <td className="px-2.5 py-3 text-amber-100">{row.yellowCards}</td>

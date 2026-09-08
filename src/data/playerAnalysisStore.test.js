@@ -11,6 +11,7 @@ import {
   loadPlayerCompetitionMinutesDistribution,
   loadPlayerMatchHistoryPage,
   loadPlayerProductionActions,
+  normalizePlayerMatchHistoryRow,
   normalizePlayerAnalysisFilters,
 } from './playerAnalysisStore.js';
 
@@ -117,6 +118,11 @@ assert.deepEqual(normalizePlayerAnalysisFilters({ competitionScope: 'bad', venue
 assert.equal(isAllowedPlayerAnalysisVideo('https://youtu.be/abc'), true);
 assert.equal(isAllowedPlayerAnalysisVideo('http://youtube.com/watch?v=x'), false);
 assert.equal(isAllowedPlayerAnalysisVideo('https://youtube.com.evil.example/x'), false);
+assert.equal(
+  normalizePlayerMatchHistoryRow({ role: 'Fuera', minutes: null }).minutes,
+  null,
+  'Fuera conserva minutos desconocidos/no aplicables para que la UI muestre un guion.',
+);
 
 const unique = appendUniquePlayerHistory(history.rows, [...history.rows, { ...history.rows[0], opponent: 'Nuevo rival' }]);
 assert.equal(unique.length, 2, 'La paginación no duplica filas ya cargadas.');

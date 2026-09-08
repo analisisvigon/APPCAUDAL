@@ -185,7 +185,7 @@ export const normalizePlayerMatchHistoryRow = (row = {}) => ({
   competitionLogoUrl: cleanText(row.competition_logo_url),
   venue: normalizeEnum(row.venue, new Set(['home', 'away']), ''),
   role: cleanText(row.role),
-  minutes: normalizeNumber(row.minutes, { integer: true }),
+  minutes: normalizeNumber(row.minutes, { integer: true, nullable: true }),
   goals: normalizeNumber(row.goals, { integer: true }),
   goalsCoverage: normalizeCoverage(row.goals_coverage),
   assists: normalizeNumber(row.assists, { integer: true }),
