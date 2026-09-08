@@ -87,6 +87,25 @@ begin
        ) then
       raise exception 'PLAYER fuera/convocatoria: estructura history desconocida; no se modifica nada';
     end if;
+
+    if target.signature = 'public.get_my_player_analysis_summary()'
+       and not (
+         (
+           function_row.prosrc ~* 'from[[:space:]]+public[.]partido_estadisticas_jugador[[:space:]]+stats'
+           and function_row.prosrc ~* 'join[[:space:]]+public[.]partidos[[:space:]]+match_row'
+           and function_row.prosrc ~* 'public[.]is_player_match_publishable[[:space:]]*[(]'
+           and function_row.prosrc ~* 'stats[.]jugador_id[[:space:]]*=[[:space:]]*own_jugador_id'
+           and function_row.prosrc ~* 'stats[.]role'
+         )
+         or (
+           function_row.prosrc ~* 'published_matches[[:space:]]+as[[:space:]]*[(]'
+           and function_row.prosrc ~* 'from[[:space:]]+public[.]partido_convocados[[:space:]]+callup'
+           and function_row.prosrc ~* 'from[[:space:]]+public[.]partido_alineacion_slots[[:space:]]+lineup'
+           and function_row.prosrc ~* 'left[[:space:]]+join[[:space:]]+public[.]partido_estadisticas_jugador[[:space:]]+stats'
+         )
+       ) then
+      raise exception 'PLAYER fuera/convocatoria: estructura summary desconocida; no se modifica nada';
+    end if;
   end loop;
 end;
 $preconditions$;
@@ -125,25 +144,26 @@ declare
         when stats.yellow then 1 else 0
       end as yellow_cards,
       stats.red
-    from public.partido_estadisticas_jugador stats
-    join scoped_matches scoped on scoped.id = stats.partido_id
+    from scoped_matches scoped
+    left join public.partido_estadisticas_jugador stats
+      on stats.partido_id = scoped.id
+     and stats.jugador_id = own_jugador_id
     cross join lateral (
       select
         exists (
           select 1
           from public.partido_alineacion_slots lineup
-          where lineup.partido_id = stats.partido_id
+          where lineup.partido_id = scoped.id
             and lineup.scope = 'stats'
             and lineup.jugador_id = own_jugador_id
         ) as is_starter,
         exists (
           select 1
           from public.partido_convocados callup
-          where callup.partido_id = stats.partido_id
+          where callup.partido_id = scoped.id
             and callup.jugador_id = own_jugador_id
         ) as is_called
     ) canonical_participation
-    where stats.jugador_id = own_jugador_id
   ), participation as (
     select
       pg_catalog.count(*) filter (
@@ -449,142 +469,166 @@ begin
 end;
 $function$;
 
-do $patch_summary$
+create or replace function public.get_my_player_analysis_summary()
+returns table (
+  jugador_id uuid,
+  matches bigint,
+  minutes numeric,
+  starts bigint,
+  bench_entries bigint,
+  goals bigint,
+  goals_coverage text,
+  assists bigint,
+  assists_coverage text,
+  yellow_cards numeric,
+  red_cards bigint
+)
+language plpgsql
+stable
+security definer
+set search_path = pg_catalog
+as $function$
 declare
-  function_before pg_catalog.pg_proc%rowtype;
-  function_after pg_catalog.pg_proc%rowtype;
-  original_source text;
-  transformed_source text;
-  original_definition text;
-  transformed_definition text;
-  source_offset integer;
-  block_start integer;
-  block_end integer;
-  start_anchor constant text := '  with own_stats as (';
-  end_anchor constant text := E'  ),\n  goal_stats as (';
-  replacement constant text := $replacement$  with own_stats as (
-    select
-      pg_catalog.count(distinct stats.partido_id) filter (
-        where exists (
-          select 1 from public.partido_convocados callup
-          where callup.partido_id = stats.partido_id
-            and callup.jugador_id = own_jugador_id
-        )
-      )::bigint as matches,
-      coalesce(
-        pg_catalog.sum(
-          case
-            when exists (
-              select 1 from public.partido_convocados callup
-              where callup.partido_id = stats.partido_id
-                and callup.jugador_id = own_jugador_id
-            ) and pg_catalog.btrim(stats.minutes::text) ~ '^[0-9]+([.][0-9]+)?$'
-              then pg_catalog.btrim(stats.minutes::text)::numeric
-            else 0::numeric
-          end
-        ),
-        0::numeric
-      ) as minutes,
-      pg_catalog.count(*) filter (
-        where exists (
-          select 1 from public.partido_alineacion_slots lineup
-          where lineup.partido_id = stats.partido_id
-            and lineup.scope = 'stats'
-            and lineup.jugador_id = own_jugador_id
-        )
-      )::bigint as starts,
-      pg_catalog.count(*) filter (
-        where exists (
-          select 1 from public.partido_convocados callup
-          where callup.partido_id = stats.partido_id
-            and callup.jugador_id = own_jugador_id
-        )
-          and not exists (
-            select 1 from public.partido_alineacion_slots lineup
-            where lineup.partido_id = stats.partido_id
-              and lineup.scope = 'stats'
-              and lineup.jugador_id = own_jugador_id
-          )
-          and case
-            when pg_catalog.btrim(stats.minutes::text) ~ '^[0-9]+([.][0-9]+)?$'
-              then pg_catalog.btrim(stats.minutes::text)::numeric
-            else 0::numeric
-          end > 0::numeric
-      )::bigint as bench_entries,
-      coalesce(
-        pg_catalog.sum(
-          case
-            when not exists (
-              select 1 from public.partido_convocados callup
-              where callup.partido_id = stats.partido_id
-                and callup.jugador_id = own_jugador_id
-            ) then 0::numeric
-            when pg_catalog.btrim(stats.yellow_count::text) ~ '^[0-9]+([.][0-9]+)?$'
-              then pg_catalog.btrim(stats.yellow_count::text)::numeric
-            when stats.yellow then 1::numeric
-            else 0::numeric
-          end
-        ),
-        0::numeric
-      ) as yellow_cards,
-      pg_catalog.count(*) filter (
-        where stats.red
-          and exists (
-            select 1 from public.partido_convocados callup
-            where callup.partido_id = stats.partido_id
-              and callup.jugador_id = own_jugador_id
-          )
-      )::bigint as red_cards
-    from public.partido_estadisticas_jugador stats
-    join public.partidos match_row on match_row.id = stats.partido_id
-    cross join lateral (select pg_catalog.to_jsonb(match_row) as match_json) serialized
-    where public.is_player_match_publishable(
-      match_json ->> 'status', match_json ->> 'date'
-    )
-      and stats.jugador_id = own_jugador_id
-$replacement$;
+  membership_count bigint;
+  membership_role text;
+  membership_club_id uuid;
+  own_jugador_id uuid;
+  supported_club_id constant uuid := 'ca0da100-0000-4000-8000-000000000001'::uuid;
 begin
-  select procedure.* into function_before
-  from pg_catalog.pg_proc procedure
-  where procedure.oid = 'public.get_my_player_analysis_summary()'::regprocedure;
+  select pg_catalog.count(*)::bigint
+  into membership_count
+  from public.current_membership();
 
-  original_source := function_before.prosrc;
-  if pg_catalog.strpos(original_source, 'count(distinct stats.partido_id) filter (') <> 0
-     and pg_catalog.strpos(original_source, 'from public.partido_convocados callup') <> 0 then
+  if membership_count <> 1::bigint then
     return;
   end if;
 
-  block_start := pg_catalog.strpos(original_source, start_anchor);
-  block_end := pg_catalog.strpos(original_source, end_anchor);
-  if block_start = 0 or block_end <= block_start
-     or pg_catalog.strpos(original_source, 'count(distinct stats.partido_id)::bigint as matches') = 0
-     or pg_catalog.strpos(original_source, 'public.is_player_match_publishable(') = 0 then
-    raise exception 'PLAYER fuera/convocatoria: cuerpo summary inesperado; no se modifica nada';
+  select membership.role::text, membership.club_id, membership.jugador_id
+  into membership_role, membership_club_id, own_jugador_id
+  from public.current_membership() membership;
+
+  if membership_role <> 'player'
+     or own_jugador_id is null
+     or own_jugador_id is distinct from public.current_jugador_id()
+     or membership_club_id is distinct from supported_club_id
+     or not public.is_player() then
+    return;
   end if;
 
-  transformed_source := pg_catalog.substr(original_source, 1, block_start - 1)
-    || replacement
-    || pg_catalog.substr(original_source, block_end);
-  original_definition := pg_catalog.pg_get_functiondef(function_before.oid);
-  source_offset := pg_catalog.strpos(original_definition, original_source);
-  if source_offset = 0 then
-    raise exception 'PLAYER fuera/convocatoria: no se pudo aislar summary';
-  end if;
-  transformed_definition := pg_catalog.substr(original_definition, 1, source_offset - 1)
-    || transformed_source
-    || pg_catalog.substr(original_definition, source_offset + pg_catalog.length(original_source));
-  execute transformed_definition;
-
-  select procedure.* into function_after
-  from pg_catalog.pg_proc procedure
-  where procedure.oid = function_before.oid;
-  if function_after.oid is distinct from function_before.oid
-     or (pg_catalog.to_jsonb(function_after) - array['prosrc', 'proargdefaults']::text[])
-        is distinct from (pg_catalog.to_jsonb(function_before) - array['prosrc', 'proargdefaults']::text[]) then
-    raise exception 'PLAYER fuera/convocatoria: summary altero algo ajeno al cuerpo';
-  end if;
+  return query
+  with published_matches as (
+    select match_row.id
+    from public.partidos match_row
+    cross join lateral (
+      select pg_catalog.to_jsonb(match_row) as match_json
+    ) serialized
+    where public.is_player_match_publishable(
+      match_json ->> 'status',
+      match_json ->> 'date'
+    )
+  ), canonical_rows as (
+    select
+      published.id as partido_id,
+      canonical_participation.is_starter,
+      canonical_participation.is_called,
+      case
+        when pg_catalog.btrim(stats.minutes::text) ~ '^[0-9]+([.][0-9]+)?$'
+          then pg_catalog.btrim(stats.minutes::text)::numeric
+        else 0::numeric
+      end as played_minutes,
+      case
+        when pg_catalog.btrim(stats.yellow_count::text) ~ '^[0-9]+([.][0-9]+)?$'
+          then pg_catalog.btrim(stats.yellow_count::text)::numeric
+        when stats.yellow then 1::numeric
+        else 0::numeric
+      end as yellow_cards,
+      coalesce(stats.red, false) as red
+    from published_matches published
+    left join public.partido_estadisticas_jugador stats
+      on stats.partido_id = published.id
+     and stats.jugador_id = own_jugador_id
+    cross join lateral (
+      select
+        exists (
+          select 1
+          from public.partido_alineacion_slots lineup
+          where lineup.partido_id = published.id
+            and lineup.scope = 'stats'
+            and lineup.jugador_id = own_jugador_id
+        ) as is_starter,
+        exists (
+          select 1
+          from public.partido_convocados callup
+          where callup.partido_id = published.id
+            and callup.jugador_id = own_jugador_id
+        ) as is_called
+    ) canonical_participation
+  ), own_stats as (
+    select
+      pg_catalog.count(*) filter (
+        where own_row.is_starter or own_row.is_called
+      )::bigint as matches,
+      coalesce(pg_catalog.sum(own_row.played_minutes) filter (
+        where own_row.is_starter or own_row.is_called
+      ), 0::numeric) as minutes,
+      pg_catalog.count(*) filter (
+        where own_row.is_starter
+      )::bigint as starts,
+      pg_catalog.count(*) filter (
+        where own_row.is_called
+          and not own_row.is_starter
+          and own_row.played_minutes > 0::numeric
+      )::bigint as bench_entries,
+      coalesce(pg_catalog.sum(own_row.yellow_cards) filter (
+        where own_row.is_starter or own_row.is_called
+      ), 0::numeric) as yellow_cards,
+      pg_catalog.count(*) filter (
+        where own_row.red
+          and (own_row.is_starter or own_row.is_called)
+      )::bigint as red_cards
+    from canonical_rows own_row
+  ), goal_stats as (
+    select
+      pg_catalog.count(*) filter (
+        where goal.scorer_id = own_jugador_id
+      )::bigint as goals,
+      pg_catalog.count(*) filter (
+        where goal.assistant_id = own_jugador_id
+      )::bigint as assists,
+      pg_catalog.count(*) filter (
+        where goal.scorer_id is null
+          and nullif(pg_catalog.btrim(goal.scorer), '') is not null
+      )::bigint as unresolved_scorers,
+      pg_catalog.count(*) filter (
+        where goal.assistant_id is null
+          and nullif(pg_catalog.btrim(goal.assistant), '') is not null
+      )::bigint as unresolved_assistants
+    from public.partido_eventos_gol goal
+    join public.partidos match_row on match_row.id = goal.partido_id
+    cross join lateral (
+      select pg_catalog.to_jsonb(match_row) as match_json
+    ) serialized
+    where public.is_player_match_publishable(
+      match_json ->> 'status',
+      match_json ->> 'date'
+    )
+  )
+  select
+    own_jugador_id,
+    own_stats.matches,
+    own_stats.minutes,
+    own_stats.starts,
+    own_stats.bench_entries,
+    goal_stats.goals,
+    case when goal_stats.unresolved_scorers > 0::bigint then 'PARTIAL' else 'COMPLETE' end,
+    goal_stats.assists,
+    case when goal_stats.unresolved_assistants > 0::bigint then 'PARTIAL' else 'COMPLETE' end,
+    own_stats.yellow_cards,
+    own_stats.red_cards
+  from own_stats
+  cross join goal_stats;
 end;
-$patch_summary$;
+$function$;
 
 do $postconditions$
 declare
