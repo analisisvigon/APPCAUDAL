@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { getPlayerDisplayName } from '../../utils/playerDisplayName';
 import {
   normalizeSetPieceDimensionValue,
@@ -149,6 +149,9 @@ function PitchLines({ fullField = false }) {
 }
 
 export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, printOptimized = false, optimizeLabels = false, preparedForPrint = false, visibleLayers = {}, identityConvention = 'default', renderMode = 'default' }) {
+  const markerScope = useId().replace(/[^a-zA-Z0-9_-]/g, '');
+  const arrowMarkerId = `diagram-arrow-${markerScope}`;
+  const arrowStartMarkerId = `diagram-arrow-start-${markerScope}`;
   const svgRef = useRef(null);
   const [drag, setDrag] = useState(null);
   const playersById = useMemo(() => new Map(players.map((player) => [player.id, player])), [players]);
@@ -301,10 +304,10 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
       onPointerDown={() => !readOnly && onSelect('')}
     >
       <defs>
-        <marker id="diagram-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="3.6" markerHeight="3.6" orient="auto-start-reverse">
+        <marker id={arrowMarkerId} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="3.6" markerHeight="3.6" orient="auto-start-reverse">
           <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
         </marker>
-        <marker id="diagram-arrow-start" viewBox="0 0 10 10" refX="2" refY="5" markerWidth="3.6" markerHeight="3.6" orient="auto-start-reverse">
+        <marker id={arrowStartMarkerId} viewBox="0 0 10 10" refX="2" refY="5" markerWidth="3.6" markerHeight="3.6" orient="auto-start-reverse">
           <path d="M 10 0 L 0 5 L 10 10 z" fill="currentColor" />
         </marker>
       </defs>
@@ -322,7 +325,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           return (
             <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
               {selected && !readOnly ? <path d={path} fill="none" stroke="#3DD9FF" strokeWidth={tokens.arrowWidth + 1.25} strokeDasharray={dashed ? '2.2 1.8' : ''} opacity="0.38" /> : null}
-              <path d={path} fill="none" stroke="currentColor" strokeWidth={selected ? tokens.arrowWidth + 0.28 : tokens.arrowWidth} strokeDasharray={dashed ? '2.2 1.8' : ''} markerEnd="url(#diagram-arrow)" markerStart={double ? 'url(#diagram-arrow-start)' : ''} />
+              <path d={path} fill="none" stroke="currentColor" strokeWidth={selected ? tokens.arrowWidth + 0.28 : tokens.arrowWidth} strokeDasharray={dashed ? '2.2 1.8' : ''} markerEnd={`url(#${arrowMarkerId})`} markerStart={double ? `url(#${arrowStartMarkerId})` : undefined} />
               {selected && !readOnly ? (
                 <>
                   <circle cx={element.x1} cy={element.y1} r="2" fill="white" stroke="currentColor" strokeWidth="0.7" onPointerDown={(event) => startDrag(event, element, 'arrow-start')} />

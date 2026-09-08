@@ -230,6 +230,11 @@ assert.ok(canvas.includes('Number(element.x) + 4.1') && canvas.includes('Number(
 assert.ok(canvas.includes('selected && !readOnly') && canvas.includes('set-piece-curve-control'), 'el punto de control solo existe como ayuda de edición y no aparece en preview/PDF');
 assert.ok(canvas.includes("element.type === 'dashed_arrow' || element.dashed") && canvas.includes("element.type === 'curved_arrow'"), 'el renderer combina curva y discontinuidad sin geometría paralela');
 assert.ok(canvas.includes("strokeDasharray={dashed ? '2.2 1.8' : ''}"), 'el patrón discontinuo llega al SVG usado por preview, presentación y PDF');
+assert.match(canvas, /useId\(\)[\s\S]*arrowMarkerId[\s\S]*arrowStartMarkerId/, 'cada SVG obtiene IDs de marker únicos y estables durante su render');
+assert.doesNotMatch(canvas, /<marker id="diagram-arrow"/, 'varios diagramas no repiten un ID global de punta');
+assert.match(canvas, /markerEnd=\{`url\(#\$\{arrowMarkerId\}\)`\}/, 'cada trayectoria referencia el marker de su propio SVG');
+assert.match(css, /\.set-piece-pro-plays\[data-count="2"\] \{[\s\S]*row-gap: 1pt;[\s\S]*background: #111827;/, 'el separador de dos jugadas ocupa un hueco físico fuera de ambos campos');
+assert.doesNotMatch(css, /\.set-piece-print-play \+ \.set-piece-print-play \{[\s\S]*border-top:/, 'la segunda jugada no pinta un borde superpuesto a la primera');
 assert.ok(sheet.includes('preparedForPrint') && sheet.includes('data-render-model="set-piece-print"'), 'preview y PDF comparten elementos preparados y el mismo renderer táctico');
 assert.ok(sheet.includes('headerFacts.length') && sheet.includes('fact.label') && sheet.includes('fact.value'), 'preview, PDF e impresión comparten la cabecera Destino/Golpeo/Estructura y la Clave densa');
 assert.equal(sheet.includes('play.classifications'), false, 'la cabecera ya no renderiza chips tácticos genéricos');
@@ -274,6 +279,7 @@ const controlElements = [
   { id: 'control-without-link', type: 'player', x: 56, y: 62, label: '3', player_id: '', note: 'No debe imprimirse sin jugador vinculado' },
   { id: 'control-ball', type: 'ball', x: 7, y: 8 },
   { id: 'control-arrow', type: 'arrow', x1: 20, y1: 30, x2: 68, y2: 18 },
+  { id: 'control-curved-arrow', type: 'curved_arrow', x1: 18, y1: 64, controlX: 50, controlY: 52, x2: 82, y2: 64 },
 ];
 const controlMeta = {
   ...printMeta,
@@ -312,6 +318,11 @@ const chronologyOnControlModel = buildSetPiecePrintPlayModel(chronologyOnControl
 assert.equal(chronologyOnControlModel.individualInstructions.find((item) => item.dorsal === '6')?.instruction, 'Indicación individual del dorsal 6', 'dorsal 6 vinculado y con consigna permanece en Indicaciones con Cronología ON');
 const twoControlPlays = buildSetPiecePrintPages([controlDiagram, { ...controlDiagram, id: 'control-desde-atras-2', orden: 2 }], controlPlayers);
 assert.deepEqual(twoControlPlays.map((page) => page.plays.length), [2], 'H: dos jugadas siguen agrupadas en una sola página A4');
+assert.deepEqual(
+  twoControlPlays[0].plays.map((play) => play.elements.filter((element) => ['arrow', 'curved_arrow'].includes(element.type)).map((element) => element.type)),
+  [['arrow', 'curved_arrow'], ['arrow', 'curved_arrow']],
+  'H: dos jugadas de una misma página conservan sus flechas rectas y curvas',
+);
 assert.deepEqual(getSetPieceGeometrySnapshot(controlModel.elements), getSetPieceGeometrySnapshot(controlDiagram.elements), 'J: el modelo de QA no modifica geometría táctica');
 const verboseControlElements = controlElements.map((element) => element.type === 'player' && element.player_id ? {
   ...element,

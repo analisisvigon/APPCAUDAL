@@ -1323,21 +1323,23 @@
   height: calc(100% - 8mm);
 }
 
+.set-piece-pro-plays[data-count="2"] {
+  row-gap: 1pt;
+  background: #111827;
+}
+
 .set-piece-print-play {
   display: grid;
   grid-template-rows: 16mm minmax(0, 1fr);
   min-height: 0;
   padding: 2mm 0;
+  background: #fff;
   break-inside: avoid;
   page-break-inside: avoid;
 }
 
 .set-piece-print-play[data-has-title="false"] {
   grid-template-rows: auto minmax(0, 1fr);
-}
-
-.set-piece-print-play + .set-piece-print-play {
-  border-top: 1pt solid #111827;
 }
 
 .set-piece-pro-plays[data-count="1"] {
