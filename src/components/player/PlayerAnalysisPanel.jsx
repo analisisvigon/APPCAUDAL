@@ -470,7 +470,7 @@ export default function PlayerAnalysisPanel({ client }) {
         onRetryCompetitionMinutes={retryCompetitionMinutes}
       />
       <LiveSection state={liveState} liveWindow={liveWindow} onWindowChange={(value) => updateFilter('liveWindow', value)} onRetry={retryLive} />
-      <PlayerAnalysisMatchEvolution state={matchStatsState} onRetry={retryMatchStats} />
+      <PlayerAnalysisMatchEvolution state={matchStatsState} liveWindow={liveWindow} onRetry={retryMatchStats} />
       <PlayerAnalysisProduction state={productionState} onRetry={retryProduction} />
       <PlayerAnalysisHistory
         state={historyState}

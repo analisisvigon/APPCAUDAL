@@ -18,6 +18,7 @@ import {
   getPlayerAnalysisCrestFallback,
   getPlayerAnalysisMatchMetric,
   getPlayerAnalysisMatchMetricValue,
+  getPlayerAnalysisMaximumsTitle,
   getPlayerAnalysisVideoActions,
   getPlayerHistoryOutcomePresentation,
   getPlayerZoneMapGridClass,
@@ -44,16 +45,17 @@ const matchStats = [{
 
 const matchSequence = buildPlayerAnalysisMatchSequence(matchStats);
 assert.deepEqual(matchSequence.map(({ matchId, sequenceIndex, sequenceLabel }) => ({ matchId, sequenceIndex, sequenceLabel })), [
-  { matchId: 'match-a', sequenceIndex: 1, sequenceLabel: 'J1' },
-  { matchId: 'match-b', sequenceIndex: 2, sequenceLabel: 'J2' },
-  { matchId: 'match-c', sequenceIndex: 3, sequenceLabel: 'J3' },
-], 'Jx respeta exactamente el orden cronológico recibido de la RPC.');
+  { matchId: 'match-a', sequenceIndex: 1, sequenceLabel: 'P1' },
+  { matchId: 'match-b', sequenceIndex: 2, sequenceLabel: 'P2' },
+  { matchId: 'match-c', sequenceIndex: 3, sequenceLabel: 'P3' },
+], 'Px respeta exactamente el orden cronológico recibido de la RPC.');
 assert.equal(PLAYER_ANALYSIS_DEFAULT_MATCH_METRIC, 'shots');
 assert.deepEqual(PLAYER_ANALYSIS_MATCH_METRICS.map((metric) => metric.label), [
   'Goles', 'Tiros', 'A puerta', 'Precisión', 'Centros', 'Pérdidas', 'Robos',
   'Faltas realizadas', 'Faltas recibidas',
 ]);
 assert.equal(getPlayerAnalysisMatchMetric('unknown').key, 'shots');
+assert.equal(getPlayerAnalysisMatchMetric('shotsOnTarget').maximumLabel, 'Más tiros a puerta');
 assert.equal(getPlayerAnalysisMatchMetricValue(matchStats[0], 'shots'), 4);
 assert.equal(getPlayerAnalysisMatchMetricValue({ shots: -1 }, 'shots'), null);
 assert.equal(formatPlayerAnalysisMatchMetric(44.44, 'percent'), '44,44 %');
@@ -63,6 +65,9 @@ assert.equal(getPlayerAnalysisCrestFallback('Real Avilés'), 'RA');
 assert.equal(getPlayerAnalysisCrestFallback(''), 'EQ');
 assert.equal(getPlayerAnalysisCompetitionLabel(matchStats[0]), 'Segunda Federación');
 assert.equal(getPlayerAnalysisCompetitionLabel(matchStats[1]), 'Liga');
+assert.equal(getPlayerAnalysisMaximumsTitle('last_3_event_matches'), 'Máximos de los últimos 3');
+assert.equal(getPlayerAnalysisMaximumsTitle('last_5_event_matches'), 'Máximos de los últimos 5');
+assert.equal(getPlayerAnalysisMaximumsTitle('full_scope'), 'Máximos de la temporada');
 
 const maximums = buildPlayerAnalysisSeasonMaximums(matchStats);
 assert.equal(maximums.some((maximum) => maximum.metric.key === 'goals'), true);
@@ -72,8 +77,8 @@ assert.equal(maximums.find((maximum) => maximum.metric.key === 'steals').match.m
 assert.equal(buildPlayerAnalysisSeasonMaximums(matchStats.map((match) => ({ ...match, goals: 0 }))).some((maximum) => maximum.metric.key === 'goals'), false, 'Un máximo cero se omite.');
 
 const comparison = buildPlayerAnalysisMatchComparison(matchStats, 'match-a', 'match-c');
-assert.equal(comparison.matchA.sequenceLabel, 'J1');
-assert.equal(comparison.matchB.sequenceLabel, 'J3');
+assert.equal(comparison.matchA.sequenceLabel, 'P1');
+assert.equal(comparison.matchB.sequenceLabel, 'P3');
 assert.equal(comparison.rows.find((row) => row.metric.key === 'shots').valueA, 4);
 assert.equal(comparison.rows.find((row) => row.metric.key === 'minutes').valueB, null, 'Minutes NULL conserva guion; cero real se conserva como cero.');
 assert.equal(buildPlayerAnalysisMatchComparison(matchStats, 'match-a', '').rows.length, 0);

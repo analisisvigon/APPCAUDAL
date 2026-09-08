@@ -75,7 +75,7 @@ for (const mapping of ['last_3_event_matches', 'last_5_event_matches', 'full_sco
 assert.match(panel, /\[client, competitionScope, venue\]/, 'Overview/producción se sincronizan por filtros.');
 assert.match(panel, /\[client, competitionScope, venue, liveWindow\]/, 'Live añade su ventana al mismo ámbito.');
 assert.match(panel, /getMyPlayerAnalysisMatchStats\(client, \{ competitionScope, venue, liveWindow \}\)/, 'La evolución comparte exactamente los filtros de Registro en vivo.');
-assert.match(panel, /<PlayerAnalysisMatchEvolution state=\{matchStatsState\} onRetry=\{retryMatchStats\} \/>/);
+assert.match(panel, /<PlayerAnalysisMatchEvolution state=\{matchStatsState\} liveWindow=\{liveWindow\} onRetry=\{retryMatchStats\} \/>/);
 assert.match(panel, /usePlayerAnalysisHistory\(client, competitionScope, venue\)/);
 
 for (const label of [

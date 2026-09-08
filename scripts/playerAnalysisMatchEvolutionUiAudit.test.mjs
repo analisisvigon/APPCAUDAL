@@ -27,6 +27,7 @@ for (const field of [
 assert.equal((panel.match(/getMyPlayerAnalysisMatchStats\(client/g) || []).length, 1, 'Una sola carga alimenta gráfica, máximos y comparador.');
 assert.match(panel, /\{ competitionScope, venue, liveWindow \}/);
 assert.match(panel, /\[client, competitionScope, venue, liveWindow\]/);
+assert.match(panel, /liveWindow=\{liveWindow\}/, 'El título de máximos recibe la ventana visual activa.');
 assert.match(panel, /<LiveSection[\s\S]*<PlayerAnalysisMatchEvolution/, 'Las medias permanecen antes de la evolución.');
 
 for (const label of [
@@ -36,11 +37,18 @@ for (const label of [
 ]) assert.ok(frontend.includes(label), `Falta ${label}.`);
 
 assert.match(presentation, /PLAYER_ANALYSIS_DEFAULT_MATCH_METRIC = 'shots'/);
-assert.match(presentation, /sequenceLabel: `J\$\{index \+ 1\}`/);
+assert.match(presentation, /sequenceLabel: `P\$\{index \+ 1\}`/);
 assert.match(presentation, /posición cronológica dentro del resultado ya ordenado por la RPC/);
+assert.doesNotMatch(evolution, />J\d*</, 'La UI no presenta J como una jornada oficial.');
+assert.match(presentation, /Máximos de los últimos 3/);
+assert.match(presentation, /Máximos de los últimos 5/);
+assert.match(presentation, /Máximos de la temporada/);
+assert.match(presentation, /maximumLabel: 'Más tiros a puerta'/);
 assert.match(evolution, /data-player-match-chart="bars"/);
 assert.match(evolution, /aria-pressed=\{selected\}/);
 assert.match(evolution, /onSelect\(match\.matchId\)/);
+assert.match(evolution, /function MatchStrip/);
+assert.match(evolution, /<MatchStrip matches=\{matches\} selectedMatchId=\{selectedMatchId\} onSelect=\{setSelectedMatchId\} \/>/);
 assert.match(evolution, /match\.opponentCrest/);
 assert.match(evolution, /<OpponentCrest/);
 assert.match(evolution, /getPlayerAnalysisCrestFallback/);
@@ -54,12 +62,16 @@ assert.match(presentation, /buildPlayerAnalysisSeasonMaximums/);
 assert.match(presentation, /value === current\.value && isMoreRecentMatch/);
 assert.match(presentation, /localeCompare\(clean\(current\.matchId\)\)/);
 assert.match(presentation, /value === null \|\| value <= 0/);
-assert.match(evolution, /grid grid-cols-2 gap-2 lg:grid-cols-4/);
+assert.match(evolution, /grid grid-cols-2 gap-1\.5 min-\[700px\]:grid-cols-3 lg:grid-cols-4/);
+assert.match(evolution, /metric\.maximumLabel/);
 assert.doesNotMatch(evolution, /(?:emerald|red)-(?:100|200|300|400|500)/, 'Máximos y comparación son neutrales.');
 
 assert.match(presentation, /buildPlayerAnalysisMatchComparison/);
 assert.match(presentation, /\{ key: 'minutes', label: 'Minutos'/);
-assert.match(evolution, /grid-cols-\[minmax\(52px,1fr\)_minmax\(104px,1\.5fr\)_minmax\(52px,1fr\)\]/);
+assert.match(evolution, /grid-cols-\[minmax\(52px,1fr\)_minmax\(96px,1\.35fr\)_minmax\(52px,1fr\)\]/);
+assert.match(evolution, /bg-caudal-electric\/40/);
+assert.match(evolution, /numericA \* 100\) \/ magnitude/);
+assert.match(evolution, /numericB \* 100\) \/ magnitude/);
 assert.match(evolution, /Necesitas al menos dos partidos para comparar\./);
 assert.doesNotMatch(evolution, /<table|<select/, 'El comparador móvil no usa tabla ni dropdown.');
 
@@ -68,9 +80,13 @@ for (const state of ["state.status === 'loading'", "state.status === 'error'", "
 }
 assert.match(evolution, /No hay datos partido a partido para este filtro\./);
 assert.match(evolution, /onRetry=\{onRetry\}/);
-assert.match(evolution, /overflow-hidden p-3\.5 sm:p-4/);
+assert.match(evolution, /overflow-hidden p-3 sm:p-4/);
 assert.match(evolution, /overflow-x-auto/, 'Los carruseles táctiles contienen su propio overflow.');
 assert.match(evolution, /min-h-\[44px\]/);
+assert.match(evolution, /min-h-\[116px\]/, 'La gráfica reduce la altura por partido.');
+assert.match(evolution, /min-h-\[72px\]/, 'Las cabeceras del comparador son compactas.');
+assert.match(evolution, /w-\[118px\]/, 'El selector comparador usa chips compactos.');
+assert.doesNotMatch(evolution, /min-h-\[190px\]|min-h-\[84px\]/, 'Se eliminan las alturas sobredimensionadas anteriores.');
 
 for (const forbidden of [
   '.from(', 'supabase_', 'club_id', 'membership_id', 'user_id', 'jugador_id',

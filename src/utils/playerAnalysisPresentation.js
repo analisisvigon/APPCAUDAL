@@ -24,15 +24,15 @@ export const PLAYER_ANALYSIS_WINDOW_OPTIONS = Object.freeze([
 ]);
 
 export const PLAYER_ANALYSIS_MATCH_METRICS = Object.freeze([
-  { key: 'goals', label: 'Goles', detailLabel: 'Goles', format: 'number' },
-  { key: 'shots', label: 'Tiros', detailLabel: 'Tiros', format: 'number' },
-  { key: 'shotsOnTarget', label: 'A puerta', detailLabel: 'Tiros a puerta', format: 'number' },
+  { key: 'goals', label: 'Goles', detailLabel: 'Goles', maximumLabel: 'Más goles', format: 'number' },
+  { key: 'shots', label: 'Tiros', detailLabel: 'Tiros', maximumLabel: 'Más tiros', format: 'number' },
+  { key: 'shotsOnTarget', label: 'A puerta', detailLabel: 'Tiros a puerta', maximumLabel: 'Más tiros a puerta', format: 'number' },
   { key: 'shotAccuracyPercentage', label: 'Precisión', detailLabel: 'Precisión de tiro', format: 'percent' },
-  { key: 'crosses', label: 'Centros', detailLabel: 'Centros', format: 'number' },
-  { key: 'turnovers', label: 'Pérdidas', detailLabel: 'Pérdidas', format: 'number' },
-  { key: 'steals', label: 'Robos', detailLabel: 'Robos', format: 'number' },
-  { key: 'foulsCommitted', label: 'Faltas realizadas', detailLabel: 'Faltas realizadas', format: 'number' },
-  { key: 'foulsReceived', label: 'Faltas recibidas', detailLabel: 'Faltas recibidas', format: 'number' },
+  { key: 'crosses', label: 'Centros', detailLabel: 'Centros', maximumLabel: 'Más centros', format: 'number' },
+  { key: 'turnovers', label: 'Pérdidas', detailLabel: 'Pérdidas', maximumLabel: 'Más pérdidas', format: 'number' },
+  { key: 'steals', label: 'Robos', detailLabel: 'Robos', maximumLabel: 'Más robos', format: 'number' },
+  { key: 'foulsCommitted', label: 'Faltas realizadas', detailLabel: 'Faltas realizadas', maximumLabel: 'Más faltas realizadas', format: 'number' },
+  { key: 'foulsReceived', label: 'Faltas recibidas', detailLabel: 'Faltas recibidas', maximumLabel: 'Más faltas recibidas', format: 'number' },
 ]);
 
 export const PLAYER_ANALYSIS_DEFAULT_MATCH_METRIC = 'shots';
@@ -108,13 +108,19 @@ export const shouldShowPlayerCompetitionMinutes = (competitionScope) => (
 );
 
 export function buildPlayerAnalysisMatchSequence(matches = []) {
-  // Jx es la posición cronológica dentro del resultado ya ordenado por la RPC,
+  // Px es la posición cronológica dentro del resultado ya ordenado por la RPC,
   // no una jornada oficial de la competición.
   return rows(matches).map((match, index) => ({
     ...match,
     sequenceIndex: index + 1,
-    sequenceLabel: `J${index + 1}`,
+    sequenceLabel: `P${index + 1}`,
   }));
+}
+
+export function getPlayerAnalysisMaximumsTitle(liveWindow) {
+  if (liveWindow === 'last_3_event_matches') return 'Máximos de los últimos 3';
+  if (liveWindow === 'last_5_event_matches') return 'Máximos de los últimos 5';
+  return 'Máximos de la temporada';
 }
 
 export function getPlayerAnalysisMatchMetric(metricKey) {
