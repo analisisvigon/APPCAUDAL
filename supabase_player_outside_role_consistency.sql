@@ -68,6 +68,25 @@ begin
       raise exception 'PLAYER fuera/convocatoria: % no conserva publication gate; no se modifica nada',
         target.signature;
     end if;
+
+    if target.signature = 'public.get_my_player_match_history(text,text,integer,integer)'
+       and not (
+         (
+           function_row.prosrc ~* 'history[[:space:]]+as[[:space:]]*[(]'
+           and function_row.prosrc ~* 'from[[:space:]]+public[.]partido_estadisticas_jugador[[:space:]]+stats'
+           and function_row.prosrc ~* 'join[[:space:]]+scoped_matches[[:space:]]+scoped'
+           and function_row.prosrc ~* 'stats[.]role'
+           and function_row.prosrc ~* 'played_minutes'
+         )
+         or (
+           function_row.prosrc ~* 'from[[:space:]]+scoped_matches[[:space:]]+scoped'
+           and function_row.prosrc ~* 'left[[:space:]]+join[[:space:]]+public[.]partido_estadisticas_jugador[[:space:]]+stats'
+           and function_row.prosrc ~* 'from[[:space:]]+public[.]partido_convocados[[:space:]]+callup'
+           and function_row.prosrc ~* 'from[[:space:]]+public[.]partido_alineacion_slots[[:space:]]+lineup'
+         )
+       ) then
+      raise exception 'PLAYER fuera/convocatoria: estructura history desconocida; no se modifica nada';
+    end if;
   end loop;
 end;
 $preconditions$;
@@ -195,20 +214,127 @@ begin
 end;
 $patch_overview$;
 
-do $patch_history$
+create or replace function public.get_my_player_match_history(
+  p_competition_scope text default 'season',
+  p_venue text default 'all',
+  p_limit integer default 25,
+  p_offset integer default 0
+)
+returns table (
+  match_date date,
+  opponent text,
+  opponent_crest text,
+  result text,
+  outcome text,
+  competition_key text,
+  competition_name text,
+  competition_logo_url text,
+  venue text,
+  role text,
+  minutes integer,
+  goals integer,
+  goals_coverage text,
+  assists integer,
+  assists_coverage text,
+  yellow_cards integer,
+  red_cards integer,
+  has_allowed_video boolean
+)
+language plpgsql
+stable
+security definer
+set search_path = pg_catalog
+as $function$
 declare
-  function_before pg_catalog.pg_proc%rowtype;
-  function_after pg_catalog.pg_proc%rowtype;
-  original_source text;
-  transformed_source text;
-  original_definition text;
-  transformed_definition text;
-  source_offset integer;
-  block_start integer;
-  block_end integer;
-  start_anchor constant text := '  ), history as (';
-  end_anchor constant text := E'  select\n    case when row.payload';
-  replacement constant text := $replacement$  ), history as (
+  actor_id uuid := auth.uid();
+  membership_count integer;
+  membership_user_id uuid;
+  membership_club_id uuid;
+  membership_role text;
+  own_jugador_id uuid;
+  membership_is_active boolean;
+  own_player_name text;
+  own_player_count integer;
+  normalized_scope text := pg_catalog.lower(pg_catalog.btrim(coalesce(p_competition_scope, '')));
+  normalized_venue text := pg_catalog.lower(pg_catalog.btrim(coalesce(p_venue, '')));
+  supported_club_id constant uuid := 'ca0da100-0000-4000-8000-000000000001'::uuid;
+begin
+  if normalized_scope not in ('season', 'all', 'league', 'copa_rfef', 'playoff', 'friendly') then
+    raise exception using errcode = '22023', message = 'INVALID_COMPETITION_SCOPE';
+  end if;
+  if normalized_venue not in ('all', 'home', 'away') then
+    raise exception using errcode = '22023', message = 'INVALID_VENUE';
+  end if;
+  if p_limit is null or p_limit < 1 or p_limit > 50 then
+    raise exception using errcode = '22023', message = 'INVALID_LIMIT';
+  end if;
+  if p_offset is null or p_offset < 0 then
+    raise exception using errcode = '22023', message = 'INVALID_OFFSET';
+  end if;
+  if actor_id is null then return; end if;
+
+  select pg_catalog.count(*)::integer into membership_count
+  from public.current_membership();
+  if membership_count <> 1 then return; end if;
+
+  select membership.user_id, membership.club_id, membership.role,
+         membership.jugador_id, membership.is_active
+  into membership_user_id, membership_club_id, membership_role,
+       own_jugador_id, membership_is_active
+  from public.current_membership() membership;
+
+  if membership_user_id is distinct from actor_id
+     or membership_club_id is distinct from supported_club_id
+     or membership_role is distinct from 'player'
+     or membership_is_active is not true
+     or own_jugador_id is null
+     or own_jugador_id is distinct from public.current_jugador_id()
+     or not public.is_player() then return; end if;
+
+  select pg_catalog.count(*)::integer, pg_catalog.max(player.name)
+  into own_player_count, own_player_name
+  from public.jugadores player
+  where player.id = own_jugador_id;
+  if own_player_count <> 1 then return; end if;
+
+  return query
+  with scoped_matches as (
+    select
+      match_row.id,
+      serialized.payload,
+      coalesce(competition.key, serialized.payload ->> 'competition_key') as resolved_competition_key,
+      competition.name as resolved_competition_name,
+      competition.logo_url as resolved_competition_logo
+    from public.partidos match_row
+    cross join lateral (select pg_catalog.to_jsonb(match_row) as payload) serialized
+    left join lateral (
+      select competition.key, competition.name, competition.logo_url, competition.competition_type
+      from public.competitions competition
+      where (competition.id::text = serialized.payload ->> 'competition_id'
+          or (nullif(serialized.payload ->> 'competition_id', '') is null
+              and competition.key = serialized.payload ->> 'competition_key'))
+        and (competition.club_id is null or competition.club_id = membership_club_id)
+      order by (competition.id::text = serialized.payload ->> 'competition_id') desc,
+               competition.key
+      limit 1
+    ) competition on true
+    where true
+      and public.is_player_match_publishable(
+        serialized.payload ->> 'status',
+        serialized.payload ->> 'date'
+      )
+      and (normalized_venue = 'all'
+        or (normalized_venue = 'home' and pg_catalog.lower(coalesce(serialized.payload ->> 'is_home', '')) = 'true')
+        or (normalized_venue = 'away' and pg_catalog.lower(coalesce(serialized.payload ->> 'is_home', '')) = 'false'))
+      and (normalized_scope = 'all'
+        or (normalized_scope = 'season' and coalesce(
+              competition.competition_type,
+              case when coalesce(competition.key, serialized.payload ->> 'competition_key')
+                     in ('league', 'copa_rfef', 'playoff') then 'official' else '' end
+            ) = 'official')
+        or (normalized_scope not in ('all', 'season')
+            and coalesce(competition.key, serialized.payload ->> 'competition_key') = normalized_scope))
+  ), history as (
     select
       scoped.*,
       case
@@ -229,67 +355,99 @@ declare
         when stats.yellow then 1 else 0
       end as yellow_total,
       case when stats.red then 1 else 0 end as red_total
-    from public.partido_estadisticas_jugador stats
-    join scoped_matches scoped on scoped.id = stats.partido_id
+    from scoped_matches scoped
+    left join public.partido_estadisticas_jugador stats
+      on stats.partido_id = scoped.id
+     and stats.jugador_id = own_jugador_id
     cross join lateral (
       select
         exists (
           select 1
           from public.partido_alineacion_slots lineup
-          where lineup.partido_id = stats.partido_id
+          where lineup.partido_id = scoped.id
             and lineup.scope = 'stats'
             and lineup.jugador_id = own_jugador_id
         ) as is_starter,
         exists (
           select 1
           from public.partido_convocados callup
-          where callup.partido_id = stats.partido_id
+          where callup.partido_id = scoped.id
             and callup.jugador_id = own_jugador_id
         ) as is_called
     ) canonical_participation
-    where stats.jugador_id = own_jugador_id
   )
-$replacement$;
-begin
-  select procedure.* into function_before
-  from pg_catalog.pg_proc procedure
-  where procedure.oid = 'public.get_my_player_match_history(text,text,integer,integer)'::regprocedure;
-
-  original_source := function_before.prosrc;
-  if pg_catalog.strpos(original_source, ') canonical_participation') <> 0 then
-    return;
-  end if;
-
-  block_start := pg_catalog.strpos(original_source, start_anchor);
-  block_end := pg_catalog.strpos(original_source, end_anchor);
-  if block_start = 0 or block_end <= block_start
-     or pg_catalog.strpos(original_source, 'select scoped.*, stats.role') = 0 then
-    raise exception 'PLAYER fuera/convocatoria: cuerpo history inesperado; no se modifica nada';
-  end if;
-
-  transformed_source := pg_catalog.substr(original_source, 1, block_start - 1)
-    || replacement
-    || pg_catalog.substr(original_source, block_end);
-  original_definition := pg_catalog.pg_get_functiondef(function_before.oid);
-  source_offset := pg_catalog.strpos(original_definition, original_source);
-  if source_offset = 0 then
-    raise exception 'PLAYER fuera/convocatoria: no se pudo aislar history';
-  end if;
-  transformed_definition := pg_catalog.substr(original_definition, 1, source_offset - 1)
-    || transformed_source
-    || pg_catalog.substr(original_definition, source_offset + pg_catalog.length(original_source));
-  execute transformed_definition;
-
-  select procedure.* into function_after
-  from pg_catalog.pg_proc procedure
-  where procedure.oid = function_before.oid;
-  if function_after.oid is distinct from function_before.oid
-     or (pg_catalog.to_jsonb(function_after) - array['prosrc', 'proargdefaults']::text[])
-        is distinct from (pg_catalog.to_jsonb(function_before) - array['prosrc', 'proargdefaults']::text[]) then
-    raise exception 'PLAYER fuera/convocatoria: history altero algo ajeno al cuerpo';
-  end if;
+  select
+    case when row.payload ->> 'date' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+      then (row.payload ->> 'date')::date end,
+    nullif(pg_catalog.btrim(row.payload ->> 'opponent'), ''),
+    nullif(pg_catalog.btrim(row.payload ->> 'opponent_crest'), ''),
+    score.result,
+    case when score.caudal_score is null or score.rival_score is null then null
+         when score.caudal_score > score.rival_score then 'win'
+         when score.caudal_score < score.rival_score then 'loss'
+         else 'draw' end,
+    row.resolved_competition_key,
+    row.resolved_competition_name,
+    row.resolved_competition_logo,
+    case when pg_catalog.lower(coalesce(row.payload ->> 'is_home', '')) = 'true'
+      then 'home' else 'away' end,
+    row.role,
+    row.played_minutes,
+    goal_stats.goals,
+    case when goal_stats.unresolved_goals > 0 then 'PARTIAL' else 'COMPLETE' end,
+    goal_stats.assists,
+    case when goal_stats.unresolved_assists > 0 then 'PARTIAL' else 'COMPLETE' end,
+    row.yellow_total,
+    row.red_total,
+    goal_stats.has_allowed_video
+  from history row
+  cross join lateral (
+    select
+      case when row.payload ->> 'home_score' ~ '^[0-9]+$'
+        then (row.payload ->> 'home_score')::integer end as home_score,
+      case when row.payload ->> 'away_score' ~ '^[0-9]+$'
+        then (row.payload ->> 'away_score')::integer end as away_score
+  ) parsed_score
+  cross join lateral (
+    select
+      case when pg_catalog.lower(coalesce(row.payload ->> 'is_home', '')) = 'true'
+        then parsed_score.home_score else parsed_score.away_score end as caudal_score,
+      case when pg_catalog.lower(coalesce(row.payload ->> 'is_home', '')) = 'true'
+        then parsed_score.away_score else parsed_score.home_score end as rival_score,
+      case when parsed_score.home_score is not null and parsed_score.away_score is not null
+        then case when pg_catalog.lower(coalesce(row.payload ->> 'is_home', '')) = 'true'
+          then parsed_score.home_score::text || '-' || parsed_score.away_score::text
+          else parsed_score.away_score::text || '-' || parsed_score.home_score::text end end as result
+  ) score
+  cross join lateral (
+    select
+      pg_catalog.count(*) filter (where goal.scorer_id = own_jugador_id)::integer as goals,
+      pg_catalog.count(*) filter (where goal.assistant_id = own_jugador_id)::integer as assists,
+      pg_catalog.count(*) filter (
+        where goal.scorer_id is null
+          and nullif(pg_catalog.btrim(goal.scorer), '') is not null
+          and pg_catalog.lower(pg_catalog.btrim(goal.scorer)) = pg_catalog.lower(pg_catalog.btrim(own_player_name))
+      )::integer as unresolved_goals,
+      pg_catalog.count(*) filter (
+        where goal.assistant_id is null
+          and nullif(pg_catalog.btrim(goal.assistant), '') is not null
+          and pg_catalog.lower(pg_catalog.btrim(goal.assistant)) = pg_catalog.lower(pg_catalog.btrim(own_player_name))
+      )::integer as unresolved_assists,
+      coalesce(pg_catalog.bool_or(
+        (goal.scorer_id = own_jugador_id or goal.assistant_id = own_jugador_id)
+        and pg_catalog.btrim(coalesce(goal.video_url, ''))
+          ~* '^https://(youtu[.]be|youtube[.]com|www[.]youtube[.]com|m[.]youtube[.]com)(/|$)'
+      ), false) as has_allowed_video
+    from public.partido_eventos_gol goal
+    where goal.partido_id = row.id
+      and goal.type = 'Gol a favor'
+  ) goal_stats
+  order by case when row.payload ->> 'date' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+                  then (row.payload ->> 'date')::date end desc nulls last,
+           row.id desc
+  limit p_limit offset p_offset;
 end;
-$patch_history$;
+$function$;
 
 do $patch_summary$
 declare

@@ -13,6 +13,23 @@ const publicationGate = fs.readFileSync(
   new URL('../supabase_player_match_publication_gate.sql', import.meta.url),
   'utf8',
 );
+const realDeployedHistoryShape = `
+history AS (
+  select scoped.*, stats.role,
+    case when stats.minutes is not null then stats.minutes else 0 end as played_minutes
+  from public.partido_estadisticas_jugador stats
+  join scoped_matches scoped on scoped.id = stats.partido_id
+  where stats.jugador_id = own_jugador_id
+)`;
+
+const recognizesRealDeployedHistory = (source) => (
+  /history\s+as\s*\(/i.test(source)
+  && /from\s+public\.partido_estadisticas_jugador\s+stats/i.test(source)
+  && /join\s+scoped_matches\s+scoped/i.test(source)
+  && /stats\.role/i.test(source)
+  && /played_minutes/i.test(source)
+);
+assert.equal(recognizesRealDeployedHistory(realDeployedHistoryShape), true, 'la guarda estructural reconoce el cuerpo real sin depender de sus saltos');
 
 const canonicalHistoryProjection = ({ isStarter, isCalled, minutes }) => ({
   role: isStarter ? 'Titular' : isCalled ? 'Suplente' : 'Fuera',
@@ -33,6 +50,12 @@ assert.deepEqual(canonicalHistoryProjection({ isStarter: false, isCalled: true, 
 assert.deepEqual(canonicalHistoryProjection({ isStarter: false, isCalled: false, minutes: 63 }), {
   role: 'Fuera', minutes: null, countsAsPlayed: false, countsAsBenchEntry: false,
 }, 'D-F/H: Fuera domina incluso sobre estadisticas historicas obsoletas');
+assert.deepEqual(canonicalHistoryProjection({ isStarter: false, isCalled: false, minutes: 90 }), {
+  role: 'Fuera', minutes: null, countsAsPlayed: false, countsAsBenchEntry: false,
+}, 'E: un antiguo Titular/90 tambien queda Fuera');
+assert.deepEqual(canonicalHistoryProjection({ isStarter: false, isCalled: false }), {
+  role: 'Fuera', minutes: null, countsAsPlayed: false, countsAsBenchEntry: false,
+}, 'F: un partido sin fila stats queda Fuera con minutos no aplicables');
 
 assert.match(migration, /^-- PLAYER:[\s\S]*?\nbegin;/i);
 assert.match(migration, /\ncommit;\s*$/i);
@@ -41,6 +64,16 @@ assert.equal((migration.match(/^commit;$/gim) || []).length, 1);
 assert.doesNotMatch(migration, /\bdrop\s+(?:function|table)|\balter\s+table|\bcreate\s+(?:table|policy)|\bdrop\s+policy/i);
 assert.doesNotMatch(migration, /\b(?:insert|update|delete|merge|truncate)\s+(?:into\s+|from\s+)?public\./i);
 assert.doesNotMatch(migration, /\b(?:grant|revoke)\b/i, 'CREATE OR REPLACE conserva ACL sin reescribir permisos');
+
+const correctedHistory = migration.match(
+  /create or replace function public\.get_my_player_match_history\([\s\S]*?\n\$function\$;/i,
+)?.[0] || '';
+assert.ok(correctedHistory, 'history se reemplaza mediante una definicion completa');
+assert.match(correctedHistory, /from scoped_matches scoped[\s\S]*?left join public\.partido_estadisticas_jugador stats/i, 'history parte de scoped_matches y stats es opcional');
+assert.doesNotMatch(correctedHistory, /stats\.role/i, 'stats.role deja de tener autoridad en el historial');
+assert.match(correctedHistory, /where true[\s\S]*?public\.is_player_match_publishable\(/i, 'la definicion completa conserva el gate temporal');
+assert.equal((migration.match(/create or replace function public\.get_my_player_match_history/gi) || []).length, 1, 'la segunda ejecucion reemplaza por la misma definicion idempotente');
+assert.doesNotMatch(migration, /cuerpo history inesperado|select scoped\.\*, stats\.role/i, 'history ya no depende de la coincidencia textual que fallo en produccion');
 
 for (const signature of [
   'public.get_my_player_analysis_overview(text,text)',
