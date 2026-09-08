@@ -1,19 +1,82 @@
 import assert from 'node:assert/strict';
 import {
+  PLAYER_ANALYSIS_DEFAULT_MATCH_METRIC,
+  PLAYER_ANALYSIS_MATCH_METRICS,
   PLAYER_ANALYSIS_PARTIAL_NOTE,
   buildCompetitionMinutesRows,
   buildPlayerAnalysisConnections,
+  buildPlayerAnalysisMatchComparison,
+  buildPlayerAnalysisMatchSequence,
   buildPlayerAnalysisOverviewPresentation,
+  buildPlayerAnalysisSeasonMaximums,
   buildPlayerProductionCategories,
   buildPlayerProductionZones,
   filterPlayerProductionActions,
   formatPlayerAnalysisDate,
+  formatPlayerAnalysisMatchMetric,
+  getPlayerAnalysisCompetitionLabel,
+  getPlayerAnalysisCrestFallback,
+  getPlayerAnalysisMatchMetric,
+  getPlayerAnalysisMatchMetricValue,
   getPlayerAnalysisVideoActions,
   getPlayerHistoryOutcomePresentation,
   getPlayerZoneMapGridClass,
   resolvePlayerHistoryVideoUrls,
   shouldShowPlayerCompetitionMinutes,
 } from './playerAnalysisPresentation.js';
+
+const matchStats = [{
+  matchId: 'match-a', matchDate: '2026-08-01', opponent: 'Real Avilés', opponentCrest: '',
+  competitionKey: 'league', competitionName: 'Segunda Federación', isHome: true, minutes: 74,
+  goals: 0, shots: 4, shotsOnTarget: 2, shotAccuracyPercentage: 50, crosses: 1,
+  turnovers: 0, steals: 5, foulsCommitted: 2, foulsReceived: 3,
+}, {
+  matchId: 'match-b', matchDate: '2026-08-08', opponent: 'Llanes', opponentCrest: 'https://assets.example/llanes.png',
+  competitionKey: 'league', competitionName: '', isHome: false, minutes: 0,
+  goals: 1, shots: 6, shotsOnTarget: 3, shotAccuracyPercentage: 50, crosses: 4,
+  turnovers: 7, steals: 5, foulsCommitted: 1, foulsReceived: 2,
+}, {
+  matchId: 'match-c', matchDate: '2026-08-08', opponent: 'Ceares', opponentCrest: '',
+  competitionKey: 'friendly', competitionName: '', isHome: true, minutes: null,
+  goals: 1, shots: 6, shotsOnTarget: 3, shotAccuracyPercentage: 50, crosses: 2,
+  turnovers: 5, steals: 5, foulsCommitted: 3, foulsReceived: 4,
+}];
+
+const matchSequence = buildPlayerAnalysisMatchSequence(matchStats);
+assert.deepEqual(matchSequence.map(({ matchId, sequenceIndex, sequenceLabel }) => ({ matchId, sequenceIndex, sequenceLabel })), [
+  { matchId: 'match-a', sequenceIndex: 1, sequenceLabel: 'J1' },
+  { matchId: 'match-b', sequenceIndex: 2, sequenceLabel: 'J2' },
+  { matchId: 'match-c', sequenceIndex: 3, sequenceLabel: 'J3' },
+], 'Jx respeta exactamente el orden cronológico recibido de la RPC.');
+assert.equal(PLAYER_ANALYSIS_DEFAULT_MATCH_METRIC, 'shots');
+assert.deepEqual(PLAYER_ANALYSIS_MATCH_METRICS.map((metric) => metric.label), [
+  'Goles', 'Tiros', 'A puerta', 'Precisión', 'Centros', 'Pérdidas', 'Robos',
+  'Faltas realizadas', 'Faltas recibidas',
+]);
+assert.equal(getPlayerAnalysisMatchMetric('unknown').key, 'shots');
+assert.equal(getPlayerAnalysisMatchMetricValue(matchStats[0], 'shots'), 4);
+assert.equal(getPlayerAnalysisMatchMetricValue({ shots: -1 }, 'shots'), null);
+assert.equal(formatPlayerAnalysisMatchMetric(44.44, 'percent'), '44,44 %');
+assert.equal(formatPlayerAnalysisMatchMetric(74, 'minutes'), '74 min');
+assert.equal(formatPlayerAnalysisMatchMetric(null), '—');
+assert.equal(getPlayerAnalysisCrestFallback('Real Avilés'), 'RA');
+assert.equal(getPlayerAnalysisCrestFallback(''), 'EQ');
+assert.equal(getPlayerAnalysisCompetitionLabel(matchStats[0]), 'Segunda Federación');
+assert.equal(getPlayerAnalysisCompetitionLabel(matchStats[1]), 'Liga');
+
+const maximums = buildPlayerAnalysisSeasonMaximums(matchStats);
+assert.equal(maximums.some((maximum) => maximum.metric.key === 'goals'), true);
+assert.equal(maximums.some((maximum) => maximum.metric.key === 'turnovers'), true, 'Las pérdidas se presentan de forma neutral.');
+assert.equal(maximums.find((maximum) => maximum.metric.key === 'shots').match.matchId, 'match-c', 'Empate: fecha más reciente y match_id estable.');
+assert.equal(maximums.find((maximum) => maximum.metric.key === 'steals').match.matchId, 'match-c', 'Empate en tres partidos: gana el más reciente y luego match_id.');
+assert.equal(buildPlayerAnalysisSeasonMaximums(matchStats.map((match) => ({ ...match, goals: 0 }))).some((maximum) => maximum.metric.key === 'goals'), false, 'Un máximo cero se omite.');
+
+const comparison = buildPlayerAnalysisMatchComparison(matchStats, 'match-a', 'match-c');
+assert.equal(comparison.matchA.sequenceLabel, 'J1');
+assert.equal(comparison.matchB.sequenceLabel, 'J3');
+assert.equal(comparison.rows.find((row) => row.metric.key === 'shots').valueA, 4);
+assert.equal(comparison.rows.find((row) => row.metric.key === 'minutes').valueB, null, 'Minutes NULL conserva guion; cero real se conserva como cero.');
+assert.equal(buildPlayerAnalysisMatchComparison(matchStats, 'match-a', '').rows.length, 0);
 
 const overview = buildPlayerAnalysisOverviewPresentation({
   matchRecords: 8, matchesPlayed: 7, minutes: 462, minutesPerMatch: 66,

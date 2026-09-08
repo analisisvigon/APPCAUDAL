@@ -5,6 +5,7 @@ const read = (relativePath) => fs.readFileSync(new URL(`../${relativePath}`, imp
 const app = read('src/PlayerApp.jsx');
 const navigation = read('src/components/player/PlayerNavigation.jsx');
 const panel = read('src/components/player/PlayerAnalysisPanel.jsx');
+const matchEvolution = read('src/components/player/PlayerAnalysisMatchEvolution.jsx');
 const production = read('src/components/player/PlayerAnalysisProduction.jsx');
 const history = read('src/components/player/PlayerAnalysisHistory.jsx');
 const zoneMap = read('src/components/player/PlayerAnalysisZoneMap.jsx');
@@ -13,14 +14,15 @@ const matchesPanel = read('src/components/player/PlayerMatchesPanel.jsx');
 const matchesStore = read('src/data/playerMatchesStore.js');
 const store = read('src/data/playerAnalysisStore.js');
 const presentation = read('src/utils/playerAnalysisPresentation.js');
-const branch = [app, navigation, panel, production, history, zoneMap, domainState, matchesPanel, matchesStore, store, presentation].join('\n');
+const branch = [app, navigation, panel, matchEvolution, production, history, zoneMap, domainState, matchesPanel, matchesStore, store, presentation].join('\n');
 const liveSection = panel.slice(panel.indexOf('function LiveSection'), panel.indexOf('export default function PlayerAnalysisPanel'));
 
 assert.deepEqual(
-  [...store.matchAll(/^\s*(?:overview|live|production|history): '([^']+)'/gm)].map((match) => match[1]),
+  [...store.matchAll(/^\s*(?:overview|live|matchStats|production|history): '([^']+)'/gm)].map((match) => match[1]),
   [
     'get_my_player_analysis_overview',
     'get_my_player_analysis_live_stats',
+    'get_my_player_analysis_match_stats',
     'get_my_player_production_actions',
     'get_my_player_match_history',
   ],
@@ -72,6 +74,8 @@ for (const mapping of ['last_3_event_matches', 'last_5_event_matches', 'full_sco
 }
 assert.match(panel, /\[client, competitionScope, venue\]/, 'Overview/producción se sincronizan por filtros.');
 assert.match(panel, /\[client, competitionScope, venue, liveWindow\]/, 'Live añade su ventana al mismo ámbito.');
+assert.match(panel, /getMyPlayerAnalysisMatchStats\(client, \{ competitionScope, venue, liveWindow \}\)/, 'La evolución comparte exactamente los filtros de Registro en vivo.');
+assert.match(panel, /<PlayerAnalysisMatchEvolution state=\{matchStatsState\} onRetry=\{retryMatchStats\} \/>/);
 assert.match(panel, /usePlayerAnalysisHistory\(client, competitionScope, venue\)/);
 
 for (const label of [
@@ -177,7 +181,7 @@ assert.doesNotMatch(branch, /Posiciones utilizadas|Disponible próximamente/, 'P
 for (const forbiddenPrivacy of [
   /\brating\b/i, /\binjured\b/i, /\bpost_video_link\b/i, /\bscorer_id\b/i,
   /\bassistant_id\b/i, /\bjugador_id\b/i, /\bmembership_id\b/i,
-]) assert.doesNotMatch([panel, production, history, presentation].join('\n'), forbiddenPrivacy);
+]) assert.doesNotMatch([panel, matchEvolution, production, history, presentation].join('\n'), forbiddenPrivacy);
 
 assert.deepEqual(
   [...navigation.matchAll(/\['(home|analysis|matches|performance)', '([^']+)'\]/g)].map((match) => match[2]),

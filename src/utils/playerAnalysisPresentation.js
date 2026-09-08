@@ -23,6 +23,31 @@ export const PLAYER_ANALYSIS_WINDOW_OPTIONS = Object.freeze([
   { value: 'full_scope', label: 'Temporada' },
 ]);
 
+export const PLAYER_ANALYSIS_MATCH_METRICS = Object.freeze([
+  { key: 'goals', label: 'Goles', detailLabel: 'Goles', format: 'number' },
+  { key: 'shots', label: 'Tiros', detailLabel: 'Tiros', format: 'number' },
+  { key: 'shotsOnTarget', label: 'A puerta', detailLabel: 'Tiros a puerta', format: 'number' },
+  { key: 'shotAccuracyPercentage', label: 'Precisión', detailLabel: 'Precisión de tiro', format: 'percent' },
+  { key: 'crosses', label: 'Centros', detailLabel: 'Centros', format: 'number' },
+  { key: 'turnovers', label: 'Pérdidas', detailLabel: 'Pérdidas', format: 'number' },
+  { key: 'steals', label: 'Robos', detailLabel: 'Robos', format: 'number' },
+  { key: 'foulsCommitted', label: 'Faltas realizadas', detailLabel: 'Faltas realizadas', format: 'number' },
+  { key: 'foulsReceived', label: 'Faltas recibidas', detailLabel: 'Faltas recibidas', format: 'number' },
+]);
+
+export const PLAYER_ANALYSIS_DEFAULT_MATCH_METRIC = 'shots';
+
+const PLAYER_ANALYSIS_MAXIMUM_METRIC_KEYS = Object.freeze([
+  'goals',
+  'shots',
+  'shotsOnTarget',
+  'crosses',
+  'steals',
+  'foulsReceived',
+  'turnovers',
+  'foulsCommitted',
+]);
+
 export const PLAYER_ANALYSIS_ACTION_FILTERS = Object.freeze(['Todos', 'Goles', 'Asistencias']);
 
 const PLAYER_ANALYSIS_DISTRIBUTION_SCOPES = Object.freeze(['league', 'copa_rfef', 'playoff', 'friendly']);
@@ -59,6 +84,8 @@ const GOAL_ZONE_CATALOG = Object.freeze([
 const rows = (value) => Array.isArray(value) ? value : [];
 const clean = (value) => String(value ?? '').trim();
 const isPartial = (coverage) => coverage !== 'COMPLETE';
+const matchMetricByKey = new Map(PLAYER_ANALYSIS_MATCH_METRICS.map((metric) => [metric.key, metric]));
+const matchNumberFormatter = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 2 });
 
 const safeMinutes = (value) => {
   const minutes = Number(value);
@@ -79,6 +106,94 @@ const safeHttpsImageUrl = (value) => {
 export const shouldShowPlayerCompetitionMinutes = (competitionScope) => (
   competitionScope === 'season' || competitionScope === 'all'
 );
+
+export function buildPlayerAnalysisMatchSequence(matches = []) {
+  // Jx es la posición cronológica dentro del resultado ya ordenado por la RPC,
+  // no una jornada oficial de la competición.
+  return rows(matches).map((match, index) => ({
+    ...match,
+    sequenceIndex: index + 1,
+    sequenceLabel: `J${index + 1}`,
+  }));
+}
+
+export function getPlayerAnalysisMatchMetric(metricKey) {
+  return matchMetricByKey.get(metricKey) || matchMetricByKey.get(PLAYER_ANALYSIS_DEFAULT_MATCH_METRIC);
+}
+
+export function getPlayerAnalysisMatchMetricValue(match = {}, metricKey) {
+  const field = metricKey === 'minutes' ? 'minutes' : getPlayerAnalysisMatchMetric(metricKey).key;
+  const source = match?.[field];
+  if (source === null || source === undefined || source === '') return null;
+  const value = Number(source);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+export function formatPlayerAnalysisMatchMetric(value, format = 'number') {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
+  const formatted = matchNumberFormatter.format(Number(value));
+  if (format === 'percent') return `${formatted} %`;
+  if (format === 'minutes') return `${formatted} min`;
+  return formatted;
+}
+
+export function getPlayerAnalysisCrestFallback(opponent = '') {
+  const initials = clean(opponent)
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toLocaleUpperCase('es-ES'))
+    .join('');
+  return initials || 'EQ';
+}
+
+export function getPlayerAnalysisCompetitionLabel(match = {}) {
+  const competitionName = clean(match.competitionName);
+  if (competitionName) return competitionName;
+  return PLAYER_ANALYSIS_COMPETITION_OPTIONS.find((option) => option.value === clean(match.competitionKey))?.label
+    || 'Competición';
+}
+
+const isMoreRecentMatch = (candidate, current) => {
+  const dateComparison = clean(candidate.matchDate).localeCompare(clean(current.matchDate));
+  if (dateComparison !== 0) return dateComparison > 0;
+  return clean(candidate.matchId).localeCompare(clean(current.matchId)) > 0;
+};
+
+export function buildPlayerAnalysisSeasonMaximums(matches = []) {
+  const sequence = buildPlayerAnalysisMatchSequence(matches);
+  return PLAYER_ANALYSIS_MAXIMUM_METRIC_KEYS.flatMap((metricKey) => {
+    const metric = getPlayerAnalysisMatchMetric(metricKey);
+    const maximum = sequence.reduce((current, match) => {
+      const value = getPlayerAnalysisMatchMetricValue(match, metricKey);
+      if (value === null || value <= 0) return current;
+      if (!current || value > current.value || (value === current.value && isMoreRecentMatch(match, current.match))) {
+        return { metric, value, match };
+      }
+      return current;
+    }, null);
+    return maximum ? [maximum] : [];
+  });
+}
+
+export function buildPlayerAnalysisMatchComparison(matches = [], matchAId = '', matchBId = '') {
+  const sequence = buildPlayerAnalysisMatchSequence(matches);
+  const matchA = sequence.find((match) => match.matchId === matchAId) || null;
+  const matchB = sequence.find((match) => match.matchId === matchBId) || null;
+  const metrics = [
+    ...PLAYER_ANALYSIS_MATCH_METRICS,
+    { key: 'minutes', label: 'Minutos', detailLabel: 'Minutos', format: 'minutes' },
+  ];
+  return {
+    matchA,
+    matchB,
+    rows: matchA && matchB ? metrics.map((metric) => ({
+      metric,
+      valueA: getPlayerAnalysisMatchMetricValue(matchA, metric.key),
+      valueB: getPlayerAnalysisMatchMetricValue(matchB, metric.key),
+    })) : [],
+  };
+}
 
 export function buildCompetitionMinutesRows(source = {}, totalMinutesValue = 0) {
   const totalMinutes = safeMinutes(totalMinutesValue);

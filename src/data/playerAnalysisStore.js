@@ -1,6 +1,7 @@
 const ANALYSIS_RPCS = Object.freeze({
   overview: 'get_my_player_analysis_overview',
   live: 'get_my_player_analysis_live_stats',
+  matchStats: 'get_my_player_analysis_match_stats',
   production: 'get_my_player_production_actions',
   history: 'get_my_player_match_history',
 });
@@ -142,6 +143,27 @@ export const normalizePlayerAnalysisLiveStats = (row = {}) => ({
   foulsReceivedPerMatch: normalizeNumber(row.fouls_received_per_match),
 });
 
+export const normalizePlayerAnalysisMatchStats = (row = {}) => ({
+  matchId: cleanText(row.match_id),
+  matchDate: cleanText(row.match_date),
+  opponent: cleanText(row.opponent),
+  opponentCrest: cleanText(row.opponent_crest),
+  competitionKey: cleanText(row.competition_key),
+  competitionName: cleanText(row.competition_name),
+  isHome: typeof row.is_home === 'boolean' ? row.is_home : null,
+  minutes: normalizeNumber(row.minutes, { integer: true, nullable: true }),
+  eventCount: normalizeNumber(row.event_count, { integer: true }),
+  goals: normalizeNumber(row.goals, { integer: true }),
+  shots: normalizeNumber(row.shots, { integer: true }),
+  shotsOnTarget: normalizeNumber(row.shots_on_target, { integer: true }),
+  shotAccuracyPercentage: normalizeNumber(row.shot_accuracy_percentage, { nullable: true }),
+  crosses: normalizeNumber(row.crosses, { integer: true }),
+  turnovers: normalizeNumber(row.turnovers, { integer: true }),
+  steals: normalizeNumber(row.steals, { integer: true }),
+  foulsCommitted: normalizeNumber(row.fouls_committed, { integer: true }),
+  foulsReceived: normalizeNumber(row.fouls_received, { integer: true }),
+});
+
 export const normalizePlayerProductionAction = (row = {}) => {
   const actionType = normalizeEnum(row.action_type, new Set(['goal', 'assist']), '');
   if (!actionType) return null;
@@ -273,6 +295,16 @@ export async function loadPlayerAnalysisLiveStats(client, filters = {}) {
     p_window: normalized.liveWindow,
   });
   return readSingleRow(rows, 'live', normalizePlayerAnalysisLiveStats);
+}
+
+export async function getMyPlayerAnalysisMatchStats(client, filters = {}) {
+  const normalized = normalizePlayerAnalysisFilters(filters);
+  const rows = await executeRpc(client, 'match_stats', ANALYSIS_RPCS.matchStats, {
+    p_competition_scope: normalized.competitionScope,
+    p_venue: normalized.venue,
+    p_window: normalized.liveWindow,
+  });
+  return rows.map(normalizePlayerAnalysisMatchStats);
 }
 
 export async function loadPlayerProductionActions(client, filters = {}) {

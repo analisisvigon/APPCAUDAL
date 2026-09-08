@@ -5,6 +5,7 @@ import {
   PLAYER_ANALYSIS_DISTRIBUTION_PAGE_SIZE,
   PlayerAnalysisLoadError,
   appendUniquePlayerHistory,
+  getMyPlayerAnalysisMatchStats,
   isAllowedPlayerAnalysisVideo,
   loadPlayerAnalysisLiveStats,
   loadPlayerAnalysisOverview,
@@ -12,6 +13,7 @@ import {
   loadPlayerMatchHistoryPage,
   loadPlayerProductionActions,
   normalizePlayerMatchHistoryRow,
+  normalizePlayerAnalysisMatchStats,
   normalizePlayerAnalysisFilters,
 } from './playerAnalysisStore.js';
 
@@ -32,6 +34,20 @@ const liveRow = {
   fouls_committed: '3', fouls_committed_per_match: '1', fouls_received: '5',
   fouls_received_per_match: '1.67',
 };
+const matchStatsRows = [{
+  match_id: '11111111-1111-4111-8111-111111111111', match_date: '2026-08-16',
+  opponent: 'Rival', opponent_crest: 'https://assets.example/rival.png',
+  competition_key: 'league', competition_name: 'Liga', is_home: true, minutes: '74',
+  event_count: '12', goals: '1', shots: '4', shots_on_target: '2',
+  shot_accuracy_percentage: '50', crosses: '3', turnovers: '5', steals: '6',
+  fouls_committed: '2', fouls_received: '4',
+}, {
+  match_id: '22222222-2222-4222-8222-222222222222', match_date: '2026-08-23',
+  opponent: 'Otro rival', opponent_crest: null, competition_key: 'league',
+  competition_name: 'Liga', is_home: false, minutes: null, event_count: '1',
+  goals: null, shots: null, shots_on_target: null, shot_accuracy_percentage: null,
+  crosses: null, turnovers: null, steals: null, fouls_committed: null, fouls_received: null,
+}];
 const productionRows = [{
   action_type: 'goal', minute: '10', match_date: '2026-08-16', opponent: 'Rival',
   opponent_crest: '/crest.png', result: '1-1', competition_key: 'copa_rfef',
@@ -58,6 +74,7 @@ const calls = [];
 const responses = {
   get_my_player_analysis_overview: [overviewRow],
   get_my_player_analysis_live_stats: [liveRow],
+  get_my_player_analysis_match_stats: matchStatsRows,
   get_my_player_production_actions: productionRows,
   get_my_player_match_history: historyRows,
 };
@@ -69,9 +86,10 @@ const client = {
 };
 
 const filters = { competitionScope: 'all', venue: 'home', liveWindow: 'last_3_event_matches' };
-const [overview, live, production, history] = await Promise.all([
+const [overview, live, matchStats, production, history] = await Promise.all([
   loadPlayerAnalysisOverview(client, filters),
   loadPlayerAnalysisLiveStats(client, filters),
+  getMyPlayerAnalysisMatchStats(client, filters),
   loadPlayerProductionActions(client, filters),
   loadPlayerMatchHistoryPage(client, filters, { limit: 25, offset: 25 }),
 ]);
@@ -79,9 +97,10 @@ const [overview, live, production, history] = await Promise.all([
 assert.deepEqual(calls, [
   ['get_my_player_analysis_overview', { p_competition_scope: 'all', p_venue: 'home' }],
   ['get_my_player_analysis_live_stats', { p_competition_scope: 'all', p_venue: 'home', p_window: 'last_3_event_matches' }],
+  ['get_my_player_analysis_match_stats', { p_competition_scope: 'all', p_venue: 'home', p_window: 'last_3_event_matches' }],
   ['get_my_player_production_actions', { p_competition_scope: 'all', p_venue: 'home' }],
   ['get_my_player_match_history', { p_competition_scope: 'all', p_venue: 'home', p_limit: 25, p_offset: 25 }],
-], 'Las cuatro RPC reciben únicamente filtros deportivos y paginación.');
+], 'Las cinco RPC reciben únicamente filtros deportivos y paginación.');
 for (const [, payload] of calls) {
   assert.equal(Object.keys(payload).some((key) => /jugador|user|membership|player.*id/i.test(key)), false);
 }
@@ -91,6 +110,19 @@ assert.equal(overview.minutesPerMatch, 66);
 assert.equal(overview.goalsCoverage, 'PARTIAL');
 assert.equal(live.matchesWithEvents, 3);
 assert.equal(live.shotAccuracyPercentage, 62.5);
+assert.deepEqual(matchStats, [{
+  matchId: '11111111-1111-4111-8111-111111111111', matchDate: '2026-08-16',
+  opponent: 'Rival', opponentCrest: 'https://assets.example/rival.png',
+  competitionKey: 'league', competitionName: 'Liga', isHome: true, minutes: 74,
+  eventCount: 12, goals: 1, shots: 4, shotsOnTarget: 2, shotAccuracyPercentage: 50,
+  crosses: 3, turnovers: 5, steals: 6, foulsCommitted: 2, foulsReceived: 4,
+}, {
+  matchId: '22222222-2222-4222-8222-222222222222', matchDate: '2026-08-23',
+  opponent: 'Otro rival', opponentCrest: '', competitionKey: 'league',
+  competitionName: 'Liga', isHome: false, minutes: null, eventCount: 1,
+  goals: 0, shots: 0, shotsOnTarget: 0, shotAccuracyPercentage: null,
+  crosses: 0, turnovers: 0, steals: 0, foulsCommitted: 0, foulsReceived: 0,
+}], 'El DTO por partido conserva identidad, orden backend, métricas cero y nulls independientes.');
 assert.equal(production.length, 2);
 assert.equal(production[0].counterpartName, 'Compañero');
 assert.equal(production[0].videoAvailable, true);
@@ -123,6 +155,16 @@ assert.equal(
   null,
   'Fuera conserva minutos desconocidos/no aplicables para que la UI muestre un guion.',
 );
+assert.deepEqual(
+  normalizePlayerAnalysisMatchStats({ match_id: 'match', is_home: 'true', minutes: -1, shot_accuracy_percentage: '' }),
+  {
+    matchId: 'match', matchDate: '', opponent: '', opponentCrest: '', competitionKey: '',
+    competitionName: '', isHome: null, minutes: null, eventCount: 0, goals: 0, shots: 0,
+    shotsOnTarget: 0, shotAccuracyPercentage: null, crosses: 0, turnovers: 0,
+    steals: 0, foulsCommitted: 0, foulsReceived: 0,
+  },
+  'La normalización no inventa localía, minutos ni precisión ausentes.',
+);
 
 const unique = appendUniquePlayerHistory(history.rows, [...history.rows, { ...history.rows[0], opponent: 'Nuevo rival' }]);
 assert.equal(unique.length, 2, 'La paginación no duplica filas ya cargadas.');
@@ -136,6 +178,10 @@ await assert.rejects(
 await assert.rejects(
   () => loadPlayerAnalysisLiveStats({ rpc: async () => ({ data: null, error: { message: 'offline' } }) }),
   (error) => error instanceof PlayerAnalysisLoadError && error.domain === 'live' && error.kind === 'network',
+);
+await assert.rejects(
+  () => getMyPlayerAnalysisMatchStats({ rpc: async () => ({ data: null, error: { message: 'offline' } }) }),
+  (error) => error instanceof PlayerAnalysisLoadError && error.domain === 'match_stats' && error.kind === 'network',
 );
 await assert.rejects(
   () => loadPlayerProductionActions({ rpc: async () => { throw Object.assign(new Error('JWT expired'), { status: 401 }); } }),

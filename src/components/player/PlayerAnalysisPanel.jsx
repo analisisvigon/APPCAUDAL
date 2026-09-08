@@ -4,6 +4,7 @@ import {
   PLAYER_ANALYSIS_DEFAULT_FILTERS,
   PLAYER_ANALYSIS_PAGE_SIZE,
   appendUniquePlayerHistory,
+  getMyPlayerAnalysisMatchStats,
   loadPlayerAnalysisLiveStats,
   loadPlayerAnalysisOverview,
   loadPlayerCompetitionMinutesDistribution,
@@ -28,6 +29,7 @@ import {
   PlayerAnalysisSectionHeader,
 } from './PlayerAnalysisDomainState';
 import PlayerAnalysisHistory from './PlayerAnalysisHistory';
+import PlayerAnalysisMatchEvolution from './PlayerAnalysisMatchEvolution';
 import PlayerAnalysisProduction from './PlayerAnalysisProduction';
 
 const initialDomainState = { status: 'loading', data: null, errorKind: '' };
@@ -431,6 +433,10 @@ export default function PlayerAnalysisPanel({ client }) {
     () => loadPlayerAnalysisLiveStats(client, { competitionScope, venue, liveWindow }),
     [client, competitionScope, venue, liveWindow],
   );
+  const [matchStatsState, retryMatchStats] = usePlayerAnalysisDomain(
+    () => getMyPlayerAnalysisMatchStats(client, { competitionScope, venue, liveWindow }),
+    [client, competitionScope, venue, liveWindow],
+  );
   const [productionState, retryProduction] = usePlayerAnalysisDomain(
     () => loadPlayerProductionActions(client, { competitionScope, venue }),
     [client, competitionScope, venue],
@@ -464,6 +470,7 @@ export default function PlayerAnalysisPanel({ client }) {
         onRetryCompetitionMinutes={retryCompetitionMinutes}
       />
       <LiveSection state={liveState} liveWindow={liveWindow} onWindowChange={(value) => updateFilter('liveWindow', value)} onRetry={retryLive} />
+      <PlayerAnalysisMatchEvolution state={matchStatsState} onRetry={retryMatchStats} />
       <PlayerAnalysisProduction state={productionState} onRetry={retryProduction} />
       <PlayerAnalysisHistory
         state={historyState}
