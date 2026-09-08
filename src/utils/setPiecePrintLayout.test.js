@@ -233,6 +233,8 @@ assert.ok(canvas.includes("strokeDasharray={dashed ? '2.2 1.8' : ''}"), 'el patr
 assert.match(canvas, /useId\(\)[\s\S]*arrowMarkerId[\s\S]*arrowStartMarkerId/, 'cada SVG obtiene IDs de marker únicos y estables durante su render');
 assert.doesNotMatch(canvas, /<marker id="diagram-arrow"/, 'varios diagramas no repiten un ID global de punta');
 assert.match(canvas, /markerEnd=\{`url\(#\$\{arrowMarkerId\}\)`\}/, 'cada trayectoria referencia el marker de su propio SVG');
+assert.match(canvas, /overflow=\{printOptimized \? 'visible' : undefined\}/, 'el SVG impreso deja visible el radio de participantes situados junto al borde');
+assert.match(css, /\.set-piece-print-pitch \{[\s\S]*overflow: visible;/, 'el wrapper del campo no vuelve a recortar el excedente visual del marcador');
 assert.match(css, /\.set-piece-pro-plays\[data-count="2"\] \{[\s\S]*row-gap: 1pt;[\s\S]*background: #111827;/, 'el separador de dos jugadas ocupa un hueco físico fuera de ambos campos');
 assert.doesNotMatch(css, /\.set-piece-print-play \+ \.set-piece-print-play \{[\s\S]*border-top:/, 'la segunda jugada no pinta un borde superpuesto a la primera');
 assert.ok(sheet.includes('preparedForPrint') && sheet.includes('data-render-model="set-piece-print"'), 'preview y PDF comparten elementos preparados y el mismo renderer táctico');
@@ -324,6 +326,40 @@ assert.deepEqual(
   'H: dos jugadas de una misma página conservan sus flechas rectas y curvas',
 );
 assert.deepEqual(getSetPieceGeometrySnapshot(controlModel.elements), getSetPieceGeometrySnapshot(controlDiagram.elements), 'J: el modelo de QA no modifica geometría táctica');
+const boundaryCoordinates = [
+  { x: 1, y: 1 }, { x: 50, y: 1 }, { x: 99, y: 1 },
+  { x: 1, y: 36 }, { x: 99, y: 36 },
+  { x: 1, y: 71 }, { x: 50, y: 71 }, { x: 99, y: 71 },
+];
+const boundaryElements = boundaryCoordinates.map((position, index) => ({
+  id: `boundary-${index + 1}`,
+  type: 'player',
+  ...position,
+  label: String(index + 1),
+  player_id: `boundary-player-${index + 1}`,
+  roles: ['Vigilancia'],
+  note: 'Control de borde',
+}));
+const boundaryPlayers = boundaryElements.map((element, index) => ({
+  id: element.player_id,
+  number: element.label,
+  shirt_name: index === 5 ? 'BORJA' : index === 7 ? 'I. DELGADO' : `BORDE ${index + 1}`,
+}));
+const boundaryDiagram = {
+  id: 'boundary-print-control',
+  orden: 1,
+  tipo: 'corner_ofensivo',
+  titulo: 'Acumulación',
+  elements: setSetPieceTacticalMeta(boundaryElements, controlMeta),
+};
+const boundaryModel = buildSetPiecePrintPlayModel(boundaryDiagram, boundaryPlayers, 1);
+assert.deepEqual(
+  boundaryModel.elements.filter((element) => element.type === 'player').map(({ x, y }) => ({ x, y })),
+  boundaryCoordinates,
+  'el renderer conserva sin desplazar las coordenadas de centros en los ocho límites',
+);
+assert.equal(boundaryModel.elements.find((element) => element.player_id === 'boundary-player-6')?.printName, 'BORJA', 'el caso inferior real conserva BORJA');
+assert.equal(boundaryModel.elements.find((element) => element.player_id === 'boundary-player-8')?.printName, 'I. DELGADO', 'el caso inferior real conserva I. DELGADO');
 const verboseControlElements = controlElements.map((element) => element.type === 'player' && element.player_id ? {
   ...element,
   note: 'Temporizar el movimiento, atacar el espacio asignado y asegurar la segunda acción sin abandonar la vigilancia posterior.',

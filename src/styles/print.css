@@ -1701,7 +1701,7 @@
   min-height: 0;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  overflow: visible;
   border: 0.8pt solid #111827;
   padding: 0.8mm;
 }

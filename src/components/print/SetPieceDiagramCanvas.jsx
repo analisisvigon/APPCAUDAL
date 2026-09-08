@@ -295,6 +295,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
       className={`set-piece-diagram-canvas ${readOnly ? 'set-piece-diagram-preview-canvas' : 'set-piece-diagram-editor-canvas'}`}
       data-render-mode={tokenMode}
       viewBox="0 0 100 72"
+      overflow={printOptimized ? 'visible' : undefined}
       role="img"
       aria-label={readOnly ? 'Diagrama táctico ABP' : 'Editor táctico ABP'}
       style={{ touchAction: readOnly ? 'auto' : 'none' }}

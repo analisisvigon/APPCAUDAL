@@ -114,6 +114,52 @@ const createDetailedAbp = (tipo, orden, indicationCount, longCopy = false) => {
 
 const detailedAbpSheet = (key, diagrams) => <SetPieceDiagramPrintSheet key={key} match={match} title="QA dossier ABP" diagrams={diagrams} players={players} />;
 
+const boundaryPlayers = [
+  { id: 'boundary-borja', name: 'Borja', shirt_name: 'BORJA', number: 19 },
+  { id: 'boundary-delgado', name: 'Iago Delgado', shirt_name: 'I. DELGADO', number: 22 },
+  ...Array.from({ length: 8 }, (_, index) => ({
+    id: `boundary-player-${index + 1}`,
+    name: `BORDE ${index + 1}`,
+    shirt_name: `B${index + 1}`,
+    number: index + 1,
+  })),
+];
+const boundaryPositions = [
+  { x: 35, y: 71 }, { x: 65, y: 71 },
+  { x: 1, y: 36 }, { x: 99, y: 36 },
+  { x: 1, y: 1 }, { x: 99, y: 1 },
+  { x: 1, y: 71 }, { x: 99, y: 71 },
+  { x: 50, y: 1 }, { x: 50, y: 71 },
+];
+const createBoundaryAbp = (order) => ({
+  id: `boundary-abp-${order}`,
+  tipo: order === 1 ? 'corner_ofensivo' : 'falta_lateral_ofensiva',
+  orden: order,
+  titulo: order === 1 ? 'Acumulación' : 'Control de bordes',
+  consigna: 'Conservar posiciones y comprobar los límites visuales del terreno.',
+  elements: setSetPieceTacticalMeta([
+    ...boundaryPositions.map((position, index) => ({
+      id: `boundary-element-${order}-${index + 1}`,
+      type: 'player',
+      ...position,
+      label: String(boundaryPlayers[index].number),
+      player_id: boundaryPlayers[index].id,
+      roles: index < 2 ? ['Vigilancia'] : ['Control'],
+      note: index < 2 ? 'Vigilancia tras pérdida.' : 'Control visual del borde.',
+    })),
+    { id: `boundary-ball-${order}`, type: 'ball', x: 5, y: 68 },
+    { id: `boundary-arrow-${order}`, type: 'arrow', x1: 18, y1: 58, x2: 45, y2: 24 },
+    { id: `boundary-curve-${order}`, type: 'curved_arrow', x1: 55, y1: 58, controlX: 78, controlY: 48, x2: 82, y2: 22 },
+  ], {
+    signal: 'CONTROL BORDE',
+    objective: 'Marcadores completos',
+    libraryZone: 'Segundo palo',
+    deliveryType: 'closed',
+    displayLayers: { dorsals: true, abbreviations: true, roles: false, chronology: false, zones: true, texts: true },
+  }),
+});
+const boundaryAbpSheet = <SetPieceDiagramPrintSheet key="abp-boundary" match={match} title="QA dossier ABP · bordes" diagrams={[createBoundaryAbp(1), createBoundaryAbp(2)]} players={boundaryPlayers} />;
+
 const lineup = <LineupPrintSheet key="lineup" match={match} starters={players.slice(0, 11)} bench={players.slice(11)} coordinates={coordinates} system="4-4-2" kit="home" />;
 const keys = <DossierTacticalSheet key="keys" match={match} pageId="keys" dossierType="Dossier QA" keys={['Presión coordinada', 'Atacar espacios']} pageNumber={1} totalPages={7} />;
 const takersSheet = <SetPieceTakersPrintSheet key="takers" match={match} sections={takerSections} takers={takers} players={players} />;
@@ -137,6 +183,7 @@ const buildCaseSheets = () => {
   if (caseId === 'ABP-E') return [detailedAbpSheet('abp-e', [createDetailedAbp('corner_ofensivo', 1, 6), createDetailedAbp('corner_defensivo', 2, 6)])];
   if (caseId === 'ABP-G') return [detailedAbpSheet('abp-g', [createDetailedAbp('corner_ofensivo', 1, 11, true)])];
   if (caseId === 'ABP-H') return [detailedAbpSheet('abp-h', [createDetailedAbp('corner_ofensivo', 1, 10, true), createDetailedAbp('corner_defensivo', 2, 11, true)])];
+  if (caseId === 'ABP-EDGE') return [boundaryAbpSheet];
   if (caseId === 'ABP-J') return [lineup, takersSheet, detailedAbpSheet('abp-j-offensive', [createDetailedAbp('corner_ofensivo', 1, 4)]), detailedAbpSheet('abp-j-defensive', [createDetailedAbp('corner_defensivo', 1, 10)])];
   return Array.from({ length: count }, (_, index) => (
     <DossierTacticalSheet key={index} match={match} pageId="keys" dossierType="Dossier QA" keys={[`Contenido real ${index + 1}`]} pageNumber={index + 1} totalPages={count} />
