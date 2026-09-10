@@ -363,7 +363,7 @@ begin
     transformed_source := pg_catalog.regexp_replace(
       original_source,
       legacy_gate_pattern,
-      'where true',
+      'true',
       'g'
     );
     if pg_catalog.strpos(transformed_source, 'player_visible') <> 0 then
@@ -849,6 +849,25 @@ begin
         'RPC repair: postcondicion con EXECUTE adicional en %',
         contract.signature;
     end if;
+
+    source := function_row.prosrc;
+    code_source := pg_catalog.regexp_replace(
+      source,
+      $quoted$'(?:''|[^'])*'$quoted$,
+      '__literal__',
+      'g'
+    );
+    code_source := pg_catalog.regexp_replace(
+      code_source, '[/][*].*?[*][/]', ' ', 'gs'
+    );
+    code_source := pg_catalog.regexp_replace(
+      code_source, E'--[^\n\r]*', ' ', 'g'
+    );
+    if code_source ~* '(^|[^a-z0-9_])(where[[:space:]]+where|and[[:space:]]+and|or[[:space:]]+or|case[[:space:]]+case|then[[:space:]]+then)([^a-z0-9_]|$)' then
+      raise exception
+        'RPC repair: SQL final con palabra clave duplicada en %',
+        contract.signature;
+    end if;
   end loop;
 
   foreach target in array array[
@@ -970,6 +989,7 @@ begin
      or structural_call_count <> 3
      or source ~ legacy_matches_pattern
      or pg_catalog.strpos(source, 'player_visible') <> 0
+     or source !~ 'public_timeline[[:space:]]+on[[:space:]]+true[[:space:]]+where[[:space:]]+true[[:space:]]+order[[:space:]]+by[[:space:]]+match_json[[:space:]]*->>[[:space:]]*''date''[[:space:]]+desc[[:space:]]*,[[:space:]]*match_row[.]id'
      or pg_catalog.strpos(source, 'public.current_membership()') = 0
      or pg_catalog.strpos(source, 'membership_role <> ''player''') = 0
      or pg_catalog.strpos(source, 'membership_jugador_id') = 0
@@ -1144,4 +1164,3 @@ end;
 $postconditions$;
 
 commit;
-

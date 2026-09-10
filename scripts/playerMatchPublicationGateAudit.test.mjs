@@ -9,6 +9,7 @@ const allMatchesPatch = fs.readFileSync(new URL('../supabase_club_core_18_player
 const squadRpc = fs.readFileSync(new URL('../supabase_match_squad_lineup_atomic.sql', import.meta.url), 'utf8');
 const availabilityRpc = fs.readFileSync(new URL('../supabase_player_availability.sql', import.meta.url), 'utf8');
 const publicationMigration = fs.readFileSync(new URL('../supabase_player_match_publication_gate.sql', import.meta.url), 'utf8');
+const rollbackRepairMigration = fs.readFileSync(new URL('../supabase_player_rpc_repair_after_rollback.sql', import.meta.url), 'utf8');
 
 const countOccurrences = (source, fragment) => source.split(fragment).length - 1;
 const dollarTags = [...publicationMigration.matchAll(/\$[A-Za-z_][A-Za-z_0-9]*\$|\$\$/g)]
@@ -308,5 +309,95 @@ assert.equal([
   rpcGateAuditPasses(Array.from({ length: 3 }, () => oneMatchGate).join('\n'), matchesRawCall, matchesStructuralCall, 3),
   rpcGateAuditPasses(Array.from({ length: 2 }, () => oneSummaryGate).join('\n'), matchesRawCall, summaryStructuralCall, 2),
 ].every(Boolean), true, 'F: helper correcto y las seis rutas RPC protegidas pasan');
+
+const duplicateSqlKeywords = /\b(?:where\s+where|and\s+and|or\s+or|case\s+case|then\s+then)\b/i;
+const legacyMatchesRpc = sportsRpc.match(
+  /create or replace function public\.get_my_player_matches\(\)[\s\S]*?\n\$function\$;/i,
+)?.[0] || '';
+assert.ok(legacyMatchesRpc, 'falta la definicion legacy de get_my_player_matches');
+assert.match(
+  legacyMatchesRpc.replace(/match_row\.player_visible/g, 'where true'),
+  duplicateSqlKeywords,
+  'la regresion reproduce y detecta el antiguo where where true',
+);
+const repairedMatchesRpc = legacyMatchesRpc
+  .replace(/match_row\.player_visible/g, 'true')
+  .replaceAll(
+    legacyMatchesCondition,
+    "public.is_player_match_publishable(match_json ->> 'status', match_json ->> 'date')",
+  );
+assert.doesNotMatch(repairedMatchesRpc, duplicateSqlKeywords, 'la definicion final de Partidos no duplica palabras clave SQL');
+assert.match(
+  repairedMatchesRpc,
+  /\) public_timeline on true\s+where true\s+order by match_json ->> 'date' desc, match_row\.id;/,
+  'get_my_player_matches termina con una clausula WHERE valida',
+);
+assert.doesNotMatch(repairedMatchesRpc, /player_visible/, 'Partidos final no conserva player_visible');
+assert.equal(
+  countOccurrences(repairedMatchesRpc, "public.is_player_match_publishable(match_json ->> 'status', match_json ->> 'date')"),
+  3,
+  'Partidos final protege ambos marcadores y timeline con el helper canonico',
+);
+
+const legacyAnalysisNames = [
+  'get_my_player_analysis_overview',
+  'get_my_player_analysis_live_stats',
+  'get_my_player_production_actions',
+  'get_my_player_match_history',
+];
+const repairedAnalysisRpcs = legacyAnalysisNames.map((name) => {
+  const definition = analysisRpc.match(
+    new RegExp(`create or replace function public\\.${name}\\([\\s\\S]*?\\n\\$function\\$;`, 'i'),
+  )?.[0] || '';
+  assert.ok(definition, `falta la definicion legacy de ${name}`);
+  return migrateAnalysisBody(definition);
+});
+
+const guardedSummaryStats = `from public.partido_estadisticas_jugador stats
+    join public.partidos match_row on match_row.id = stats.partido_id
+    cross join lateral (select pg_catalog.to_jsonb(match_row) as match_json) serialized
+    where public.is_player_match_publishable(
+      match_json ->> 'status', match_json ->> 'date'
+    )
+      and stats.jugador_id = own_jugador_id`;
+const guardedSummaryGoals = `from public.partido_eventos_gol goal
+    join public.partidos match_row on match_row.id = goal.partido_id
+    cross join lateral (select pg_catalog.to_jsonb(match_row) as match_json) serialized
+    where public.is_player_match_publishable(
+      match_json ->> 'status', match_json ->> 'date'
+    )`;
+const repairedSummaryRpc = legacySummaryRpc
+  .replace(
+    'from public.partido_estadisticas_jugador stats\n    where stats.jugador_id = own_jugador_id',
+    guardedSummaryStats,
+  )
+  .replace('from public.partido_eventos_gol goal', guardedSummaryGoals);
+
+for (const [index, definition] of [repairedMatchesRpc, ...repairedAnalysisRpcs, repairedSummaryRpc].entries()) {
+  assert.doesNotMatch(definition, duplicateSqlKeywords, `RPC final ${index + 1} sin palabras clave SQL duplicadas`);
+  assert.doesNotMatch(definition, /(?:match_row\.player_visible|serialized\.payload\s*->>\s*'player_visible')/, `RPC final ${index + 1} sin player_visible`);
+}
+
+const rollbackRemoveGateBlock = rollbackRepairMigration.match(
+  /do \$remove_player_visible_gate\$[\s\S]*?\$remove_player_visible_gate\$;/,
+)?.[0] || '';
+assert.ok(rollbackRemoveGateBlock, 'falta el generador que retira player_visible');
+assert.match(rollbackRemoveGateBlock, /legacy_gate_pattern constant text :=\s*'match_row\[\.\]player_visible'/);
+assert.match(
+  rollbackRemoveGateBlock,
+  /regexp_replace\(\s*original_source,\s*legacy_gate_pattern,\s*'true',\s*'g'\s*\)/,
+  'el reemplazo sustituye solo el predicado y no introduce otro WHERE',
+);
+assert.doesNotMatch(
+  rollbackRemoveGateBlock,
+  /legacy_gate_pattern,\s*'where true'/,
+  'regresion: queda prohibido el reemplazo que generaba where where true',
+);
+for (const duplicated of ['where', 'and', 'or', 'case', 'then']) {
+  assert.ok(
+    rollbackRepairMigration.includes(`${duplicated}[[:space:]]+${duplicated}`),
+    `la migracion audita ${duplicated} ${duplicated} en las seis definiciones finales`,
+  );
+}
 
 console.log('player match publication date gate and fail-closed RPC audits A-J passed');
