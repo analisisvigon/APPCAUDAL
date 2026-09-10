@@ -27,9 +27,12 @@ const formatLongDate = (value) => {
 
 const formatMetricValue = (value, decimals = 1) => {
   if (value === null || value === undefined) return '—';
-  return Number(value).toLocaleString('es-ES', {
-    minimumFractionDigits: Number.isInteger(value) ? 0 : 1,
-    maximumFractionDigits: decimals,
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '—';
+  const maximumFractionDigits = Number.isInteger(decimals) && decimals >= 0 ? decimals : 1;
+  return number.toLocaleString('es-ES', {
+    minimumFractionDigits: Number.isInteger(number) ? 0 : Math.min(1, maximumFractionDigits),
+    maximumFractionDigits,
   });
 };
 
