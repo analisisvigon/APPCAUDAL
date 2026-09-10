@@ -76,7 +76,7 @@ begin
 
   perform pg_temp.add_physio_check(
     'SCHEMA_exact_columns',
-    (select pg_catalog.array_agg(column_row.column_name order by column_row.ordinal_position)
+    (select pg_catalog.array_agg(column_row.column_name::text order by column_row.ordinal_position)
      from information_schema.columns column_row
      where column_row.table_schema = 'public' and column_row.table_name = 'physio_treatments')
     = array[
