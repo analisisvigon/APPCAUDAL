@@ -230,7 +230,12 @@ import { loadOwnCaptainPriorities, saveOwnCaptainPriorities } from './utils/capt
 import { getCaptainResolutionLabel, resolveMatchCaptain } from './utils/matchCaptain';
 import { formatStatsPitchPlayerName, resolveStatsVisualIdentity } from './utils/statsVisualIdentity';
 import { sortStatsIndividualPlayers } from './utils/statsIndividualOrder';
-import { resolveStatsWorkingMinutes } from './utils/statsWorkingMinutes';
+import {
+  buildCompletedStatsMinutesUpdates,
+  getStatsMatchDurationMinutes,
+  isStatsMatchCompleted,
+  resolveStatsWorkingMinutes,
+} from './utils/statsWorkingMinutes';
 import {
   calculateStatsCallupCounts,
   getStatsCallupPositionGroup,
@@ -2094,17 +2099,7 @@ const getSystemBeforeEvent = ({ initialSystem = DEFAULT_OWN_FORMATION, systemEve
   }, initialSystem || DEFAULT_OWN_FORMATION);
 };
 
-const getMatchDurationMinutes = (match = {}) => {
-  const candidates = [
-    match.duration,
-    match.matchDuration,
-    match.officialDuration,
-    match.minutes,
-    ...Object.values(safeObject(match.statsPlayerData)).map((row) => row.minutes),
-  ];
-  const numeric = candidates.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0);
-  return Math.max(90, ...numeric, 90);
-};
+const getMatchDurationMinutes = getStatsMatchDurationMinutes;
 
 const emptyToNull = (value) => {
   if (value === null || value === undefined) return null;
@@ -16033,7 +16028,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const getStatsReplacementInfo = (starterName) => {
     const stats = getStatsPlayerData(starterName);
     const minutes = Number(stats.minutes || 0);
-    if (stats.role !== 'Titular' || minutes <= 0 || minutes >= 90 || !stats.replacementName) return null;
+    const matchDuration = getMatchDurationMinutes(selectedMatch);
+    if (stats.role !== 'Titular' || minutes <= 0 || minutes >= matchDuration || !stats.replacementName) return null;
     const replacementStored = selectedMatch?.statsPlayerData?.[stats.replacementName] || {};
     const identity = resolveStatsVisualIdentity({
       playerId: replacementStored.jugadorId
@@ -16049,26 +16045,28 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       replacementDisplayName: identity.displayName,
       replacementPitchName: formatStatsPitchPlayerName(identity.displayName),
       minute: minutes,
-      substituteMinutes: 90 - minutes,
+      substituteMinutes: matchDuration - minutes,
     };
   };
 
   const getStatsSubstituteMinutes = (playerName) => {
+    const matchDuration = getMatchDurationMinutes(selectedMatch);
     const starter = getStatsCalledPlayers().find((calledPlayer) => {
       const stats = getStatsPlayerData(calledPlayer.name);
       const minutes = Number(stats.minutes || 0);
-      return stats.role === 'Titular' && minutes > 0 && minutes < 90 && stats.replacementName === playerName;
+      return stats.role === 'Titular' && minutes > 0 && minutes < matchDuration && stats.replacementName === playerName;
     });
     if (!starter) return 0;
-    return 90 - Number(getStatsPlayerData(starter.name).minutes || 0);
+    return matchDuration - Number(getStatsPlayerData(starter.name).minutes || 0);
   };
 
-  const getStatsSubstitutionEvents = () =>
-    getStatsCalledPlayers()
+  const getStatsSubstitutionEvents = () => {
+    const matchDuration = getMatchDurationMinutes(selectedMatch);
+    return getStatsCalledPlayers()
       .map((player) => {
         const stats = getStatsPlayerData(player.name);
         const minute = Number(stats.minutes || 0);
-        if (stats.role !== 'Titular' || !stats.replacementName || minute <= 0 || minute >= 90) return null;
+        if (stats.role !== 'Titular' || !stats.replacementName || minute <= 0 || minute >= matchDuration) return null;
         return {
           minute,
           outPlayer: player.name,
@@ -16079,6 +16077,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       })
       .filter(Boolean)
       .sort((a, b) => a.minute - b.minute);
+  };
 
   const getStatsPlayerVisualEvents = (playerName) => {
     const stats = getStatsPlayerData(playerName);
@@ -16284,6 +16283,29 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   };
 
   const getStatsSquadRowsByStatus = (status) => getStatsSquadRows().filter((row) => row.status === status);
+
+  const persistCompletedMatchMinutes = async (match, { forceCompleted = false } = {}) => {
+    if (!match?.id) return [];
+    const updates = buildCompletedStatsMinutesUpdates({
+      match,
+      lineup: safeArray(match.statsLineup),
+      statsPlayerData: safeObject(match.statsPlayerData),
+      matchCompleted: forceCompleted,
+    });
+    for (const update of updates) {
+      const { data, error: updateError } = await supabase
+        .from('partido_estadisticas_jugador')
+        .update({ minutes: String(update.minutes) })
+        .eq('partido_id', match.id)
+        .eq('player_name', update.playerName)
+        .select('player_name');
+      if (updateError) throw updateError;
+      if ((data || []).length !== 1) {
+        throw new Error(`No se pudo confirmar la fila de minutos de ${update.playerName}.`);
+      }
+    }
+    return updates;
+  };
 
   const persistStatsSquadSnapshot = async ({
     lineup,
@@ -16555,10 +16577,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     if (!selectedMatch) return;
     const current = getStatsPlayerData(playerName);
     const next = { ...current, ...fields };
+    const matchDuration = getMatchDurationMinutes(selectedMatch);
     const createsNewSubstitution = !current.replacementName
       && Boolean(next.replacementName)
       && Number(next.minutes) > 0
-      && Number(next.minutes) < getMatchDurationMinutes(selectedMatch);
+      && Number(next.minutes) < matchDuration;
     const refreshed = await runStatsOperation('rendimiento individual', async () => {
       const player = players.find((item) => item.name === playerName);
       const jugadorId = isUuid(player?.id) ? player.id : null;
@@ -16581,7 +16604,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         console.error('Error guardando rendimiento individual en Supabase:', { playerName, payload, error: statsError });
         throw statsError;
       }
-      if (next.replacementName && replacementMinute > 0 && replacementMinute < 90) {
+      if (next.replacementName && replacementMinute > 0 && replacementMinute < matchDuration) {
         const replacementPlayer = players.find((item) => item.name === next.replacementName);
         const replacementCurrent = getStatsPlayerData(next.replacementName);
         const replacementPayload = {
@@ -16589,7 +16612,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
           jugador_id: isUuid(replacementPlayer?.id) ? replacementPlayer.id : null,
           player_name: next.replacementName,
           role: 'Suplente',
-          minutes: String(90 - replacementMinute),
+          minutes: String(matchDuration - replacementMinute),
           yellow: Boolean(replacementCurrent.yellow),
           yellow_count: Number(replacementCurrent.yellowCount || 0),
           red: Boolean(replacementCurrent.red),
@@ -16887,8 +16910,15 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const finishDelegatedMatch = async () => {
     setDelegatedTimerRunning(false);
     setDelegatedMatchState('FINALIZADO');
-    if (!selectedMatch?.captainPlayerId && selectedMatchCaptainResolution.playerId) {
-      await updateMatchCaptain(selectedMatchCaptainResolution.playerId);
+    try {
+      await persistCompletedMatchMinutes(selectedMatch, { forceCompleted: true });
+      if (!selectedMatch?.captainPlayerId && selectedMatchCaptainResolution.playerId) {
+        await updateMatchCaptain(selectedMatchCaptainResolution.playerId);
+      }
+      await refreshStatsFromSupabase(selectedMatch.id, 'cierre del partido');
+    } catch (finishError) {
+      console.error('Error completando los minutos al cerrar el partido:', finishError);
+      setStatsError(finishError.message || 'No se pudieron completar los minutos del partido.');
     }
   };
 
@@ -19346,9 +19376,10 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                   {statRows.map((player) => {
                     const stats = getStatsPlayerData(player.name);
                     const minutes = Number(stats.minutes || 0);
-                    const canReplace = stats.role === 'Titular' && minutes > 0 && minutes < 90;
+                    const matchDuration = getMatchDurationMinutes(selectedMatch);
+                    const canReplace = stats.role === 'Titular' && minutes > 0 && minutes < matchDuration;
                     const substituteMinutes = stats.role === 'Suplente' ? getStatsSubstituteMinutes(player.name) : 0;
-                    const minutesInput = resolveStatsWorkingMinutes({ role: stats.role, minutes: stats.minutes, substituteMinutes });
+                    const minutesInput = resolveStatsWorkingMinutes({ role: stats.role, minutes: stats.minutes, substituteMinutes, matchDuration });
                     const displayedMinutes = minutesInput.value;
                     const enteredAsSub = substituteMinutes > 0;
                     return (
@@ -19370,7 +19401,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                             {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((rating) => <option key={rating} value={rating}>{rating}</option>)}
                           </select>
                         </td>
-                        <td className="border-t border-white/10 px-2 py-2 text-center"><input type="number" min="0" max="90" value={displayedMinutes} title={minutesInput.isUnconfirmedStarterValue ? '90 inicial de trabajo; entra en el campo para confirmarlo' : undefined} onFocus={() => minutesInput.isUnconfirmedStarterValue && updateStatsPlayerData(player.name, { minutes: String(minutesInput.value), replacementName: '' })} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value, replacementName: Number(event.target.value) >= 90 ? '' : stats.replacementName })} className="w-14 bg-white px-2 py-2 text-center font-black text-slate-950" /></td>
+                        <td className="border-t border-white/10 px-2 py-2 text-center"><input type="number" min="0" max={matchDuration} value={displayedMinutes} title={minutesInput.isUnconfirmedStarterValue ? `${matchDuration} iniciales de trabajo; entra en el campo para confirmarlos` : undefined} onFocus={() => isStatsMatchCompleted(selectedMatch) && minutesInput.isUnconfirmedStarterValue && updateStatsPlayerData(player.name, { minutes: String(minutesInput.value), replacementName: '' })} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value, replacementName: Number(event.target.value) >= matchDuration ? '' : stats.replacementName })} className="w-14 bg-white px-2 py-2 text-center font-black text-slate-950" /></td>
                         <td className="border-t border-white/10 px-2 py-2 text-center text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{enteredAsSub ? 'Entrado' : stats.role}</td>
                         <td className="border-t border-white/10 px-2 py-2 text-center">
                           <select value={stats.replacementName} disabled={!canReplace} onChange={(event) => updateStatsPlayerData(player.name, { replacementName: event.target.value })} className="w-44 bg-white px-2 py-2 text-[11px] font-bold text-slate-950 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500">
@@ -24402,6 +24433,25 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
           setMatchSubmitError('El encuentro se ha guardado, pero no se pudo generar la alineación inicial.');
           return;
         }
+      }
+
+      const sourceMatch = matches.find((match) => String(match.id) === String(savedMatchId));
+      const completedMatch = {
+        ...safeObject(sourceMatch),
+        ...matchFormState,
+        id: savedMatchId,
+      };
+      try {
+        await persistCompletedMatchMinutes(completedMatch, {
+          forceCompleted: payload.home_score !== null
+            && payload.away_score !== null
+            && isMatchPlayedForUi(completedMatch),
+        });
+      } catch (minutesError) {
+        console.error('[COMPLETE_MATCH_MINUTES_ERROR]', minutesError);
+        await loadPartidos();
+        setMatchSubmitError('El encuentro se guardó, pero no se pudieron completar sus minutos. Reintenta el guardado.');
+        return;
       }
 
       await loadPartidos();
@@ -34992,9 +35042,10 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                             {[...getStatsCalledPlayers()].sort((a, b) => (getStatsPlayerData(a.name).role === 'Titular' ? -1 : 1) - (getStatsPlayerData(b.name).role === 'Titular' ? -1 : 1)).map((player) => {
                               const stats = getStatsPlayerData(player.name);
                               const minutes = Number(stats.minutes || 0);
-                              const canReplace = stats.role === 'Titular' && minutes > 0 && minutes < 90;
+                              const matchDuration = getMatchDurationMinutes(selectedMatch);
+                              const canReplace = stats.role === 'Titular' && minutes > 0 && minutes < matchDuration;
                               const substituteMinutes = stats.role === 'Suplente' ? getStatsSubstituteMinutes(player.name) : 0;
-                              const minutesInput = resolveStatsWorkingMinutes({ role: stats.role, minutes: stats.minutes, substituteMinutes });
+                              const minutesInput = resolveStatsWorkingMinutes({ role: stats.role, minutes: stats.minutes, substituteMinutes, matchDuration });
                               const displayedMinutes = minutesInput.value;
                               const enteredAsSub = substituteMinutes > 0;
                               const rowSummary = `${displayPlayerName(player)}: ${displayedMinutes || 0}' · G${stats.goals} A${stats.assists}${stats.yellow ? ` · AM ${stats.yellowCount}` : ''}${stats.red ? ' · RJ' : ''}${stats.injured ? ' · LES' : ''}`;
@@ -35008,7 +35059,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                                   </td>
                                   <td className="border-t border-white/10 px-2 py-2 text-center text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{enteredAsSub ? 'Entrado' : stats.role}</td>
                                   <td className="border-t border-white/10 px-2 py-2 text-center text-[11px] font-semibold text-slate-300">{getStatsPlayedPosition(player.name)}</td>
-                                  <td className="border-t border-white/10 px-2 py-2 text-center"><input type="number" min="0" max="90" value={displayedMinutes} title={minutesInput.isUnconfirmedStarterValue ? '90 inicial de trabajo; entra en el campo para confirmarlo' : undefined} onFocus={() => minutesInput.isUnconfirmedStarterValue && updateStatsPlayerData(player.name, { minutes: String(minutesInput.value), replacementName: '' })} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value, replacementName: Number(event.target.value) >= 90 ? '' : stats.replacementName })} className="w-14 rounded-lg bg-white px-2 py-1.5 text-center font-black text-slate-950" /></td>
+                                  <td className="border-t border-white/10 px-2 py-2 text-center"><input type="number" min="0" max={matchDuration} value={displayedMinutes} title={minutesInput.isUnconfirmedStarterValue ? `${matchDuration} iniciales de trabajo; entra en el campo para confirmarlos` : undefined} onFocus={() => isStatsMatchCompleted(selectedMatch) && minutesInput.isUnconfirmedStarterValue && updateStatsPlayerData(player.name, { minutes: String(minutesInput.value), replacementName: '' })} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value, replacementName: Number(event.target.value) >= matchDuration ? '' : stats.replacementName })} className="w-14 rounded-lg bg-white px-2 py-1.5 text-center font-black text-slate-950" /></td>
                                   <td className="border-t border-white/10 px-2 py-2 text-center">
                                     <select
                                       value={stats.replacementName}
