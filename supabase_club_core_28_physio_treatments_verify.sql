@@ -11,6 +11,12 @@ create temporary table physio_verify_results (
   details text not null
 ) on commit drop;
 
+-- Los checks STAFF se registran mientras el verifier simula el rol SQL
+-- authenticated. El helper permanece SECURITY INVOKER: solo se habilitan el
+-- INSERT temporal y el USAGE de la secuencia identity que ese INSERT necesita.
+grant insert on table pg_temp.physio_verify_results to authenticated;
+grant usage on sequence pg_temp.physio_verify_results_ordinal_seq to authenticated;
+
 create function pg_temp.add_physio_check(p_name text, p_ok boolean, p_details text)
 returns void
 language sql
