@@ -29,8 +29,12 @@ $function$;
 do $verify$
 declare
   club_id_value uuid;
-  actor_membership_id uuid;
   actor_user_id uuid;
+  owner_user_id uuid;
+  viewer_user_id uuid := pg_catalog.gen_random_uuid();
+  player_user_id uuid := pg_catalog.gen_random_uuid();
+  viewer_membership_id uuid;
+  player_membership_id uuid;
   player_id_value uuid;
   player_for_role_test uuid;
   treatment_one uuid;
@@ -39,6 +43,7 @@ declare
   original_created_at timestamptz;
   original_updated_at timestamptz;
   visible_count integer;
+  affected_count integer;
   policy_count integer;
   denied boolean;
   summary_row record;
@@ -50,13 +55,21 @@ begin
   order by club.id
   limit 1;
 
-  select membership.id, membership.user_id
-  into actor_membership_id, actor_user_id
+  select membership.user_id
+  into actor_user_id
   from public.club_memberships membership
   where membership.club_id = club_id_value
     and membership.role in ('owner', 'admin', 'staff')
     and membership.is_active
   order by case membership.role when 'owner' then 1 when 'admin' then 2 else 3 end, membership.id
+  limit 1;
+
+  select membership.user_id into owner_user_id
+  from public.club_memberships membership
+  where membership.club_id = club_id_value
+    and membership.role = 'owner'
+    and membership.is_active
+  order by membership.id
   limit 1;
 
   select player.id into player_id_value
@@ -70,8 +83,9 @@ begin
     (select pg_catalog.count(*) from public.clubs) = 1
       and club_id_value is not null
       and actor_user_id is not null
+      and owner_user_id is not null
       and player_id_value is not null,
-    'exactly one club, one active STAFF actor and one active canonical player'
+    'exactly one club, one active OWNER, one authorized STAFF actor and one active canonical player'
   );
 
   perform pg_temp.add_physio_check(
@@ -316,28 +330,6 @@ begin
 
   execute 'reset role';
 
-  -- VIEWER is exercised reversibly by changing only the selected test actor
-  -- inside a forced-rollback subtransaction.
-  begin
-    perform pg_catalog.set_config('request.jwt.claim.sub', '', true);
-    update public.club_memberships set role = 'viewer' where id = actor_membership_id;
-    perform pg_catalog.set_config('request.jwt.claim.sub', actor_user_id::text, true);
-    execute 'set local role authenticated';
-    select pg_catalog.count(*)::integer into visible_count from public.physio_treatments;
-    denied := false;
-    begin
-      insert into public.physio_treatments (player_id, treatment_date, body_area, reason, treatment_types, case_type, availability_status)
-      values (player_id_value, current_date, 'knee', 'Viewer', array['assessment'], 'new', 'available');
-    exception when insufficient_privilege then denied := true;
-    end;
-    execute 'reset role';
-    if visible_count = 0 and denied then raise sqlstate 'P4821' using message = 'ROLLBACK_VIEWER_TEST'; end if;
-    raise exception 'VIEWER obtained Physio access';
-  exception
-    when sqlstate 'P4821' then perform pg_temp.add_physio_check('ROLE_viewer_denied', true, 'SELECT returns zero and INSERT is denied');
-    when others then execute 'reset role'; get stacked diagnostics error_message = message_text; perform pg_temp.add_physio_check('ROLE_viewer_denied', false, error_message);
-  end;
-
   select player.id into player_for_role_test
   from public.jugadores player
   where player.active_in_squad
@@ -348,13 +340,118 @@ begin
   order by player.id
   limit 1;
 
+  -- Los actores VIEWER y PLAYER son identidades Auth y memberships propias.
+  -- El OWNER las crea por el flujo real; ninguna membership existente cambia
+  -- de role o de jugador_id. Todo desaparece con el ROLLBACK final.
+  perform pg_catalog.set_config('request.jwt.claims', '{}'::jsonb::text, true);
+  perform pg_catalog.set_config('request.jwt.claim.sub', '', true);
+  perform pg_catalog.set_config('request.jwt.claim.role', '', true);
+  execute 'reset role';
+
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at
+  )
+  select
+    account.instance_id,
+    fixture.user_id,
+    'authenticated',
+    'authenticated',
+    pg_catalog.format(
+      'verify28.%s.%s@appcaudal.invalid',
+      fixture.fixture_role,
+      fixture.user_id
+    ),
+    '',
+    pg_catalog.now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{}'::jsonb,
+    pg_catalog.now(),
+    pg_catalog.now()
+  from auth.users account
+  cross join (
+    values
+      (viewer_user_id, 'viewer'::text),
+      (player_user_id, 'player'::text)
+  ) fixture(user_id, fixture_role)
+  where account.id = owner_user_id;
+
+  perform pg_catalog.set_config(
+    'request.jwt.claims',
+    pg_catalog.jsonb_build_object(
+      'sub', owner_user_id, 'role', 'authenticated'
+    )::text,
+    true
+  );
+  perform pg_catalog.set_config('request.jwt.claim.sub', owner_user_id::text, true);
+  perform pg_catalog.set_config('request.jwt.claim.role', 'authenticated', true);
+  execute 'set local role authenticated';
+  insert into public.club_memberships (
+    club_id, user_id, role, jugador_id, is_active
+  ) values (
+    club_id_value, viewer_user_id, 'viewer', null, true
+  ) returning id into viewer_membership_id;
+  if player_for_role_test is not null then
+    insert into public.club_memberships (
+      club_id, user_id, role, jugador_id, is_active
+    ) values (
+      club_id_value, player_user_id, 'player', player_for_role_test, true
+    ) returning id into player_membership_id;
+  end if;
+  execute 'reset role';
+
+  begin
+    perform pg_catalog.set_config(
+      'request.jwt.claims',
+      pg_catalog.jsonb_build_object(
+        'sub', viewer_user_id, 'role', 'authenticated'
+      )::text,
+      true
+    );
+    perform pg_catalog.set_config('request.jwt.claim.sub', viewer_user_id::text, true);
+    perform pg_catalog.set_config('request.jwt.claim.role', 'authenticated', true);
+    execute 'set local role authenticated';
+    select pg_catalog.count(*)::integer into visible_count from public.physio_treatments;
+    denied := false;
+    begin
+      insert into public.physio_treatments (player_id, treatment_date, body_area, reason, treatment_types, case_type, availability_status)
+      values (player_id_value, current_date, 'knee', 'Viewer', array['assessment'], 'new', 'available');
+    exception when insufficient_privilege then denied := true;
+    end;
+    update public.physio_treatments set reason = 'Viewer update' where id = treatment_one;
+    get diagnostics affected_count = row_count;
+    execute 'reset role';
+    if visible_count = 0 and denied and affected_count = 0
+       and viewer_membership_id is not null
+       and exists (
+         select 1 from public.club_memberships membership
+         where membership.club_id = club_id_value
+           and membership.user_id = owner_user_id
+           and membership.role = 'owner'
+           and membership.is_active
+       ) then
+      raise sqlstate 'P4821' using message = 'ROLLBACK_VIEWER_TEST';
+    end if;
+    raise exception 'VIEWER obtained Physio access';
+  exception
+    when sqlstate 'P4821' then perform pg_temp.add_physio_check('ROLE_viewer_denied', true, 'independent VIEWER: SELECT zero, INSERT denied, UPDATE zero; OWNER remains active');
+    when others then execute 'reset role'; get stacked diagnostics error_message = message_text; perform pg_temp.add_physio_check('ROLE_viewer_denied', false, error_message);
+  end;
+
   if player_for_role_test is null then
-    perform pg_temp.add_physio_check('ROLE_player_denied', false, 'no unbound active player available for reversible PLAYER identity test');
+    perform pg_temp.add_physio_check('ROLE_player_denied', false, 'no unbound active player available for transactional PLAYER identity test');
   else
     begin
-      perform pg_catalog.set_config('request.jwt.claim.sub', '', true);
-      update public.club_memberships set role = 'player', jugador_id = player_for_role_test where id = actor_membership_id;
-      perform pg_catalog.set_config('request.jwt.claim.sub', actor_user_id::text, true);
+      perform pg_catalog.set_config(
+        'request.jwt.claims',
+        pg_catalog.jsonb_build_object(
+          'sub', player_user_id, 'role', 'authenticated'
+        )::text,
+        true
+      );
+      perform pg_catalog.set_config('request.jwt.claim.sub', player_user_id::text, true);
+      perform pg_catalog.set_config('request.jwt.claim.role', 'authenticated', true);
       execute 'set local role authenticated';
       select pg_catalog.count(*)::integer into visible_count from public.physio_treatments;
       denied := false;
@@ -363,11 +460,23 @@ begin
         values (player_for_role_test, current_date, 'knee', 'Player', array['assessment'], 'new', 'available');
       exception when insufficient_privilege then denied := true;
       end;
+      update public.physio_treatments set reason = 'Player update' where id = treatment_one;
+      get diagnostics affected_count = row_count;
       execute 'reset role';
-      if visible_count = 0 and denied then raise sqlstate 'P4822' using message = 'ROLLBACK_PLAYER_TEST'; end if;
+      if visible_count = 0 and denied and affected_count = 0
+         and player_membership_id is not null
+         and exists (
+           select 1 from public.club_memberships membership
+           where membership.club_id = club_id_value
+             and membership.user_id = owner_user_id
+             and membership.role = 'owner'
+             and membership.is_active
+         ) then
+        raise sqlstate 'P4822' using message = 'ROLLBACK_PLAYER_TEST';
+      end if;
       raise exception 'PLAYER obtained Physio access';
     exception
-      when sqlstate 'P4822' then perform pg_temp.add_physio_check('ROLE_player_denied', true, 'SELECT returns zero and INSERT is denied');
+      when sqlstate 'P4822' then perform pg_temp.add_physio_check('ROLE_player_denied', true, 'independent PLAYER: SELECT zero, INSERT denied, UPDATE zero; OWNER remains active');
       when others then execute 'reset role'; get stacked diagnostics error_message = message_text; perform pg_temp.add_physio_check('ROLE_player_denied', false, error_message);
     end;
   end if;
