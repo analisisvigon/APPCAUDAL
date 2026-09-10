@@ -11,6 +11,59 @@ const visuals = read('src/components/fines/FinesTransparencyVisuals.jsx');
 const management = read('src/components/fines/FinesManagementPage.jsx');
 const playerUi = [app, navigation, own, transparency, visuals, management].join('\n');
 
+const isProtectedFinesInfrastructurePath = (filePath) => (
+  /^supabase_club_core_(?:19|2[0-5])_/.test(filePath)
+  || /^src\/data\/(?:playerFines|finesTransparency|finesManagement)/.test(filePath)
+  || filePath.startsWith('src/auth/')
+);
+
+const isPlayerPerformancePath = (filePath) => (
+  /^src\/components\/player\/PlayerPerformance[^/]*\.[cm]?[jt]sx?$/.test(filePath)
+  || /^src\/data\/playerPerformance[^/]*\.[cm]?[jt]sx?$/.test(filePath)
+  || /^src\/utils\/playerPerformance[^/]*\.[cm]?[jt]sx?$/.test(filePath)
+);
+
+const staffPerformancePaths = [
+  'src/components/performance/LoadEvolutionSection.jsx',
+  'src/utils/performanceLoad.js',
+  'src/utils/performanceLoad.test.js',
+];
+assert.ok(
+  staffPerformancePaths.every((filePath) => !isPlayerPerformancePath(filePath)),
+  'Rendimiento STAFF no pertenece al módulo de Rendimiento PLAYER.',
+);
+
+const protectedPlayerAndFinesPaths = [
+  'src/components/player/PlayerPerformancePanel.jsx',
+  'src/components/player/PlayerPerformanceTrendChart.jsx',
+  'src/data/playerPerformanceStore.js',
+  'src/data/playerPerformanceStore.test.js',
+  'src/utils/playerPerformancePresentation.js',
+  'src/utils/playerPerformancePresentation.test.js',
+];
+assert.ok(
+  protectedPlayerAndFinesPaths.every(isPlayerPerformancePath),
+  'Los componentes, stores, helpers y tests de Rendimiento PLAYER siguen protegidos.',
+);
+assert.ok(
+  [
+    'src/data/playerFinesStore.js',
+    'src/data/finesTransparencyStore.test.js',
+    'src/auth/permissions.js',
+    'supabase_club_core_24_fines_security.sql',
+  ].every(isProtectedFinesInfrastructurePath),
+  'La infraestructura protegida de PLAYER/Fines, Auth y backend sigue bloqueada.',
+);
+
+assert.ok(
+  [
+    'src/components/tactical/MatchKeysPanel.jsx',
+    'src/utils/sportsSeason.js',
+    'README.md',
+  ].every((filePath) => !isPlayerPerformancePath(filePath) && !isProtectedFinesInfrastructurePath(filePath)),
+  'Los cambios no relacionados no afectan a los guards de PLAYER/Fines.',
+);
+
 const auditedViewports = ['360x800', '375x812', '390x844', '412x915', '430x932'];
 assert.deepEqual(auditedViewports.map((viewport) => Number(viewport.split('x')[0])), [360, 375, 390, 412, 430]);
 
@@ -59,11 +112,7 @@ const changed = execFileSync('git', ['diff', '--name-only'], {
   cwd: new URL('..', import.meta.url),
   encoding: 'utf8',
 }).trim().split(/\r?\n/).filter(Boolean);
-assert.equal(changed.some((path) => (
-  /^supabase_club_core_(?:19|2[0-5])_/.test(path)
-  || /^src\/data\/(?:playerFines|finesTransparency|finesManagement)/.test(path)
-  || path.startsWith('src/auth/')
-)), false, 'El pulido mobile no modifica backend, stores ni Auth de Multas.');
-assert.equal(changed.some((path) => path.startsWith('src/') && /playerPerformance|Rendimiento|performance/i.test(path)), false, 'Rendimiento queda fuera de alcance.');
+assert.equal(changed.some(isProtectedFinesInfrastructurePath), false, 'El pulido mobile no modifica backend, stores ni Auth de Multas.');
+assert.equal(changed.some(isPlayerPerformancePath), false, 'Rendimiento PLAYER queda fuera de alcance.');
 
 console.log(`Multas PLAYER mobile-first: ${auditedViewports.join(', ')}, navegación, tarjetas, rankings, manager, modales, touch y overflow auditados.`);

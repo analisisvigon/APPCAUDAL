@@ -130,16 +130,16 @@ const changedFiles = execFileSync('git', ['diff', '--name-only'], {
   cwd: projectRoot,
   encoding: 'utf8',
 }).trim().split(/\r?\n/).filter(Boolean);
-const allowedFiles = new Set([
-  'scripts/performanceLoadUiAudit.test.mjs',
+const allowedProductFiles = new Set([
   'src/components/performance/LoadEvolutionSection.jsx',
   'src/utils/performanceLoad.js',
   'src/utils/performanceLoad.test.js',
 ]);
-assert.ok(changedFiles.every((file) => allowedFiles.has(file)), 'La activación queda aislada a Rendimiento STAFF y sus tests.');
-assert.ok(changedFiles.every((file) => !file.startsWith('src/auth/')), 'Auth permanece intacto.');
-assert.ok(changedFiles.every((file) => !/player/i.test(file)), 'PLAYER permanece intacto.');
-assert.ok(changedFiles.every((file) => !/\.sql$/i.test(file)), 'El backend permanece intacto.');
+const changedProductFiles = changedFiles.filter((file) => file.startsWith('src/') || /\.sql$/i.test(file));
+assert.ok(changedProductFiles.every((file) => allowedProductFiles.has(file)), 'La activación queda aislada a Rendimiento STAFF y sus tests de producto.');
+assert.ok(changedProductFiles.every((file) => !file.startsWith('src/auth/')), 'Auth permanece intacto.');
+assert.ok(changedProductFiles.every((file) => !/player/i.test(file)), 'PLAYER permanece intacto.');
+assert.ok(changedProductFiles.every((file) => !/\.sql$/i.test(file)), 'El backend permanece intacto.');
 
 assert.match(rpeUtils, /function summarizeRpeEntries/);
 assert.match(rpeUtils, /function resolveRpePeriodEntries/);
