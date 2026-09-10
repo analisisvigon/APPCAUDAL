@@ -160,13 +160,16 @@ import {
   GOAL_ASSISTANCE_STATUS,
   buildRivalGoalTimelinePresentation,
   createGoalAssistantDraftPatch,
+  createGoalOwnGoalDraftPatch,
   createGoalParticipantDbFields,
   getGoalAssistant,
   getGoalAssistantSelectValue,
+  getGoalOwnGoalLabel,
   getPersistedGoalAssistanceStatus,
   getGoalScorer,
   goalParticipantMatchesPlayer,
   hasGoalAssistant,
+  isGoalOwnGoal,
   normalizeGoalParticipants,
   resolveGoalParticipant,
 } from './utils/goalEvents';
@@ -862,6 +865,7 @@ const defaultGoalAnalysisDraft = {
   assistant: '',
   assistantId: null,
   assistantStatus: GOAL_ASSISTANCE_STATUS.pending,
+  isOwnGoal: false,
   phase: DEFAULT_GOAL_PHASE,
   subphase: '',
   shotZone: '',
@@ -2000,6 +2004,7 @@ const normalizeSupabaseGoalEvent = (event) => ({
   type: event.type || '',
   half: event.half || '',
   minute: event.minute || '',
+  isOwnGoal: isGoalOwnGoal(event),
   ...normalizeGoalParticipants(event),
   phase: event.phase || '',
   subphase: event.subphase || '',
@@ -2133,6 +2138,7 @@ const goalEventDbColumns = new Set([
   'video_url',
   'scorer_id',
   'assistant_id',
+  'is_own_goal',
 ]);
 
 const filterGoalEventDbPayload = (payload = {}) =>
@@ -2149,6 +2155,7 @@ const createGoalEventPayload = (partidoId, draft) => {
     scorer_id: participantFields.scorer_id,
     assistant: participantFields.assistant,
     assistant_id: participantFields.assistant_id,
+    is_own_goal: isGoalOwnGoal(draft),
     phase: emptyToNull(draft.phase),
     subphase: emptyToNull(draft.subphase),
     ...goalFormToDb(draft),
@@ -5228,6 +5235,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     ].some((id) => id && String(id) === String(playerId))) : null;
     return player ? displayPlayerName(player) : getStoredPlayerDisplayName(storedName, fallback);
   };
+  const getGoalScorerDisplayName = (event, fallback = 'Jugador') => (
+    isGoalOwnGoal(event)
+      ? getGoalOwnGoalLabel(event)
+      : getReferencedPlayerDisplayName(event?.scorerId, event?.scorer, fallback)
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [session, setSession] = useState(controlledSession ?? null);
@@ -8527,7 +8539,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     const clips = safeArray(match.events).slice(0, 4).map((event) => `${event.minute || '-'}' ${event.typeLabel || event.type}: ${event.description || 'sin descripción'}`);
     return [
       `${formatLitoMatchName(match)} terminó ${getLitoMatchScoreText(match)}.`,
-      goals.length ? `Goles Caudal: ${goals.map((goal) => `${getReferencedPlayerDisplayName(goal.scorerId, goal.scorer, 'sin goleador')}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.` : 'No hay goles a favor registrados para ese partido.',
+      goals.length ? `Goles Caudal: ${goals.map((goal) => `${getGoalScorerDisplayName(goal, 'sin goleador')}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.` : 'No hay goles a favor registrados para ese partido.',
       ...postLines,
       clips.length ? `Clips POST: ${clips.join(' · ')}` : '',
       !postLines.length && !clips.length ? 'No hay todavía un análisis POST guardado.' : '',
@@ -8586,14 +8598,14 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       if (matchesForGoals.length > 1) return litoResponse(`Tengo varios partidos contra ${rivalResult.rival}. ¿Te refieres a ${formatLitoAmbiguousMatches(matchesForGoals)}?`, { source: 'Partidos', context: responseContext });
       const goals = getLitoGoalsForMatch(context, matchesForGoals[0]);
       if (!goals.length) return missing('No hay goles a favor registrados para ese partido.', 'Goles');
-      return litoResponse(`Contra ${formatLitoMatchName(matchesForGoals[0])} marcaron: ${goals.map((goal) => `${getReferencedPlayerDisplayName(goal.scorerId, goal.scorer, 'Sin goleador')}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.`, { source: 'Goles', context: { ...responseContext, lastMatchId: matchesForGoals[0].id, lastPlayerName: goals[0]?.scorer || '' } });
+      return litoResponse(`Contra ${formatLitoMatchName(matchesForGoals[0])} marcaron: ${goals.map((goal) => `${getGoalScorerDisplayName(goal, 'Sin goleador')}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.`, { source: 'Goles', context: { ...responseContext, lastMatchId: matchesForGoals[0].id, lastPlayerName: goals[0]?.scorer || '' } });
     }
 
     if (intent === 'last_match') {
       const match = getLitoLastMatch(context);
       if (!match) return missing('No hay últimos partidos jugados registrados.', 'Partidos');
       const goals = getLitoGoalsForMatch(context, match);
-      return litoResponse(`El último partido fue contra ${formatLitoMatchName(match)} y quedó ${getLitoMatchScoreText(match)}. ${goals.length ? `Goles Caudal: ${goals.map((goal) => getReferencedPlayerDisplayName(goal.scorerId, goal.scorer, '')).filter(Boolean).join(', ')}.` : 'No tengo goleadores a favor registrados.'}`, { source: 'Partidos y goles', context: { ...responseContext, lastMatchId: match.id, lastPlayerName: goals[0]?.scorer || '' } });
+      return litoResponse(`El último partido fue contra ${formatLitoMatchName(match)} y quedó ${getLitoMatchScoreText(match)}. ${goals.length ? `Goles Caudal: ${goals.map((goal) => getGoalScorerDisplayName(goal, '')).filter(Boolean).join(', ')}.` : 'No tengo goleadores a favor registrados.'}`, { source: 'Partidos y goles', context: { ...responseContext, lastMatchId: match.id, lastPlayerName: goals[0]?.scorer || '' } });
     }
 
     if (intent === 'match_result' || intent === 'match_summary') {
@@ -8609,7 +8621,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       if (!match) return missing('No localizo ese partido en los datos guardados.', 'Partidos');
       const goals = getLitoGoalsForMatch(context, match);
       if (!goals.length) return missing(`No hay goles a favor guardados para ${formatLitoMatchName(match)}.`, 'Goles');
-      return litoResponse(`Contra ${formatLitoMatchName(match)} marcaron: ${goals.map((goal) => `${getReferencedPlayerDisplayName(goal.scorerId, goal.scorer, 'Sin goleador')}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.`, { source: 'Goles', context: { ...responseContext, lastMatchId: match.id, lastPlayerName: goals[0]?.scorer || '' } });
+      return litoResponse(`Contra ${formatLitoMatchName(match)} marcaron: ${goals.map((goal) => `${getGoalScorerDisplayName(goal, 'Sin goleador')}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.`, { source: 'Goles', context: { ...responseContext, lastMatchId: match.id, lastPlayerName: goals[0]?.scorer || '' } });
     }
 
     if (intent === 'goal_contact') {
@@ -14982,7 +14994,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       const side = event.type === 'Gol a favor' ? 'gol a favor' : event.type === 'Gol en contra' ? 'gol en contra' : 'gol';
       const author = event.type === 'Gol a favor' && event.scorer ? ` de ${getReferencedPlayerDisplayName(event.scorerId, event.scorer)}` : '';
       const phase = event.attackType || event.phase || event.subphase || '';
-      return [minute, `${side}${author}`, phase ? `mediante ${String(phase).toLowerCase()}` : ''].filter(Boolean).join(', ');
+      const goalDescription = isGoalOwnGoal(event) ? getGoalOwnGoalLabel(event).toLowerCase() : `${side}${author}`;
+      return [minute, goalDescription, phase ? `mediante ${String(phase).toLowerCase()}` : ''].filter(Boolean).join(', ');
     };
     const goalsText = goalEvents.length ? `Goles: ${goalEvents.map(formatGoal).join('; ')}.` : '';
     const initialSystem = selectedMatch.statsSystem || selectedMatch.preCaudalSystem || '';
@@ -15540,6 +15553,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const getStatsMatchEvents = () => {
     const goalEvents = getStatsGoalEvents().map((event) => {
       const isGoalFor = event.type === 'Gol a favor';
+      const ownGoalLabel = getGoalOwnGoalLabel(event).toUpperCase();
       const meta = getMatchEventMeta(isGoalFor ? 'goal_for' : 'goal_against');
       const contextLine = formatGoalContextLine(event);
       return {
@@ -15558,19 +15572,19 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         tone: meta.tone,
         icon: meta.icon,
         badgeIcon: meta.badgeIcon,
-        title: isGoalFor ? getReferencedPlayerDisplayName(event.scorerId, event.scorer, 'Gol Caudal') : selectedMatch?.opponent || 'Gol rival',
-        playerName: isGoalFor ? getReferencedPlayerDisplayName(event.scorerId, event.scorer, 'Sin goleador') : selectedMatch?.opponent || 'Rival',
-        playerId: isGoalFor ? event.scorerId : null,
-        secondaryPlayerName: isGoalFor ? getReferencedPlayerDisplayName(event.assistantId, event.assistant, '') : '',
-        secondaryPlayerId: isGoalFor ? event.assistantId : null,
-        subtitle: isGoalFor && event.assistant ? `Asistencia: ${getReferencedPlayerDisplayName(event.assistantId, event.assistant)}` : '',
+        title: ownGoalLabel || (isGoalFor ? getGoalScorerDisplayName(event, 'Gol Caudal') : selectedMatch?.opponent || 'Gol rival'),
+        playerName: ownGoalLabel || (isGoalFor ? getGoalScorerDisplayName(event, 'Sin goleador') : selectedMatch?.opponent || 'Rival'),
+        playerId: isGoalFor && !ownGoalLabel ? event.scorerId : null,
+        secondaryPlayerName: isGoalFor && !ownGoalLabel ? getReferencedPlayerDisplayName(event.assistantId, event.assistant, '') : '',
+        secondaryPlayerId: isGoalFor && !ownGoalLabel ? event.assistantId : null,
+        subtitle: isGoalFor && !ownGoalLabel && event.assistant ? `Asistencia: ${getReferencedPlayerDisplayName(event.assistantId, event.assistant)}` : '',
         detail: contextLine,
         meta: [
           event.assistZone ? `Genera: ${getZoneLabel(event.assistZone)}` : '',
           event.goalZone ? `Entra: ${getZoneLabel(event.goalZone, { goal: true })}` : '',
         ].filter(Boolean).join(' · '),
         timelineLines: [
-          isGoalFor && event.assistant ? `Asistencia: ${getReferencedPlayerDisplayName(event.assistantId, event.assistant)}` : '',
+          isGoalFor && !ownGoalLabel && event.assistant ? `Asistencia: ${getReferencedPlayerDisplayName(event.assistantId, event.assistant)}` : '',
           contextLine,
         ].filter(Boolean),
       };
@@ -16102,10 +16116,10 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     };
     const caudalGoalText = goals
       .filter((event) => event.type === 'Gol a favor')
-      .map((event) => `${event.minute ? `${event.minute}': ` : ''}${getReferencedPlayerDisplayName(event.scorerId, event.scorer, 'Caudal')} marca tras ${describeGoalContext(event)}${event.assistant ? `. Asistencia de ${getReferencedPlayerDisplayName(event.assistantId, event.assistant)}` : ''}`);
+      .map((event) => `${event.minute ? `${event.minute}': ` : ''}${isGoalOwnGoal(event) ? `${getGoalOwnGoalLabel(event)} tras ${describeGoalContext(event)}` : `${getGoalScorerDisplayName(event, 'Caudal')} marca tras ${describeGoalContext(event)}${event.assistant ? `. Asistencia de ${getReferencedPlayerDisplayName(event.assistantId, event.assistant)}` : ''}`}`);
     const againstGoalText = goals
       .filter((event) => event.type === 'Gol en contra')
-      .map((event) => `${event.minute ? `${event.minute}': ` : ''}gol encajado tras ${describeGoalContext(event)}`);
+      .map((event) => `${event.minute ? `${event.minute}': ` : ''}${isGoalOwnGoal(event) ? getGoalOwnGoalLabel(event).toLowerCase() : 'gol encajado'} tras ${describeGoalContext(event)}`);
     const cardText = getStatsCalledPlayers().flatMap((player) => {
       const stats = getStatsPlayerData(player.name);
       return [
@@ -17287,6 +17301,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       assistant: '',
       assistantId: null,
       assistantStatus: GOAL_ASSISTANCE_STATUS.pending,
+      isOwnGoal: false,
     });
     setIsGoalAnalysisOpen(true);
   };
@@ -17309,6 +17324,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       assistant: goal.assistant || persistedAssistant?.name || '',
       assistantId: goal.assistantId || persistedAssistant?.id || null,
       assistantStatus: getPersistedGoalAssistanceStatus(goal),
+      isOwnGoal: isGoalOwnGoal(goal),
       ...tacticalContext,
       assistZone: goal.assistZone || '',
       shotZone: goal.shotZone || '',
@@ -17348,6 +17364,9 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     const finish = getGoalZonePhrase(draft.shotZone);
     const goalMouthLabel = getZoneLabel(draft.goalZone, { goal: true });
     const goal = goalMouthLabel ? ` Entra ${goalMouthLabel.toLowerCase()}.` : '';
+    if (isGoalOwnGoal(draft)) {
+      return `${minute}${getGoalOwnGoalLabel(draft).toLowerCase()} en una ${action} iniciada ${originSide} y terminada desde ${finish}.${goal}`;
+    }
     if (draft.type === 'Gol en contra') {
       return `${minute}gol rival en una ${action} iniciada ${originSide} y terminada desde ${finish}.${goal}`;
     }
@@ -17368,6 +17387,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
 
   const getGoalDraftChain = (draft = goalAnalysisDraft) => {
     const origin = getGoalZonePhrase(draft.assistZone);
+    if (isGoalOwnGoal(draft)) return [origin, getGoalOwnGoalLabel(draft)].filter(Boolean);
     if (draft.type === 'Gol en contra') return [selectedMatch?.opponent || 'Rival', origin, 'Gol'];
     return [origin, draft.assistant, draft.scorer || 'Goleador'].filter(Boolean);
   };
@@ -17449,6 +17469,13 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       if (field === 'phase') {
         return withAutoSummary(updateGoalPrimaryContext(prev, value));
       }
+      if (field === 'type' && isGoalOwnGoal(prev)) {
+        return withAutoSummary({
+          ...prev,
+          type: value,
+          ...createGoalOwnGoalDraftPatch(true, value),
+        });
+      }
       if (field === 'type' && value === 'Gol en contra') {
         return withAutoSummary({
           ...prev,
@@ -17475,8 +17502,25 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     });
   };
 
+  const toggleGoalOwnGoal = () => {
+    if (statsError) setStatsError('');
+    setGoalAnalysisDraft((previous) => {
+      const next = {
+        ...previous,
+        ...createGoalOwnGoalDraftPatch(!isGoalOwnGoal(previous), previous.type),
+      };
+      return {
+        ...next,
+        summary: !previous.summary || previous.summary === buildGoalDraftSummary(previous)
+          ? buildGoalDraftSummary(next)
+          : next.summary,
+      };
+    });
+  };
+
   const updateGoalParticipantDraft = (role, playerName) => {
     if (statsError) setStatsError('');
+    if (isGoalOwnGoal(goalAnalysisDraft)) return;
     if (role === 'assistant') {
       const availablePlayers = dedupeRivalPlayers([...players, ...getGoalDraftPlayerOptions()]);
       const assistantPatch = createGoalAssistantDraftPatch(playerName, availablePlayers);
@@ -17528,12 +17572,13 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       setStatsError('Indica si el gol fue en primera o segunda parte.');
       return;
     }
-    if (goalAnalysisDraft.type === 'Gol a favor' && !String(goalAnalysisDraft.scorer || '').trim()) {
+    if (goalAnalysisDraft.type === 'Gol a favor' && !isGoalOwnGoal(goalAnalysisDraft) && !String(goalAnalysisDraft.scorer || '').trim()) {
       setStatsError('Selecciona el goleador.');
       return;
     }
     if (
       goalAnalysisDraft.type === 'Gol a favor'
+      && !isGoalOwnGoal(goalAnalysisDraft)
       && goalAnalysisDraft.assistantStatus === GOAL_ASSISTANCE_STATUS.pending
     ) {
       setStatsError('Selecciona un asistente o indica Sin asistencia.');
@@ -20762,6 +20807,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
             match,
             teamSide: side,
             type: event.type || null,
+            isOwnGoal: isGoalOwnGoal(event),
             scorerId: scorer.id,
             scorerName: emptyToNull(scorer.name),
             assistantId: assistant.id,
@@ -20849,7 +20895,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       });
     });
 
-    safeArray(officialGoals).filter((goal) => goal.teamSide === 'for').forEach((goal) => {
+    safeArray(officialGoals).filter((goal) => goal.teamSide === 'for' && !isGoalOwnGoal(goal)).forEach((goal) => {
       const scorer = ensureRow('scorer', goal.scorerId, goal.scorerName);
       if (scorer) {
         scorer.goals += 1;
@@ -20884,7 +20930,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   };
 
   const buildGoalConnectionRows = (officialGoals = []) => {
-    return Object.values(safeArray(officialGoals).filter((goal) => goal.teamSide === 'for' && (goal.scorerName || goal.scorerId) && hasGoalAssistant(goal)).reduce((acc, goal) => {
+    return Object.values(safeArray(officialGoals).filter((goal) => goal.teamSide === 'for' && !isGoalOwnGoal(goal) && (goal.scorerName || goal.scorerId) && hasGoalAssistant(goal)).reduce((acc, goal) => {
       const scorerPlayer = resolveGoalParticipant(goal, 'scorer', safeArray(players));
       const assistantPlayer = resolveGoalParticipant(goal, 'assistant', safeArray(players));
       const scorer = scorerPlayer ? displayPlayerName(scorerPlayer) || scorerPlayer.name : goal.scorerName || goal.scorerId;
@@ -21552,7 +21598,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       const system = source.system || resolveMatchStatsFormation(match, ownDefaultFormation);
       const roles = getFormationRoles(system);
       safeArray(match.statsGoalEvents).forEach((event) => {
-        if (event.type !== 'Gol a favor') return;
+        if (event.type !== 'Gol a favor' || isGoalOwnGoal(event)) return;
         const scorerPlayer = safeArray(players).find((player) => isGoalScoredByPlayer(event, player));
         const assistantPlayer = safeArray(players).find((player) => isGoalAssistedByPlayer(event, player));
         if (scorerPlayer && byPlayer.has(scorerPlayer.name)) byPlayer.get(scorerPlayer.name).goals += 1;
@@ -21771,8 +21817,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       const isStarter = (match.statsLineup || []).includes(playerName);
       const minutes = hasRealValue(stored.minutes) ? Number(stored.minutes || 0) : 0;
       const player = players.find((item) => item.name === playerName) || { name: playerName };
-      const goals = events.filter((event) => event.type === 'Gol a favor' && isGoalScoredByPlayer(event, player)).length;
-      const assists = events.filter((event) => event.type === 'Gol a favor' && isGoalAssistedByPlayer(event, player)).length;
+      const goals = events.filter((event) => event.type === 'Gol a favor' && !isGoalOwnGoal(event) && isGoalScoredByPlayer(event, player)).length;
+      const assists = events.filter((event) => event.type === 'Gol a favor' && !isGoalOwnGoal(event) && isGoalAssistedByPlayer(event, player)).length;
       acc.minutes += minutes;
       acc.starts += isStarter ? 1 : 0;
       acc.goals += goals;
@@ -33169,12 +33215,12 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                           icon: meta.badgeIcon,
                           side: isGoalFor ? 'caudal' : 'rival',
                           label: isGoalFor
-                            ? getReferencedPlayerDisplayName(event.scorerId, event.scorer, 'Caudal')
+                            ? (isGoalOwnGoal(event) ? getGoalOwnGoalLabel(event).toUpperCase() : getGoalScorerDisplayName(event, 'Caudal'))
                             : rivalGoalPresentation.label,
                           typeLabel: meta.label,
-                          assist: isGoalFor
+                          assist: isGoalFor && !isGoalOwnGoal(event)
                             ? getReferencedPlayerDisplayName(event.assistantId, event.assistant, '')
-                            : rivalGoalPresentation.assist,
+                            : rivalGoalPresentation?.assist || '',
                           videoUrl: getMatchCalendarGoalVideoUrl(event, detectMatchVideoProvider),
                         };
                       }),
@@ -34696,7 +34742,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Goles Caudal</p>
                           <div className="mt-3 space-y-2 text-sm text-slate-300">
                             {getStatsGoalEvents().filter((event) => event.type === 'Gol a favor').length ? getStatsGoalEvents().filter((event) => event.type === 'Gol a favor').map((event) => (
-                              <p key={event.id}>{event.minute}' ? {getReferencedPlayerDisplayName(event.scorerId, event.scorer, 'Sin goleador')} · {event.subphase}{event.assistant ? ` · ?? ${getReferencedPlayerDisplayName(event.assistantId, event.assistant)}` : ''}</p>
+                              <p key={event.id}>{event.minute}' ? {getGoalScorerDisplayName(event, 'Sin goleador')} · {event.subphase}{!isGoalOwnGoal(event) && event.assistant ? ` · ?? ${getReferencedPlayerDisplayName(event.assistantId, event.assistant)}` : ''}</p>
                             )) : <p>Sin goles registrados.</p>}
                           </div>
                         </div>
@@ -35316,10 +35362,10 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                       </div>
                       <div>
                         <p className="text-xl font-black text-white">
-                          {summaryEvent ? (isCaudalGoal ? (summaryEvent.scorer || 'Sin goleador registrado') : (selectedMatch.opponent || 'Rival')) : 'Sin goles registrados'}
+                          {summaryEvent ? (isGoalOwnGoal(summaryEvent) ? getGoalOwnGoalLabel(summaryEvent) : (isCaudalGoal ? (summaryEvent.scorer || 'Sin goleador registrado') : (selectedMatch.opponent || 'Rival'))) : 'Sin goles registrados'}
                         </p>
                         <p className="mt-1 text-sm font-semibold text-slate-300">
-                          {summaryEvent ? `Asistencia: ${summaryEvent.assistant || 'Sin asistencia'}` : 'Sin evento previo'}
+                          {summaryEvent ? (isGoalOwnGoal(summaryEvent) ? 'Sin atribución individual' : `Asistencia: ${summaryEvent.assistant || 'Sin asistencia'}`) : 'Sin evento previo'}
                         </p>
                         <div className="mt-3 flex flex-wrap items-center gap-2">
                           {chain.map((item, index) => (
@@ -35355,18 +35401,33 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                       <button key={half} type="button" onClick={() => updateGoalAnalysisDraft('half', half)} className={`rounded-xl px-3 py-2 text-xs font-black uppercase tracking-[0.1em] ${goalAnalysisDraft.half === half ? 'bg-caudal-electric text-slate-950' : 'text-slate-400'}`}>{half}</button>
                     ))}
                   </div>
+                  <div className="rounded-2xl border border-white/10 bg-slate-950/30 p-3 lg:col-span-5">
+                    <button
+                      type="button"
+                      aria-pressed={isGoalOwnGoal(goalAnalysisDraft)}
+                      onClick={toggleGoalOwnGoal}
+                      className={`w-full rounded-xl border px-4 py-3 text-xs font-black uppercase tracking-[0.14em] transition ${isGoalOwnGoal(goalAnalysisDraft) ? 'border-amber-300/60 bg-amber-300 text-slate-950' : 'border-amber-300/25 bg-amber-300/10 text-amber-100 hover:bg-amber-300/20'}`}
+                    >
+                      Gol en propia
+                    </button>
+                    <p className="mt-2 text-xs font-semibold normal-case tracking-normal text-slate-400">
+                      {isGoalOwnGoal(goalAnalysisDraft)
+                        ? getGoalOwnGoalLabel(goalAnalysisDraft)
+                        : 'Actívalo para registrar una propia sin atribuir goleador ni asistencia.'}
+                    </p>
+                  </div>
                   {goalAnalysisDraft.type === 'Gol a favor' ? (
                     <>
                       <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 lg:col-span-2">
                         <span>Goleador</span>
-                        <select value={goalAnalysisDraft.scorer} onChange={(event) => updateGoalParticipantDraft('scorer', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white">
+                        <select disabled={isGoalOwnGoal(goalAnalysisDraft)} value={goalAnalysisDraft.scorer} onChange={(event) => updateGoalParticipantDraft('scorer', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white disabled:cursor-not-allowed disabled:opacity-45">
                           <option value="">Seleccionar goleador</option>
                           {getGoalDraftPlayerOptions().map((player) => <option key={player.id || player.name} value={player.name}>{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</option>)}
                         </select>
                       </label>
                       <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 lg:col-span-2">
                         <span>Asistente</span>
-                        <select value={getGoalAssistantSelectValue(goalAnalysisDraft)} onChange={(event) => updateGoalParticipantDraft('assistant', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white">
+                        <select disabled={isGoalOwnGoal(goalAnalysisDraft)} value={getGoalAssistantSelectValue(goalAnalysisDraft)} onChange={(event) => updateGoalParticipantDraft('assistant', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white disabled:cursor-not-allowed disabled:opacity-45">
                           <option value={GOAL_ASSISTANCE_SELECT_VALUE.pending} disabled>Seleccionar asistente</option>
                           <option value={GOAL_ASSISTANCE_SELECT_VALUE.none}>Sin asistencia</option>
                           {getGoalDraftPlayerOptions().map((player) => <option key={player.id || player.name} value={player.name}>{player.number ? `${player.number} · ` : ''}{displayPlayerName(player) || player.name}</option>)}
@@ -35377,10 +35438,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                     <label className="space-y-1.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 lg:col-span-4">
                       <span>Goleador rival</span>
                       <input
+                        disabled={isGoalOwnGoal(goalAnalysisDraft)}
                         value={goalAnalysisDraft.scorer}
                         onChange={(event) => updateGoalAnalysisDraft('scorer', event.target.value)}
                         placeholder="Opcional si no está identificado"
-                        className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white"
+                        className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm normal-case tracking-normal text-white disabled:cursor-not-allowed disabled:opacity-45"
                       />
                     </label>
                   )}
@@ -35473,13 +35535,15 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Autoresumen del gol</p>
                     <div className="mt-3 grid gap-1.5 text-sm font-semibold text-slate-100">
-                      <p><span className="text-caudal-electric">{goalAnalysisDraft.minute || '--'}'</span> {goalAnalysisDraft.type === 'Gol a favor' ? `${goalAnalysisDraft.scorer || 'Goleador'} marca.` : `${selectedMatch.opponent || 'Rival'} marca.`}</p>
+                      <p><span className="text-caudal-electric">{goalAnalysisDraft.minute || '--'}'</span> {isGoalOwnGoal(goalAnalysisDraft) ? `${getGoalOwnGoalLabel(goalAnalysisDraft)}.` : goalAnalysisDraft.type === 'Gol a favor' ? `${goalAnalysisDraft.scorer || 'Goleador'} marca.` : `${selectedMatch.opponent || 'Rival'} marca.`}</p>
                       <p>{goalAnalysisDraft.phase}. {getGoalZonePhrase(goalAnalysisDraft.assistZone)}. Finalización: {getGoalZonePhrase(goalAnalysisDraft.shotZone)}.</p>
-                      <p>Pie/contacto: {goalAnalysisDraft.contact}. {goalAnalysisDraft.assistant
-                        ? `Asistencia de ${goalAnalysisDraft.assistant}.`
-                        : goalAnalysisDraft.assistantStatus === GOAL_ASSISTANCE_STATUS.none
-                          ? 'Sin asistencia.'
-                          : 'Seleccionar asistente.'}</p>
+                      <p>Pie/contacto: {goalAnalysisDraft.contact}. {isGoalOwnGoal(goalAnalysisDraft)
+                        ? 'Sin atribución individual.'
+                        : goalAnalysisDraft.assistant
+                          ? `Asistencia de ${goalAnalysisDraft.assistant}.`
+                          : goalAnalysisDraft.assistantStatus === GOAL_ASSISTANCE_STATUS.none
+                            ? 'Sin asistencia.'
+                            : 'Seleccionar asistente.'}</p>
                     </div>
                   </div>
                   <span className="shrink-0 rounded-xl bg-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">Editable</span>

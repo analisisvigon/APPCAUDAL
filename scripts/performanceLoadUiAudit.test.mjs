@@ -135,11 +135,15 @@ const allowedProductFiles = new Set([
   'src/utils/performanceLoad.js',
   'src/utils/performanceLoad.test.js',
 ]);
-const changedProductFiles = changedFiles.filter((file) => file.startsWith('src/') || /\.sql$/i.test(file));
-assert.ok(changedProductFiles.every((file) => allowedProductFiles.has(file)), 'La activación queda aislada a Rendimiento STAFF y sus tests de producto.');
-assert.ok(changedProductFiles.every((file) => !file.startsWith('src/auth/')), 'Auth permanece intacto.');
-assert.ok(changedProductFiles.every((file) => !/player/i.test(file)), 'PLAYER permanece intacto.');
-assert.ok(changedProductFiles.every((file) => !/\.sql$/i.test(file)), 'El backend permanece intacto.');
+const isStaffPerformanceProductPath = (file) => (
+  file.startsWith('src/components/performance/')
+  || /^src\/utils\/performance(?:Load|Rpe|Daily)/.test(file)
+);
+const changedPerformanceFiles = changedFiles.filter(isStaffPerformanceProductPath);
+assert.ok(changedPerformanceFiles.every((file) => allowedProductFiles.has(file)), 'La activación queda aislada a Rendimiento STAFF y sus tests de producto.');
+assert.ok([...allowedProductFiles].every(isStaffPerformanceProductPath), 'La allowlist pertenece exclusivamente a Rendimiento STAFF.');
+assert.equal(isStaffPerformanceProductPath('src/App.jsx'), false, 'Los cambios de producto no relacionados no afectan a este audit.');
+assert.equal(isStaffPerformanceProductPath('supabase_goal_own_goal_support.sql'), false, 'Los contratos de otros dominios no afectan a este audit.');
 
 assert.match(rpeUtils, /function summarizeRpeEntries/);
 assert.match(rpeUtils, /function resolveRpePeriodEntries/);

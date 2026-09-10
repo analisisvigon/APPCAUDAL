@@ -22,6 +22,28 @@ export const GOAL_ASSISTANCE_SELECT_VALUE = Object.freeze({
   none: '__no_assistance__',
 });
 
+export const isGoalOwnGoal = (event = {}) => (
+  event.isOwnGoal === true || event.is_own_goal === true
+);
+
+export const getGoalOwnGoalLabel = (event = {}) => {
+  if (!isGoalOwnGoal(event)) return '';
+  return event.type === 'Gol a favor'
+    ? 'Gol en propia del rival'
+    : 'Gol en propia del Caudal';
+};
+
+export const createGoalOwnGoalDraftPatch = (enabled, type = 'Gol a favor') => ({
+  isOwnGoal: Boolean(enabled),
+  scorer: '',
+  scorerId: null,
+  assistant: '',
+  assistantId: null,
+  assistantStatus: enabled || type === 'Gol en contra'
+    ? GOAL_ASSISTANCE_STATUS.none
+    : GOAL_ASSISTANCE_STATUS.pending,
+});
+
 export const getGoalScorer = (event = {}) => ({
   id: firstId(event.scorerId, event.scorer_id, event.goalScorerId, event.goal_scorer_id),
   name: firstText(event.scorerName, event.scorer, event.goalScorer, event.goal_scorer),
@@ -47,6 +69,7 @@ export const getGoalAssistant = (event = {}) => ({
 });
 
 export const hasGoalAssistant = (event = {}) => {
+  if (isGoalOwnGoal(event)) return false;
   const assistant = getGoalAssistant(event);
   return Boolean(assistant.id || assistant.name);
 };
@@ -91,6 +114,7 @@ export const resolveGoalParticipant = (event = {}, role, players = []) => {
 };
 
 export const goalParticipantMatchesPlayer = (event = {}, role, player = {}) => {
+  if (isGoalOwnGoal(event)) return false;
   const participant = role === 'assistant' ? getGoalAssistant(event) : getGoalScorer(event);
   if (participant.id && player?.id && String(participant.id) === String(player.id)) return true;
   const participantName = normalizeIdentityText(participant.name);
@@ -99,6 +123,9 @@ export const goalParticipantMatchesPlayer = (event = {}, role, player = {}) => {
 };
 
 export const normalizeGoalParticipants = (event = {}) => {
+  if (isGoalOwnGoal(event)) {
+    return { scorer: '', scorerId: null, assistant: '', assistantId: null };
+  }
   const scorer = getGoalScorer(event);
   const assistant = getGoalAssistant(event);
   return {
@@ -110,6 +137,9 @@ export const normalizeGoalParticipants = (event = {}) => {
 };
 
 export const createGoalParticipantDbFields = (event = {}) => {
+  if (isGoalOwnGoal(event)) {
+    return { scorer: null, scorer_id: null, assistant: null, assistant_id: null };
+  }
   const scorer = getGoalScorer(event);
   const assistant = getGoalAssistant(event);
   return {
@@ -163,6 +193,9 @@ export const buildRivalGoalTimelinePresentation = (
   } = {}
 ) => {
   const visibleTeamName = String(teamName || '').trim() || 'Rival';
+  if (isGoalOwnGoal(event)) {
+    return { label: getGoalOwnGoalLabel(event).toUpperCase(), assist: '' };
+  }
   const scorerName = getGoalTimelineParticipantName(
     event,
     'scorer',

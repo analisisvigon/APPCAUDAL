@@ -8,7 +8,7 @@ begin
   foreach v_column in array array[
     'id', 'partido_id', 'type', 'half', 'minute', 'scorer', 'assistant',
     'phase', 'subphase', 'shot_zone', 'assist_zone', 'goal_zone',
-    'contact', 'video_url', 'scorer_id', 'assistant_id', 'created_at'
+    'contact', 'video_url', 'scorer_id', 'assistant_id', 'is_own_goal', 'created_at'
   ] loop
     if not exists (
       select 1 from information_schema.columns
@@ -52,6 +52,7 @@ declare
   v_goals_against integer;
   v_home_score integer;
   v_away_score integer;
+  v_is_own_goal boolean;
 begin
   if p_operation not in ('create', 'update', 'delete') then
     raise exception using errcode = '22023', message = 'Operación de gol no válida.';
@@ -86,24 +87,43 @@ begin
        or (p_goal->>'minute')::integer not between 0 and 120 then
       raise exception using errcode = '22023', message = 'Parte o minuto del gol no válidos.';
     end if;
-    if p_goal->>'type' = 'Gol a favor' and nullif(btrim(p_goal->>'scorer'), '') is null then
-      raise exception using errcode = '22023', message = 'El goleador es obligatorio para un gol a favor.';
-    end if;
     if p_goal ? 'partido_id' and nullif(p_goal->>'partido_id', '')::uuid is distinct from p_partido_id then
       raise exception using errcode = '22023', message = 'El payload pertenece a otro partido.';
     end if;
-    v_goal_input := jsonb_populate_record(null::public.partido_eventos_gol, p_goal || jsonb_build_object('partido_id', p_partido_id));
+    if p_goal ? 'is_own_goal' and jsonb_typeof(p_goal->'is_own_goal') <> 'boolean' then
+      raise exception using errcode = '22023', message = 'La marca de gol en propia debe ser booleana.';
+    end if;
+    v_is_own_goal := coalesce((p_goal->>'is_own_goal')::boolean, false);
+    v_goal_input := jsonb_populate_record(
+      null::public.partido_eventos_gol,
+      p_goal || jsonb_build_object('partido_id', p_partido_id, 'is_own_goal', v_is_own_goal)
+    );
+    if v_is_own_goal and (
+      v_goal_input.scorer is not null
+      or v_goal_input.scorer_id is not null
+      or v_goal_input.assistant is not null
+      or v_goal_input.assistant_id is not null
+    ) then
+      raise exception using errcode = '23514', message = 'Un gol en propia no puede tener goleador ni asistente.';
+    end if;
+    if v_goal_input.type = 'Gol a favor'
+       and not v_is_own_goal
+       and nullif(btrim(v_goal_input.scorer), '') is null then
+      raise exception using errcode = '22023', message = 'El goleador es obligatorio para un gol a favor.';
+    end if;
   end if;
 
   if p_operation = 'create' then
     insert into public.partido_eventos_gol (
       partido_id, type, half, minute, scorer, assistant, phase, subphase,
-      shot_zone, assist_zone, goal_zone, contact, video_url, scorer_id, assistant_id
+      shot_zone, assist_zone, goal_zone, contact, video_url, scorer_id, assistant_id,
+      is_own_goal
     ) values (
       p_partido_id, v_goal_input.type, v_goal_input.half, v_goal_input.minute,
       v_goal_input.scorer, v_goal_input.assistant, v_goal_input.phase, v_goal_input.subphase,
       v_goal_input.shot_zone, v_goal_input.assist_zone, v_goal_input.goal_zone,
-      v_goal_input.contact, v_goal_input.video_url, v_goal_input.scorer_id, v_goal_input.assistant_id
+      v_goal_input.contact, v_goal_input.video_url, v_goal_input.scorer_id, v_goal_input.assistant_id,
+      v_is_own_goal
     ) returning * into v_saved_goal;
     v_goal_json := to_jsonb(v_saved_goal);
   elsif p_operation = 'update' then
@@ -121,7 +141,8 @@ begin
         contact = v_goal_input.contact,
         video_url = v_goal_input.video_url,
         scorer_id = v_goal_input.scorer_id,
-        assistant_id = v_goal_input.assistant_id
+        assistant_id = v_goal_input.assistant_id,
+        is_own_goal = v_is_own_goal
     where id = p_goal_id and partido_id = p_partido_id
     returning * into v_saved_goal;
     if not found then

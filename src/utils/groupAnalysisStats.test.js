@@ -48,6 +48,16 @@ assert.equal(goalsFor.length, 1, 'GF solo contiene goles a favor');
 assert.equal(goalsAgainst.length, 2, 'GC solo contiene goles en contra');
 assert.equal(allGoals.length, goalsFor.length + goalsAgainst.length, 'allGoals = GF + GC');
 
+const canonicalOwnGoals = [
+  { teamSide: 'for', isOwnGoal: true, goalContext: 'Transición', finishZone: 'centro', assistantName: null },
+  { teamSide: 'against', isOwnGoal: true, goalContext: 'ABP', finishZone: 'derecha', assistantName: null },
+];
+const ownGoalSplit = splitGroupGoals(canonicalOwnGoals);
+assert.equal(ownGoalSplit.goalsFor.length, 1, 'la propia rival sigue contando como GF colectivo');
+assert.equal(ownGoalSplit.goalsAgainst.length, 1, 'la propia del Caudal sigue contando como GC colectivo');
+assert.equal(buildGroupGoalCoverage(canonicalOwnGoals).withAssist, 0, 'las propias no inventan asistencia colectiva');
+assert.deepEqual(countGroupGoalZones(canonicalOwnGoals, 'finishZone'), { centro: 1, derecha: 1 }, 'las propias conservan sus zonas para análisis colectivo');
+
 const typeRows = buildGroupGoalTypeRows(allGoals);
 const type = (name) => typeRows.find((row) => row.context === name);
 assert.deepEqual(type('ABP'), { context: 'ABP', forCount: 1, againstCount: 1 });

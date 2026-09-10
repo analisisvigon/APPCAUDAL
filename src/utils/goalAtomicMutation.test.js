@@ -12,6 +12,7 @@ const goal = {
   assistant: null,
   scorer_id: null,
   assistant_id: null,
+  is_own_goal: false,
   assist_zone: 'izquierda',
   shot_zone: 'centro',
   goal_zone: 'alta izquierda',
@@ -22,6 +23,15 @@ assert.deepEqual(buildGoalAtomicRpcArgs({ operation: 'create', matchId, goal }),
 });
 assert.equal(buildGoalAtomicRpcArgs({ operation: 'update', matchId, goalId, goal }).p_goal_id, goalId, 'editar conserva el ID');
 assert.equal(buildGoalAtomicRpcArgs({ operation: 'delete', matchId, goalId }).p_operation, 'delete');
+const ownGoal = {
+  ...goal,
+  scorer: null,
+  assistant: null,
+  scorer_id: null,
+  assistant_id: null,
+  is_own_goal: true,
+};
+assert.equal(buildGoalAtomicRpcArgs({ operation: 'create', matchId, goal: ownGoal }).p_goal.is_own_goal, true, 'la RPC conserva la fuente canónica de propia');
 
 const result = normalizeGoalAtomicResult({
   goal: { id: goalId, assistant: null, assistant_id: null },
@@ -50,6 +60,8 @@ let persistedEvents = [];
 persistedEvents = [...persistedEvents, { id: 'g1', type: 'Gol a favor', assistant: null }];
 assert.deepEqual(deriveScore(persistedEvents, true), { goalsFor: 1, goalsAgainst: 0, homeScore: 1, awayScore: 0 });
 assert.deepEqual(deriveScore(persistedEvents, false), { goalsFor: 1, goalsAgainst: 0, homeScore: 0, awayScore: 1 }, 'respeta local/visitante');
+assert.deepEqual(deriveScore([{ id: 'own-for', type: 'Gol a favor', is_own_goal: true }], true), { goalsFor: 1, goalsAgainst: 0, homeScore: 1, awayScore: 0 }, 'una propia rival suma GF por su type');
+assert.deepEqual(deriveScore([{ id: 'own-against', type: 'Gol en contra', is_own_goal: true }], true), { goalsFor: 0, goalsAgainst: 1, homeScore: 0, awayScore: 1 }, 'una propia del Caudal suma GC por su type');
 persistedEvents = [...persistedEvents, { id: 'g2', type: 'Gol en contra' }];
 assert.deepEqual(deriveScore(persistedEvents, true), { goalsFor: 1, goalsAgainst: 1, homeScore: 1, awayScore: 1 }, 'crea GF y GC desde filas persistidas');
 persistedEvents = persistedEvents.map((event) => event.id === 'g1' ? { ...event, scorer: 'Otro goleador' } : event);

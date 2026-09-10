@@ -67,7 +67,7 @@ assert.ok(appSource.includes('Selecciona un asistente o indica Sin asistencia.')
 assert.ok(appSource.includes('getPersistedGoalAssistanceStatus(goal)'), 'reabrir deriva el estado persistido');
 assert.ok(appSource.includes('<option value={GOAL_ASSISTANCE_SELECT_VALUE.none}>Sin asistencia</option>'), 'el selector ofrece Sin asistencia explícitamente');
 assert.ok(appSource.includes('assistant: participantFields.assistant') && appSource.includes('assistant_id: participantFields.assistant_id'), 'el payload conserva los campos existentes');
-assert.ok(appSource.includes("filter((goal) => goal.teamSide === 'for' && (goal.scorerName || goal.scorerId) && hasGoalAssistant(goal))"), 'las conexiones exigen asistente real');
+assert.ok(appSource.includes("filter((goal) => goal.teamSide === 'for' && !isGoalOwnGoal(goal) && (goal.scorerName || goal.scorerId) && hasGoalAssistant(goal))"), 'las conexiones exigen asistente real y excluyen propias');
 assert.ok(appSource.includes("const assistant = hasGoalAssistant(goal) ? ensureRow('assistant'"), 'el ranking solo crea filas para asistencias reales');
 assert.ok(appSource.includes('const deleteGoalAnalysisEvent = async (eventId)'), 'el borrado sigue siendo independiente de la asistencia');
 assert.ok(appSource.includes('assistantStatus: GOAL_ASSISTANCE_STATUS.none'), 'el gol en contra conserva ausencia de asistencia');

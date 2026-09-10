@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   buildRivalGoalTimelinePresentation,
+  createGoalOwnGoalDraftPatch,
   createGoalParticipantDbFields,
   getGoalAssistant,
+  getGoalOwnGoalLabel,
   goalParticipantMatchesPlayer,
   hasGoalAssistant,
+  isGoalOwnGoal,
   normalizeGoalParticipants,
   resolveGoalParticipant,
 } from './goalEvents.js';
@@ -29,6 +32,42 @@ assert.deepEqual(normalizeGoalParticipants({ scorer: 'Agustín Porto', assist: '
 assert.deepEqual(createGoalParticipantDbFields({ scorer: 'Agustín Porto', scorerId: 'p1', assistant: 'Aitor Ferrero', assistantId: 'p2' }), {
   scorer: 'Agustín Porto', scorer_id: 'p1', assistant: 'Aitor Ferrero', assistant_id: 'p2',
 });
+
+const ownGoalFor = {
+  type: 'Gol a favor',
+  isOwnGoal: true,
+  scorer: 'No debe persistir',
+  scorerId: 'p1',
+  assistant: 'Tampoco debe persistir',
+  assistantId: 'p2',
+};
+assert.equal(isGoalOwnGoal(ownGoalFor), true);
+assert.equal(isGoalOwnGoal({ type: 'Gol a favor', is_own_goal: true }), true, 'lectura SQL usa el mismo contrato canónico');
+assert.equal(isGoalOwnGoal({ type: 'Gol a favor' }), false, 'los eventos legacy no se reinterpretan como propias');
+assert.equal(getGoalOwnGoalLabel(ownGoalFor), 'Gol en propia del rival');
+assert.equal(getGoalOwnGoalLabel({ type: 'Gol en contra', is_own_goal: true }), 'Gol en propia del Caudal');
+assert.deepEqual(createGoalParticipantDbFields(ownGoalFor), {
+  scorer: null, scorer_id: null, assistant: null, assistant_id: null,
+}, 'la serialización de una propia limpia cualquier participante previo');
+assert.equal(hasGoalAssistant(ownGoalFor), false, 'una propia nunca tiene asistencia');
+assert.equal(goalParticipantMatchesPlayer(ownGoalFor, 'scorer', players[0]), false, 'una propia nunca se atribuye al goleador previo');
+assert.equal(goalParticipantMatchesPlayer(ownGoalFor, 'assistant', players[1]), false, 'una propia nunca se atribuye al asistente previo');
+assert.deepEqual(createGoalOwnGoalDraftPatch(true, 'Gol a favor'), {
+  isOwnGoal: true,
+  scorer: '',
+  scorerId: null,
+  assistant: '',
+  assistantId: null,
+  assistantStatus: 'none',
+}, 'editar normal a propia limpia participantes inmediatamente');
+assert.deepEqual(createGoalOwnGoalDraftPatch(false, 'Gol a favor'), {
+  isOwnGoal: false,
+  scorer: '',
+  scorerId: null,
+  assistant: '',
+  assistantId: null,
+  assistantStatus: 'pending',
+}, 'editar propia a normal vuelve a exigir goleador y decisión de asistencia');
 
 const rivalScorerId = '10000000-0000-4000-8000-000000000001';
 const rivalAssistantId = '10000000-0000-4000-8000-000000000002';
@@ -102,6 +141,16 @@ assert.deepEqual(buildRivalGoalTimelinePresentation({
   assist: '',
 }, 'un UUID sin jugador ni snapshot legible nunca se muestra al usuario');
 
+assert.deepEqual(buildRivalGoalTimelinePresentation({
+  type: 'Gol en contra',
+  is_own_goal: true,
+}, {
+  teamName: 'CD Praviano',
+}), {
+  label: 'GOL EN PROPIA DEL CAUDAL',
+  assist: '',
+}, 'el timeline distingue una propia de un goleador rival desconocido');
+
 const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 assert.match(
   appSource,
@@ -110,7 +159,7 @@ assert.match(
 );
 assert.match(
   appSource,
-  /: rivalGoalPresentation\.label,[\s\S]*?: rivalGoalPresentation\.assist/,
+  /: rivalGoalPresentation\.label,[\s\S]*?: rivalGoalPresentation\?\.assist/,
   'el timeline utiliza tanto la línea del goleador rival como la asistencia rival'
 );
 
