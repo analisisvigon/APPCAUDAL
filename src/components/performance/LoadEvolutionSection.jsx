@@ -1,5 +1,12 @@
 import { useMemo } from 'react';
-import { getPerformanceSessionTypeLabel, PERFORMANCE_LOAD_METRIC_CONFIG, getPerformanceLoadMetricConfig } from '../../utils/performanceLoad';
+import {
+  aggregatePerformanceMetricPoints,
+  getPerformanceMetricKpiLabels,
+  getPerformanceSessionTypeLabel,
+  PERFORMANCE_LOAD_METRIC_CONFIG,
+  getPerformanceLoadMetricConfig,
+  summarizePerformanceMetricPoints,
+} from '../../utils/performanceLoad';
 
 const formatShortDate = (value) => {
   if (!value) return '';
@@ -44,6 +51,7 @@ const buildLoadSeries = (loads = [], rpeEntries = [], startDate, endDate, metric
   while (current <= endDate) {
     const load = metricsByDate.get(current) || null;
     const value = metricConfig.valueFromRecord(load);
+    const weight = metricConfig.weightFromRecord?.(load) ?? null;
     const dayValues = rpeByDate.get(current) || [];
     const avgRpe = dayValues.length ? dayValues.reduce((sum, item) => sum + item, 0) / dayValues.length : null;
     const currentDate = new Date(`${current}T12:00:00`);
@@ -60,13 +68,14 @@ const buildLoadSeries = (loads = [], rpeEntries = [], startDate, endDate, metric
       dayLabel: shortDay,
       axisLabel,
       value,
+      weight,
       hasData: value !== null,
       avgRpe,
       load,
       tooltip: [
         formatLongDate(current),
         load ? `${getPerformanceSessionTypeLabel(load.session.session_type)} · ${load.session.actual_duration_minutes ? `${load.session.actual_duration_minutes} min` : 'Sin volumen'}` : 'Sin sesión de carga',
-        `${metricConfig.label}: ${value === null ? 'sin dato' : `${formatMetricValue(value)} ${metricConfig.unit}`}`,
+        `${metricConfig.label}: ${value === null ? 'sin dato' : `${formatMetricValue(value, metricConfig.decimals)} ${metricConfig.unit}`}`,
         `Volumen: ${load?.session?.actual_duration_minutes === null || load?.session?.actual_duration_minutes === undefined ? 'sin dato' : `${load.session.actual_duration_minutes} min`}`,
         avgRpe !== null ? `RPE medio: ${avgRpe.toFixed(1)}` : 'RPE medio: sin dato',
       ].join('\n'),
@@ -78,24 +87,21 @@ const buildLoadSeries = (loads = [], rpeEntries = [], startDate, endDate, metric
   return points;
 };
 
-const buildMonthWeekSummary = (points) => {
+const buildMonthWeekSummary = (points, metric) => {
   const weeks = new Map();
   points.forEach((point) => {
     const date = new Date(`${point.entryDate}T12:00:00`);
     const day = date.getDay() || 7;
     date.setDate(date.getDate() - day + 1);
     const weekStart = date.toISOString().slice(0, 10);
-    const group = weeks.get(weekStart) || { startDate: weekStart, total: 0, count: 0 };
-    if (point.hasData) {
-      group.total += point.value;
-      group.count += 1;
-    }
+    const group = weeks.get(weekStart) || { startDate: weekStart, points: [] };
+    group.points.push(point);
     weeks.set(weekStart, group);
   });
   const result = [...weeks.values()].map((week) => ({
     ...week,
     label: `${formatShortDate(week.startDate)} — ${formatShortDate(addDays(week.startDate, 6))}`,
-    average: week.count ? week.total / week.count : null,
+    aggregate: aggregatePerformanceMetricPoints(week.points, metric),
   }));
   return result;
 };
@@ -130,19 +136,19 @@ const LoadEvolutionChart = ({ points, selectedKey, onSelect, period, metric }) =
   });
   if (currentSegment.length) segments.push(currentSegment);
 
-  if (!points.length) {
-    return <div className="flex min-h-56 items-center justify-center rounded-2xl border border-dashed border-white/10 bg-black/10 px-6 text-center text-sm text-slate-500">Sin datos para la evolución de carga.</div>;
+  if (!points.some((point) => point.hasData)) {
+    return <div className="flex min-h-56 items-center justify-center rounded-2xl border border-dashed border-white/10 bg-black/10 px-6 text-center text-sm text-slate-500">No hay datos de {metric.label} para este periodo.</div>;
   }
 
   return (
     <div className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[#071124] p-4 sm:p-5">
       <div className="mb-4 flex flex-wrap gap-4 text-xs font-bold text-slate-400">
-        <span className="inline-flex items-center gap-2"><span className="h-1.5 w-6 rounded-full bg-slate-300" />{metric.label}</span>
-        <span className="inline-flex items-center gap-2"><span className="h-1.5 w-6 rounded-full bg-sky-500/70" />Día con carga</span>
+        <span className="inline-flex items-center gap-2"><span className="h-1.5 w-6 rounded-full bg-slate-300" />{metric.label} ({metric.unit})</span>
+        <span className="inline-flex items-center gap-2"><span className="h-1.5 w-6 rounded-full bg-sky-500/70" />Día con dato</span>
       </div>
       <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full overflow-visible" role="img" aria-label={`Evolución de ${metric.label} en vista ${period}`}>
         {[0, 0.25, 0.5, 0.75, 1].map((fraction) => {
-          const value = Math.round(maxValue * (1 - fraction));
+          const value = maxValue * (1 - fraction);
           return (
             <g key={fraction}>
               <line
@@ -153,7 +159,7 @@ const LoadEvolutionChart = ({ points, selectedKey, onSelect, period, metric }) =
                 stroke="rgba(148,163,184,0.14)"
                 strokeWidth="1"
               />
-              <text x={plot.left - 10} y={plot.top + plotHeight * fraction + 4} textAnchor="end" fill="#94a3b8" fontSize="11">{value}</text>
+              <text x={plot.left - 10} y={plot.top + plotHeight * fraction + 4} textAnchor="end" fill="#94a3b8" fontSize="11">{formatMetricValue(value, metric.decimals)}</text>
             </g>
           );
         })}
@@ -241,24 +247,24 @@ export default function LoadEvolutionSection({
     period,
   ), [period, monthLoads, weekLoads, rpeEntries, range.startDate, range.endDate, metric]);
 
-  const values = points.filter((point) => point.hasData).map((point) => point.value);
-  const total = values.length ? values.reduce((sum, value) => sum + value, 0) : null;
-  const average = values.length ? total / values.length : null;
-  const maxPoint = points.filter((point) => point.hasData).sort((left, right) => right.value - left.value)[0] || null;
+  const summary = summarizePerformanceMetricPoints(points, metric);
+  const kpiLabels = getPerformanceMetricKpiLabels(metric, period);
 
   const monthWeekSummary = useMemo(() => {
     if (period !== 'month') return [];
-    const weeks = buildMonthWeekSummary(points);
-    const best = weeks.filter((week) => week.total > 0).sort((left, right) => right.total - left.total)[0] || null;
-    return best ? best.label : null;
-  }, [period, points]);
+    const weeks = buildMonthWeekSummary(points, metric);
+    const best = weeks
+      .filter((week) => week.aggregate !== null)
+      .sort((left, right) => right.aggregate - left.aggregate)[0] || null;
+    return best ? `${best.label} · ${formatMetricValue(best.aggregate, metric.decimals)} ${metric.unit}` : null;
+  }, [period, points, metric]);
 
   return (
     <section className="rounded-[1.75rem] border border-white/[0.07] bg-[#091428] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">Evolución de carga</p>
-          <h3 className="mt-1 text-lg font-black text-white">U.C. del equipo</h3>
+          <h3 className="mt-1 text-lg font-black text-white">{metric.label} del equipo</h3>
           <p className="mt-1 text-sm text-slate-400">Sigue la carga semanal o mensual sin convertir los huecos en cero.</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -311,18 +317,18 @@ export default function LoadEvolutionSection({
 
       <div className="mt-5 grid gap-3 lg:grid-cols-3">
         <div className="rounded-2xl border border-white/[0.07] bg-black/10 p-4">
-          <p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">{period === 'week' ? 'Total semanal' : 'Total mensual'}</p>
-          <p className="mt-2 text-2xl font-black text-white">{total === null ? 'Sin datos' : `${formatMetricValue(total, 1)} ${metric.unit}`}</p>
+          <p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">{kpiLabels.aggregate}</p>
+          <p className="mt-2 text-2xl font-black text-white">{summary.aggregate === null ? 'Sin datos' : `${formatMetricValue(summary.aggregate, metric.decimals)} ${metric.unit}`}</p>
         </div>
         <div className="rounded-2xl border border-white/[0.07] bg-black/10 p-4">
-          <p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">Media por día con carga</p>
-          <p className="mt-2 text-2xl font-black text-white">{average === null ? 'Sin datos' : `${formatMetricValue(average, 1)} ${metric.unit}`}</p>
+          <p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">{kpiLabels.average}</p>
+          <p className="mt-2 text-2xl font-black text-white">{summary.simpleAverage === null ? 'Sin datos' : `${formatMetricValue(summary.simpleAverage, metric.decimals)} ${metric.unit}`}</p>
         </div>
         <div className="rounded-2xl border border-white/[0.07] bg-black/10 p-4">
-          <p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">{period === 'week' ? 'Día de mayor carga' : 'Semana de mayor carga'}</p>
+          <p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">{kpiLabels.peak}</p>
           <p className="mt-2 text-sm font-black text-white leading-tight">
             {period === 'week'
-              ? (maxPoint ? `${formatShortDate(maxPoint.entryDate)} · ${formatMetricValue(maxPoint.value, 1)} ${metric.unit}` : 'Sin datos')
+              ? (summary.maxPoint ? `${formatShortDate(summary.maxPoint.entryDate)} · ${formatMetricValue(summary.maxPoint.value, metric.decimals)} ${metric.unit}` : 'Sin datos')
               : (monthWeekSummary || 'Sin datos')}
           </p>
         </div>

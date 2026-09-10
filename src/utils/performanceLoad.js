@@ -13,11 +13,11 @@ export const PERFORMANCE_LOAD_METRIC_CONFIG = Object.freeze([
     label: 'U.C.',
     unit: 'U.C.',
     aggregation: 'sum',
-    supportsAverage: true,
+    decimals: 1,
     enabled: true,
     valueFromRecord: (record) => {
       const value = record?.metrics?.load_units;
-      return Number.isFinite(Number(value)) ? Number(value) : null;
+      return toNullableMetricNumber(value);
     },
   },
   {
@@ -25,11 +25,11 @@ export const PERFORMANCE_LOAD_METRIC_CONFIG = Object.freeze([
     label: 'Distancia',
     unit: 'km',
     aggregation: 'sum',
-    supportsAverage: true,
-    enabled: false,
+    decimals: 2,
+    enabled: true,
     valueFromRecord: (record) => {
-      const value = Number(record?.metrics?.distance_m);
-      return Number.isFinite(value) ? value / 1000 : null;
+      const value = toNullableMetricNumber(record?.metrics?.distance_m);
+      return value === null ? null : value / 1000;
     },
   },
   {
@@ -37,76 +37,129 @@ export const PERFORMANCE_LOAD_METRIC_CONFIG = Object.freeze([
     label: 'HSR',
     unit: 'm',
     aggregation: 'sum',
-    supportsAverage: true,
-    enabled: false,
+    decimals: 1,
+    enabled: true,
     valueFromRecord: (record) => {
-      const value = Number(record?.metrics?.hsr_m);
-      return Number.isFinite(value) ? value : null;
+      return toNullableMetricNumber(record?.metrics?.hsr_m);
     },
   },
   {
     key: 'accelerations',
     label: 'ACC',
-    unit: '',
+    unit: 'acciones',
     aggregation: 'sum',
-    supportsAverage: false,
-    enabled: false,
+    decimals: 0,
+    enabled: true,
     valueFromRecord: (record) => {
-      const value = Number(record?.metrics?.accelerations);
-      return Number.isFinite(value) ? value : null;
+      return toNullableMetricNumber(record?.metrics?.accelerations);
     },
   },
   {
     key: 'decelerations',
     label: 'DCC',
-    unit: '',
+    unit: 'acciones',
     aggregation: 'sum',
-    supportsAverage: false,
-    enabled: false,
+    decimals: 0,
+    enabled: true,
     valueFromRecord: (record) => {
-      const value = Number(record?.metrics?.decelerations);
-      return Number.isFinite(value) ? value : null;
+      return toNullableMetricNumber(record?.metrics?.decelerations);
     },
   },
   {
     key: 'sprints',
     label: 'Sprint',
-    unit: '',
+    unit: 'sprints',
     aggregation: 'sum',
-    supportsAverage: false,
-    enabled: false,
+    decimals: 0,
+    enabled: true,
     valueFromRecord: (record) => {
-      const value = Number(record?.metrics?.sprints);
-      return Number.isFinite(value) ? value : null;
+      return toNullableMetricNumber(record?.metrics?.sprints);
     },
   },
   {
     key: 'metersPerMinute',
     label: 'M/min',
     unit: 'm/min',
-    aggregation: 'avg',
-    supportsAverage: true,
-    enabled: false,
+    aggregation: 'durationWeightedAverage',
+    decimals: 1,
+    enabled: true,
     valueFromRecord: (record) => {
-      const value = Number(record?.metrics?.meters_per_minute);
-      return Number.isFinite(value) ? value : null;
+      return toNullableMetricNumber(record?.metrics?.meters_per_minute);
     },
+    weightFromRecord: (record) => toNullableMetricNumber(record?.session?.actual_duration_minutes),
   },
   {
     key: 'actualDurationMinutes',
     label: 'Volumen',
     unit: 'min',
     aggregation: 'sum',
-    supportsAverage: false,
-    enabled: false,
+    decimals: 0,
+    enabled: true,
     valueFromRecord: (record) => {
-      const value = Number(record?.session?.actual_duration_minutes);
-      return Number.isFinite(value) ? value : null;
+      return toNullableMetricNumber(record?.session?.actual_duration_minutes);
     },
   },
 ]);
 
 export const getPerformanceLoadMetricConfig = (key) => PERFORMANCE_LOAD_METRIC_CONFIG.find((item) => item.key === key) || PERFORMANCE_LOAD_METRIC_CONFIG[0];
+
+function toNullableMetricNumber(value) {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+export function aggregatePerformanceMetricPoints(points = [], metricConfig) {
+  const dataPoints = points.filter((point) => point?.hasData && Number.isFinite(point.value));
+  if (!dataPoints.length) return null;
+
+  if (metricConfig?.aggregation === 'durationWeightedAverage') {
+    const weightedPoints = dataPoints.filter((point) => Number.isFinite(point.weight) && point.weight > 0);
+    if (weightedPoints.length !== dataPoints.length) return null;
+    const totalWeight = weightedPoints.reduce((sum, point) => sum + point.weight, 0);
+    return totalWeight > 0
+      ? weightedPoints.reduce((sum, point) => sum + (point.value * point.weight), 0) / totalWeight
+      : null;
+  }
+
+  return dataPoints.reduce((sum, point) => sum + point.value, 0);
+}
+
+export function summarizePerformanceMetricPoints(points = [], metricConfig) {
+  const dataPoints = points.filter((point) => point?.hasData && Number.isFinite(point.value));
+  const simpleAverage = dataPoints.length
+    ? dataPoints.reduce((sum, point) => sum + point.value, 0) / dataPoints.length
+    : null;
+  const maxPoint = dataPoints.reduce((best, point) => (
+    !best || point.value > best.value ? point : best
+  ), null);
+  return {
+    aggregate: aggregatePerformanceMetricPoints(dataPoints, metricConfig),
+    simpleAverage,
+    maxPoint,
+    dataCount: dataPoints.length,
+  };
+}
+
+export function getPerformanceMetricKpiLabels(metricConfig, period) {
+  const periodAdjective = period === 'month' ? 'mensual' : 'semanal';
+  if (metricConfig?.aggregation === 'durationWeightedAverage') {
+    return {
+      aggregate: `Media ponderada ${periodAdjective} de ${metricConfig.label}`,
+      average: `Media simple de ${metricConfig.label} por día con dato`,
+      peak: period === 'month'
+        ? `Semana de mayor ${metricConfig.label}`
+        : `Día de mayor ${metricConfig.label}`,
+    };
+  }
+  return {
+    aggregate: `${metricConfig.label} total ${periodAdjective}`,
+    average: `Media de ${metricConfig.label} por día con dato`,
+    peak: period === 'month'
+      ? `Semana de mayor ${metricConfig.label}`
+      : `Día de mayor ${metricConfig.label}`,
+  };
+}
 
 const SESSION_TYPE_VALUES = new Set(PERFORMANCE_SESSION_TYPES.map((option) => option.value));
 const INTEGER_FIELDS = new Set(['actualDurationMinutes', 'accelerations', 'decelerations', 'sprints']);

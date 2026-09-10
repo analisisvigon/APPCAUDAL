@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const app = fs.readFileSync(path.join(projectRoot, 'src', 'App.jsx'), 'utf8');
 const card = fs.readFileSync(path.join(projectRoot, 'src', 'components', 'performance', 'DailyLoadCard.jsx'), 'utf8');
+const evolution = fs.readFileSync(path.join(projectRoot, 'src', 'components', 'performance', 'LoadEvolutionSection.jsx'), 'utf8');
+const loadUtils = fs.readFileSync(path.join(projectRoot, 'src', 'utils', 'performanceLoad.js'), 'utf8');
 const store = fs.readFileSync(path.join(projectRoot, 'src', 'utils', 'performanceLoadStore.js'), 'utf8');
 const rpeUtils = fs.readFileSync(path.join(projectRoot, 'src', 'utils', 'performanceRpe.js'), 'utf8');
 
@@ -86,6 +89,57 @@ assert.match(store, /\.gte\('session_date', startDate\)/);
 assert.match(store, /\.lte\('session_date', endDate\)/);
 assert.match(store, /client\.rpc\('upsert_team_daily_training_load', params\)/);
 assert.doesNotMatch(store, /rpe_entries|wellness_entries|session_id.*rpe/i);
+
+assert.match(evolution, /PERFORMANCE_LOAD_METRIC_CONFIG\.map/);
+assert.equal((app.match(/<LoadEvolutionSection/g) || []).length, 1, 'La evolución reutiliza un único componente.');
+assert.match(evolution, /\{metric\.label\} del equipo/);
+assert.match(evolution, /No hay datos de \{metric\.label\} para este periodo\./);
+assert.match(evolution, /metricConfig\.valueFromRecord\(load\)/);
+assert.match(evolution, /metricConfig\.weightFromRecord\?\.\(load\)/);
+assert.match(evolution, /summary\.aggregate/);
+assert.match(evolution, /summary\.simpleAverage/);
+assert.match(evolution, /summary\.maxPoint/);
+assert.match(evolution, /getPerformanceMetricKpiLabels\(metric, period\)/);
+assert.match(evolution, /formatMetricValue\(value, metric\.decimals\)/);
+assert.doesNotMatch(evolution, /<h3[^>]*>U\.C\. del equipo<\/h3>/);
+assert.doesNotMatch(evolution, /\.from\(|\.rpc\(/, 'La gráfica debe consumir el store sin abrir otra consulta.');
+
+assert.equal((loadUtils.match(/enabled: true/g) || []).length, 8);
+assert.doesNotMatch(loadUtils, /enabled: false/);
+assert.match(loadUtils, /aggregation: 'durationWeightedAverage'/);
+assert.match(loadUtils, /point\.weight > 0/);
+assert.match(loadUtils, /value === null \|\| value === undefined \|\| String\(value\)\.trim\(\) === ''/);
+
+const enabledOptions = [...loadUtils.matchAll(/key: '([^']+)'[\s\S]*?enabled: true/g)].map((match) => match[1]);
+assert.deepEqual(enabledOptions, [
+  'loadUnits',
+  'distanceKm',
+  'hsrM',
+  'accelerations',
+  'decelerations',
+  'sprints',
+  'metersPerMinute',
+  'actualDurationMinutes',
+]);
+
+for (const source of [evolution, loadUtils, store]) {
+  assert.doesNotMatch(source, /Math\.random|mockData|fakeData/i, 'La evolución no debe introducir datos ficticios.');
+}
+
+const changedFiles = execFileSync('git', ['diff', '--name-only'], {
+  cwd: projectRoot,
+  encoding: 'utf8',
+}).trim().split(/\r?\n/).filter(Boolean);
+const allowedFiles = new Set([
+  'scripts/performanceLoadUiAudit.test.mjs',
+  'src/components/performance/LoadEvolutionSection.jsx',
+  'src/utils/performanceLoad.js',
+  'src/utils/performanceLoad.test.js',
+]);
+assert.ok(changedFiles.every((file) => allowedFiles.has(file)), 'La activación queda aislada a Rendimiento STAFF y sus tests.');
+assert.ok(changedFiles.every((file) => !file.startsWith('src/auth/')), 'Auth permanece intacto.');
+assert.ok(changedFiles.every((file) => !/player/i.test(file)), 'PLAYER permanece intacto.');
+assert.ok(changedFiles.every((file) => !/\.sql$/i.test(file)), 'El backend permanece intacto.');
 
 assert.match(rpeUtils, /function summarizeRpeEntries/);
 assert.match(rpeUtils, /function resolveRpePeriodEntries/);

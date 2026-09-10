@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
 
 import {
+  aggregatePerformanceMetricPoints,
   buildDailyLoadDraft,
   buildDailyLoadRpcParams,
+  getPerformanceLoadMetricConfig,
+  getPerformanceMetricKpiLabels,
   getRpeCoverage,
   isIsoCalendarDate,
   parseNullablePerformanceNumber,
+  PERFORMANCE_LOAD_METRIC_CONFIG,
+  summarizePerformanceMetricPoints,
   validateDailyLoad,
 } from './performanceLoad.js';
 
@@ -134,5 +139,109 @@ assert.deepEqual(getRpeCoverage(22, 21), {
   isLowCoverage: false,
 });
 assert.equal(getRpeCoverage(18, null).hasReliableTotal, false);
+
+const expectedMetricKeys = [
+  'loadUnits',
+  'distanceKm',
+  'hsrM',
+  'accelerations',
+  'decelerations',
+  'sprints',
+  'metersPerMinute',
+  'actualDurationMinutes',
+];
+assert.deepEqual(PERFORMANCE_LOAD_METRIC_CONFIG.map((metric) => metric.key), expectedMetricKeys);
+assert.deepEqual(PERFORMANCE_LOAD_METRIC_CONFIG.filter((metric) => metric.enabled).map((metric) => metric.key), expectedMetricKeys);
+assert.deepEqual(PERFORMANCE_LOAD_METRIC_CONFIG.filter((metric) => !metric.enabled), []);
+
+const metricRecord = {
+  session: { actual_duration_minutes: 60 },
+  metrics: {
+    load_units: 300.5,
+    distance_m: 4250,
+    hsr_m: 75.5,
+    accelerations: 48,
+    decelerations: 43,
+    sprints: 2,
+    meters_per_minute: 63.5,
+  },
+};
+assert.deepEqual(
+  PERFORMANCE_LOAD_METRIC_CONFIG.map((metric) => metric.valueFromRecord(metricRecord)),
+  [300.5, 4.25, 75.5, 48, 43, 2, 63.5, 60],
+  'cada opción debe cambiar a la serie respaldada por su campo real',
+);
+assert.deepEqual(
+  PERFORMANCE_LOAD_METRIC_CONFIG.map((metric) => metric.unit),
+  ['U.C.', 'km', 'm', 'acciones', 'acciones', 'sprints', 'm/min', 'min'],
+);
+
+const nullMetricRecord = {
+  session: { actual_duration_minutes: null },
+  metrics: {
+    load_units: null,
+    distance_m: null,
+    hsr_m: null,
+    accelerations: null,
+    decelerations: null,
+    sprints: null,
+    meters_per_minute: null,
+  },
+};
+assert.ok(
+  PERFORMANCE_LOAD_METRIC_CONFIG.every((metric) => metric.valueFromRecord(nullMetricRecord) === null),
+  'un hueco NULL nunca debe convertirse en cero',
+);
+
+const zeroMetricRecord = {
+  session: { actual_duration_minutes: 0 },
+  metrics: {
+    load_units: 0,
+    distance_m: 0,
+    hsr_m: 0,
+    accelerations: 0,
+    decelerations: 0,
+    sprints: 0,
+    meters_per_minute: 0,
+  },
+};
+assert.ok(
+  PERFORMANCE_LOAD_METRIC_CONFIG.every((metric) => metric.valueFromRecord(zeroMetricRecord) === 0),
+  'un cero real debe conservarse como dato',
+);
+
+const cumulativePoints = [
+  { entryDate: '2026-08-10', hasData: true, value: 100 },
+  { entryDate: '2026-08-11', hasData: false, value: null },
+  { entryDate: '2026-08-12', hasData: true, value: 0 },
+  { entryDate: '2026-08-13', hasData: true, value: 200 },
+];
+const loadUnitMetric = getPerformanceLoadMetricConfig('loadUnits');
+assert.deepEqual(summarizePerformanceMetricPoints(cumulativePoints, loadUnitMetric), {
+  aggregate: 300,
+  simpleAverage: 100,
+  maxPoint: cumulativePoints[3],
+  dataCount: 3,
+});
+assert.equal(aggregatePerformanceMetricPoints(cumulativePoints, loadUnitMetric), 300);
+assert.match(getPerformanceMetricKpiLabels(loadUnitMetric, 'week').aggregate, /total semanal/);
+assert.match(getPerformanceMetricKpiLabels(loadUnitMetric, 'month').aggregate, /total mensual/);
+
+const metersPerMinuteMetric = getPerformanceLoadMetricConfig('metersPerMinute');
+const ratePoints = [
+  { entryDate: '2026-08-10', hasData: true, value: 100, weight: 60 },
+  { entryDate: '2026-08-11', hasData: false, value: null, weight: null },
+  { entryDate: '2026-08-12', hasData: true, value: 50, weight: 30 },
+];
+const rateSummary = summarizePerformanceMetricPoints(ratePoints, metersPerMinuteMetric);
+assert.equal(rateSummary.aggregate, (100 * 60 + 50 * 30) / 90);
+assert.equal(rateSummary.simpleAverage, 75);
+assert.match(getPerformanceMetricKpiLabels(metersPerMinuteMetric, 'week').aggregate, /Media ponderada semanal/);
+assert.match(getPerformanceMetricKpiLabels(metersPerMinuteMetric, 'month').aggregate, /Media ponderada mensual/);
+assert.equal(
+  aggregatePerformanceMetricPoints([...ratePoints, { hasData: true, value: 80, weight: null }], metersPerMinuteMetric),
+  null,
+  'M/min no debe improvisar una media ponderada si falta la duración de un día con dato',
+);
 
 console.log('performanceLoad: all assertions passed');
