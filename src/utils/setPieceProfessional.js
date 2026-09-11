@@ -68,7 +68,8 @@ export const SET_PIECE_ROLES = [
 export const SET_PIECE_FUNCTION_GROUPS = Object.freeze({
   offensive: Object.freeze([
     { id: 'launch', label: 'Lanzamiento', roles: ['Lanzador'] },
-    { id: 'blocks', label: 'Bloqueos', roles: ['Bloqueador', 'Pantalla', 'Arrastre'] },
+    { id: 'movement', label: 'Movimientos', roles: ['Arrastre'] },
+    { id: 'blocks', label: 'Bloqueos', roles: ['Bloqueador', 'Pantalla'] },
     { id: 'finish', label: 'Remate', roles: ['Rematador', 'Primer palo', 'Segundo palo'] },
     { id: 'rebound', label: 'Rechace', roles: ['Rechace', 'Primer rechace', 'Segundo rechace'] },
     { id: 'watch', label: 'Vigilancia', roles: ['Vigilancia', 'Cobertura', 'Protección segundo palo'] },
@@ -82,6 +83,11 @@ export const SET_PIECE_FUNCTION_GROUPS = Object.freeze({
     { id: 'transition', label: 'Salida / Transición', roles: ['Salida transición', 'Jugador arriba', 'Primera descarga'] },
   ]),
 });
+
+export const isSetPiecePrimaryFinisher = (value = {}) => (
+  Boolean(value.primaryResponsibility ?? value.primary)
+  && (Array.isArray(value.roles) ? value.roles : []).includes('Rematador')
+);
 
 export const isDefensiveSetPieceType = (type) => String(type || '').toLocaleLowerCase('es').includes('defensiv');
 
@@ -410,6 +416,7 @@ export const getSetPieceIndividualInstructions = (elements, players = []) => {
         playerName: resolvedName || (!dorsal ? cleanString(element.roles?.[0]) || 'Jugador' : ''),
         roles: (Array.isArray(element.roles) ? element.roles : []).map(cleanString).filter(Boolean),
         role: cleanString(element.roles?.[0]),
+        primary: Boolean(element.primaryResponsibility),
         instruction: cleanString(element.note),
       };
     });
@@ -430,7 +437,9 @@ export const groupSetPieceIndividualInstructions = (instructions = [], type = ''
 
   (Array.isArray(instructions) ? instructions : []).forEach((instruction) => {
     const roles = Array.isArray(instruction?.roles) ? instruction.roles : [instruction?.role].filter(Boolean);
-    const group = taxonomy.find((candidate) => candidate.roles.some((role) => roles.includes(role)));
+    const group = isSetPiecePrimaryFinisher(instruction)
+      ? taxonomy.find((candidate) => candidate.id === 'finish')
+      : taxonomy.find((candidate) => candidate.roles.some((role) => roles.includes(role)));
     (group ? groupsById.get(group.id) : other).items.push(instruction);
   });
 
@@ -440,7 +449,9 @@ export const groupSetPieceIndividualInstructions = (instructions = [], type = ''
       ...group,
       items: group.items
         .map((item, sourceIndex) => ({ item, sourceIndex }))
-        .sort((left, right) => getInstructionNumericDorsal(left.item) - getInstructionNumericDorsal(right.item) || left.sourceIndex - right.sourceIndex)
+        .sort((left, right) => Number(isSetPiecePrimaryFinisher(right.item)) - Number(isSetPiecePrimaryFinisher(left.item))
+          || getInstructionNumericDorsal(left.item) - getInstructionNumericDorsal(right.item)
+          || left.sourceIndex - right.sourceIndex)
         .map(({ item }) => item),
     }));
 };

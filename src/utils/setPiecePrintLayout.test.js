@@ -154,8 +154,52 @@ const identityOnModel = buildSetPiecePrintPlayModel(identityDiagram, identityPla
 assert.deepEqual(identityOnModel.chronology.map((step) => step.identity), ['4 BOZA', '10 AGUS PORTO', '9 ACERETE'], 'Cronología ON lleva dorsal e identidad útil al PDF sin recortes automáticos');
 assert.deepEqual(identityOnModel.chronology.map((step) => step.instruction), ['fijar al central', 'correr', 'atacar primer palo'], 'Cronología ON muestra cada consigna individual junto al orden');
 assert.deepEqual(identityOnModel.individualInstructions.map((item) => item.dorsal), ['4', '9', '10'], 'Cronología ON no elimina participantes vinculados con consigna de Indicaciones');
-assert.deepEqual(identityOnModel.instructionGroups.map((group) => group.label), ['Bloqueos', 'Remate'], 'la ofensiva agrupa Indicaciones por roles reales y omite grupos vacíos');
-assert.deepEqual(identityOnModel.instructionGroups[0].items.map((item) => item.dorsal), ['4', '10'], 'Bloqueos conserva orden numérico dentro del grupo');
+assert.deepEqual(identityOnModel.instructionGroups.map((group) => group.label), ['Movimientos', 'Bloqueos', 'Remate'], 'la ofensiva separa Arrastre de Bloqueos y omite grupos vacíos');
+assert.deepEqual(identityOnModel.instructionGroups.find((group) => group.id === 'movement').items.map((item) => item.dorsal), ['4'], 'Movimientos contiene Arrastre');
+assert.deepEqual(identityOnModel.instructionGroups.find((group) => group.id === 'blocks').items.map((item) => item.dorsal), ['10'], 'Bloqueos contiene únicamente funciones de bloqueo');
+
+const lateralFreeKickPlayers = [
+  { id: 'drag-5', name: 'ARRASTRE CINCO', number: 5 },
+  { id: 'block-6', name: 'BLOQUEO SEIS', number: 6 },
+  { id: 'finish-8', name: 'REMATE OCHO', number: 8 },
+  { id: 'finish-9', name: 'REMATE NUEVE', number: 9 },
+  { id: 'finish-10', name: 'REMATE DIEZ', number: 10 },
+];
+const lateralFreeKickElements = [
+  { id: 'drag-5-el', type: 'player', x: 22, y: 34, label: '5', player_id: 'drag-5', roles: ['Arrastre', 'Rematador'], note: 'Arrastrar y atacar zona', sequenceOrder: 1 },
+  { id: 'block-6-el', type: 'player', x: 35, y: 28, label: '6', player_id: 'block-6', roles: ['Bloqueador'], note: 'Fijar defensor', sequenceOrder: 2 },
+  { id: 'finish-8-el', type: 'player', x: 54, y: 24, label: '8', player_id: 'finish-8', roles: ['Rematador'], note: 'Atacar segundo palo', sequenceOrder: 3 },
+  { id: 'finish-9-el', type: 'player', x: 68, y: 26, label: '9', player_id: 'finish-9', roles: ['Rematador'], note: 'Cerrar rechace', sequenceOrder: 4 },
+  { id: 'finish-10-el', type: 'player', x: 47, y: 19, label: '10', player_id: 'finish-10', roles: ['Rematador'], note: 'Finalizar', sequenceOrder: 5, primaryResponsibility: true },
+  { id: 'delivery-ball', type: 'ball', x: 10, y: 58 },
+  { id: 'delivery-arrow', type: 'curved_arrow', x1: 12, y1: 56, x2: 47, y2: 19, controlX: 29, controlY: 34 },
+];
+const lateralFreeKickDiagram = {
+  id: 'lateral-free-kick-role-regression',
+  orden: 1,
+  tipo: 'falta_lateral_ofensiva',
+  titulo: 'Falta lateral ofensiva',
+  elements: setSetPieceTacticalMeta(lateralFreeKickElements, printMeta),
+};
+const lateralFreeKickModel = buildSetPiecePrintPlayModel(lateralFreeKickDiagram, lateralFreeKickPlayers, 1);
+const movementGroup = lateralFreeKickModel.instructionGroups.find((group) => group.id === 'movement');
+const blocksGroup = lateralFreeKickModel.instructionGroups.find((group) => group.id === 'blocks');
+const finishGroup = lateralFreeKickModel.instructionGroups.find((group) => group.id === 'finish');
+assert.deepEqual(movementGroup.items.map((item) => item.id), ['drag-5-el'], 'A: Arrastre aparece en Movimientos');
+assert.equal(blocksGroup.items.some((item) => item.id === 'drag-5-el'), false, 'A: Arrastre no aparece en Bloqueos');
+assert.deepEqual(blocksGroup.items.map((item) => item.id), ['block-6-el'], 'B: Bloqueador permanece en Bloqueos');
+assert.deepEqual(movementGroup.items[0].roles, ['Arrastre', 'Rematador'], 'C: el multirrol sobrevive íntegro en impresión');
+assert.equal(movementGroup.items[0].roleLabel, 'Arrastre · Rematador', 'C: ambos roles se leen sin duplicar al jugador');
+assert.deepEqual(finishGroup.items.map((item) => item.dorsal), ['10', '8', '9'], 'E: el rematador principal aparece primero en Remate');
+assert.equal(finishGroup.items[0].primaryFinisher, true, 'D: el modelo identifica al rematador principal desde primaryResponsibility');
+assert.equal(finishGroup.items[0].roleLabel, 'Rematador principal', 'D: el panel etiqueta explícitamente al principal');
+assert.equal(finishGroup.items.slice(1).every((item) => !item.primaryFinisher && item.roleLabel === 'Rematador'), true, 'F: los rematadores secundarios mantienen representación normal');
+assert.deepEqual(getSetPieceGeometrySnapshot(lateralFreeKickModel.elements), getSetPieceGeometrySnapshot(lateralFreeKickElements), 'G: la impresión no mueve ningún elemento');
+assert.deepEqual(lateralFreeKickModel.elements.filter((element) => element.type === 'player').map((element) => element.label), ['5', '6', '8', '9', '10'], 'H: la numeración permanece intacta');
+assert.equal(lateralFreeKickModel.instructionGroups.flatMap((group) => group.items).filter((item) => item.id === 'drag-5-el').length, 1, 'el multirrol no duplica visualmente al jugador');
+assert.match(sheet, /data-primary-finisher=\{item\.primaryFinisher \? 'true' : 'false'\}/, 'el PDF expone la distinción semántica del principal');
+assert.match(canvas, /preparedForPrint && primaryFinisher[\s\S]*set-piece-primary-finisher-ring/, 'el campo impreso añade el segundo aro al principal');
+assert.match(css, /li\[data-primary-finisher="true"\][\s\S]*font-weight: 950;/, 'el panel impreso realza la etiqueta del principal en blanco y negro');
 
 const identityOffDiagram = {
   ...identityDiagram,

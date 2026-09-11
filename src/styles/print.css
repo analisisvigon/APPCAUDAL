@@ -1885,8 +1885,14 @@
 .set-piece-print-indication-identity {
   display: flex;
   min-width: 0;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 0.8mm;
+}
+
+.set-piece-print-indication-person {
+  display: grid;
+  min-width: 0;
+  gap: 0.15mm;
 }
 
 .set-piece-print-indication-identity b {
@@ -1910,6 +1916,21 @@
   font-weight: 950;
   overflow-wrap: anywhere;
   text-transform: uppercase;
+}
+
+.set-piece-print-indication-person em {
+  color: #374151;
+  font-size: 6.4pt;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.set-piece-print-indications li[data-primary-finisher="true"] .set-piece-print-indication-person em {
+  color: #111827;
+  font-weight: 950;
+  letter-spacing: 0.045em;
 }
 
 .set-piece-print-indication-text {

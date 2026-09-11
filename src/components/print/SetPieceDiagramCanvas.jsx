@@ -11,6 +11,7 @@ import {
 } from '../../utils/setPieceEditorInteractions';
 import {
   getDrawableSetPieceElements,
+  isSetPiecePrimaryFinisher,
   optimizeSetPieceElementsForPrint,
 } from '../../utils/setPieceProfessional';
 import { sortSetPieceElementsForRender } from '../../utils/setPieceRenderLayout';
@@ -409,6 +410,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
         const labelX = Number.isFinite(Number(element.printLabelX)) ? Number(element.printLabelX) : Number(element.x || 0) + Number(element.printLabelOffsetX || 0);
         const labelY = Number.isFinite(Number(element.printLabelY)) ? Number(element.printLabelY) : Number(element.y || 0) + 5.2 + Number(element.printLabelOffsetY || 0);
         const role = Array.isArray(element.roles) ? element.roles[0] : '';
+        const primaryFinisher = isSetPiecePrimaryFinisher(element);
         const roleCode = String(role || '').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
         const showDorsal = normalizedVisibleLayers.dorsals;
         const showAbbreviation = normalizedVisibleLayers.abbreviations;
@@ -432,7 +434,8 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
               </>
             ) : null}
             <circle className="set-piece-participant-marker" cx={element.x} cy={element.y} r={selected ? tokens.selectedPlayerRadius : tokens.playerRadius} fill={participantFill} stroke={usesMatchPlanIdentity ? '#111827' : 'currentColor'} strokeWidth={usesMatchPlanIdentity ? '0.68' : '0.55'} />
-            {element.primaryResponsibility ? <circle cx={element.x} cy={element.y} r={tokens.responsibilityRadius} fill="none" stroke="currentColor" strokeWidth="0.48" /> : null}
+            {element.primaryResponsibility ? <circle className="set-piece-primary-responsibility-ring" cx={element.x} cy={element.y} r={tokens.responsibilityRadius} fill="none" stroke="currentColor" strokeWidth="0.48" /> : null}
+            {preparedForPrint && primaryFinisher ? <circle className="set-piece-primary-finisher-ring" cx={element.x} cy={element.y} r={tokens.responsibilityRadius + 0.72} fill="none" stroke="currentColor" strokeWidth="0.32" /> : null}
             <text className="set-piece-participant-identity" x={element.x} y={element.y + (usesMatchPlanIdentity ? 0.12 : tokens.dorsalSize * 0.34)} textAnchor="middle" dominantBaseline="middle" fontSize={usesMatchPlanIdentity ? (printOptimized ? 1.55 : 1.45) : tokens.dorsalSize} fontWeight="900" fill={participantText} stroke="none">
               {interiorIdentity}
             </text>

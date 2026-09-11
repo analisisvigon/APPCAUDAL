@@ -87,10 +87,13 @@ function PrintPlay({ play }) {
                     <h4>{group.label}</h4>
                     <ul>
                       {group.items.map((item) => (
-                        <li key={item.id}>
+                        <li key={item.id} data-primary-finisher={item.primaryFinisher ? 'true' : 'false'}>
                           <div className="set-piece-print-indication-identity">
                             {item.dorsal ? <b>{item.dorsal}</b> : null}
-                            {item.playerName && item.playerName !== item.dorsal ? <strong>{item.playerName}</strong> : null}
+                            <span className="set-piece-print-indication-person">
+                              {item.playerName && item.playerName !== item.dorsal ? <strong>{item.playerName}</strong> : null}
+                              {item.roleLabel ? <em>{item.roleLabel}</em> : null}
+                            </span>
                           </div>
                           {item.instruction ? <p className="set-piece-print-indication-text">{item.instruction}</p> : null}
                         </li>

@@ -60,10 +60,12 @@ assert.equal(isDefensiveSetPieceType('falta_lateral_ofensiva'), false);
 assert.equal(getSetPieceDefenseTypeLabel('Mixto'), 'Mixta');
 assert.equal(getSetPieceDefenseTypeLabel(''), '', 'una ABP antigua no inventa tipo de defensa');
 assert.equal(new Set(SET_PIECE_ROLES).size, SET_PIECE_ROLES.length, 'el catálogo no contiene roles duplicados');
+assert.deepEqual(SET_PIECE_FUNCTION_GROUPS.offensive.find((group) => group.id === 'movement').roles, ['Arrastre']);
+assert.equal(SET_PIECE_FUNCTION_GROUPS.offensive.find((group) => group.id === 'blocks').roles.includes('Arrastre'), false, 'Arrastre no pertenece a Bloqueos');
 ['Zona 1', 'Zona 2', 'Zona 3', 'Marca individual', 'Primer rechace', 'Segundo rechace', 'Jugador arriba', 'Primera descarga', 'Protección segundo palo'].forEach((role) => {
   assert.ok(SET_PIECE_ROLES.includes(role), `el rol defensivo ${role} está disponible`);
 });
-assert.deepEqual(SET_PIECE_FUNCTION_GROUPS.offensive.map((group) => group.label), ['Lanzamiento', 'Bloqueos', 'Remate', 'Rechace', 'Vigilancia', 'Salida / Transición']);
+assert.deepEqual(SET_PIECE_FUNCTION_GROUPS.offensive.map((group) => group.label), ['Lanzamiento', 'Movimientos', 'Bloqueos', 'Remate', 'Rechace', 'Vigilancia', 'Salida / Transición']);
 assert.deepEqual(SET_PIECE_FUNCTION_GROUPS.defensive.map((group) => group.label), ['Zona', 'Marcas', 'Rechace', 'Vigilancia', 'Salida / Transición']);
 assert.equal(getSetPieceRoleOptions('corner_ofensivo').includes('Lanzador'), true);
 assert.equal(getSetPieceRoleOptions('corner_ofensivo').includes('Zona 1'), false);
@@ -187,6 +189,17 @@ assert.deepEqual(offensiveGroups.find((group) => group.id === 'blocks').items.ma
 assert.equal(offensiveGroups.flatMap((group) => group.items).filter((item) => item.id === 'o-4').length, 1, 'un jugador con varios roles aparece una sola vez según prioridad');
 assert.equal(offensiveGroups.find((group) => group.id === 'launch').items[0].id, 'o-2', 'Lanzamiento tiene prioridad sobre Bloqueos');
 assert.equal(offensiveGroups.at(-1).items[0].id, 'o-unknown', 'un rol histórico desconocido se conserva sin inventar clasificación');
+
+const roleSemanticsGroups = groupSetPieceIndividualInstructions([
+  { id: 'drag', dorsal: '5', roles: ['Arrastre', 'Rematador'] },
+  { id: 'block', dorsal: '6', roles: ['Bloqueador'] },
+  { id: 'secondary-8', dorsal: '8', roles: ['Rematador'] },
+  { id: 'secondary-9', dorsal: '9', roles: ['Rematador'] },
+  { id: 'primary-10', dorsal: '10', roles: ['Rematador'], primary: true },
+], 'falta_lateral_ofensiva');
+assert.deepEqual(roleSemanticsGroups.find((group) => group.id === 'movement').items.map((item) => item.id), ['drag']);
+assert.deepEqual(roleSemanticsGroups.find((group) => group.id === 'blocks').items.map((item) => item.id), ['block']);
+assert.deepEqual(roleSemanticsGroups.find((group) => group.id === 'finish').items.map((item) => item.id), ['primary-10', 'secondary-8', 'secondary-9']);
 
 const defensiveGroups = groupSetPieceIndividualInstructions([
   { id: 'd-14', dorsal: '14', roles: ['Zona 2'] },

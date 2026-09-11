@@ -7,6 +7,7 @@ import {
   getSetPieceTacticalMeta,
   groupSetPieceIndividualInstructions,
   isDefensiveSetPieceType,
+  isSetPiecePrimaryFinisher,
   optimizeSetPieceElementsForPrint,
 } from './setPieceProfessional.js';
 import { getSetPieceLabType } from './setPieceLaboratory.js';
@@ -110,12 +111,21 @@ export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder
     role: displayLayers.roles ? getMeaningfulSetPiecePrintText(step.role) : '',
     instruction: getMeaningfulSetPiecePrintText(step.instruction),
   }));
-  const individualInstructions = getSetPieceIndividualInstructions(diagram?.elements, players).map((item) => ({
-    ...item,
-    identity: formatIdentity(elementsById.get(item.id), displayLayers),
-    role: displayLayers.roles ? getMeaningfulSetPiecePrintText(item.role) : '',
-    instruction: getMeaningfulSetPiecePrintText(item.instruction),
-  }));
+  const individualInstructions = getSetPieceIndividualInstructions(diagram?.elements, players).map((item) => {
+    const roles = item.roles.map(getMeaningfulSetPiecePrintText).filter(Boolean);
+    const primaryFinisher = isSetPiecePrimaryFinisher({ ...item, roles });
+    return {
+      ...item,
+      roles,
+      primaryFinisher,
+      identity: formatIdentity(elementsById.get(item.id), displayLayers),
+      role: displayLayers.roles ? getMeaningfulSetPiecePrintText(item.role) : '',
+      roleLabel: displayLayers.roles
+        ? roles.map((role) => (primaryFinisher && role === 'Rematador' ? 'Rematador principal' : role)).join(' · ')
+        : '',
+      instruction: getMeaningfulSetPiecePrintText(item.instruction),
+    };
+  });
   const rawInstruction = getMeaningfulSetPiecePrintText(diagram?.consigna || meta.generalInstruction);
   const rawObjective = getMeaningfulSetPiecePrintText(meta.objective);
   const defenseTypeComparables = new Set([
