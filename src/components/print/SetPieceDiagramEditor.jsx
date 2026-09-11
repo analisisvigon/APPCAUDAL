@@ -8,6 +8,7 @@ import {
 } from '../../utils/setPieceElementDimensions';
 import {
   applySetPieceArrowStyle,
+  deleteSetPieceElement,
   ensureSetPieceCurveGeometry,
   getSetPieceArrowStyle,
   getSetPieceDeleteAction,
@@ -369,7 +370,7 @@ export default function SetPieceDiagramEditor({
   };
   const deleteSelected = () => {
     if (!selectedElement) return;
-    updateElements(drawableElements.filter((element) => element.id !== selectedElement.id));
+    updateElements(deleteSetPieceElement(drawableElements, selectedElement.id));
     setSelectedId('');
     setPanel('tactic');
   };
@@ -457,6 +458,7 @@ export default function SetPieceDiagramEditor({
               </div>
               <div className="flex flex-wrap items-center gap-0.5">
                 <button type="button" title="Duplicar diseño" aria-label="Duplicar diseño" onClick={duplicateDiagram} className={compactToolButtonClass}><span aria-hidden="true">⧉</span><span className="hidden sm:inline">Duplicar</span></button>
+                <button type="button" title={selectedElement ? 'Borrar elemento seleccionado' : 'Selecciona un elemento para borrarlo'} aria-label={selectedElement ? 'Borrar elemento seleccionado' : 'Selecciona un elemento para borrarlo'} disabled={!selectedElement} onClick={deleteSelected} className={`${compactToolButtonClass} text-amber-200 hover:bg-amber-500/15 disabled:hover:bg-transparent`}><span aria-hidden="true">⌫</span><span className="hidden sm:inline">Borrar</span></button>
                 <button type="button" title="Vaciar campo" aria-label="Vaciar campo" onClick={clearDiagram} className={`${compactToolButtonClass} text-red-200 hover:bg-red-500/15`}><span aria-hidden="true">×</span><span className="hidden sm:inline">Vaciar</span></button>
                 <div className="ml-1 flex items-center rounded-xl bg-black/20" aria-label="Controles de zoom">
                   <button type="button" title="Reducir zoom" onClick={() => setZoom((value) => Math.max(0.75, value - 0.1))} className="h-11 w-11 rounded-xl text-lg text-white outline-none hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-caudal-electric" aria-label="Reducir zoom">−</button>

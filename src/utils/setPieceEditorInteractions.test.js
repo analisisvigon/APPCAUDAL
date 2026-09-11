@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   applySetPieceArrowStyle,
+  deleteSetPieceElement,
   ensureSetPieceCurveGeometry,
   getSetPieceArrowStyle,
   getSetPieceCurveControlPoint,
@@ -34,6 +35,41 @@ assert.equal(getSetPieceDeleteAction({ key: 'Delete', target: target('TEXTAREA')
 assert.equal(getSetPieceDeleteAction({ key: 'Backspace', target: target('INPUT') }, true), null, 'Backspace no elimina el elemento mientras se escribe');
 assert.equal(getSetPieceDeleteAction({ key: 'Delete', target: target('SVG') }, true), 'delete', 'Delete conserva el shortcut fuera de campos editables');
 assert.equal(getSetPieceDeleteAction({ key: 'Backspace', target: target('SVG') }, true), 'delete', 'Backspace conserva el shortcut fuera de campos editables');
+assert.equal(getSetPieceDeleteAction({ key: 'Delete', target: target('SVG') }, false), null, 'Delete no actúa sin selección');
+
+const deletableElements = [
+  { id: 'manual-player', type: 'player', player_id: '' },
+  { id: 'lineup-player', type: 'player', player_id: 'canonical-player-id' },
+  { id: 'opponent', type: 'opponent' },
+  { id: 'ball', type: 'ball' },
+  { id: 'arrow', type: 'arrow' },
+  { id: 'curve', type: 'curved_arrow' },
+  { id: 'dashed-curve', type: 'curved_arrow', dashed: true },
+  { id: 'double-arrow', type: 'double_arrow' },
+  { id: 'dashed-arrow', type: 'dashed_arrow' },
+  { id: 'block', type: 'block' },
+  { id: 'zone', type: 'zone' },
+  { id: 'text', type: 'text' },
+];
+deletableElements.forEach((selectedElement) => {
+  const remaining = deleteSetPieceElement(deletableElements, selectedElement.id);
+  assert.equal(remaining.length, deletableElements.length - 1, `${selectedElement.id} elimina solo una selección`);
+  assert.equal(remaining.some((element) => element.id === selectedElement.id), false);
+  assert.deepEqual(
+    remaining,
+    deletableElements.filter((element) => element.id !== selectedElement.id),
+    `${selectedElement.id} conserva intactos los demás objetos`,
+  );
+});
+assert.equal(deleteSetPieceElement(deletableElements, ''), deletableElements, 'sin selección no altera la jugada');
+assert.equal(
+  deletableElements.find((element) => element.id === 'lineup-player').player_id,
+  'canonical-player-id',
+  'borrar la representación visual no altera la identidad canónica enlazada',
+);
+const deletionHistory = [deletableElements, deleteSetPieceElement(deletableElements, 'arrow')];
+assert.deepEqual(deletionHistory[0], deletableElements, 'Deshacer puede restaurar la instantánea previa al borrado');
+assert.equal(deletionHistory[1].some((element) => element.id === 'arrow'), false);
 
 assert.equal(getSetPieceHistoryAction({ key: 'z', ctrlKey: true, target: target('TEXTAREA') }), null);
 assert.equal(getSetPieceHistoryAction({ key: 'y', ctrlKey: true, target: target('INPUT') }), null);

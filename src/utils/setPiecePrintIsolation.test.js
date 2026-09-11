@@ -4,6 +4,7 @@ import { buildSetPiecePrintPages } from './setPiecePrintModel.js';
 
 const css = fs.readFileSync(new URL('../styles/print.css', import.meta.url), 'utf8');
 const sheet = fs.readFileSync(new URL('../components/print/SetPieceDiagramPrintSheet.jsx', import.meta.url), 'utf8');
+const editor = fs.readFileSync(new URL('../components/print/SetPieceDiagramEditor.jsx', import.meta.url), 'utf8');
 
 const printMediaStart = css.lastIndexOf('@media print');
 assert.ok(printMediaStart >= 0, 'debe existir el contrato de impresión compartido');
@@ -44,5 +45,14 @@ const plays = Array.from({ length: 3 }, (_, index) => ({
 const pages = buildSetPiecePrintPages(plays, []);
 assert.deepEqual(pages.map((page) => page.plays.length), [2, 1], 'la tercera jugada comienza una nueva hoja');
 assert.equal(pages.every((page) => page.plays.length <= 2), true, 'ninguna hoja contiene más de dos jugadas');
+
+const duplicateActionIndex = editor.indexOf('aria-label="Duplicar diseño"');
+const deleteActionIndex = editor.indexOf("'Selecciona un elemento para borrarlo'");
+const clearActionIndex = editor.indexOf('aria-label="Vaciar campo"');
+assert.ok(duplicateActionIndex >= 0 && deleteActionIndex > duplicateActionIndex && clearActionIndex > deleteActionIndex, 'Borrar aparece entre Duplicar y Vaciar');
+assert.match(editor, /disabled=\{!selectedElement\} onClick=\{deleteSelected\}/, 'Borrar permanece deshabilitado sin selección');
+assert.match(editor, /updateElements\(deleteSetPieceElement\(drawableElements, selectedElement\.id\)\);[\s\S]*setSelectedId\(''\);[\s\S]*setPanel\('tactic'\);/, 'Borrar usa el historial existente y limpia selección y panel');
+assert.match(editor, /getSetPieceDeleteAction\(event, Boolean\(selectedElement\)\)[\s\S]*deleteSelected\(\)/, 'Delete y Backspace reutilizan la misma acción');
+assert.match(editor, /text-amber-200[\s\S]*aria-label="Vaciar campo"[\s\S]*text-red-200/, 'Borrar y Vaciar mantienen tratamientos visuales distintos');
 
 console.log('setPiecePrintIsolation tests passed');

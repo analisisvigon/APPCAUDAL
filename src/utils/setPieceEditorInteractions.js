@@ -29,6 +29,10 @@ export const getSetPieceDeleteAction = (event = {}, hasSelection = false) => {
   return ['Delete', 'Backspace'].includes(event.key) ? 'delete' : null;
 };
 
+export const deleteSetPieceElement = (elements = [], selectedId = '') => (
+  selectedId ? elements.filter((element) => element.id !== selectedId) : elements
+);
+
 export const getSetPieceArrowStyle = (element = {}) => {
   if (element.type === 'curved_arrow' && element.dashed) return 'curved_dashed_arrow';
   return element.type || 'arrow';
