@@ -81,6 +81,60 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  completedUpdates(
+    ['Titular completo A', 'Titular completo B', 'Titular completo C'],
+    {
+      'Titular completo A': { role: 'Titular', minutes: null, replacementName: '' },
+      'Titular completo B': { role: 'Titular', minutes: '', replacementName: '' },
+      'Titular completo C': { role: 'Titular', minutes: '   ', replacementName: '' },
+    },
+  ),
+  [
+    { playerName: 'Titular completo A', minutes: 90, reason: 'starter_completed_match' },
+    { playerName: 'Titular completo B', minutes: 90, reason: 'starter_completed_match' },
+    { playerName: 'Titular completo C', minutes: 90, reason: 'starter_completed_match' },
+  ],
+  'regresión histórica: varios titulares completos aceptan NULL, vacío y espacios en el mismo partido',
+);
+
+assert.deepEqual(
+  completedUpdates(
+    ['Completo', 'Sale 45', 'Sale 70'],
+    {
+      Completo: { role: 'Titular', minutes: '', replacementName: '' },
+      'Sale 45': { role: 'Titular', minutes: '45', replacementName: 'Entra 45' },
+      'Entra 45': { role: 'Suplente', minutes: '45', replacementName: '' },
+      'Sale 70': { role: 'Titular', minutes: '70', replacementName: 'Entra 70' },
+      'Entra 70': { role: 'Suplente', minutes: '20', replacementName: '' },
+      'No entra': { role: 'Suplente', minutes: '', replacementName: '' },
+      Fuera: { role: 'Fuera', minutes: '', replacementName: '' },
+    },
+  ),
+  [{ playerName: 'Completo', minutes: 90, reason: 'starter_completed_match' }],
+  'regresión histórica: la mezcla conserva cambios 45/70 y solo completa al titular sin salida',
+);
+
+const historicalMatchOne = completedUpdates(
+  ['Histórico uno'],
+  { 'Histórico uno': { role: 'Titular', minutes: '', replacementName: '' } },
+  true,
+  { date: '2026-08-01' },
+);
+const historicalMatchTwo = completedUpdates(
+  ['Histórico dos'],
+  { 'Histórico dos': { role: 'Titular', minutes: '90', replacementName: '' } },
+  true,
+  { date: '2026-08-08' },
+);
+assert.equal(historicalMatchOne.length, 1, 'varios partidos: el histórico pendiente genera su actualización');
+assert.equal(historicalMatchTwo.length, 0, 'varios partidos: un 90 ya persistido permanece idempotente');
+assert.equal(
+  isStatsMatchCompleted({ date: '2026-09-12', homeScore: 3, awayScore: 2 }, new Date(2026, 8, 11, 12)),
+  false,
+  'un marcador cargado en un partido futuro no cierra minutos',
+);
+
+assert.deepEqual(
   resolveStatsWorkingMinutes({ role: 'Titular', minutes: '', matchDuration: 120 }),
   { value: 120, isUnconfirmedStarterValue: true },
   'la propuesta visual reutiliza la duración canónica recibida',
@@ -190,5 +244,46 @@ assert.match(normalizedBorjaBackfill, /nullif\(pg_catalog\.btrim\(coalesce\(stat
 assert.match(normalizedBorjaBackfill, /lineup\.scope = 'stats'/i);
 assert.equal(normalizedBorjaBackfill.match(/update public\.partido_estadisticas_jugador stats/g)?.length, 1);
 assert.match(normalizedBorjaBackfill, /update public\.partido_estadisticas_jugador stats set minutes = '90' from/i);
+
+const globalDiagnosticSql = fs.readFileSync(
+  new URL('../../supabase_diagnose_full_match_minutes_candidates.sql', import.meta.url),
+  'utf8',
+);
+const globalBackfillSql = fs.readFileSync(
+  new URL('../../supabase_backfill_safe_full_match_minutes.sql', import.meta.url),
+  'utf8',
+);
+const normalizedGlobalDiagnostic = globalDiagnosticSql.replace(/\s+/g, ' ').trim();
+const normalizedGlobalBackfill = globalBackfillSql.replace(/\s+/g, ' ').trim();
+
+assert.doesNotMatch(
+  normalizedGlobalDiagnostic,
+  /\b(?:insert|update|delete|merge|truncate|alter|create|drop|grant|revoke)\b/i,
+  'el diagnóstico global es estrictamente de solo lectura',
+);
+[
+  'total_candidates', 'safe_candidates', 'ambiguous_candidates', 'rejected_candidates',
+  'actual_lineup_scopes', 'has_exit_event', 'has_entry_event', 'last_snapshot_minute',
+  'last_quick_event_minute', 'match_score_known', 'duration_computable',
+  'candidate_status', 'failed_preconditions', 'proposed_minutes',
+].forEach((field) => assert.match(normalizedGlobalDiagnostic, new RegExp(`\\b${field}\\b`, 'i')));
+assert.match(normalizedGlobalDiagnostic, /candidate_status = 'SAFE'/i);
+assert.match(normalizedGlobalDiagnostic, /then 'AMBIGUOUS'/i);
+assert.match(normalizedGlobalDiagnostic, /then 'REJECTED'/i);
+assert.match(normalizedGlobalDiagnostic, /nullif\(pg_catalog\.btrim\(stats\.minutes::text\), ''\) is null/i);
+
+assert.match(normalizedGlobalBackfill, /^-- .* begin; do \$backfill\$/i, 'el backfill general es transaccional');
+assert.match(normalizedGlobalBackfill, /\$backfill\$; commit;$/i);
+assert.equal(normalizedGlobalBackfill.match(/\bupdate public\.partido_estadisticas_jugador stats\b/gi)?.length, 1);
+assert.match(normalizedGlobalBackfill, /set minutes = safe_candidate\.computed_duration::text from safe_candidates/i);
+assert.doesNotMatch(normalizedGlobalBackfill, /set\s+(?:role|jugador_id|replacement_name|goals?|assists?|yellow|red)\b/i);
+assert.match(normalizedGlobalBackfill, /lineup\.scope = 'stats'/i);
+assert.match(normalizedGlobalBackfill, /candidate\.match_date < runtime\.madrid_today/i);
+assert.match(normalizedGlobalBackfill, /candidate\.home_score::text[\s\S]*candidate\.away_score::text/i);
+assert.match(normalizedGlobalBackfill, /duration_metric\.computed_duration is not null/i);
+assert.match(normalizedGlobalBackfill, /not exists \( select 1 from public\.partido_estadisticas_jugador outgoing/i);
+assert.match(normalizedGlobalBackfill, /not exists \( select 1 from public\.partido_snapshots_tacticos snapshot_row/i);
+assert.match(normalizedGlobalBackfill, /where stats\.id = safe_candidate\.stats_row_id[\s\S]*nullif\(pg_catalog\.btrim\(stats\.minutes::text\), ''\) is null/i);
+assert.match(normalizedGlobalBackfill, /if updated_count <> safe_count then raise exception/i);
 
 console.log('statsWorkingMinutes tests passed');
