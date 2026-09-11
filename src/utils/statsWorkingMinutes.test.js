@@ -256,6 +256,48 @@ const globalBackfillSql = fs.readFileSync(
 const normalizedGlobalDiagnostic = globalDiagnosticSql.replace(/\s+/g, ' ').trim();
 const normalizedGlobalBackfill = globalBackfillSql.replace(/\s+/g, ' ').trim();
 
+[globalDiagnosticSql, globalBackfillSql].forEach((sql) => {
+  assert.doesNotMatch(
+    sql,
+    /pg_catalog\.(?:greatest|least)\s*\(/i,
+    'GREATEST y LEAST no deben tratarse como funciones calificadas de pg_catalog',
+  );
+});
+assert.equal(
+  normalizedGlobalDiagnostic.match(/\bgreatest\s*\(/gi)?.length,
+  5,
+  'el diagnÃ³stico conserva sus cinco cÃ¡lculos GREATEST',
+);
+assert.equal(
+  normalizedGlobalBackfill.match(/\bgreatest\s*\(/gi)?.length,
+  2,
+  'el backfill conserva sus dos cÃ¡lculos GREATEST',
+);
+assert.match(
+  normalizedGlobalDiagnostic,
+  /greatest\( 90, coalesce\(stats_metric\.max_recorded_minutes, 0\), coalesce\(snapshot_metric\.max_snapshot_minute, 0\), coalesce\(system_metric\.max_system_event_minute, 0\) \)/i,
+  'los operandos de minutos del diagnÃ³stico permanecen enteros',
+);
+const diagnosticSqlStructure = globalDiagnosticSql
+  .replace(/--[^\r\n]*/g, '')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/'(?:''|[^'])*'/g, "''")
+  .trim();
+let diagnosticParenthesisDepth = 0;
+for (const character of diagnosticSqlStructure) {
+  if (character === '(') diagnosticParenthesisDepth += 1;
+  if (character === ')') diagnosticParenthesisDepth -= 1;
+  assert.ok(diagnosticParenthesisDepth >= 0, 'el diagnÃ³stico no cierra parÃ©ntesis sin abrir');
+}
+assert.equal(diagnosticParenthesisDepth, 0, 'el diagnÃ³stico cierra todos sus parÃ©ntesis');
+assert.match(diagnosticSqlStructure, /^with\b/i, 'el diagnÃ³stico completo comienza con un CTE');
+assert.match(diagnosticSqlStructure, /\bselect\b[\s\S]*;$/i, 'el diagnÃ³stico completo termina en SELECT');
+assert.equal(
+  diagnosticSqlStructure.match(/;/g)?.length,
+  1,
+  'el diagnÃ³stico contiene una Ãºnica sentencia SQL completa',
+);
+
 assert.doesNotMatch(
   normalizedGlobalDiagnostic,
   /\b(?:insert|update|delete|merge|truncate|alter|create|drop|grant|revoke)\b/i,

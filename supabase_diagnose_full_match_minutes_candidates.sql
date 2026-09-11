@@ -132,7 +132,7 @@ duration_metrics as (
     snapshot_metric.max_snapshot_minute,
     system_metric.max_system_event_minute,
     stats_metric.extended_duration_anchor,
-    pg_catalog.greatest(
+    greatest(
       90,
       coalesce(stats_metric.max_recorded_minutes, 0),
       coalesce(snapshot_metric.max_snapshot_minute, 0),
@@ -143,13 +143,13 @@ duration_metrics as (
         or coalesce(snapshot_metric.invalid_complete_snapshot_count, 0) <> 0
         or coalesce(system_metric.invalid_system_event_minute_count, 0) <> 0
         then null
-      when pg_catalog.greatest(
+      when greatest(
         90,
         coalesce(stats_metric.max_recorded_minutes, 0),
         coalesce(snapshot_metric.max_snapshot_minute, 0),
         coalesce(system_metric.max_system_event_minute, 0)
       ) = 90 then 90
-      when stats_metric.extended_duration_anchor = pg_catalog.greatest(
+      when stats_metric.extended_duration_anchor = greatest(
         coalesce(stats_metric.max_recorded_minutes, 0),
         coalesce(snapshot_metric.max_snapshot_minute, 0),
         coalesce(system_metric.max_system_event_minute, 0)
@@ -161,13 +161,13 @@ duration_metrics as (
         or coalesce(snapshot_metric.invalid_complete_snapshot_count, 0) <> 0
         or coalesce(system_metric.invalid_system_event_minute_count, 0) <> 0
         then 'not_computable'
-      when pg_catalog.greatest(
+      when greatest(
         90,
         coalesce(stats_metric.max_recorded_minutes, 0),
         coalesce(snapshot_metric.max_snapshot_minute, 0),
         coalesce(system_metric.max_system_event_minute, 0)
       ) = 90 then 'canonical_standard_90'
-      when stats_metric.extended_duration_anchor = pg_catalog.greatest(
+      when stats_metric.extended_duration_anchor = greatest(
         coalesce(stats_metric.max_recorded_minutes, 0),
         coalesce(snapshot_metric.max_snapshot_minute, 0),
         coalesce(system_metric.max_system_event_minute, 0)

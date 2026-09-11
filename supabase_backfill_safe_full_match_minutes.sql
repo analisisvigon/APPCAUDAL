@@ -135,13 +135,13 @@ begin
           or coalesce(snapshot_metric.invalid_complete_snapshot_count, 0) <> 0
           or coalesce(system_metric.invalid_system_event_minute_count, 0) <> 0
           then null
-        when pg_catalog.greatest(
+        when greatest(
           90,
           coalesce(stats_metric.max_recorded_minutes, 0),
           coalesce(snapshot_metric.max_snapshot_minute, 0),
           coalesce(system_metric.max_system_event_minute, 0)
         ) = 90 then 90
-        when stats_metric.extended_duration_anchor = pg_catalog.greatest(
+        when stats_metric.extended_duration_anchor = greatest(
           coalesce(stats_metric.max_recorded_minutes, 0),
           coalesce(snapshot_metric.max_snapshot_minute, 0),
           coalesce(system_metric.max_system_event_minute, 0)
