@@ -136,4 +136,59 @@ assert.match(app, /await persistCompletedMatchMinutes\(completedMatch, \{/);
 assert.match(app, /await persistCompletedMatchMinutes\(selectedMatch, \{ forceCompleted: true \}\)/);
 assert.match(app, /onFocus=\{\(\) => isStatsMatchCompleted\(selectedMatch\) && minutesInput\.isUnconfirmedStarterValue/);
 
+const borjaBackfill = fs.readFileSync(
+  new URL('../../supabase_backfill_borja_salamanca_full_match_minutes.sql', import.meta.url),
+  'utf8',
+);
+const normalizedBorjaBackfill = borjaBackfill.replace(/\s+/g, ' ').trim();
+const isUnrecordedMinutes = (value) => value == null || String(value).trim() === '';
+
+assert.equal(isUnrecordedMinutes(null), true, 'backfill A: NULL es minutos no registrados');
+assert.equal(isUnrecordedMinutes(''), true, 'backfill B: cadena vacía es minutos no registrados');
+assert.equal(isUnrecordedMinutes('   '), true, 'backfill C: solo espacios son minutos no registrados');
+assert.equal(isUnrecordedMinutes('0'), false, 'backfill D: 0 es un valor registrado');
+assert.equal(isUnrecordedMinutes('90'), false, 'backfill E: 90 es un valor registrado');
+
+assert.equal(
+  normalizedBorjaBackfill.match(/nullif\(pg_catalog\.btrim\(stats\.minutes::text\), ''\) is null/g)?.length,
+  2,
+  'el guard compatible se aplica tanto al conteo como al UPDATE',
+);
+assert.doesNotMatch(normalizedBorjaBackfill, /stats\.minutes is null/i, 'no queda el guard estricto incompatible con producción');
+assert.match(normalizedBorjaBackfill, /\(pg_catalog\.count\(\*\) filter \( where nullif\(pg_catalog\.btrim\(stats\.minutes::text\), ''\) is null \)\)::integer/i);
+assert.match(normalizedBorjaBackfill, /\(pg_catalog\.count\(\*\) filter \( where pg_catalog\.btrim\(stats\.minutes::text\) = '90' \)\)::integer/i);
+
+const classifyBackfillRun = (minutesRows) => {
+  const candidateCount = minutesRows.filter(isUnrecordedMinutes).length;
+  const alreadyCorrectedCount = minutesRows.filter((value) => String(value ?? '').trim() === '90').length;
+  const action = candidateCount === 0 && alreadyCorrectedCount === 1
+    ? 'already_corrected'
+    : candidateCount === 1 && alreadyCorrectedCount === 0
+      ? 'update'
+      : 'abort';
+  return { candidateCount, alreadyCorrectedCount, action };
+};
+
+assert.deepEqual(
+  classifyBackfillRun(['']),
+  { candidateCount: 1, alreadyCorrectedCount: 0, action: 'update' },
+  'backfill F: Borja real con cadena vacía produce exactamente un candidato',
+);
+assert.deepEqual(
+  classifyBackfillRun(['90']),
+  { candidateCount: 0, alreadyCorrectedCount: 1, action: 'already_corrected' },
+  'backfill G: tras persistir 90 la segunda ejecución es segura e idempotente',
+);
+assert.match(normalizedBorjaBackfill, /if candidate_count = 0 and already_corrected_count = 1 then raise notice .* return; end if;/i);
+assert.match(normalizedBorjaBackfill, /if candidate_count <> 1 or already_corrected_count <> 0 then raise exception/i);
+
+assert.match(normalizedBorjaBackfill, /player\.id = '2e0146e9-e9fc-45ad-b055-edc138a85f7e'::uuid/i);
+assert.match(normalizedBorjaBackfill, /match_row\.date = date '2026-09-09'/i);
+assert.match(normalizedBorjaBackfill, /lower\(pg_catalog\.btrim\(match_row\.opponent\)\) = pg_catalog\.lower\('Salamanca CF UDS'\)/i);
+assert.match(normalizedBorjaBackfill, /lower\(pg_catalog\.btrim\(coalesce\(stats\.role, ''\)\)\) = 'titular'/i);
+assert.match(normalizedBorjaBackfill, /nullif\(pg_catalog\.btrim\(coalesce\(stats\.replacement_name, ''\)\), ''\) is null/i);
+assert.match(normalizedBorjaBackfill, /lineup\.scope = 'stats'/i);
+assert.equal(normalizedBorjaBackfill.match(/update public\.partido_estadisticas_jugador stats/g)?.length, 1);
+assert.match(normalizedBorjaBackfill, /update public\.partido_estadisticas_jugador stats set minutes = '90' from/i);
+
 console.log('statsWorkingMinutes tests passed');

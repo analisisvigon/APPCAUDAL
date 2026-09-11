@@ -7,10 +7,17 @@ begin;
 do $backfill$
 declare
   candidate_count integer;
+  already_corrected_count integer;
   updated_count integer;
 begin
-  select pg_catalog.count(*)::integer
-  into candidate_count
+  select
+    (pg_catalog.count(*) filter (
+      where nullif(pg_catalog.btrim(stats.minutes::text), '') is null
+    ))::integer,
+    (pg_catalog.count(*) filter (
+      where pg_catalog.btrim(stats.minutes::text) = '90'
+    ))::integer
+  into candidate_count, already_corrected_count
   from public.partido_estadisticas_jugador stats
   join public.partidos match_row
     on match_row.id = stats.partido_id
@@ -24,7 +31,6 @@ begin
       'aplazado', 'postponed', 'suspendido', 'suspended',
       'cancelado', 'cancelled', 'canceled'
     )
-    and stats.minutes is null
     and pg_catalog.lower(pg_catalog.btrim(coalesce(stats.role, ''))) = 'titular'
     and nullif(pg_catalog.btrim(coalesce(stats.replacement_name, '')), '') is null
     and (
@@ -48,7 +54,12 @@ begin
         )
     );
 
-  if candidate_count <> 1 then
+  if candidate_count = 0 and already_corrected_count = 1 then
+    raise notice 'Backfill omitido: Borja-Salamanca ya tiene 90 minutos';
+    return;
+  end if;
+
+  if candidate_count <> 1 or already_corrected_count <> 0 then
     raise exception 'Backfill abortado: se esperaba exactamente 1 participación inequívoca de Borja-Salamanca y se encontraron %', candidate_count;
   end if;
 
@@ -65,7 +76,7 @@ begin
       'aplazado', 'postponed', 'suspendido', 'suspended',
       'cancelado', 'cancelled', 'canceled'
     )
-    and stats.minutes is null
+    and nullif(pg_catalog.btrim(stats.minutes::text), '') is null
     and pg_catalog.lower(pg_catalog.btrim(coalesce(stats.role, ''))) = 'titular'
     and nullif(pg_catalog.btrim(coalesce(stats.replacement_name, '')), '') is null
     and (
