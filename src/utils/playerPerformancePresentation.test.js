@@ -16,6 +16,7 @@ import {
   getPlayerMetricValue,
   getPlayerMonthBounds,
   getPlayerPerformanceFetchRange,
+  getPlayerTeamLoadRange,
   getPlayerWeekBounds,
   shiftPlayerPerformanceAnchor,
   splitAvailablePlayerSeries,
@@ -66,6 +67,14 @@ assert.deepEqual(getPlayerPerformanceFetchRange('2026-09-03'), {
   startDate: '2026-08-31',
   endDate: '2026-10-04',
 });
+assert.deepEqual(getPlayerTeamLoadRange('2026-09-03', 'week'), {
+  startDate: '2026-08-31',
+  endDate: '2026-09-06',
+}, 'La carga colectiva pide una semana natural de lunes a domingo.');
+assert.deepEqual(getPlayerTeamLoadRange('2026-09-03', 'month'), {
+  startDate: '2026-09-01',
+  endDate: '2026-09-30',
+}, 'La carga colectiva pide el mes natural completo.');
 assert.equal(shiftPlayerPerformanceAnchor('2026-01-31', 'month', 1), '2026-02-28');
 assert.equal(shiftPlayerPerformanceAnchor('2026-09-03', 'week', -1), '2026-08-27');
 assert.equal(addPlayerDays('2026-03-29', 1), '2026-03-30', 'Los días deportivos no se desplazan por cambios horarios.');

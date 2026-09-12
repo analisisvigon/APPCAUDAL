@@ -141,7 +141,26 @@ export function summarizePerformanceMetricPoints(points = [], metricConfig) {
   };
 }
 
-export function getPerformanceMetricKpiLabels(metricConfig, period) {
+export function getPerformanceMetricKpiLabels(metricConfig, period, mode = 'staff') {
+  if (mode === 'player') {
+    if (metricConfig?.aggregation === 'durationWeightedAverage') {
+      return {
+        aggregate: `${metricConfig.label} medio ponderado del equipo`,
+        average: `Media diaria de ${metricConfig.label} del equipo`,
+        peak: period === 'month'
+          ? `Semana de mayor ${metricConfig.label} del equipo`
+          : `Día de mayor ${metricConfig.label} del equipo`,
+      };
+    }
+    return {
+      aggregate: `${metricConfig.label} total del equipo`,
+      average: `Media de ${metricConfig.label} del equipo por día con dato`,
+      peak: period === 'month'
+        ? `Semana de mayor ${metricConfig.label} del equipo`
+        : `Día de mayor ${metricConfig.label} del equipo`,
+    };
+  }
+
   const periodAdjective = period === 'month' ? 'mensual' : 'semanal';
   if (metricConfig?.aggregation === 'durationWeightedAverage') {
     return {

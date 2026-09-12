@@ -226,6 +226,11 @@ assert.deepEqual(summarizePerformanceMetricPoints(cumulativePoints, loadUnitMetr
 assert.equal(aggregatePerformanceMetricPoints(cumulativePoints, loadUnitMetric), 300);
 assert.match(getPerformanceMetricKpiLabels(loadUnitMetric, 'week').aggregate, /total semanal/);
 assert.match(getPerformanceMetricKpiLabels(loadUnitMetric, 'month').aggregate, /total mensual/);
+assert.deepEqual(getPerformanceMetricKpiLabels(loadUnitMetric, 'week', 'player'), {
+  aggregate: 'U.C. total del equipo',
+  average: 'Media de U.C. del equipo por día con dato',
+  peak: 'Día de mayor U.C. del equipo',
+});
 
 const metersPerMinuteMetric = getPerformanceLoadMetricConfig('metersPerMinute');
 const ratePoints = [
@@ -238,6 +243,11 @@ assert.equal(rateSummary.aggregate, (100 * 60 + 50 * 30) / 90);
 assert.equal(rateSummary.simpleAverage, 75);
 assert.match(getPerformanceMetricKpiLabels(metersPerMinuteMetric, 'week').aggregate, /Media ponderada semanal/);
 assert.match(getPerformanceMetricKpiLabels(metersPerMinuteMetric, 'month').aggregate, /Media ponderada mensual/);
+assert.deepEqual(getPerformanceMetricKpiLabels(metersPerMinuteMetric, 'week', 'player'), {
+  aggregate: 'M/min medio ponderado del equipo',
+  average: 'Media diaria de M/min del equipo',
+  peak: 'Día de mayor M/min del equipo',
+});
 assert.equal(
   aggregatePerformanceMetricPoints([...ratePoints, { hasData: true, value: 80, weight: null }], metersPerMinuteMetric),
   null,

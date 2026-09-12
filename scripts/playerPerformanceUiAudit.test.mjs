@@ -78,7 +78,7 @@ assert.match(presentation, /export function buildPlayerCurrentState/);
 assert.doesNotMatch(branch, /getWellnessScore/, 'El PLAYER no recalcula ni inventa el score sincronizado.');
 assert.match(presentation, /PLAYER_WELLNESS_SCORE_SCALE = Object\.freeze\(\{ min: 0, max: 10 \}\)/);
 
-// Una sola evolución, con selector real y navegación acotada Semana/Mes.
+// Evolución personal, con selector real y navegación acotada Semana/Mes.
 assert.match(panel, /function EvolutionSection/);
 assert.match(panel, /Tu evolución/);
 assert.doesNotMatch(panel, /Una métrica, un periodo/);
@@ -98,6 +98,8 @@ for (const metric of ['Wellness', 'RPE', 'Sueño', 'Fatiga', 'Dolor muscular', '
   assert.match(presentation, new RegExp(`label: '${metric}'`));
 }
 assert.equal((panel.match(/<PlayerPerformanceTrendChart model=\{model\}/g) || []).length, 1, 'Solo hay una gráfica principal en Rendimiento.');
+assert.equal((panel.match(/<LoadEvolutionSection/g) || []).length, 1, 'La carga colectiva reutiliza una sola instancia del componente STAFF.');
+assert.match(panel, /mode="player"/);
 assert.match(trendChart, /<svg/);
 assert.match(trendChart, /<polyline/);
 assert.match(trendChart, /<circle/);

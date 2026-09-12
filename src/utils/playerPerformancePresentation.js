@@ -78,6 +78,12 @@ export function getPlayerPerformanceFetchRange(anchorDate) {
   return { startDate: grid[0] || '', endDate: grid.at(-1) || '' };
 }
 
+export function getPlayerTeamLoadRange(anchorDate, period) {
+  return period === 'month'
+    ? getPlayerMonthBounds(anchorDate)
+    : getPlayerWeekBounds(anchorDate);
+}
+
 export function shiftPlayerPerformanceAnchor(anchorDate, period, direction) {
   const date = parseIsoDate(anchorDate);
   if (!date) return anchorDate;

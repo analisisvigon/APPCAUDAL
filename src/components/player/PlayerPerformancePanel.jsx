@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  getMyTeamLoadEvolution,
   loadPlayerPerformancePage,
   loadPlayerPerformanceRange,
 } from '../../data/playerPerformanceStore';
@@ -14,14 +15,17 @@ import {
   getPlayerCalendarGrid,
   getPlayerMonthBounds,
   getPlayerPerformanceFetchRange,
+  getPlayerTeamLoadRange,
   getPlayerWeekBounds,
   shiftPlayerPerformanceAnchor,
 } from '../../utils/playerPerformancePresentation';
 import PlayerLineChart from './PlayerLineChart';
 import PlayerPerformanceTrendChart from './PlayerPerformanceTrendChart';
+import LoadEvolutionSection from '../performance/LoadEvolutionSection';
 
 const INITIAL_STATE = { status: 'loading', errorKind: '', wellness: [], rpe: [] };
 const INITIAL_RANGE_STATE = { status: 'idle', errorKind: '', wellness: [], rpe: [] };
+const INITIAL_TEAM_LOAD_STATE = { status: 'idle', errorKind: '', rows: [] };
 const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric focus-visible:ring-offset-2 focus-visible:ring-offset-[#081326]';
 const CARD_CLASS = 'min-w-0 rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 shadow-[0_16px_42px_rgba(0,0,0,0.18)]';
 const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -340,12 +344,35 @@ function DayDetail({ selectedDate, wellness, rpe }) {
   );
 }
 
-function PlayerPerformanceView({ state, rangeState, period, setPeriod, anchorDate, setAnchorDate, metricKey, setMetricKey, selectedDate, setSelectedDate }) {
+function PlayerPerformanceView({ state, rangeState, period, setPeriod, anchorDate, setAnchorDate, metricKey, setMetricKey, selectedDate, setSelectedDate, teamLoad }) {
   const today = getLocalPlayerDateKey();
   return (
     <div className="space-y-3 sm:space-y-4">
       <CurrentState wellness={state.wellness} rpe={state.rpe} today={today} />
       <EvolutionSection rangeState={rangeState} period={period} onPeriodChange={setPeriod} anchorDate={anchorDate} onAnchorChange={setAnchorDate} metricKey={metricKey} onMetricChange={setMetricKey} />
+      <div className="border-t border-white/10 pt-3 sm:pt-4">
+        <LoadEvolutionSection
+          mode="player"
+          period={teamLoad.period}
+          setPeriod={teamLoad.setPeriod}
+          metricKey={teamLoad.metricKey}
+          setMetricKey={teamLoad.setMetricKey}
+          month={teamLoad.anchorDate.slice(0, 7)}
+          setMonth={(month) => { if (month) teamLoad.setAnchorDate(`${month}-01`); }}
+          weekDate={teamLoad.anchorDate}
+          setWeekDate={(date) => { if (date) teamLoad.setAnchorDate(date); }}
+          weekStart={teamLoad.range.startDate}
+          weekEnd={teamLoad.range.endDate}
+          weekLoads={teamLoad.state.rows}
+          monthLoads={teamLoad.state.rows}
+          monthLoading={false}
+          loading={teamLoad.state.status === 'loading'}
+          errorKind={teamLoad.state.errorKind}
+          onRetry={teamLoad.retry}
+          rpeEntries={[]}
+          selectedDate=""
+        />
+      </div>
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(18rem,0.85fr)] lg:items-start">
         <CalendarSection anchorDate={anchorDate} wellness={rangeState.wellness} rpe={rangeState.rpe} selectedDate={selectedDate} onSelectDate={setSelectedDate} onMonthChange={(direction) => setAnchorDate(shiftPlayerPerformanceAnchor(anchorDate, 'month', direction))} />
         <DayDetail selectedDate={selectedDate} wellness={rangeState.wellness} rpe={rangeState.rpe} />
@@ -363,8 +390,17 @@ export default function PlayerPerformancePanel({ client, view = 'performance', o
   const [anchorDate, setAnchorDateValue] = useState(() => getLocalPlayerDateKey());
   const [metricKey, setMetricKey] = useState('rpe');
   const [selectedDate, setSelectedDate] = useState('');
+  const [teamLoadState, setTeamLoadState] = useState(INITIAL_TEAM_LOAD_STATE);
+  const [teamLoadPeriod, setTeamLoadPeriod] = useState('week');
+  const [teamLoadAnchorDate, setTeamLoadAnchorDate] = useState(() => getLocalPlayerDateKey());
+  const [teamLoadMetricKey, setTeamLoadMetricKey] = useState('loadUnits');
+  const [teamLoadReloadToken, setTeamLoadReloadToken] = useState(0);
   const hasOpenedPerformanceRef = useRef(false);
   const fetchRange = useMemo(() => getPlayerPerformanceFetchRange(anchorDate), [anchorDate]);
+  const teamLoadRange = useMemo(
+    () => getPlayerTeamLoadRange(teamLoadAnchorDate, teamLoadPeriod),
+    [teamLoadAnchorDate, teamLoadPeriod],
+  );
   const setAnchorDate = (nextDate) => {
     if (nextDate === anchorDate) setRangeReloadToken((current) => current + 1);
     else setAnchorDateValue(nextDate);
@@ -406,8 +442,20 @@ export default function PlayerPerformancePanel({ client, view = 'performance', o
     return () => { cancelled = true; };
   }, [anchorDate, client, fetchRange, rangeReloadToken, view]);
 
+  useEffect(() => {
+    if (view !== 'performance') return undefined;
+    let cancelled = false;
+    setTeamLoadState({ ...INITIAL_TEAM_LOAD_STATE, status: 'loading' });
+    getMyTeamLoadEvolution(client, teamLoadRange.startDate, teamLoadRange.endDate).then((rows) => {
+      if (!cancelled) setTeamLoadState({ status: 'ready', errorKind: '', rows });
+    }).catch((error) => {
+      if (!cancelled) setTeamLoadState({ ...INITIAL_TEAM_LOAD_STATE, status: 'error', errorKind: error?.kind || 'network' });
+    });
+    return () => { cancelled = true; };
+  }, [client, teamLoadRange.endDate, teamLoadRange.startDate, teamLoadReloadToken, view]);
+
   if (state.status === 'loading') return <div role="status" aria-live="polite" className="grid gap-3 sm:grid-cols-2">{['Wellness', 'RPE'].map((label) => <div key={label} className={`${CARD_CLASS} min-h-32 animate-pulse px-5 py-10 text-center text-xs font-black uppercase tracking-[0.18em] text-slate-500`}>Cargando {label}…</div>)}</div>;
   if (state.status === 'error') return <div className={`${CARD_CLASS} px-5 py-8 text-center`}><h2 className="text-lg font-black text-white">{state.errorKind === 'invalid_session' ? 'Tu sesión ya no es válida' : 'No se pudo cargar tu rendimiento'}</h2><p role="alert" className="mt-2 text-sm text-slate-400">{state.errorKind === 'invalid_session' ? 'Cierra sesión y vuelve a identificarte.' : 'Comprueba tu conexión y vuelve a intentarlo.'}</p><button type="button" onClick={() => setReloadToken((current) => current + 1)} className={`mt-5 min-h-[46px] rounded-xl bg-white/10 px-5 py-2.5 text-sm font-black text-white hover:bg-white/15 ${FOCUS_RING}`}>Reintentar</button></div>;
   if (view === 'space') return <PlayerSpaceDashboard wellness={state.wellness} rpe={state.rpe} onOpenPerformance={onOpenPerformance} />;
-  return <PlayerPerformanceView state={state} rangeState={rangeState} period={period} setPeriod={setPeriod} anchorDate={anchorDate} setAnchorDate={setAnchorDate} metricKey={metricKey} setMetricKey={setMetricKey} selectedDate={selectedDate} setSelectedDate={setSelectedDate} />;
+  return <PlayerPerformanceView state={state} rangeState={rangeState} period={period} setPeriod={setPeriod} anchorDate={anchorDate} setAnchorDate={setAnchorDate} metricKey={metricKey} setMetricKey={setMetricKey} selectedDate={selectedDate} setSelectedDate={setSelectedDate} teamLoad={{ state: teamLoadState, period: teamLoadPeriod, setPeriod: setTeamLoadPeriod, anchorDate: teamLoadAnchorDate, setAnchorDate: setTeamLoadAnchorDate, metricKey: teamLoadMetricKey, setMetricKey: setTeamLoadMetricKey, range: teamLoadRange, retry: () => setTeamLoadReloadToken((current) => current + 1) }} />;
 }

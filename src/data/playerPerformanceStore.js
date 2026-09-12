@@ -26,6 +26,7 @@ const RPE_COLUMNS = [
 export const PLAYER_PERFORMANCE_PAGE_SIZE = 8;
 export const PLAYER_PERFORMANCE_MAX_PAGE_SIZE = 20;
 export const PLAYER_PERFORMANCE_MAX_RANGE_DAYS = 42;
+export const PLAYER_TEAM_LOAD_MAX_RANGE_DAYS = 62;
 
 export class PlayerPerformanceLoadError extends Error {
   constructor(kind = 'network') {
@@ -103,6 +104,22 @@ const normalizeRpeEntry = (row) => ({
   rpe: normalizeOptionalNumber(row?.rpe),
   load: normalizeOptionalNumber(row?.load),
   comment: normalizeOptionalText(row?.comment),
+});
+
+const normalizePlayerTeamLoad = (row) => ({
+  session: {
+    session_date: normalizeDate(row?.session_date),
+    actual_duration_minutes: normalizeOptionalNumber(row?.actual_duration_minutes),
+  },
+  metrics: {
+    load_units: normalizeOptionalNumber(row?.load_units),
+    distance_m: normalizeOptionalNumber(row?.distance_m),
+    hsr_m: normalizeOptionalNumber(row?.hsr_m),
+    accelerations: normalizeOptionalNumber(row?.accelerations),
+    decelerations: normalizeOptionalNumber(row?.decelerations),
+    sprints: normalizeOptionalNumber(row?.sprints),
+    meters_per_minute: normalizeOptionalNumber(row?.meters_per_minute),
+  },
 });
 
 const normalizePageRequest = ({ offset = 0, limit = PLAYER_PERFORMANCE_PAGE_SIZE } = {}) => ({
@@ -227,4 +244,43 @@ export async function loadPlayerPerformanceRange(client, options = {}) {
     loadRange(client, 'rpe_entries', RPE_COLUMNS, normalizeRpeEntry, options),
   ]);
   return { wellness, rpe };
+}
+
+export async function getMyTeamLoadEvolution(client, startDate, endDate) {
+  if (!client || typeof client.rpc !== 'function') {
+    throw new PlayerPerformanceLoadError('invalid_session');
+  }
+
+  const startTimestamp = dateToUtcTimestamp(startDate);
+  const endTimestamp = dateToUtcTimestamp(endDate);
+  const rangeDays = Math.floor((endTimestamp - startTimestamp) / 86400000) + 1;
+  if (!Number.isFinite(startTimestamp)
+    || !Number.isFinite(endTimestamp)
+    || rangeDays < 1
+    || rangeDays > PLAYER_TEAM_LOAD_MAX_RANGE_DAYS) {
+    throw new PlayerPerformanceLoadError('network');
+  }
+
+  let response;
+  try {
+    response = await client.rpc('get_my_team_load_evolution', {
+      p_start_date: startDate,
+      p_end_date: endDate,
+    });
+  } catch (error) {
+    throw new PlayerPerformanceLoadError(
+      isInvalidSessionError(error) ? 'invalid_session' : 'network',
+    );
+  }
+
+  if (response?.error) {
+    throw new PlayerPerformanceLoadError(
+      isInvalidSessionError(response.error) ? 'invalid_session' : 'network',
+    );
+  }
+
+  return (Array.isArray(response?.data) ? response.data : [])
+    .map(normalizePlayerTeamLoad)
+    .filter((row) => row.session.session_date)
+    .sort((left, right) => left.session.session_date.localeCompare(right.session.session_date));
 }

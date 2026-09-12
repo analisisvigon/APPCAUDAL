@@ -2,13 +2,29 @@ import assert from 'node:assert/strict';
 import {
   PLAYER_PERFORMANCE_MAX_PAGE_SIZE,
   PLAYER_PERFORMANCE_MAX_RANGE_DAYS,
+  PLAYER_TEAM_LOAD_MAX_RANGE_DAYS,
   PlayerPerformanceLoadError,
   appendUniquePlayerEntries,
+  getMyTeamLoadEvolution,
   loadPlayerPerformancePage,
   loadPlayerPerformanceRange,
   loadPlayerRpePage,
   loadPlayerWellnessPage,
 } from './playerPerformanceStore.js';
+
+const makeRpcClient = (data = [], error = null) => {
+  const calls = [];
+  return {
+    calls,
+    rpc(name, params) {
+      calls.push({ name, params });
+      return Promise.resolve({ data, error });
+    },
+    from() {
+      throw new Error('La carga colectiva PLAYER no puede consultar tablas directamente.');
+    },
+  };
+};
 
 const makeClient = (rowsByTable = {}, errorsByTable = {}) => {
   const calls = [];
@@ -208,4 +224,78 @@ await assert.rejects(
   (error) => error instanceof PlayerPerformanceLoadError && error.kind === 'invalid_session',
 );
 
-console.log('playerPerformanceStore: RLS-only path, orden, límites, vacíos y errores validados.');
+const teamLoadClient = makeRpcClient([
+  {
+    session_date: '2026-09-08',
+    load_units: '0',
+    distance_m: 0,
+    hsr_m: null,
+    accelerations: '12',
+    decelerations: 0,
+    sprints: '2',
+    meters_per_minute: null,
+    actual_duration_minutes: '60',
+    id: 'forbidden-id',
+    club_id: 'forbidden-club',
+    jugador_id: 'forbidden-player',
+    notes: 'forbidden-notes',
+  },
+  {
+    session_date: '2026-09-07',
+    load_units: '325.5',
+    distance_m: '4250',
+    hsr_m: '75.5',
+    accelerations: '43',
+    decelerations: '41',
+    sprints: '3',
+    meters_per_minute: '63.5',
+    actual_duration_minutes: '67',
+  },
+]);
+const teamLoads = await getMyTeamLoadEvolution(teamLoadClient, '2026-09-07', '2026-09-13');
+assert.deepEqual(teamLoadClient.calls, [{
+  name: 'get_my_team_load_evolution',
+  params: { p_start_date: '2026-09-07', p_end_date: '2026-09-13' },
+}], 'La carga colectiva usa exclusivamente la RPC Core 29 y sus dos fechas.');
+assert.deepEqual(teamLoads, [
+  {
+    session: { session_date: '2026-09-07', actual_duration_minutes: 67 },
+    metrics: {
+      load_units: 325.5,
+      distance_m: 4250,
+      hsr_m: 75.5,
+      accelerations: 43,
+      decelerations: 41,
+      sprints: 3,
+      meters_per_minute: 63.5,
+    },
+  },
+  {
+    session: { session_date: '2026-09-08', actual_duration_minutes: 60 },
+    metrics: {
+      load_units: 0,
+      distance_m: 0,
+      hsr_m: null,
+      accelerations: 12,
+      decelerations: 0,
+      sprints: 2,
+      meters_per_minute: null,
+    },
+  },
+], 'El DTO conserva tipos numéricos, NULL, cero y solo los nueve campos autorizados.');
+assert.equal(PLAYER_TEAM_LOAD_MAX_RANGE_DAYS, 62);
+await assert.rejects(
+  () => getMyTeamLoadEvolution(makeRpcClient(), '2026-01-01', '2026-03-04'),
+  (error) => error instanceof PlayerPerformanceLoadError && error.kind === 'network',
+  'El cliente también cierra rangos superiores a 62 días.',
+);
+await assert.rejects(
+  () => getMyTeamLoadEvolution(makeRpcClient([], { status: 401, message: 'JWT expired' }), '2026-09-01', '2026-09-30'),
+  (error) => error instanceof PlayerPerformanceLoadError && error.kind === 'invalid_session',
+);
+await assert.rejects(
+  () => getMyTeamLoadEvolution(null, '2026-09-01', '2026-09-30'),
+  (error) => error instanceof PlayerPerformanceLoadError && error.kind === 'invalid_session',
+);
+
+console.log('playerPerformanceStore: RLS propio y RPC colectiva, DTO, orden, límites, vacíos y errores validados.');

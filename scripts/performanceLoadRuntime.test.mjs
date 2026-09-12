@@ -102,6 +102,20 @@ const renderMetric = (metricKey, period, loads) => renderToStaticMarkup(
   React.createElement(LoadEvolutionSection, buildProps(metricKey, period, loads)),
 );
 
+const renderPlayerMetric = (metricKey, period, loads, overrides = {}) => renderToStaticMarkup(
+  React.createElement(LoadEvolutionSection, {
+    ...buildProps(metricKey, period, loads),
+    mode: 'player',
+    weekDate: '2026-09-09',
+    setWeekDate: () => {},
+    loading: false,
+    errorKind: '',
+    onRetry: () => {},
+    onSelectDate: undefined,
+    ...overrides,
+  }),
+);
+
 try {
   for (const period of ['week', 'month']) {
     for (const metric of PERFORMANCE_LOAD_METRIC_CONFIG) {
@@ -142,7 +156,34 @@ try {
   const volumeWithoutDuration = renderMetric('actualDurationMinutes', 'week', [nullLoad]);
   assert.ok(volumeWithoutDuration.includes('No hay datos de Volumen para este periodo.'));
 
-  console.log('performanceLoadRuntime: 8 métricas, Semana/Mes, null, cero, vacíos, M/min y Volumen validados.');
+  const playerHtml = renderPlayerMetric('loadUnits', 'week', [normalLoad]);
+  assert.ok(playerHtml.includes('EVOLUCIÓN DE CARGA DEL EQUIPO'));
+  assert.ok(playerHtml.includes('Consulta cómo evoluciona la carga colectiva de entrenamiento.'));
+  assert.equal((playerHtml.match(/<option/g) || []).length, 8);
+  assert.doesNotMatch(playerHtml, /próximamente/);
+  assert.ok(playerHtml.includes('U.C. total del equipo'));
+  assert.ok(playerHtml.includes('Media de U.C. del equipo por día con dato'));
+  assert.match(playerHtml, /<svg/);
+  assert.doesNotMatch(playerHtml, /RPE medio|Entrenamiento|Sin sesión de carga|Mi carga|Tu carga/);
+  assert.ok(playerHtml.includes('U.C.: 320,5 U.C.'));
+
+  const playerMetersHtml = renderPlayerMetric('metersPerMinute', 'week', [normalLoad]);
+  assert.ok(playerMetersHtml.includes('M/min medio ponderado del equipo'));
+  assert.ok(playerMetersHtml.includes('Media diaria de M/min del equipo'));
+
+  const playerEmptyHtml = renderPlayerMetric('hsrM', 'week', [nullLoad]);
+  assert.ok(playerEmptyHtml.includes('No hay datos de HSR del equipo para este periodo.'));
+  assert.doesNotMatch(playerEmptyHtml, /<svg/);
+
+  const playerLoadingHtml = renderPlayerMetric('loadUnits', 'week', [normalLoad], { loading: true });
+  assert.ok(playerLoadingHtml.includes('Cargando la evolución de carga del equipo'));
+  assert.doesNotMatch(playerLoadingHtml, /<svg/);
+  const playerErrorHtml = renderPlayerMetric('loadUnits', 'week', [normalLoad], { errorKind: 'network' });
+  assert.ok(playerErrorHtml.includes('No se pudo cargar la evolución de carga del equipo.'));
+  assert.ok(playerErrorHtml.includes('Reintentar'));
+  assert.doesNotMatch(playerErrorHtml, /<svg/);
+
+  console.log('performanceLoadRuntime: STAFF/PLAYER, 8 métricas, periodos, null/cero, estados y tooltip privado validados.');
 } finally {
   await server.close();
 }

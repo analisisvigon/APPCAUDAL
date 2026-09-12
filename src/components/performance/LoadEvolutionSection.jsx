@@ -36,7 +36,7 @@ const formatMetricValue = (value, decimals = 1) => {
   });
 };
 
-const buildLoadSeries = (loads = [], rpeEntries = [], startDate, endDate, metricConfig, period = 'week') => {
+const buildLoadSeries = (loads = [], rpeEntries = [], startDate, endDate, metricConfig, period = 'week', mode = 'staff') => {
   const metricsByDate = new Map((loads || []).map((load) => [load?.session?.session_date, load]));
   const rpeByDate = new Map();
   (rpeEntries || []).forEach((entry) => {
@@ -75,13 +75,18 @@ const buildLoadSeries = (loads = [], rpeEntries = [], startDate, endDate, metric
       hasData: value !== null,
       avgRpe,
       load,
-      tooltip: [
-        formatLongDate(current),
-        load ? `${getPerformanceSessionTypeLabel(load.session.session_type)} · ${load.session.actual_duration_minutes ? `${load.session.actual_duration_minutes} min` : 'Sin volumen'}` : 'Sin sesión de carga',
-        `${metricConfig.label}: ${value === null ? 'sin dato' : `${formatMetricValue(value, metricConfig.decimals)} ${metricConfig.unit}`}`,
-        `Volumen: ${load?.session?.actual_duration_minutes === null || load?.session?.actual_duration_minutes === undefined ? 'sin dato' : `${load.session.actual_duration_minutes} min`}`,
-        avgRpe !== null ? `RPE medio: ${avgRpe.toFixed(1)}` : 'RPE medio: sin dato',
-      ].join('\n'),
+      tooltip: mode === 'player'
+        ? [
+          formatLongDate(current),
+          `${metricConfig.label}: ${value === null ? 'sin dato' : `${formatMetricValue(value, metricConfig.decimals)} ${metricConfig.unit}`}`,
+        ].join('\n')
+        : [
+          formatLongDate(current),
+          load ? `${getPerformanceSessionTypeLabel(load.session.session_type)} · ${load.session.actual_duration_minutes ? `${load.session.actual_duration_minutes} min` : 'Sin volumen'}` : 'Sin sesión de carga',
+          `${metricConfig.label}: ${value === null ? 'sin dato' : `${formatMetricValue(value, metricConfig.decimals)} ${metricConfig.unit}`}`,
+          `Volumen: ${load?.session?.actual_duration_minutes === null || load?.session?.actual_duration_minutes === undefined ? 'sin dato' : `${load.session.actual_duration_minutes} min`}`,
+          avgRpe !== null ? `RPE medio: ${avgRpe.toFixed(1)}` : 'RPE medio: sin dato',
+        ].join('\n'),
     });
     current = new Date(`${current}T12:00:00`);
     current.setDate(current.getDate() + 1);
@@ -115,7 +120,7 @@ const addDays = (dateString, days) => {
   return date.toISOString().slice(0, 10);
 };
 
-const LoadEvolutionChart = ({ points, selectedKey, onSelect, period, metric }) => {
+const LoadEvolutionChart = ({ points, selectedKey, onSelect, period, metric, mode = 'staff' }) => {
   const width = 720;
   const height = 260;
   const plot = { left: 40, right: 20, top: 24, bottom: 40 };
@@ -140,6 +145,9 @@ const LoadEvolutionChart = ({ points, selectedKey, onSelect, period, metric }) =
   if (currentSegment.length) segments.push(currentSegment);
 
   if (!points.some((point) => point.hasData)) {
+    if (mode === 'player') {
+      return <div className="flex min-h-56 items-center justify-center rounded-2xl border border-dashed border-white/10 bg-black/10 px-6 text-center text-sm text-slate-500">No hay datos de {metric.label} del equipo para este periodo.</div>;
+    }
     return <div className="flex min-h-56 items-center justify-center rounded-2xl border border-dashed border-white/10 bg-black/10 px-6 text-center text-sm text-slate-500">No hay datos de {metric.label} para este periodo.</div>;
   }
 
@@ -227,7 +235,14 @@ export default function LoadEvolutionSection({
   rpeEntries,
   onSelectDate,
   selectedDate,
+  mode = 'staff',
+  loading = false,
+  errorKind = '',
+  onRetry,
+  weekDate = '',
+  setWeekDate,
 }) {
+  const isPlayer = mode === 'player';
   const metric = getPerformanceLoadMetricConfig(metricKey);
   const range = useMemo(() => {
     if (period === 'month') {
@@ -248,10 +263,13 @@ export default function LoadEvolutionSection({
     range.endDate,
     metric,
     period,
-  ), [period, monthLoads, weekLoads, rpeEntries, range.startDate, range.endDate, metric]);
+    mode,
+  ), [period, monthLoads, weekLoads, rpeEntries, range.startDate, range.endDate, metric, mode]);
 
   const summary = summarizePerformanceMetricPoints(points, metric);
-  const kpiLabels = getPerformanceMetricKpiLabels(metric, period);
+  const kpiLabels = isPlayer
+    ? getPerformanceMetricKpiLabels(metric, period, mode)
+    : getPerformanceMetricKpiLabels(metric, period);
 
   const monthWeekSummary = useMemo(() => {
     if (period !== 'month') return [];
@@ -265,15 +283,22 @@ export default function LoadEvolutionSection({
   return (
     <section className="rounded-[1.75rem] border border-white/[0.07] bg-[#091428] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.16)] sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">Evolución de carga</p>
-          <h3 className="mt-1 text-lg font-black text-white">{metric.label} del equipo</h3>
-          <p className="mt-1 text-sm text-slate-400">Sigue la carga semanal o mensual sin convertir los huecos en cero.</p>
-        </div>
+        {isPlayer ? (
+          <div>
+            <h3 className="text-base font-black uppercase tracking-[0.14em] text-cyan-200 sm:text-lg">EVOLUCIÓN DE CARGA DEL EQUIPO</h3>
+            <p className="mt-2 text-sm text-slate-400">Consulta cómo evoluciona la carga colectiva de entrenamiento.</p>
+          </div>
+        ) : (
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">Evolución de carga</p>
+            <h3 className="mt-1 text-lg font-black text-white">{metric.label} del equipo</h3>
+            <p className="mt-1 text-sm text-slate-400">Sigue la carga semanal o mensual sin convertir los huecos en cero.</p>
+          </div>
+        )}
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="block text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Periodo</label>
-            <div className="mt-2 inline-flex rounded-2xl border border-white/10 bg-black/15 p-1">
+            <div role="group" aria-label="Periodo de carga del equipo" className="mt-2 inline-flex rounded-2xl border border-white/10 bg-black/15 p-1">
               {[
                 ['week', 'Semana'],
                 ['month', 'Mes'],
@@ -282,7 +307,7 @@ export default function LoadEvolutionSection({
                   key={value}
                   type="button"
                   onClick={() => setPeriod(value)}
-                  className={`rounded-xl px-3 py-2 text-xs font-black transition ${period === value ? 'bg-cyan-400 text-slate-950' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
+                  className={`${isPlayer ? 'min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ' : ''}rounded-xl px-3 py-2 text-xs font-black transition ${period === value ? 'bg-cyan-400 text-slate-950' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
                 >
                   {label}
                 </button>
@@ -294,11 +319,12 @@ export default function LoadEvolutionSection({
             <select
               value={metricKey}
               onChange={(event) => setMetricKey(event.target.value)}
-              className="mt-2 w-full rounded-2xl border border-white/10 bg-[#0b1728] px-3 py-2 text-sm font-black text-white outline-none"
+              aria-label="Métrica de carga del equipo"
+              className={`mt-2 w-full rounded-2xl border border-white/10 bg-[#0b1728] px-3 py-2 text-sm font-black text-white outline-none ${isPlayer ? 'min-h-[44px] focus-visible:ring-2 focus-visible:ring-cyan-300' : ''}`}
             >
               {PERFORMANCE_LOAD_METRIC_CONFIG.map((item) => (
                 <option key={item.key} value={item.key} disabled={!item.enabled}>
-                  {item.label}{item.enabled ? '' : ' (próximamente)'}
+                  {item.label}{!isPlayer && !item.enabled ? ' (próximamente)' : ''}
                 </option>
               ))}
             </select>
@@ -313,22 +339,44 @@ export default function LoadEvolutionSection({
             type="month"
             value={month}
             onChange={(event) => setMonth(event.target.value)}
-            className="rounded-xl border border-white/10 bg-[#0b1728] px-3 py-2 text-sm font-black text-white outline-none"
+            aria-label="Mes de carga del equipo"
+            className={`${isPlayer ? 'min-h-[44px] min-w-0 max-w-full focus-visible:ring-2 focus-visible:ring-cyan-300 ' : ''}rounded-xl border border-white/10 bg-[#0b1728] px-3 py-2 text-sm font-black text-white outline-none`}
+          />
+        </div>
+      ) : isPlayer ? (
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-white/[0.07] bg-black/10 px-4 py-3">
+          <span className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Semana</span>
+          <input
+            type="date"
+            value={weekDate}
+            onChange={(event) => setWeekDate?.(event.target.value)}
+            aria-label="Semana de carga del equipo"
+            className="min-h-[44px] min-w-0 max-w-full rounded-xl border border-white/10 bg-[#0b1728] px-3 py-2 text-sm font-black text-white outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
           />
         </div>
       ) : null}
 
+      {isPlayer && loading ? (
+        <div role="status" aria-live="polite" className="mt-5 flex min-h-[280px] animate-pulse items-center justify-center rounded-2xl border border-dashed border-white/10 bg-black/10 px-6 text-center text-sm font-bold text-slate-500">
+          Cargando la evolución de carga del equipo…
+        </div>
+      ) : isPlayer && errorKind ? (
+        <div className="mt-5 flex min-h-[240px] flex-col items-center justify-center rounded-2xl border border-rose-300/20 bg-rose-300/[0.04] px-6 text-center">
+          <p role="alert" className="text-sm font-bold text-slate-200">No se pudo cargar la evolución de carga del equipo.</p>
+          <button type="button" onClick={onRetry} className="mt-4 min-h-[44px] rounded-xl bg-white/10 px-5 py-2.5 text-sm font-black text-white hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">Reintentar</button>
+        </div>
+      ) : <>
       <div className="mt-5 grid gap-3 lg:grid-cols-3">
         <div className="rounded-2xl border border-white/[0.07] bg-black/10 p-4">
-          <p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">{kpiLabels.aggregate}</p>
+          <p className={`${isPlayer ? 'text-[10px]' : 'text-[8px]'} font-black uppercase tracking-[0.16em] text-slate-500`}>{kpiLabels.aggregate}</p>
           <p className="mt-2 text-2xl font-black text-white">{summary.aggregate === null ? 'Sin datos' : `${formatMetricValue(summary.aggregate, metric.decimals)} ${metric.unit}`}</p>
         </div>
         <div className="rounded-2xl border border-white/[0.07] bg-black/10 p-4">
-          <p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">{kpiLabels.average}</p>
+          <p className={`${isPlayer ? 'text-[10px]' : 'text-[8px]'} font-black uppercase tracking-[0.16em] text-slate-500`}>{kpiLabels.average}</p>
           <p className="mt-2 text-2xl font-black text-white">{summary.simpleAverage === null ? 'Sin datos' : `${formatMetricValue(summary.simpleAverage, metric.decimals)} ${metric.unit}`}</p>
         </div>
         <div className="rounded-2xl border border-white/[0.07] bg-black/10 p-4">
-          <p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">{kpiLabels.peak}</p>
+          <p className={`${isPlayer ? 'text-[10px]' : 'text-[8px]'} font-black uppercase tracking-[0.16em] text-slate-500`}>{kpiLabels.peak}</p>
           <p className="mt-2 text-sm font-black text-white leading-tight">
             {period === 'week'
               ? (summary.maxPoint ? `${formatShortDate(summary.maxPoint.entryDate)} · ${formatMetricValue(summary.maxPoint.value, metric.decimals)} ${metric.unit}` : 'Sin datos')
@@ -341,15 +389,19 @@ export default function LoadEvolutionSection({
         {period === 'month' && monthLoading ? (
           <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-dashed border-white/10 bg-black/10 px-6 text-center text-sm text-slate-500">Cargando la carga mensual…</div>
         ) : (
-          <LoadEvolutionChart
-            points={points}
-            selectedKey={selectedDate}
-            onSelect={(point) => onSelectDate(point.entryDate)}
-            period={period}
-            metric={metric}
-          />
+          <div className={isPlayer ? 'min-w-[34rem] sm:min-w-0' : ''}>
+            <LoadEvolutionChart
+              points={points}
+              selectedKey={selectedDate}
+              onSelect={onSelectDate ? (point) => onSelectDate(point.entryDate) : undefined}
+              period={period}
+              metric={metric}
+              mode={mode}
+            />
+          </div>
         )}
       </div>
+      </>}
     </section>
   );
 }

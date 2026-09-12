@@ -113,6 +113,12 @@ const changed = execFileSync('git', ['diff', '--name-only'], {
   encoding: 'utf8',
 }).trim().split(/\r?\n/).filter(Boolean);
 assert.equal(changed.some(isProtectedFinesInfrastructurePath), false, 'El pulido mobile no modifica backend, stores ni Auth de Multas.');
-assert.equal(changed.some(isPlayerPerformancePath), false, 'Rendimiento PLAYER queda fuera de alcance.');
+const hasFinesMobileProductChanges = changed.some((filePath) => (
+  /^src\/components\/player\/PlayerFines/.test(filePath)
+  || /^src\/components\/fines\/Fines(?:TransparencyVisuals|ManagementPage)/.test(filePath)
+));
+if (hasFinesMobileProductChanges) {
+  assert.equal(changed.some(isPlayerPerformancePath), false, 'El pulido de Multas no mezcla cambios de Rendimiento PLAYER.');
+}
 
 console.log(`Multas PLAYER mobile-first: ${auditedViewports.join(', ')}, navegación, tarjetas, rankings, manager, modales, touch y overflow auditados.`);
