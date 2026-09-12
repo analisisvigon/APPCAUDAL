@@ -6,6 +6,7 @@ import {
   getHabitualOfficialSystem,
   getOfficialCaptainPlayerId,
   getOfficialPlayedMatches,
+  getOfficialStatLeader,
 } from './competitivePanel.js';
 
 const now = new Date(2026, 7, 10, 12, 0, 0);
@@ -104,6 +105,14 @@ assert.equal(goalTotals.topScorer?.player.name, 'Jugador B', 'G: dos goles ofici
 assert.equal(goalTotals.topAssistant?.player.name, 'Jugador A', 'solo una asistencia real oficial suma');
 assert.equal(goalTotals.topAssistant?.assists, 1, 'null no suma asistencia');
 
+const tiedCardRows = [
+  { player: { id: 'b', name: 'Jugador B' }, yellow: 3, red: 1 },
+  { player: { id: 'a', name: 'Jugador A' }, yellow: 3, red: 1 },
+];
+assert.equal(getOfficialStatLeader(tiedCardRows, 'yellow')?.player.name, 'Jugador A', 'en empate de amarillas gana el nombre ascendente');
+assert.equal(getOfficialStatLeader(tiedCardRows, 'red')?.player.name, 'Jugador A', 'en empate de rojas se mantiene el mismo criterio estable');
+assert.equal(getOfficialStatLeader([{ player: { id: 'a', name: 'Jugador A' }, yellow: 0 }], 'yellow'), null, 'sin tarjetas reales no se inventa un líder');
+
 const goalkeeperMatches = [
   playedMatch({ id: 'friendly-gk', competitionKey: 'friendly', stats: { 'Portero A': { minutes: 270 } } }),
   playedMatch({ id: 'official-gk-1', stats: { 'Portero A': { minutes: 90 }, 'Portero B': { minutes: 90 } } }),
@@ -138,21 +147,36 @@ const panelSource = appSource.slice(
   appSource.indexOf('<h2 className="mt-1 whitespace-nowrap text-lg font-black leading-tight text-white">Panel competitivo</h2>') - 500,
   appSource.indexOf('<CaptainPriorityPanel', appSource.indexOf('Panel competitivo'))
 );
-assert.ok(appSource.includes('const officialPlayedMatches = useMemo('), 'Once y tarjetas comparten una única colección oficial jugada');
-assert.ok(appSource.includes('getGroupRankings(officialPlayedMatches, { statsOnly: true })'), 'el once usa alineaciones reales de Estadísticas y no el once PRE');
-assert.ok(appSource.includes("typeof playerOrRole === 'object' ? getPlayerPositionLabel(playerOrRole)"), 'la asignación habitual prioriza la posición específica normalizada');
+const rosterDashboardSource = appSource.slice(
+  appSource.indexOf('const rosterDashboard = useMemo('),
+  appSource.indexOf('const rosterDisplayPlayers = useMemo(')
+);
+const keyPlayerLabels = [...rosterDashboardSource.matchAll(/\{ label: '([^']+)', row:/g)].map((match) => match[1]);
+assert.ok(appSource.includes('const officialPlayedMatches = useMemo('), 'los KPI comparten una única colección oficial jugada');
+assert.ok(appSource.includes('getGroupRankings(officialPlayedMatches, { statsOnly: true })'), 'las tarjetas reutilizan las estadísticas reales de partidos oficiales');
 assert.ok(appSource.includes('loadCompetitivePanelEvidence().catch('), 'Plantilla carga minutos y slots sin depender de visitar otro módulo');
-assert.ok(appSource.includes('Once habitual') && appSource.includes('Basado en partidos oficiales'), 'la interfaz comunica el nuevo contrato');
-assert.ok(appSource.includes('Datos insuficientes') && appSource.includes('Aún no hay suficientes partidos oficiales para definir un once habitual.'), 'un once parcial muestra un estado vacío compacto y explícito');
-assert.equal(appSource.includes('Sistema más usado: {rosterDashboard.mostUsedSystem}'), false, 'se retira el texto y fallback anteriores');
+assert.deepEqual(keyPlayerLabels, ['Más minutos', 'Más goles', 'Más asistencias', 'Más amarillas', 'Más rojas'], 'Jugadores clave contiene exactamente los cinco KPI solicitados');
+assert.ok(rosterDashboardSource.includes('const topMinutes = officialTotals.topMinutes;'), 'Más minutos reutiliza los totales oficiales');
+assert.ok(rosterDashboardSource.includes('const topScorer = officialTotals.topScorer;'), 'Más goles reutiliza los totales oficiales');
+assert.ok(rosterDashboardSource.includes('const topAssistant = officialTotals.topAssistant;'), 'Más asistencias reutiliza los totales oficiales');
+assert.ok(rosterDashboardSource.includes("getOfficialStatLeader(rows, 'yellow')"), 'Más amarillas reutiliza el ranking oficial');
+assert.ok(rosterDashboardSource.includes("getOfficialStatLeader(rows, 'red')"), 'Más rojas reutiliza el ranking oficial');
+assert.equal(panelSource.includes('Once habitual'), false, 'Once habitual desaparece por completo de Plantilla');
+assert.equal(panelSource.includes('Sistema habitual:'), false, 'no queda el sistema habitual');
+assert.equal(panelSource.includes('11 titulares'), false, 'no queda el contador de titulares');
+assert.equal(panelSource.includes('Titular habitual'), false, 'no quedan distintivos de titular habitual');
+assert.equal(panelSource.includes('Portero principal'), false, 'Portero principal desaparece de Jugadores clave');
+assert.equal(keyPlayerLabels.includes('Capitán'), false, 'Capitán desaparece de Jugadores clave');
 assert.equal(appSource.includes('Disponibilidad semanal</p>'), false, 'se elimina el bloque duplicado');
 assert.ok(appSource.includes("['Sub-23', squadSummary.sub23") && appSource.includes("lg:border-dashed"), 'Sub-23 se conserva con tratamiento de característica de plantilla');
 assert.ok(panelSource.includes("['Plantilla', squadSummary.total") && panelSource.includes("['Disponibles', squadSummary.available"), 'las métricas muestran una única etiqueta legible');
 assert.doesNotMatch(panelSource, /\['(?:PL|OK|LES|SAN|ND|U23)'/);
 assert.ok(appSource.includes("const rosterHeaderActionClass = 'inline-flex h-10 w-full items-center justify-center rounded-xl"), 'las dos acciones comparten dimensiones y alineación');
 assert.match(panelSource, /grid w-\[168px\] grid-cols-1 gap-1\.5/);
-assert.match(panelSource, /grid items-start gap-3 xl:grid-cols-\[1\.05fr_0\.95fr\]/, 'los paneles competitivos no se estiran para igualar alturas vacías');
-assert.match(panelSource, /rosterDashboard\.hasHabitualEleven \? 'mt-3' : 'mt-2'/);
+assert.ok(panelSource.includes('onClick={() => setCaptainPanelOpen(true)}') && panelSource.includes('CAPITANES'), 'la gestión superior de capitanes permanece intacta');
+assert.match(panelSource, /grid sm:grid-cols-2 lg:grid-cols-6/, 'la rejilla apila en móvil y aprovecha el ancho en escritorio');
+assert.match(panelSource, /index < 3 \? 'lg:col-span-2' : 'lg:col-span-3'/, 'el escritorio distribuye tres KPI arriba y dos abajo a ancho completo');
+assert.doesNotMatch(panelSource, /xl:grid-cols-\[1\.05fr_0\.95fr\]/, 'no queda la columna reservada al once habitual');
 assert.match(panelSource, /player \? 'py-2' : 'py-1\.5'/, 'las tarjetas clave sin datos reducen su altura');
 
 const controlsSource = appSource.slice(

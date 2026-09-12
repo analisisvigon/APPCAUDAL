@@ -83,9 +83,8 @@ import {
   buildOfficialPlayerTotals,
   compareHabitualPlayerEvidence,
   getCompetitiveMatchChronologyKey,
-  getHabitualOfficialSystem,
-  getOfficialCaptainPlayerId,
   getOfficialPlayedMatches,
+  getOfficialStatLeader,
 } from './utils/competitivePanel';
 import {
   buildGroupGoalCoverage,
@@ -22628,7 +22627,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     const officialTotals = buildOfficialPlayerTotals(officialPlayedMatches, players);
     const rows = rankings.rows || [];
     const rowByPlayerId = new Map(officialTotals.rows.map((row) => [row.player.id, row]));
-    const mostUsedSystem = getHabitualOfficialSystem(officialPlayedMatches).system;
     const nextMatchForLaunchers = safeArray(matches)
       .filter((match) => !hasPlayedData(match))
       .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.time || '').localeCompare(String(b.time || '')))[0] || null;
@@ -22645,51 +22643,20 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         return launcherText && ((name.length > 3 && launcherText.includes(name)) || (shirt.length > 3 && launcherText.includes(shirt)));
       })
       .map((player) => player.id));
-    const getBaseLine = (role) => {
-      const normalized = normalizeIdealRole(role);
-      if (normalized === 'POR') return 'POR';
-      if (['LD', 'LI', 'CAD', 'CAI'].includes(normalized) || normalized.startsWith('DFC')) return 'DEF';
-      if (['MCD', 'MC', 'MP'].includes(normalized)) return 'MED';
-      return 'DEL';
-    };
-    const baseElevenCandidates = mostUsedSystem ? buildIdealElevenForSystem(
-      rows.filter((row) => row.starts > 0),
-      mostUsedSystem,
-      { habitual: true }
-    )
-      .filter((assignment) => assignment.row)
-      .slice(0, 11)
-      .map((assignment) => ({
-        role: normalizeIdealRole(assignment.row.primaryRole || assignment.slot?.visualLabel || assignment.slot?.role || ''),
-        line: getBaseLine(assignment.row.primaryRole || assignment.slot?.visualLabel || assignment.slot?.role || ''),
-        player: assignment.row.player,
-        minutes: assignment.row.minutes,
-        starts: assignment.row.starts,
-      })) : [];
-    const hasHabitualEleven = officialPlayedMatches.length > 0 && baseElevenCandidates.length === 11;
-    const baseEleven = hasHabitualEleven ? baseElevenCandidates : [];
     const topMinutes = officialTotals.topMinutes;
     const topScorer = officialTotals.topScorer;
     const topAssistant = officialTotals.topAssistant;
-    const mainGoalkeeper = officialTotals.rows
-      .filter((row) => getPlayerPositionPresentation(row.player).naturalKey === 'goalkeeper' && row.minutes > 0)
-      .sort((left, right) => right.minutes - left.minutes || left.player.name.localeCompare(right.player.name, 'es'))[0] || null;
-    const captainPlayerId = getOfficialCaptainPlayerId(officialPlayedMatches);
-    const captain = captainPlayerId ? players.find((player) => String(player.id) === String(captainPlayerId)) || null : null;
+    const topYellowCards = getOfficialStatLeader(rows, 'yellow');
+    const topRedCards = getOfficialStatLeader(rows, 'red');
     return {
       rowByPlayerId,
-      baseEleven,
-      baseLines: ['POR', 'DEF', 'MED', 'DEL'].map((line) => ({ line, players: baseEleven.filter((item) => item.line === line) })),
       launcherPlayerIds,
-      mostUsedSystem,
-      officialMatchCount: officialPlayedMatches.length,
-      hasHabitualEleven,
       keyPlayers: [
         { label: 'Más minutos', row: topMinutes, value: topMinutes ? `${topMinutes.minutes}'` : '-' },
-        { label: 'Máximo goleador', row: topScorer, value: topScorer ? topScorer.goals : '-' },
+        { label: 'Más goles', row: topScorer, value: topScorer ? topScorer.goals : '-' },
         { label: 'Más asistencias', row: topAssistant, value: topAssistant ? topAssistant.assists : '-' },
-        { label: 'Portero principal', row: mainGoalkeeper, value: mainGoalkeeper ? `${mainGoalkeeper.minutes}'` : '-' },
-        { label: 'Capitán', player: captain, value: captain ? `#${displayDorsal(captain.number)}` : '-' },
+        { label: 'Más amarillas', row: topYellowCards, value: topYellowCards ? topYellowCards.yellow : '-' },
+        { label: 'Más rojas', row: topRedCards, value: topRedCards ? topRedCards.red : '-' },
       ],
     };
   }, [matches, officialPlayedMatches, players]);
@@ -30365,45 +30332,10 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 </div>
               ) : null}
 
-              <div className="mt-3 grid items-start gap-3 xl:grid-cols-[1.05fr_0.95fr]">
-                <div className="rounded-[1.15rem] border border-white/10 bg-black/15 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <h3 className="text-xs font-black uppercase tracking-[0.18em] text-white">Once habitual</h3>
-                      <p className="mt-1 text-xs text-slate-500">Basado en partidos oficiales</p>
-                      <p className="mt-1 text-xs text-slate-500">Sistema habitual: {rosterDashboard.mostUsedSystem || 'Sin datos'}</p>
-                    </div>
-                    <span className="rounded-xl border border-caudal-electric/20 bg-caudal-electric/10 px-2.5 py-1 text-xs font-black text-caudal-electric">{rosterDashboard.hasHabitualEleven ? '11 titulares' : 'Datos insuficientes'}</span>
-                  </div>
-                  <div className={`${rosterDashboard.hasHabitualEleven ? 'mt-3' : 'mt-2'} space-y-1.5`}>
-                    {rosterDashboard.hasHabitualEleven ? rosterDashboard.baseLines.map((line) => (
-                      <div key={line.line} className="grid grid-cols-[42px_1fr] items-start gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-2.5 py-2">
-                        <span className="pt-1 text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{line.line}</span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {line.players.length ? line.players.map((item) => (
-                            <button
-                              key={`${item.role}-${item.player.id}`}
-                              type="button"
-                              onClick={() => setSelectedPlayerProfileId(item.player.id)}
-                              className="rounded-lg bg-white/[0.055] px-2 py-1 text-left text-xs font-bold text-white transition hover:bg-white/[0.10]"
-                            >
-                              <span className="mr-1 text-caudal-electric">{item.role}</span>{getPlayerDisplayName(item.player)}
-                            </button>
-                          )) : <span className="px-2 py-1 text-xs text-slate-600">Sin jugador</span>}
-                        </div>
-                      </div>
-                    )) : (
-                      <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-2.5">
-                        <p className="text-xs leading-5 text-slate-400">Aún no hay suficientes partidos oficiales para definir un once habitual.</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded-[1.15rem] border border-white/10 bg-black/15 p-3">
-                  <h3 className="text-xs font-black uppercase tracking-[0.18em] text-white">Jugadores clave</h3>
-                  <div className={`${rosterDashboard.keyPlayers.some((item) => item.player || item.row?.player) ? 'mt-3 gap-2' : 'mt-2 gap-1.5'} grid sm:grid-cols-2`}>
-                    {rosterDashboard.keyPlayers.map((item) => {
+              <div className="mt-3 rounded-[1.15rem] border border-white/10 bg-black/15 p-3">
+                <h3 className="text-xs font-black uppercase tracking-[0.18em] text-white">Jugadores clave</h3>
+                <div className={`${rosterDashboard.keyPlayers.some((item) => item.player || item.row?.player) ? 'mt-3 gap-2' : 'mt-2 gap-1.5'} grid sm:grid-cols-2 lg:grid-cols-6`}>
+                    {rosterDashboard.keyPlayers.map((item, index) => {
                       const player = item.player || item.row?.player;
                       return (
                         <button
@@ -30411,7 +30343,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                           type="button"
                           disabled={!player}
                           onClick={() => player && setSelectedPlayerProfileId(player.id)}
-                          className={`rounded-xl border border-white/10 bg-white/[0.04] px-3 text-left transition enabled:hover:border-caudal-electric/25 enabled:hover:bg-white/[0.07] disabled:cursor-default ${player ? 'py-2' : 'py-1.5'}`}
+                          className={`rounded-xl border border-white/10 bg-white/[0.04] px-3 text-left transition enabled:hover:border-caudal-electric/25 enabled:hover:bg-white/[0.07] disabled:cursor-default ${index < 3 ? 'lg:col-span-2' : 'lg:col-span-3'} ${player ? 'py-2' : 'py-1.5'}`}
                         >
                           <p className="text-[9px] font-black uppercase tracking-[0.13em] text-slate-500">{item.label}</p>
                           <p className={`${player ? 'mt-1 text-sm' : 'mt-0.5 text-xs'} truncate font-black text-white`}>{player ? getPlayerDisplayName(player) : 'Sin datos'}</p>
@@ -30419,7 +30351,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                         </button>
                       );
                     })}
-                  </div>
                 </div>
               </div>
 
@@ -30507,7 +30438,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                           const staffStatus = staffStatusByPlayerId.get(player.id) || {};
                           const availability = getPlayerAvailabilityPresentation(player);
                           const rosterRow = rosterDashboard.rowByPlayerId.get(player.id) || {};
-                          const inBaseEleven = rosterDashboard.baseEleven.some((item) => item.player.id === player.id);
                           const statusLabel = availability.status === PLAYER_AVAILABILITY.available ? '' : availability.label;
                           const statusClass = availability.status === PLAYER_AVAILABILITY.injured
                             ? 'bg-red-300 text-slate-950'
@@ -30534,7 +30464,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                               </td>
                               <td className="px-4 py-3">
                                 <div className="flex flex-wrap gap-1.5">
-                                  {inBaseEleven ? <span className="rounded-lg border border-white/10 bg-white/[0.06] px-2 py-1 text-[10px] font-bold text-white">Titular habitual</span> : null}
                                   {staffStatus.captain ? <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">Capitán</span> : null}
                                   {rosterDashboard.launcherPlayerIds.has(player.id) ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">Lanzador</span> : null}
                                   {rosterRow.yellow ? <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">Amonestado</span> : null}
@@ -30563,7 +30492,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                         const staffStatus = staffStatusByPlayerId.get(player.id) || {};
                         const availability = getPlayerAvailabilityPresentation(player);
                         const rosterRow = rosterDashboard.rowByPlayerId.get(player.id) || {};
-                        const inBaseEleven = rosterDashboard.baseEleven.some((item) => item.player.id === player.id);
                         const statusLabel = availability.status === PLAYER_AVAILABILITY.available ? '' : availability.label;
                         const statusClass = availability.status === PLAYER_AVAILABILITY.injured
                           ? 'border-red-200/20 bg-red-300/10 text-red-100'
@@ -30582,7 +30510,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                         );
                         const ageLabel = player.dob ? `${calculateAge(player.dob)} años` : 'Edad no indicada';
                         const tacticalChips = [
-                          inBaseEleven || rosterRow.starts >= 2 ? ['Titular habitual', 'border-white/12 bg-white/[0.06] text-white'] : null,
                           staffStatus.captain ? ['Capitán', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
                           rosterDashboard.launcherPlayerIds.has(player.id) ? ['Lanzador', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
                           rosterRow.yellow ? ['Amonestado', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,

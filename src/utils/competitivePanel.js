@@ -65,6 +65,14 @@ export const compareHabitualPlayerEvidence = (left = {}, right = {}) => (
   || cleanText(left.player?.name || left.name).localeCompare(cleanText(right.player?.name || right.name), 'es')
 );
 
+export const getOfficialStatLeader = (rows = [], field = '') => safeArray(rows)
+  .filter((row) => Number(row?.[field] || 0) > 0)
+  .slice()
+  .sort((left, right) => (
+    Number(right[field]) - Number(left[field])
+    || cleanText(left.player?.name).localeCompare(cleanText(right.player?.name), 'es')
+  ))[0] || null;
+
 export const buildOfficialPlayerTotals = (officialPlayedMatches = [], players = []) => {
   const rowsByName = new Map(safeArray(players).map((player) => [player.name, {
     player,
@@ -111,17 +119,11 @@ export const buildOfficialPlayerTotals = (officialPlayedMatches = [], players = 
   });
 
   const rows = Array.from(rowsByName.values());
-  const topBy = (field) => rows
-    .filter((row) => Number(row[field] || 0) > 0)
-    .sort((left, right) => (
-      Number(right[field]) - Number(left[field])
-      || cleanText(left.player?.name).localeCompare(cleanText(right.player?.name), 'es')
-    ))[0] || null;
   return {
     rows,
-    topMinutes: topBy('minutes'),
-    topScorer: topBy('goals'),
-    topAssistant: topBy('assists'),
+    topMinutes: getOfficialStatLeader(rows, 'minutes'),
+    topScorer: getOfficialStatLeader(rows, 'goals'),
+    topAssistant: getOfficialStatLeader(rows, 'assists'),
   };
 };
 
