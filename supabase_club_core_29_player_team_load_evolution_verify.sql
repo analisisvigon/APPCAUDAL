@@ -19,6 +19,230 @@ as $function$
   values (p_name, coalesce(p_ok, false), coalesce(p_details, ''));
 $function$;
 
+-- Snapshot the effective table security contract before creating fixtures.
+-- This deliberately separates table ACLs from RLS policies: authenticated may
+-- have SELECT while a PLAYER still sees zero rows because every applicable
+-- SELECT policy evaluates to false.
+create temporary table core29_table_security_audit (
+  table_name text primary key,
+  rls_enabled boolean not null,
+  force_rls boolean not null,
+  staff_contract_ok boolean not null,
+  no_player_policy boolean not null,
+  no_unexpected_client_policy boolean not null,
+  authenticated_select_grant boolean not null,
+  authenticated_select_policies jsonb not null,
+  policies jsonb not null,
+  grants jsonb not null
+) on commit drop;
+
+with
+roles as (
+  select
+    max(role_row.oid) filter (where role_row.rolname = 'authenticated') as authenticated_oid,
+    max(role_row.oid) filter (where role_row.rolname = 'anon') as anon_oid
+  from pg_catalog.pg_roles role_row
+),
+targets(table_name) as (
+  values
+    ('training_sessions'::text),
+    ('training_session_load_metrics'::text)
+),
+relations as (
+  select
+    target.table_name,
+    relation.oid as relation_oid,
+    relation.relowner,
+    relation.relacl,
+    relation.relrowsecurity,
+    relation.relforcerowsecurity
+  from targets target
+  join pg_catalog.pg_namespace namespace_row
+    on namespace_row.nspname = 'public'
+  join pg_catalog.pg_class relation
+    on relation.relnamespace = namespace_row.oid
+   and relation.relname = target.table_name
+   and relation.relkind in ('r', 'p')
+),
+policy_inventory as (
+  select
+    relation.table_name,
+    policy.oid as policy_oid,
+    policy.polname,
+    policy.polpermissive,
+    policy.polcmd,
+    policy.polroles,
+    pg_catalog.pg_get_expr(policy.polqual, policy.polrelid) as qual,
+    pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid) as with_check,
+    pg_catalog.replace(
+      pg_catalog.regexp_replace(
+        pg_catalog.lower(coalesce(pg_catalog.pg_get_expr(policy.polqual, policy.polrelid), '')),
+        '[[:space:]()]', '', 'g'
+      ),
+      'public.', ''
+    ) as normalized_qual,
+    pg_catalog.replace(
+      pg_catalog.regexp_replace(
+        pg_catalog.lower(coalesce(pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid), '')),
+        '[[:space:]()]', '', 'g'
+      ),
+      'public.', ''
+    ) as normalized_with_check
+  from relations relation
+  join pg_catalog.pg_policy policy on policy.polrelid = relation.relation_oid
+),
+expected_staff(policy_name, command, needs_using, needs_check) as (
+  values
+    ('performance_staff_select'::text, 'r'::"char", true, false),
+    ('performance_staff_insert'::text, 'a'::"char", false, true),
+    ('performance_staff_update'::text, 'w'::"char", true, true),
+    ('performance_staff_delete'::text, 'd'::"char", true, false)
+)
+insert into pg_temp.core29_table_security_audit (
+  table_name,
+  rls_enabled,
+  force_rls,
+  staff_contract_ok,
+  no_player_policy,
+  no_unexpected_client_policy,
+  authenticated_select_grant,
+  authenticated_select_policies,
+  policies,
+  grants
+)
+select
+  relation.table_name,
+  relation.relrowsecurity,
+  relation.relforcerowsecurity,
+  not exists (
+    select 1
+    from expected_staff expected
+    left join policy_inventory policy
+      on policy.table_name = relation.table_name
+     and policy.polname = expected.policy_name
+    cross join roles
+    where policy.policy_oid is null
+       or not policy.polpermissive
+       or policy.polcmd <> expected.command
+       or policy.polroles <> array[roles.authenticated_oid]::oid[]
+       or case
+         when expected.needs_using then policy.normalized_qual <> 'is_app_staff'
+         else policy.qual is not null
+       end
+       or case
+         when expected.needs_check then policy.normalized_with_check <> 'is_app_staff'
+         else policy.with_check is not null
+       end
+  ),
+  not exists (
+    select 1
+    from policy_inventory policy
+    where policy.table_name = relation.table_name
+      and (
+        policy.polname ilike '%player%'
+        or policy.normalized_qual like '%is_player%'
+        or policy.normalized_qual like '%current_jugador_id%'
+        or policy.normalized_with_check like '%is_player%'
+        or policy.normalized_with_check like '%current_jugador_id%'
+      )
+  ),
+  not exists (
+    select 1
+    from policy_inventory policy
+    cross join roles
+    where policy.table_name = relation.table_name
+      and exists (
+        select 1
+        from pg_catalog.unnest(policy.polroles) policy_role(role_oid)
+        where policy_role.role_oid in (0::oid, roles.authenticated_oid, roles.anon_oid)
+      )
+      and policy.polname not in (
+        'performance_staff_select',
+        'performance_staff_insert',
+        'performance_staff_update',
+        'performance_staff_delete'
+      )
+  ),
+  pg_catalog.has_table_privilege('authenticated', relation.relation_oid, 'SELECT'),
+  coalesce(
+    (
+      select pg_catalog.jsonb_agg(
+        pg_catalog.jsonb_build_object(
+          'policyname', policy.polname,
+          'cmd', case policy.polcmd when 'r' then 'SELECT' else 'ALL' end,
+          'qual', policy.qual
+        )
+        order by policy.polname
+      )
+      from policy_inventory policy
+      cross join roles
+      where policy.table_name = relation.table_name
+        and policy.polcmd in ('r', '*')
+        and exists (
+          select 1
+          from pg_catalog.unnest(policy.polroles) policy_role(role_oid)
+          where policy_role.role_oid in (0::oid, roles.authenticated_oid)
+        )
+    ),
+    '[]'::jsonb
+  ),
+  coalesce(
+    (
+      select pg_catalog.jsonb_agg(
+        pg_catalog.jsonb_build_object(
+          'policyname', policy.polname,
+          'permissive', policy.polpermissive,
+          'cmd', case policy.polcmd
+            when 'r' then 'SELECT'
+            when 'a' then 'INSERT'
+            when 'w' then 'UPDATE'
+            when 'd' then 'DELETE'
+            when '*' then 'ALL'
+            else policy.polcmd::text
+          end,
+          'roles', (
+            select pg_catalog.jsonb_agg(
+              coalesce(policy_role_name.rolname, 'PUBLIC')
+              order by coalesce(policy_role_name.rolname, 'PUBLIC')
+            )
+            from pg_catalog.unnest(policy.polroles) policy_role(role_oid)
+            left join pg_catalog.pg_roles policy_role_name
+              on policy_role_name.oid = policy_role.role_oid
+          ),
+          'qual', policy.qual,
+          'with_check', policy.with_check
+        )
+        order by policy.polname
+      )
+      from policy_inventory policy
+      where policy.table_name = relation.table_name
+    ),
+    '[]'::jsonb
+  ),
+  coalesce(
+    (
+      select pg_catalog.jsonb_agg(
+        pg_catalog.jsonb_build_object(
+          'grantor', coalesce(grantor.rolname, 'PUBLIC'),
+          'grantee', coalesce(grantee.rolname, 'PUBLIC'),
+          'privilege', acl.privilege_type,
+          'is_grantable', acl.is_grantable
+        )
+        order by coalesce(grantee.rolname, 'PUBLIC'), acl.privilege_type
+      )
+      from pg_catalog.aclexplode(
+        coalesce(
+          relation.relacl,
+          pg_catalog.acldefault('r', relation.relowner)
+        )
+      ) acl
+      left join pg_catalog.pg_roles grantor on grantor.oid = acl.grantor
+      left join pg_catalog.pg_roles grantee on grantee.oid = acl.grantee
+    ),
+    '[]'::jsonb
+  )
+from relations relation;
+
 do $verify$
 declare
   function_oid oid;
@@ -38,8 +262,18 @@ declare
   session_values_id uuid := pg_catalog.gen_random_uuid();
   output_count integer;
   distinct_date_count integer;
-  visible_count integer;
-  denied boolean;
+  training_sessions_visible_count integer;
+  load_metrics_visible_count integer;
+  training_sessions_sqlstate text;
+  load_metrics_sqlstate text;
+  training_sessions_blocked boolean;
+  load_metrics_blocked boolean;
+  fixture_auth_uid uuid;
+  fixture_database_role text;
+  fixture_membership_role text;
+  fixture_membership_jugador_id uuid;
+  fixture_is_player boolean;
+  fixture_is_staff boolean;
   accepted boolean;
   observed_sqlstate text;
   output_dates date[];
@@ -192,30 +426,56 @@ begin
   );
 
   perform pg_temp.add_core29_check(
+    'TABLE_RLS_training_sessions_staff_contract',
+    audit.rls_enabled
+      and audit.staff_contract_ok
+      and audit.no_player_policy
+      and audit.no_unexpected_client_policy,
+    pg_catalog.format(
+      'relrowsecurity=%s; relforcerowsecurity=%s; authenticated SELECT=%s; policies=%s; grants=%s',
+      audit.rls_enabled,
+      audit.force_rls,
+      audit.authenticated_select_grant,
+      audit.policies::text,
+      audit.grants::text
+    )
+  )
+  from pg_temp.core29_table_security_audit audit
+  where audit.table_name = 'training_sessions';
+
+  perform pg_temp.add_core29_check(
+    'TABLE_RLS_training_session_load_metrics_staff_contract',
+    audit.rls_enabled
+      and audit.staff_contract_ok
+      and audit.no_player_policy
+      and audit.no_unexpected_client_policy,
+    pg_catalog.format(
+      'relrowsecurity=%s; relforcerowsecurity=%s; authenticated SELECT=%s; policies=%s; grants=%s',
+      audit.rls_enabled,
+      audit.force_rls,
+      audit.authenticated_select_grant,
+      audit.policies::text,
+      audit.grants::text
+    )
+  )
+  from pg_temp.core29_table_security_audit audit
+  where audit.table_name = 'training_session_load_metrics';
+
+  perform pg_temp.add_core29_check(
     'TABLE_RLS_staff_contract_intact',
-    (select pg_catalog.count(*) from pg_catalog.pg_policy policy
-     where policy.polrelid = 'public.training_sessions'::regclass) = 4
-      and (select pg_catalog.count(*) from pg_catalog.pg_policy policy
-           where policy.polrelid = 'public.training_session_load_metrics'::regclass) = 4
-      and (select pg_catalog.count(*) from pg_catalog.pg_policy policy
-           where policy.polrelid = 'public.training_sessions'::regclass
-             and policy.polname like 'performance_staff_%') = 4
-      and (select pg_catalog.count(*) from pg_catalog.pg_policy policy
-           where policy.polrelid = 'public.training_session_load_metrics'::regclass
-             and policy.polname like 'performance_staff_%') = 4
-      and not exists (
-        select 1
-        from pg_catalog.pg_policy policy
-        where policy.polrelid in (
-          'public.training_sessions'::regclass,
-          'public.training_session_load_metrics'::regclass
+    coalesce(
+      (
+        select pg_catalog.bool_and(
+          audit.rls_enabled
+          and audit.staff_contract_ok
+          and audit.no_player_policy
+          and audit.no_unexpected_client_policy
         )
-          and (
-            policy.polname ilike '%player%'
-            or coalesce(pg_catalog.pg_get_expr(policy.polqual, policy.polrelid), '') ilike '%is_player%'
-          )
+        from pg_temp.core29_table_security_audit audit
       ),
-    'the existing four STAFF policies per table remain; no PLAYER table policy exists'
+      false
+    ),
+    'semantic contract: RLS enabled; four canonical STAFF operations intact; no PLAYER or unexpected client-applicable policy'
   );
 
   if canonical_club_id is null or owner_user_id is null or fixture_player_id is null
@@ -378,24 +638,101 @@ begin
   into output_keys
   from pg_catalog.jsonb_object_keys(pg_catalog.to_jsonb(values_row)) key_row(key);
 
-  denied := false;
+  select
+    auth.uid(),
+    current_user,
+    membership.role,
+    membership.jugador_id,
+    public.is_player(),
+    public.is_app_staff()
+  into
+    fixture_auth_uid,
+    fixture_database_role,
+    fixture_membership_role,
+    fixture_membership_jugador_id,
+    fixture_is_player,
+    fixture_is_staff
+  from public.current_membership() membership;
+
+  training_sessions_visible_count := null;
+  training_sessions_sqlstate := null;
   begin
-    select pg_catalog.count(*)::integer into visible_count
+    select pg_catalog.count(*)::integer into training_sessions_visible_count
     from public.training_sessions;
-    denied := visible_count = 0;
-  exception when insufficient_privilege then denied := true;
+  exception when others then
+    get stacked diagnostics training_sessions_sqlstate = returned_sqlstate;
   end;
+
+  load_metrics_visible_count := null;
+  load_metrics_sqlstate := null;
   begin
-    select pg_catalog.count(*)::integer into visible_count
+    select pg_catalog.count(*)::integer into load_metrics_visible_count
     from public.training_session_load_metrics;
-    denied := denied and visible_count = 0;
-  exception when insufficient_privilege then denied := denied and true;
+  exception when others then
+    get stacked diagnostics load_metrics_sqlstate = returned_sqlstate;
   end;
 
   execute 'reset role';
 
+  training_sessions_blocked := training_sessions_sqlstate = '42501'
+    or (training_sessions_sqlstate is null and training_sessions_visible_count = 0);
+  load_metrics_blocked := load_metrics_sqlstate = '42501'
+    or (load_metrics_sqlstate is null and load_metrics_visible_count = 0);
+
   perform pg_temp.add_core29_check('PLAYER_valid_allowed', output_count = 3 and player_membership_id is not null, 'valid PLAYER receives the three collective fixture dates');
-  perform pg_temp.add_core29_check('PLAYER_direct_tables_still_denied', denied, 'PLAYER gets no direct rows from either STAFF performance table');
+  perform pg_temp.add_core29_check(
+    'PLAYER_fixture_context_exact',
+    fixture_auth_uid = player_user_id
+      and fixture_database_role = 'authenticated'
+      and fixture_membership_role = 'player'
+      and fixture_membership_jugador_id = fixture_player_id
+      and fixture_is_player
+      and not fixture_is_staff,
+    pg_catalog.format(
+      'auth.uid=%s; current_user=%s; membership.role=%s; jugador_id=%s; is_player=%s; is_app_staff=%s',
+      coalesce(fixture_auth_uid::text, 'NULL'),
+      coalesce(fixture_database_role, 'NULL'),
+      coalesce(fixture_membership_role, 'NULL'),
+      coalesce(fixture_membership_jugador_id::text, 'NULL'),
+      coalesce(fixture_is_player::text, 'NULL'),
+      coalesce(fixture_is_staff::text, 'NULL')
+    )
+  );
+  perform pg_temp.add_core29_check(
+    'PLAYER_direct_training_sessions_blocked',
+    training_sessions_blocked,
+    pg_catalog.format(
+      'sqlstate=%s; visible_rows=%s; authenticated SELECT=%s; applicable SELECT policies=%s',
+      coalesce(training_sessions_sqlstate, 'NULL'),
+      coalesce(training_sessions_visible_count::text, 'NULL'),
+      (select audit.authenticated_select_grant
+       from pg_temp.core29_table_security_audit audit
+       where audit.table_name = 'training_sessions'),
+      (select audit.authenticated_select_policies::text
+       from pg_temp.core29_table_security_audit audit
+       where audit.table_name = 'training_sessions')
+    )
+  );
+  perform pg_temp.add_core29_check(
+    'PLAYER_direct_training_session_load_metrics_blocked',
+    load_metrics_blocked,
+    pg_catalog.format(
+      'sqlstate=%s; visible_rows=%s; authenticated SELECT=%s; applicable SELECT policies=%s',
+      coalesce(load_metrics_sqlstate, 'NULL'),
+      coalesce(load_metrics_visible_count::text, 'NULL'),
+      (select audit.authenticated_select_grant
+       from pg_temp.core29_table_security_audit audit
+       where audit.table_name = 'training_session_load_metrics'),
+      (select audit.authenticated_select_policies::text
+       from pg_temp.core29_table_security_audit audit
+       where audit.table_name = 'training_session_load_metrics')
+    )
+  );
+  perform pg_temp.add_core29_check(
+    'PLAYER_direct_tables_still_denied',
+    training_sessions_blocked and load_metrics_blocked,
+    'both direct table checks accept only SQLSTATE 42501 or a successful SELECT returning exactly zero rows'
+  );
   perform pg_temp.add_core29_check('RESULT_only_team_rows', output_count = 3 and values_row.load_units = 450.5, 'the player-scope 999 row is excluded');
   perform pg_temp.add_core29_check('RESULT_one_row_per_day', output_count = distinct_date_count, 'daily session and team metric unique indexes prevent duplicates');
   perform pg_temp.add_core29_check('RESULT_order_ascending', output_dates = array[fixture_start, fixture_start + 1, fixture_start + 2]::date[], 'session_date ASC');

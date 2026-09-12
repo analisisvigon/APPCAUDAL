@@ -67,6 +67,8 @@ for (const check of [
   'DTO_exact_columns_and_types',
   'DTO_no_identifiers_or_private_fields',
   'SOURCE_exact_team_filters',
+  'TABLE_RLS_training_sessions_staff_contract',
+  'TABLE_RLS_training_session_load_metrics_staff_contract',
   'TABLE_RLS_staff_contract_intact',
   'RANGE_null_start_22023',
   'RANGE_null_end_22023',
@@ -74,6 +76,9 @@ for (const check of [
   'RANGE_over_62_days_22023',
   'RANGE_62_days_allowed',
   'PLAYER_valid_allowed',
+  'PLAYER_fixture_context_exact',
+  'PLAYER_direct_training_sessions_blocked',
+  'PLAYER_direct_training_session_load_metrics_blocked',
   'PLAYER_direct_tables_still_denied',
   'RESULT_only_team_rows',
   'RESULT_one_row_per_day',
@@ -92,9 +97,18 @@ for (const check of [
 
 assert.match(normalizedVerify, /insert into public\.training_session_load_metrics[\s\S]*'team'[\s\S]*'player'/);
 assert.match(normalizedVerify, /'player', fixture_player_id, null, 999/);
+assert.match(normalizedVerify, /relation\.relrowsecurity/);
+assert.match(normalizedVerify, /relation\.relforcerowsecurity/);
+assert.match(normalizedVerify, /pg_catalog\.aclexplode/);
+assert.match(normalizedVerify, /pg_catalog\.has_table_privilege\('authenticated', relation\.relation_oid, 'select'\)/);
+assert.match(normalizedVerify, /training_sessions_sqlstate = '42501'[\s\S]*training_sessions_visible_count = 0/);
+assert.match(normalizedVerify, /load_metrics_sqlstate = '42501'[\s\S]*load_metrics_visible_count = 0/);
+assert.doesNotMatch(executableVerify, /from pg_catalog\.pg_policy policy where policy\.polrelid = 'public\.training_sessions'::regclass\) = 4/);
+assert.doesNotMatch(executableVerify, /\b(create|alter|drop)\s+policy\b/);
+assert.doesNotMatch(executableVerify, /\b(grant|revoke)\b[^;]*\bon\s+table\b/);
 assert.match(normalizedVerify, /with ordinality output_row/);
 assert.match(normalizedVerify, /insert into public\.clubs[\s\S]*verify29 second club/);
 assert.match(normalizedVerify, /create temporary table core29_verify_results[\s\S]*on commit drop/);
 assert.match(normalizedVerify, /select test_name, test_ok, details[\s\S]*rollback;$/);
 
-console.log('Club Core 29 PLAYER team load evolution SQL audit: OK (30 transactional checks).');
+console.log('Club Core 29 PLAYER team load evolution SQL audit: OK (diagnostic transactional checks).');
