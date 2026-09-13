@@ -233,6 +233,7 @@ import {
   buildCompletedStatsMinutesUpdates,
   getStatsMatchDurationMinutes,
   isStatsMatchCompleted,
+  resolveCompletedStatsMinutes,
   resolveStatsWorkingMinutes,
 } from './utils/statsWorkingMinutes';
 import {
@@ -15307,6 +15308,16 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         conclusionsAdded: Boolean(finalClosureSummary && finalContinue && finalCorrect),
       },
     };
+    let completedMatch = selectedMatch;
+    try {
+      if (!completedMatch.statsDataLoaded) completedMatch = await loadMatchStatsData(selectedMatch.id);
+      if (!completedMatch) throw new Error('No se pudieron cargar las estadísticas completas del partido.');
+      await persistCompletedMatchMinutes(completedMatch, { forceCompleted: true });
+    } catch (minutesError) {
+      console.error('Error completando los minutos al cerrar POST:', minutesError);
+      setPostError(minutesError.message || 'No se pudieron completar los minutos del partido.');
+      return;
+    }
     const { error: closeError } = await supabase
       .from("partidos")
       .update({
@@ -15318,6 +15329,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       setPostError(closeError.message || 'No se pudo cerrar el análisis.');
       return;
     }
+    await refreshStatsFromSupabase(selectedMatch.id, 'cierre POST');
     setMatches((current) => current.map((match) => (match.id === selectedMatch.id ? {
       ...match,
       status: 'Revisado',
@@ -20587,6 +20599,24 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       .map((stats) => {
         const match = partidosById[stats.partido_id];
         if (!match) return null;
+        const statsPlayerData = {
+          ...safeObject(match.statsPlayerData),
+          [stats.player_name]: {
+            ...safeObject(safeObject(match.statsPlayerData)[stats.player_name]),
+            role: stats.role || 'Suplente',
+            minutes: stats.minutes ?? '',
+            replacementName: stats.replacement_name || '',
+            jugadorId: stats.jugador_id || null,
+          },
+        };
+        const minutes = resolveCompletedStatsMinutes({
+          match,
+          lineup: safeArray(match.statsLineup),
+          statsPlayerData,
+          playerName: stats.player_name,
+          minutes: stats.minutes,
+          matchCompleted: isStatsMatchCompleted(match),
+        });
         const matchEvents = goalEvents.filter((event) => event.partidoId === stats.partido_id);
         const yellowCount = Number(stats.yellow_count || 0) || (stats.yellow ? 1 : 0);
         const cardActions = [
@@ -20597,7 +20627,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
           match,
           isCalled: true,
           role: stats.role || 'Suplente',
-          minutes: Number(stats.minutes || 0) || 0,
+          minutes,
           goals: matchEvents.filter((event) => isGoalScoredByPlayer(event, player)),
           assists: matchEvents.filter((event) => isGoalAssistedByPlayer(event, player)),
           yellow: yellowCount,
@@ -20762,7 +20792,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     const played = rows.filter((row) => row.minutes > 0 || row.role === 'Titular').length;
     const starts = rows.filter((row) => row.role === 'Titular').length;
     const subs = Math.max(0, played - starts);
-    const minutes = rows.reduce((sum, row) => sum + row.minutes, 0);
+    const minutes = rows.reduce((sum, row) => sum + Number(row.minutes || 0), 0);
     const goals = rows.reduce((sum, row) => sum + row.goals.length, 0);
     const assists = rows.reduce((sum, row) => sum + row.assists.length, 0);
     const yellow = rows.reduce((sum, row) => sum + Number(row.yellow || 0), 0);
@@ -29866,7 +29896,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                     competition: getCompetitionFromCatalog(row.match).label,
                     venue: row.match.isHome ? 'L' : 'V',
                     role: row.role,
-                    minutes: `${row.minutes}'`,
+                    minutes: row.minutes === null ? '—' : `${row.minutes}'`,
                     goals: row.goals.length || '-',
                     assists: row.assists.length || '-',
                     cards: [row.yellow ? `${row.yellow} TA` : '', row.red ? '1 TR' : ''].filter(Boolean).join(' · ') || '-',
@@ -30267,7 +30297,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                               <td className="min-w-[160px] px-3 py-4 text-slate-300">{getCompetitionFromCatalog(row.match).label}</td>
                               <td className="whitespace-nowrap px-3 py-4 text-slate-300">{row.match.isHome ? 'Local' : 'Visitante'}</td>
                               <td className="px-3 py-4"><span className={`rounded-xl px-2 py-1 text-xs font-black ${row.role === 'Titular' ? 'bg-caudal-electric/15 text-caudal-electric' : 'bg-white/[0.06] text-slate-300'}`}>{row.role}</span></td>
-                              <td className="px-3 py-4 font-black text-white">{row.minutes}'</td>
+                              <td className="px-3 py-4 font-black text-white">{row.minutes === null ? '—' : `${row.minutes}'`}</td>
                               <td className="px-3 py-4 text-emerald-100">{row.goals.length || '-'}</td>
                               <td className="px-3 py-4 text-caudal-electric">{row.assists.length || '-'}</td>
                               <td className="px-3 py-4 text-amber-100">{cardLabel}</td>

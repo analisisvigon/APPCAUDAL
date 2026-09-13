@@ -4,6 +4,7 @@ import {
   buildCompletedStatsMinutesUpdates,
   getStatsMatchDurationMinutes,
   isStatsMatchCompleted,
+  resolveCompletedStatsMinutes,
   resolveStatsWorkingMinutes,
 } from './statsWorkingMinutes.js';
 
@@ -26,6 +27,76 @@ assert.equal(isStatsMatchCompleted({ date: '2026-09-10', status: 'Finalizado' },
 
 const completedUpdates = (lineup, statsPlayerData, matchCompleted = true, match = {}) => (
   buildCompletedStatsMinutesUpdates({ lineup, statsPlayerData, matchCompleted, match })
+);
+
+const resolvedHistoryMinutes = ({
+  playerName,
+  minutes,
+  lineup,
+  statsPlayerData,
+  matchCompleted = true,
+  match = {},
+}) => resolveCompletedStatsMinutes({
+  playerName,
+  minutes,
+  lineup,
+  statsPlayerData,
+  matchCompleted,
+  match,
+});
+
+assert.equal(
+  resolvedHistoryMinutes({
+    playerName: 'Titular completo',
+    minutes: null,
+    lineup: ['Titular completo'],
+    statsPlayerData: { 'Titular completo': { role: 'Titular', minutes: null, replacementName: '' } },
+  }),
+  90,
+  'A: a starter who completes the match is shown as 90 minutes, not 0',
+);
+assert.equal(
+  resolvedHistoryMinutes({
+    playerName: 'Titular 82',
+    minutes: '82',
+    lineup: ['Titular 82'],
+    statsPlayerData: { 'Titular 82': { role: 'Titular', minutes: '82', replacementName: 'Suplente 8' } },
+  }),
+  82,
+  'B: un titular sustituido conserva sus 82 minutos explícitos',
+);
+assert.equal(
+  resolvedHistoryMinutes({
+    playerName: 'Suplente 20',
+    minutes: '20',
+    lineup: ['Titular 70'],
+    statsPlayerData: {
+      'Titular 70': { role: 'Titular', minutes: '70', replacementName: 'Suplente 20' },
+      'Suplente 20': { role: 'Suplente', minutes: '20' },
+    },
+  }),
+  20,
+  'C: un suplente conserva los 20 minutos registrados',
+);
+assert.equal(
+  resolvedHistoryMinutes({
+    playerName: 'Titular cero',
+    minutes: '0',
+    lineup: ['Titular cero'],
+    statsPlayerData: { 'Titular cero': { role: 'Titular', minutes: '0', replacementName: '' } },
+  }),
+  0,
+  'D: un cero explícito se conserva y no se reinterpreta como 90',
+);
+assert.equal(
+  resolvedHistoryMinutes({
+    playerName: 'Sin evidencia',
+    minutes: null,
+    lineup: [],
+    statsPlayerData: { 'Sin evidencia': { role: 'Suplente', minutes: null } },
+  }),
+  null,
+  'E: NULL sin evidencia suficiente permanece desconocido y no se convierte silenciosamente en 0',
 );
 
 assert.deepEqual(
@@ -188,6 +259,13 @@ assert.match(app, /matchCompleted:\s*forceCompleted,/);
 assert.match(app, /\.update\(\{ minutes: String\(update\.minutes\) \}\)/);
 assert.match(app, /await persistCompletedMatchMinutes\(completedMatch, \{/);
 assert.match(app, /await persistCompletedMatchMinutes\(selectedMatch, \{ forceCompleted: true \}\)/);
+const closePostSource = app.slice(app.indexOf('const closePostAnalysis = async'), app.indexOf('const addEventType = async'));
+assert.match(closePostSource, /completedMatch = await loadMatchStatsData\(selectedMatch\.id\)/);
+assert.match(closePostSource, /await persistCompletedMatchMinutes\(completedMatch, \{ forceCompleted: true \}\)/);
+assert.ok(
+  closePostSource.indexOf('await persistCompletedMatchMinutes') < closePostSource.indexOf("status: 'Revisado'"),
+  'POST persiste los minutos completos antes de marcar el partido como revisado',
+);
 assert.match(app, /onFocus=\{\(\) => isStatsMatchCompleted\(selectedMatch\) && minutesInput\.isUnconfirmedStarterValue/);
 
 const borjaBackfill = fs.readFileSync(

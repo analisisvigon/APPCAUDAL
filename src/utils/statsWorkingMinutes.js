@@ -88,6 +88,30 @@ export const buildCompletedStatsMinutesUpdates = ({
   return updates;
 };
 
+export const resolveCompletedStatsMinutes = ({
+  match = {},
+  lineup = [],
+  statsPlayerData = {},
+  playerName = '',
+  minutes = null,
+  matchCompleted = false,
+} = {}) => {
+  if (!isBlankMinutes(minutes)) {
+    const recordedMinutes = Number(minutes);
+    return Number.isFinite(recordedMinutes) && recordedMinutes >= 0 ? recordedMinutes : null;
+  }
+
+  const playerIdentity = normalizedPlayerName(playerName);
+  const inferredUpdate = buildCompletedStatsMinutesUpdates({
+    match,
+    lineup,
+    statsPlayerData,
+    matchCompleted,
+  }).find((update) => normalizedPlayerName(update.playerName) === playerIdentity);
+
+  return inferredUpdate?.minutes ?? null;
+};
+
 export const resolveStatsWorkingMinutes = ({
   role = '',
   minutes = '',
