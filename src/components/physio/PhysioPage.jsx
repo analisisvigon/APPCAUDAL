@@ -38,6 +38,14 @@ const INPUT = 'min-h-11 w-full rounded-xl border border-white/10 bg-white/[0.065
 const SECONDARY_BUTTON = 'inline-flex min-h-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.065] px-3 py-2 text-xs font-black text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-45';
 const PRIMARY_BUTTON = 'inline-flex min-h-11 items-center justify-center rounded-xl bg-caudal-electric px-4 py-2 text-xs font-black text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-not-allowed disabled:opacity-50';
 const EMPTY_FILTERS = Object.freeze({ playerId: '', dateFrom: '', dateTo: '', bodyArea: '', caseType: '', availabilityStatus: '', performedByName: '' });
+const PHYSIO_BODY_AREA_GROUPS = Object.freeze([
+  ['Cabeza / cuello', ['head_neck']],
+  ['Tronco', ['back', 'lumbar']],
+  ['Miembro superior', ['shoulder', 'arm', 'elbow', 'forearm', 'wrist_hand']],
+  ['Miembro inferior', ['hip', 'groin_adductor', 'glute', 'anterior_thigh', 'hamstrings', 'knee', 'calf', 'ankle', 'foot']],
+  ['Otra', ['other']],
+]);
+const STAFF_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const playerLabel = (player) => formatPlayerNumberName(player?.number, getPlayerDisplayName(player));
 
@@ -107,6 +115,10 @@ function TreatmentModal({ treatment, players, staffDisplayName, saving, saveErro
   const playerOptions = treatment?.player && !players.some((player) => String(player.id) === String(treatment.player.id))
     ? [treatment.player, ...players]
     : players;
+  const rawStaffDisplayName = String(staffDisplayName || '').trim();
+  const registeredByName = rawStaffDisplayName && !STAFF_UUID_PATTERN.test(rawStaffDisplayName)
+    ? rawStaffDisplayName
+    : 'Staff autenticado';
 
   useEffect(() => {
     const onKeyDown = (event) => { if (event.key === 'Escape' && !saving) onClose(); };
@@ -133,35 +145,54 @@ function TreatmentModal({ treatment, players, staffDisplayName, saving, saveErro
   return createPortal(
     <div className="fixed inset-0 z-[140] flex items-end justify-center bg-black/75 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-sm sm:items-center sm:p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
       <section role="dialog" aria-modal="true" aria-labelledby="physio-modal-title" className="mobile-form-controls max-h-[calc(100dvh-0.75rem)] w-full overflow-y-auto overscroll-contain rounded-t-[1.6rem] border border-white/10 bg-[#071225] shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:max-w-3xl sm:rounded-[1.6rem]">
-        <header className="sticky top-0 z-20 flex items-start justify-between gap-3 border-b border-white/10 bg-[#071225]/95 px-4 py-3 backdrop-blur sm:px-6 sm:py-4">
-          <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Fisio</p><h2 id="physio-modal-title" className="mt-1 text-xl font-black text-white">{treatment ? 'Editar tratamiento' : 'Registrar tratamiento'}</h2></div>
-          <button ref={closeRef} type="button" onClick={onClose} disabled={saving} aria-label="Cerrar" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/10 text-xl font-black text-slate-200 hover:bg-white/15 disabled:opacity-40">×</button>
+        <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-white/10 bg-[#071225]/95 px-4 py-3 backdrop-blur sm:px-6">
+          <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Fisio</p><h2 id="physio-modal-title" className="mt-0.5 truncate text-lg font-black text-white sm:text-xl">{treatment ? 'Editar tratamiento' : 'Registrar tratamiento'}</h2></div>
+          <button ref={closeRef} type="button" onClick={onClose} disabled={saving} aria-label="Cerrar" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/10 text-xl font-black text-slate-200 outline-none transition hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-caudal-electric disabled:opacity-40">×</button>
         </header>
-        <form onSubmit={submit} className="space-y-5 p-4 sm:p-6">
-          <div className="grid gap-4 sm:grid-cols-2">
+        <form onSubmit={submit} className="space-y-4 p-4 sm:p-6">
+          <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Fecha" error={errors.treatmentDate}><input required type="date" value={draft.treatmentDate} onChange={(event) => setField('treatmentDate', event.target.value)} className={INPUT} /></Field>
             <Field label="Jugador" error={errors.playerId}>
               <select required value={draft.playerId} onChange={(event) => setField('playerId', event.target.value)} className={INPUT}><option value="">Seleccionar jugador</option>{playerOptions.map((player) => <option key={player.id} value={player.id}>{playerLabel(player)}</option>)}</select>
             </Field>
-            <Field label="Zona corporal" error={errors.bodyArea}><select required value={draft.bodyArea} onChange={(event) => setField('bodyArea', event.target.value)} className={INPUT}><option value="">Seleccionar zona</option>{PHYSIO_BODY_AREAS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
-            <Field label="Fisio que lo realiza" hint="Se identifica automáticamente con la sesión STAFF."><input readOnly value={staffDisplayName || 'Staff autenticado'} className={`${INPUT} cursor-default`} /></Field>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Zona corporal" error={errors.bodyArea}>
+              <select required value={draft.bodyArea} onChange={(event) => setField('bodyArea', event.target.value)} className={INPUT}>
+                <option value="">Seleccionar zona</option>
+                {PHYSIO_BODY_AREA_GROUPS.map(([groupLabel, values]) => (
+                  <optgroup key={groupLabel} label={groupLabel}>
+                    {values.map((value) => <option key={value} value={value}>{PHYSIO_BODY_AREA_LABELS[value]}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+            </Field>
+            <div className="space-y-2" aria-labelledby="physio-registered-by-label">
+              <p id="physio-registered-by-label" className="text-sm font-bold text-slate-200">Registrado por</p>
+              <div role="note" className="flex min-h-11 items-center rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2">
+                <p className="truncate text-sm font-black text-white">{registeredByName}</p>
+              </div>
+              <p className="text-xs font-medium leading-4 text-slate-500">Identificado automáticamente con la sesión STAFF.</p>
+            </div>
           </div>
           <Field label="Molestia / motivo" error={errors.reason} hint="Descripción breve; no es un diagnóstico médico."><input required maxLength={200} value={draft.reason} onChange={(event) => setField('reason', event.target.value)} className={INPUT} placeholder="Ej. sobrecarga isquios" /></Field>
           <fieldset>
             <legend className="text-sm font-bold text-slate-200">Tipo de tratamiento</legend>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{PHYSIO_TREATMENT_TYPES.map(([value, label]) => { const checked = draft.treatmentTypes.includes(value); return <label key={value} className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 text-sm font-semibold ${checked ? 'border-caudal-electric/35 bg-caudal-electric/10 text-white' : 'border-white/10 bg-white/[0.035] text-slate-300'}`}><input type="checkbox" checked={checked} onChange={() => toggleTreatment(value)} className="h-5 w-5 shrink-0 accent-caudal-electric" /><span>{label}</span></label>; })}</div>
+            <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-3">{PHYSIO_TREATMENT_TYPES.map(([value, label]) => { const checked = draft.treatmentTypes.includes(value); return <label key={value} className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-2.5 py-2 text-xs font-semibold leading-tight outline-none transition focus-within:ring-2 focus-within:ring-caudal-electric/40 sm:text-sm ${checked ? 'border-caudal-electric/60 bg-caudal-electric/15 text-white shadow-[inset_0_0_0_1px_rgba(139,184,255,0.12)]' : 'border-white/10 bg-white/[0.035] text-slate-300 hover:border-white/20 hover:bg-white/[0.055]'}`}><input type="checkbox" checked={checked} onChange={() => toggleTreatment(value)} className="h-5 w-5 shrink-0 accent-caudal-electric" /><span>{label}</span></label>; })}</div>
             {errors.treatmentTypes ? <p role="alert" className="mt-2 text-xs font-bold text-red-200">{errors.treatmentTypes}</p> : null}
           </fieldset>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Tipo de caso" error={errors.caseType}><select value={draft.caseType} onChange={(event) => setField('caseType', event.target.value)} className={INPUT}>{PHYSIO_CASE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
             <Field label="Disponibilidad deportiva" error={errors.availabilityStatus}><select value={draft.availabilityStatus} onChange={(event) => setField('availabilityStatus', event.target.value)} className={INPUT}>{PHYSIO_AVAILABILITY.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
-            <Field label="Duración aproximada" error={errors.durationMinutes} hint="Opcional, en minutos."><input type="number" min="1" step="1" inputMode="numeric" value={draft.durationMinutes} onChange={(event) => setField('durationMinutes', event.target.value)} className={INPUT} placeholder="Ej. 25" /></Field>
-            <Field label="Observaciones" error={errors.notes}><textarea maxLength={1000} rows={3} value={draft.notes} onChange={(event) => setField('notes', event.target.value)} className={`${INPUT} resize-y`} placeholder="Opcional" /></Field>
+          </div>
+          <div className="grid items-start gap-3 sm:grid-cols-2">
+            <Field label="Duración aproximada (min)" error={errors.durationMinutes} hint="Opcional."><input type="number" min="1" step="1" inputMode="numeric" value={draft.durationMinutes} onChange={(event) => setField('durationMinutes', event.target.value)} className={INPUT} placeholder="Ej. 25" /></Field>
+            <Field label="Observaciones" error={errors.notes}><textarea maxLength={1000} rows={4} value={draft.notes} onChange={(event) => setField('notes', event.target.value)} className={`${INPUT} min-h-24 resize-y`} placeholder="Observaciones opcionales" /></Field>
           </div>
           {saveError ? <p role="alert" className="rounded-xl border border-red-300/15 bg-red-400/[0.07] p-3 text-sm font-bold text-red-100">{saveError}</p> : null}
-          <footer className="app-safe-area-footer sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-col-reverse gap-2 border-t border-white/10 bg-[#071225]/95 px-4 pt-3 backdrop-blur sm:static sm:-mx-6 sm:-mb-6 sm:flex-row sm:justify-end sm:px-6 sm:pt-4">
-            <button type="button" onClick={onClose} disabled={saving} className={SECONDARY_BUTTON}>Cancelar</button>
-            <button type="submit" disabled={saving || !players.length} className={PRIMARY_BUTTON}>{saving ? 'Guardando…' : treatment ? 'Guardar cambios' : 'Registrar tratamiento'}</button>
+          <footer className="app-modal-actions app-safe-area-footer sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-col-reverse gap-2 border-t border-white/10 bg-[#071225]/95 px-4 pt-3 backdrop-blur sm:static sm:-mx-6 sm:-mb-6 sm:flex-row sm:justify-end sm:px-6 sm:pt-4">
+            <button type="button" onClick={onClose} disabled={saving} className={`${SECONDARY_BUTTON} w-full sm:w-auto`}>Cancelar</button>
+            <button type="submit" disabled={saving || !players.length} className={`${PRIMARY_BUTTON} min-h-12 w-full sm:w-auto sm:min-w-44`}>{saving ? 'Guardando…' : 'Guardar tratamiento'}</button>
           </footer>
         </form>
       </section>
