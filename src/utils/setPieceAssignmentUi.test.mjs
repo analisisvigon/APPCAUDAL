@@ -106,7 +106,9 @@ try {
   assert.match(boardSource, /moveCaudalSetPiecePlayerPointer/);
   assert.match(boardSource, /finishCaudalSetPiecePlayerPointer/);
   assert.match(boardSource, /selectCaudalSetPiecePlayer/);
-  assert.match(appSource, /caudalSetPieceSuppressClickRef\.current = wasSetPieceCaudalDrag/);
+  assert.match(appSource, /const dragged = wasSetPieceCaudalDrag\(caudalSetPieceGestureRef\.current\)/);
+  assert.match(appSource, /if \(!dragged && !cancelled && player\?\.id\) \{\s*selectCaudalSetPiecePlayer\(event, player, positionKey\)/,
+    'short pointer up selects directly while pointer cancel and drag do not');
   assert.match(boardSource, /isSetPieceCapture\s*\? captureResponsibilities\?\.visibleByPlayerId\s*: setPieceVisibleResponsibilities/,
     'the normal field and capture select responsibilities from separate readers');
   assert.match(boardSource, /<SetPieceResponsibilityBadge/);

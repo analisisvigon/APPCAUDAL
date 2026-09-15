@@ -51,6 +51,7 @@ import {
 } from './utils/setPieceCaudalGesture';
 import { getSetPieceBadgePlacement, getSetPieceCaptureMarkerAnchor } from './utils/setPieceBadgePlacement';
 import { buildSetPieceCaptureResponsibilities } from './utils/setPieceCaptureResponsibilities';
+import { resolveSetPieceCaudalPlayersBySlot } from './utils/setPieceCaudalLineupIdentity';
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
 import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
 import { getPlayerPositionUsage } from './utils/playerPositionUsage';
@@ -6825,7 +6826,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     setMatches((current) => {
       const exists = current.some((match) => match.id === partidoId);
       if (!exists) return [...current, detailedMatch];
-      return current.map((match) => (match.id === partidoId ? { ...match, ...detailedMatch } : match));
+      return current.map((match) => (match.id === partidoId ? {
+        ...match,
+        ...detailedMatch,
+        lineupSlots: { ...match.lineupSlots, ...detailedMatch.lineupSlots },
+      } : match));
     });
     setStatsRefreshing(false);
     return detailedMatch;
@@ -6889,9 +6894,23 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         preRivalLineupPlayers,
         prePlayerNotes,
         preRivalPlayerNotes,
+        lineupSlots: {
+          preCaudal: (slotsResponse.data || [])
+            .filter((slot) => slot.scope === 'pre_caudal' && Number.isInteger(slot.slot) && slot.slot >= 0 && slot.slot <= 10)
+            .map((slot) => ({
+              scope: 'pre_caudal',
+              slot: slot.slot,
+              playerName: slot.player_name || '',
+              jugadorId: slot.jugador_id || null,
+            })),
+        },
       };
 
-      setMatches((current) => current.map((match) => (match.id === partidoId ? { ...match, ...detailedMatch } : match)));
+      setMatches((current) => current.map((match) => (match.id === partidoId ? {
+        ...match,
+        ...detailedMatch,
+        lineupSlots: { ...match.lineupSlots, ...detailedMatch.lineupSlots },
+      } : match)));
       return detailedMatch;
     } catch (loadError) {
       console.error('Error cargando PRE desde Supabase:', loadError);
@@ -10512,9 +10531,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const selectedSetPiecePlay = setPieceWorkspace.plays.find((play) => play.id === selectedSetPiecePlayId) || null;
   const setPieceResponsibilityPhase = getSetPieceResponsibilityPhase(selectedSetPiecePlay?.setPieceType || setPieceType);
   const setPieceCaudalLineup = safeArray(selectedMatch?.preCaudalLineup);
-  const setPieceCaudalPlayersBySlot = Array.from({ length: 11 }, (_, index) => (
-    players.find((player) => player.name === setPieceCaudalLineup[index]) || null
-  ));
+  const setPieceCaudalPlayersBySlot = resolveSetPieceCaudalPlayersBySlot(
+    setPieceCaudalLineup,
+    selectedMatch?.lineupSlots?.preCaudal,
+    players
+  );
   const setPieceCurrentPlayerIdByPositionKey = Object.fromEntries(
     setPieceCaudalPlayersBySlot.map((player, index) => [`caudal:${index}`, String(player?.id || '')])
   );
@@ -25911,10 +25932,16 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       }));
     }
   };
-  const finishCaudalSetPiecePlayerPointer = (event) => {
+  const finishCaudalSetPiecePlayerPointer = (event, player, positionKey, cancelled = false) => {
     if (caudalSetPieceGestureRef.current?.pointerId !== event.pointerId) return;
-    caudalSetPieceSuppressClickRef.current = wasSetPieceCaudalDrag(caudalSetPieceGestureRef.current);
+    const dragged = wasSetPieceCaudalDrag(caudalSetPieceGestureRef.current);
     caudalSetPieceGestureRef.current = null;
+    caudalSetPieceSuppressClickRef.current = dragged;
+    if (!dragged && !cancelled && player?.id) {
+      selectCaudalSetPiecePlayer(event, player, positionKey);
+      // React may dispatch a synthetic click after pointer up; selection is already done.
+      caudalSetPieceSuppressClickRef.current = true;
+    }
   };
   const selectCaudalSetPiecePlayer = (event, player, positionKey) => {
     if (tacticalGamePhase !== 'set_piece' || tacticalCaptureMode) return;
@@ -26405,8 +26432,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
             aria-pressed={tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? selectedCaudalSetPiecePlayer?.playerId === String(caudalPlayer.id) : undefined}
             onPointerDown={(event) => beginCaudalSetPiecePlayerPointer(event, caudalPlayer, `caudal:${index}`, enableDefensiveEditing)}
             onPointerMove={(event) => moveCaudalSetPiecePlayerPointer(event, enableDefensiveEditing)}
-            onPointerUp={finishCaudalSetPiecePlayerPointer}
-            onPointerCancel={finishCaudalSetPiecePlayerPointer}
+            onPointerUp={(event) => finishCaudalSetPiecePlayerPointer(event, caudalPlayer, `caudal:${index}`)}
+            onPointerCancel={(event) => finishCaudalSetPiecePlayerPointer(event, caudalPlayer, `caudal:${index}`, true)}
             onClick={(event) => selectCaudalSetPiecePlayer(event, caudalPlayer, `caudal:${index}`)}
             onKeyDown={tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? (event) => {
               if (event.key === 'Enter' || event.key === ' ') {
