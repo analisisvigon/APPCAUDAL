@@ -32,9 +32,24 @@ import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
 import PlayerPositionUsageSummary from './components/player/PlayerPositionUsageSummary';
 import PlayerAvatar from './components/player/PlayerAvatar';
+import SetPieceResponsibilityPanel, { SetPieceResponsibilityBadge } from './components/tactical/SetPieceResponsibilityPanel';
 import PlayerNumberName from './components/player/PlayerNumberName';
 import { getPlayerAvatarSource } from './utils/playerAvatarPresentation';
-import { normalizeSetPieceResponsibilities } from './utils/setPieceResponsibilities';
+import {
+  assignSetPieceResponsibility,
+  getSetPieceResponsibility,
+  getSetPieceResponsibilityPhase,
+  getValidSetPieceResponsibilities,
+  inspectSetPieceResponsibilities,
+  normalizeSetPieceResponsibilities,
+  removeSetPieceResponsibility,
+} from './utils/setPieceResponsibilities';
+import {
+  advanceSetPieceCaudalGesture,
+  startSetPieceCaudalGesture,
+  wasSetPieceCaudalDrag,
+} from './utils/setPieceCaudalGesture';
+import { getSetPieceBadgePlacement } from './utils/setPieceBadgePlacement';
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
 import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
 import { getPlayerPositionUsage } from './utils/playerPositionUsage';
@@ -5805,6 +5820,10 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const [tacticalBoardViewState, setTacticalBoardViewState] = useState(createTacticalBoardViewState);
   const [selectedFacingSystemsPlayer, setSelectedFacingSystemsPlayer] = useState(null);
   const facingSystemsPlayerGestureRef = useRef({ longPressTimer: null, moved: false, playerKey: '' });
+  const [selectedCaudalSetPiecePlayer, setSelectedCaudalSetPiecePlayer] = useState(null);
+  const [setPieceResponsibilityFeedback, setSetPieceResponsibilityFeedback] = useState(null);
+  const caudalSetPieceGestureRef = useRef(null);
+  const caudalSetPieceSuppressClickRef = useRef(false);
   const [setPieceBallStartPosition, setSetPieceBallStartPosition] = useState(() => (
     getDefaultSetPieceBallPosition('offensive_set_piece', 'corner')
   ));
@@ -7679,6 +7698,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     setTacticalCaptureMode(false);
     setTacticalBoardViewState(createTacticalBoardViewState());
     setSelectedFacingSystemsPlayer(null);
+    setSelectedCaudalSetPiecePlayer(null);
+    setSetPieceResponsibilityFeedback(null);
     if (defensiveAutosaveTimerRef.current) {
       window.clearTimeout(defensiveAutosaveTimerRef.current);
       defensiveAutosaveTimerRef.current = null;
@@ -10488,6 +10509,23 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     || setPiecePlaysForContext[0]?.id
     || '';
   const selectedSetPiecePlay = setPieceWorkspace.plays.find((play) => play.id === selectedSetPiecePlayId) || null;
+  const setPieceResponsibilityPhase = getSetPieceResponsibilityPhase(selectedSetPiecePlay?.setPieceType || setPieceType);
+  const setPieceCaudalLineup = safeArray(selectedMatch?.preCaudalLineup);
+  const setPieceCaudalPlayersBySlot = Array.from({ length: 11 }, (_, index) => (
+    players.find((player) => player.name === setPieceCaudalLineup[index]) || null
+  ));
+  const setPieceCurrentPlayerIdByPositionKey = Object.fromEntries(
+    setPieceCaudalPlayersBySlot.map((player, index) => [`caudal:${index}`, String(player?.id || '')])
+  );
+  const setPieceResponsibilityReviews = inspectSetPieceResponsibilities(
+    selectedSetPiecePlay?.responsibilities,
+    setPieceResponsibilityPhase,
+    setPieceCaudalLineup.some(Boolean) && players.length ? setPieceCurrentPlayerIdByPositionKey : null
+  );
+  const setPieceVisibleResponsibilities = getValidSetPieceResponsibilities(
+    selectedSetPiecePlay?.responsibilities,
+    setPieceResponsibilityPhase
+  );
   const setPieceZonePoints = getSetPieceZonePoints(setPieceType, setPieceAction);
   const selectedTacticalPlay = tacticalGamePhase === 'defensive'
     ? selectedDefensivePhasePlay
@@ -10972,8 +11010,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     };
     setDefensiveUndoStack((current) => [...current.slice(-29), snapshot]);
   };
-  const getDefensivePointerPosition = (event) => {
-    const fieldBounds = event.currentTarget.getBoundingClientRect();
+  const getDefensivePointerPosition = (event, fieldElement = event.currentTarget) => {
+    const fieldBounds = fieldElement.getBoundingClientRect();
     if (!fieldBounds.width || !fieldBounds.height) return null;
     return {
       x: Math.max(1, Math.min(99, ((event.clientX - fieldBounds.left) / fieldBounds.width) * 100)),
@@ -10989,6 +11027,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     event.currentTarget.setPointerCapture?.(event.pointerId);
     pushDefensiveUndoSnapshot(editablePlay);
     setDraggingDefensivePlayer({ playerKey, playId: editablePlay.id, pointerId: event.pointerId });
+    return editablePlay;
   };
   const moveDefensivePlayer = (event) => {
     if (!draggingDefensivePlayer || defensiveTool !== 'move') return;
@@ -11768,6 +11807,40 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         [setPiecePlayContextKey]: nextPlay?.id || '',
       },
       plays: remainingPlays,
+    }));
+  };
+  const assignSelectedCaudalSetPieceResponsibility = (responsibilityId) => {
+    const selection = selectedCaudalSetPiecePlayer;
+    if (tacticalGamePhase !== 'set_piece' || !selection) return;
+    if (setPieceCurrentPlayerIdByPositionKey[selection.positionKey] !== selection.playerId) return;
+    const play = selectedSetPiecePlay || createSetPiecePlay({ promptForName: false });
+    if (!play) return;
+    const result = assignSetPieceResponsibility(play.responsibilities, {
+      playerId: selection.playerId,
+      positionKey: selection.positionKey,
+      responsibilityId,
+      phase: getSetPieceResponsibilityPhase(play.setPieceType),
+    });
+    if (!result.ok) {
+      const definition = getSetPieceResponsibility(responsibilityId);
+      const occupant = players.find((player) => String(player.id) === result.conflictingPlayerId);
+      const message = result.errorCode === 'RESPONSIBILITY_ALREADY_ASSIGNED'
+        ? `${definition?.label || 'Esta responsabilidad'} ya está asignada${occupant ? ` a ${displayPlayerName(occupant)}` : ''}.`
+        : 'No se pudo asignar esta responsabilidad.';
+      setSetPieceResponsibilityFeedback({ playId: play.id, playerId: selection.playerId, message });
+      return;
+    }
+    setSetPieceResponsibilityFeedback(null);
+    updateSetPiecePlay(play.id, { responsibilities: result.responsibilities });
+  };
+  const removeSelectedCaudalSetPieceResponsibility = () => {
+    if (tacticalGamePhase !== 'set_piece' || !selectedSetPiecePlay || !selectedCaudalSetPiecePlayer) return;
+    setSetPieceResponsibilityFeedback(null);
+    updateSetPiecePlay(selectedSetPiecePlay.id, (play) => ({
+      responsibilities: removeSetPieceResponsibility(
+        play.responsibilities,
+        selectedCaudalSetPiecePlayer.playerId
+      ),
     }));
   };
   const buildOffensiveInitialPlayerPositions = (situation, rivalSystem, caudalSystem, playStyle = 'combinative') => {
@@ -13951,6 +14024,33 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? deleteDefensivePlay : tacticalGamePhase === 'offensive' ? deleteOffensivePlay : tacticalGamePhase === 'transition' ? deleteTransitionPlay : deleteSetPiecePlay} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Eliminar</button>
                 {tacticalSaveStatus ? <span className={`self-center text-[9px] font-black uppercase tracking-[0.12em] ${tacticalSaveStatus === 'Error al guardar' ? 'text-red-200' : tacticalSaveStatus === 'Cambios sin guardar' ? 'text-amber-200' : 'text-slate-400'}`}>{tacticalSaveStatus}</span> : null}
               </div>
+              {tacticalGamePhase === 'set_piece' && selectedSetPiecePlay && setPieceResponsibilityReviews.some((item) => item.needsReview) ? (
+                <details className="mt-2 rounded-lg border border-amber-300/15 bg-amber-300/[0.07] px-2 py-1.5 text-[10px] font-semibold text-amber-100">
+                  <summary className="cursor-pointer">Responsabilidades ABP pendientes de revisar</summary>
+                  <div className="mt-2 grid gap-1.5">
+                    {setPieceResponsibilityReviews.filter((item) => item.needsReview).map((item) => {
+                      const player = players.find((entry) => String(entry.id) === item.playerId);
+                      const playerName = player ? displayPlayerName(player) : `Jugador ${item.playerId}`;
+                      const definition = getSetPieceResponsibility(item.responsibilityId);
+                      return (
+                        <div key={item.playerId} className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-black/15 px-2 py-1">
+                          <span className="min-w-0 truncate" title={`${playerName}: ${definition?.label || item.responsibilityId}`}>
+                            {playerName}: {definition?.label || item.responsibilityId}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`Quitar responsabilidad ABP pendiente de ${player?.name || playerName}`}
+                            onClick={() => updateSetPiecePlay(selectedSetPiecePlay.id, (play) => ({
+                              responsibilities: removeSetPieceResponsibility(play.responsibilities, item.playerId),
+                            }))}
+                            className="min-h-9 shrink-0 rounded-md border border-amber-300/20 px-2 text-[9px] font-black outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric"
+                          >Quitar</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </details>
+              ) : null}
               {tacticalTemplateNotice ? <p className="mt-2 text-[10px] font-bold text-emerald-200">{tacticalTemplateNotice}</p> : null}
               <label className="mt-4 grid gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-white">
                 <span>Descripción de la jugada</span>
@@ -25701,6 +25801,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       gesture.longPressTimer = window.setTimeout(() => {
         gesture.longPressTimer = null;
         if (!gesture.moved && gesture.playerKey === playerKey) {
+          setSelectedCaudalSetPiecePlayer(null);
           setSelectedFacingSystemsPlayer({ player, playerId });
         }
       }, 650);
@@ -25727,6 +25828,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       return;
     }
     const playerId = getFacingSystemsPlayerId(player);
+    setSelectedCaudalSetPiecePlayer(null);
     setSelectedFacingSystemsPlayer(playerId ? { player, playerId } : null);
   };
 
@@ -25739,7 +25841,57 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       return;
     }
     setSelectedFacingSystemsPlayer(null);
+    setSelectedCaudalSetPiecePlayer(null);
     requestFacingSystemsPlayerProfile(player);
+  };
+
+  const beginCaudalSetPiecePlayerPointer = (event, player, positionKey, enableDefensiveEditing) => {
+    if (tacticalCaptureMode) return;
+    if (tacticalGamePhase !== 'set_piece') {
+      if (enableDefensiveEditing) beginDefensivePlayerDrag(event, positionKey);
+      return;
+    }
+    if (!player?.id) return;
+    event.stopPropagation();
+    caudalSetPieceSuppressClickRef.current = false;
+    caudalSetPieceGestureRef.current = startSetPieceCaudalGesture(
+      event.pointerId, positionKey, event.clientX, event.clientY
+    );
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const moveCaudalSetPiecePlayerPointer = (event, enableDefensiveEditing) => {
+    if (tacticalGamePhase !== 'set_piece' || tacticalCaptureMode) return;
+    const advanced = advanceSetPieceCaudalGesture(
+      caudalSetPieceGestureRef.current, event.pointerId, event.clientX, event.clientY
+    );
+    caudalSetPieceGestureRef.current = advanced.gesture;
+    if (!advanced.startedDrag) return;
+    caudalSetPieceSuppressClickRef.current = true;
+    if (!enableDefensiveEditing || defensiveTool !== 'move') return;
+    const play = beginDefensivePlayerDrag(event, advanced.gesture.playerKey);
+    const field = event.currentTarget.closest('.facing-tactical-board');
+    const position = field ? getDefensivePointerPosition(event, field) : null;
+    if (play && position) {
+      updateTacticalPlay(play.id, (current) => ({
+        playerPositions: { ...current.playerPositions, [advanced.gesture.playerKey]: position },
+      }));
+    }
+  };
+  const finishCaudalSetPiecePlayerPointer = (event) => {
+    if (caudalSetPieceGestureRef.current?.pointerId !== event.pointerId) return;
+    caudalSetPieceSuppressClickRef.current = wasSetPieceCaudalDrag(caudalSetPieceGestureRef.current);
+    caudalSetPieceGestureRef.current = null;
+  };
+  const selectCaudalSetPiecePlayer = (event, player, positionKey) => {
+    if (tacticalGamePhase !== 'set_piece' || tacticalCaptureMode) return;
+    event.stopPropagation();
+    if (caudalSetPieceSuppressClickRef.current || !player?.id) {
+      caudalSetPieceSuppressClickRef.current = false;
+      return;
+    }
+    setSelectedFacingSystemsPlayer(null);
+    setSetPieceResponsibilityFeedback(null);
+    setSelectedCaudalSetPiecePlayer({ playerId: String(player.id), positionKey });
   };
 
   const saveAndOpenFacingSystemsPlayer = async () => {
@@ -25828,8 +25980,17 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       defensiveOffensiveRivalBoard.map((entry) => [entry.slot, entry])
     );
     const caudalCoordinates = getFormationSlots(caudalSystem, 'own').map((slot) => mapFormationSlotToFacingPitch(slot, 'caudal', 0.42));
+    const renderedCaudalPositions = caudalCoordinates.map((baseSlot, index) => (
+      enableDefensiveEditing ? getRenderedPlayerPosition(`caudal:${index}`, baseSlot) : baseSlot
+    ));
     const caudalRoles = safeArray(getFormationRoles(caudalSystem));
     const caudalLineup = safeArray(selectedMatch.preCaudalLineup);
+    const selectedCaudalPanelPlayer = players.find((player) => String(player.id) === selectedCaudalSetPiecePlayer?.playerId);
+    const selectedCaudalResponsibilityId = setPieceVisibleResponsibilities[selectedCaudalSetPiecePlayer?.playerId]?.responsibilityId || '';
+    const selectedCaudalFeedback = setPieceResponsibilityFeedback?.playId === selectedSetPiecePlay?.id
+      && setPieceResponsibilityFeedback?.playerId === selectedCaudalSetPiecePlayer?.playerId
+      ? setPieceResponsibilityFeedback.message
+      : '';
     const identity = liveRivalIdentity;
     const fieldView = getFieldViewSettings();
     const isCleanMode = fieldView.mode === 'LIMPIO';
@@ -26060,17 +26221,35 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         onPointerUp={enableDefensiveEditing && !tacticalCaptureMode ? handleDefensiveFieldPointerEnd : undefined}
         onPointerCancel={enableDefensiveEditing && !tacticalCaptureMode ? cancelDefensiveFieldPointer : undefined}
       >
-        {!tacticalCaptureMode && selectedFacingSystemsPlayer ? (
+        {!tacticalCaptureMode && (selectedFacingSystemsPlayer || (tacticalGamePhase === 'set_piece' && selectedCaudalPanelPlayer)) ? (
           <div
-            className="absolute right-4 top-14 z-50 max-w-[calc(100%-2rem)] border border-caudal-electric/30 bg-caudal-950/95 px-3 py-2 shadow-2xl backdrop-blur"
+            className="absolute right-4 top-14 z-50 max-h-[calc(100%-4.5rem)] w-[min(300px,calc(100%-2rem))] overflow-y-auto rounded-xl border border-caudal-electric/30 bg-caudal-950/95 px-3 py-2 shadow-2xl backdrop-blur"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
           >
-            <p className="max-w-56 truncate text-[10px] font-black text-white">{displayPlayerName(selectedFacingSystemsPlayer.player)}</p>
-            <div className="mt-2 flex gap-2">
-              <button type="button" onClick={() => requestFacingSystemsPlayerProfile(selectedFacingSystemsPlayer.player)} className="bg-caudal-electric px-3 py-1.5 text-[9px] font-black uppercase text-slate-950">Ver ficha</button>
-              <button type="button" onClick={() => setSelectedFacingSystemsPlayer(null)} className="border border-white/10 px-3 py-1.5 text-[9px] font-black uppercase text-slate-300">Cerrar</button>
-            </div>
+            {tacticalGamePhase === 'set_piece' && selectedCaudalPanelPlayer ? (
+              <>
+                <SetPieceResponsibilityPanel
+                  player={selectedCaudalPanelPlayer}
+                  phase={setPieceResponsibilityPhase}
+                  responsibilityId={selectedCaudalResponsibilityId}
+                  canAssign={setPieceCurrentPlayerIdByPositionKey[selectedCaudalSetPiecePlayer.positionKey] === selectedCaudalSetPiecePlayer.playerId}
+                  feedback={selectedCaudalFeedback}
+                  onAssign={assignSelectedCaudalSetPieceResponsibility}
+                  onRemove={removeSelectedCaudalSetPieceResponsibility}
+                />
+                {setPieceResponsibilityReviews.some((item) => item.needsReview) ? <p className="mt-2 text-[10px] font-semibold text-amber-100">Responsabilidades ABP pendientes de revisar</p> : null}
+                <button type="button" onClick={() => setSelectedCaudalSetPiecePlayer(null)} className="mt-2 min-h-9 w-full rounded-lg border border-white/10 px-3 text-[9px] font-black uppercase text-slate-300">Cerrar</button>
+              </>
+            ) : (
+              <>
+                <p className="max-w-56 truncate text-[10px] font-black text-white">{displayPlayerName(selectedFacingSystemsPlayer.player)}</p>
+                <div className="mt-2 flex gap-2">
+                  <button type="button" onClick={() => requestFacingSystemsPlayerProfile(selectedFacingSystemsPlayer.player)} className="bg-caudal-electric px-3 py-1.5 text-[9px] font-black uppercase text-slate-950">Ver ficha</button>
+                  <button type="button" onClick={() => setSelectedFacingSystemsPlayer(null)} className="border border-white/10 px-3 py-1.5 text-[9px] font-black uppercase text-slate-300">Cerrar</button>
+                </div>
+              </>
+            )}
           </div>
         ) : null}
         {layers.zones && showStaffDetails ? renderHudGroup(leftHud, 'left-4 top-1/2 -translate-y-1/2 flex-col items-start') : null}
@@ -26172,21 +26351,38 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
           );
         }) : null}
         {layers.caudal ? caudalCoordinates.map((baseSlot, index) => {
-          const slot = enableDefensiveEditing ? getRenderedPlayerPosition(`caudal:${index}`, baseSlot) : baseSlot;
-          const caudalPlayer = players.find((item) => item.name === caudalLineup[index]);
+          const slot = renderedCaudalPositions[index];
+          const caudalPlayer = setPieceCaudalPlayersBySlot[index];
+          const responsibilityId = setPieceVisibleResponsibilities[String(caudalPlayer?.id || '')]?.responsibilityId || '';
           return (
           <div
             key={`caudal-overview-${index}`}
-            className="absolute z-30 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center"
+            className={`absolute z-30 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center ${tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? defensiveTool === 'move' ? 'cursor-grab' : 'cursor-pointer' : ''}`}
             style={{ left: `${slot.x}%`, top: `${slot.y}%`, touchAction: enableDefensiveEditing ? 'none' : undefined }}
-            onPointerDown={enableDefensiveEditing ? (event) => beginDefensivePlayerDrag(event, `caudal:${index}`) : undefined}
+            role={tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? 'button' : undefined}
+            tabIndex={tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? 0 : undefined}
+            aria-label={tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? `Seleccionar ${caudalPlayer.name || displayPlayerName(caudalPlayer)} para responsabilidad ABP` : undefined}
+            aria-pressed={tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? selectedCaudalSetPiecePlayer?.playerId === String(caudalPlayer.id) : undefined}
+            onPointerDown={(event) => beginCaudalSetPiecePlayerPointer(event, caudalPlayer, `caudal:${index}`, enableDefensiveEditing)}
+            onPointerMove={(event) => moveCaudalSetPiecePlayerPointer(event, enableDefensiveEditing)}
+            onPointerUp={finishCaudalSetPiecePlayerPointer}
+            onPointerCancel={finishCaudalSetPiecePlayerPointer}
+            onClick={(event) => selectCaudalSetPiecePlayer(event, caudalPlayer, `caudal:${index}`)}
+            onKeyDown={tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                caudalSetPieceSuppressClickRef.current = false;
+                selectCaudalSetPiecePlayer(event, caudalPlayer, `caudal:${index}`);
+              }
+            } : undefined}
           >
-            <span className={`flex items-center justify-center overflow-hidden rounded-lg border border-white/15 bg-white font-black text-slate-500 shadow-sm transition duration-300 ${tacticalCaptureMode ? 'h-11 w-11 text-xs' : 'h-9 w-9 text-[10px]'}`}>
+            <span className={`flex items-center justify-center overflow-hidden rounded-lg border border-white/15 bg-white font-black text-slate-500 shadow-sm transition duration-300 ${tacticalCaptureMode ? 'h-11 w-11 text-xs' : 'h-9 w-9 text-[10px]'} ${tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && selectedCaudalSetPiecePlayer?.playerId === String(caudalPlayer?.id || '') ? 'ring-4 ring-caudal-electric/60' : ''}`}>
               {caudalPlayer ? <PlayerPortrait player={caudalPlayer} className="h-full w-full" imgClassName="h-full w-full object-cover object-center" fallbackTextClassName="text-[9px]" /> : index === 0 ? 'P' : index}
             </span>
             {layers.caudalNames ? <span className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
               {caudalPlayer ? displayPlayerName(caudalPlayer) : caudalLineup[index] || caudalRoles[index] || `C${index + 1}`}
             </span> : null}
+            {!tacticalCaptureMode && tacticalGamePhase === 'set_piece' && responsibilityId ? <SetPieceResponsibilityBadge responsibilityId={responsibilityId} phase={setPieceResponsibilityPhase} placement={getSetPieceBadgePlacement(index, renderedCaudalPositions)} /> : null}
           </div>
           );
         }) : null}
