@@ -34,6 +34,7 @@ import PlayerPositionUsageSummary from './components/player/PlayerPositionUsageS
 import PlayerAvatar from './components/player/PlayerAvatar';
 import PlayerNumberName from './components/player/PlayerNumberName';
 import { getPlayerAvatarSource } from './utils/playerAvatarPresentation';
+import { normalizeSetPieceResponsibilities } from './utils/setPieceResponsibilities';
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
 import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
 import { getPlayerPositionUsage } from './utils/playerPositionUsage';
@@ -1391,6 +1392,7 @@ const normalizeSetPieceWorkspace = (value) => {
       playerPositions: play.playerPositions && typeof play.playerPositions === 'object' && !Array.isArray(play.playerPositions)
         ? play.playerPositions
         : {},
+      responsibilities: normalizeSetPieceResponsibilities(play.responsibilities),
       arrows: normalizeTacticalBoardArrows(play.arrows),
       ...normalizeTacticalPlayBall(play, {
         fallback: getDefaultSetPieceBallPosition(play.setPieceType, play.setPieceAction),
@@ -11698,6 +11700,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         getCurrentRivalSystem(),
         selectedMatch?.preCaudalSystem || '4-4-2'
       ),
+      responsibilities: {},
       arrows: [],
       description: '',
       createdAt: timestamp,
@@ -11734,6 +11737,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       playerPositions: Object.fromEntries(
         Object.entries(selectedSetPiecePlay.playerPositions || {}).map(([key, position]) => [key, { ...position }])
       ),
+      responsibilities: normalizeSetPieceResponsibilities(selectedSetPiecePlay.responsibilities),
       arrows: selectedSetPiecePlay.arrows.map((arrow) => cloneTacticalBoardArrow(arrow, createSetPiecePlayId())),
       createdAt: timestamp,
       updatedAt: timestamp,
