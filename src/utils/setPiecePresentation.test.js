@@ -59,6 +59,23 @@ assert.ok(expandedByArrow.y <= 14, 'una flecha fuera del encuadre base amplía e
 const crop = buildSetPiecePresentationCrop(lowerCorner);
 assert.equal(crop.aspectRatio, 1.26);
 assert.deepEqual(crop.hostStyle, { width: '100%', left: '0%', top: '-51.52%' });
+const captureWithLabels = buildSetPiecePresentationViewport({
+  setPieceAction: 'corner',
+  ballStartPosition: { x: 5, y: 95 },
+  labelMargin: 4,
+  captureCompact: true,
+});
+assert.equal(captureWithLabels.y, 40, 'capture fills the field pane while keeping space for labels');
+assert.equal(captureWithLabels.height, 60);
+const captureWithRemoteAssignment = buildSetPiecePresentationViewport({
+  setPieceAction: 'corner',
+  ballStartPosition: { x: 95, y: 5 },
+  requiredPlayerPositions: [{ x: 50, y: 94 }],
+  labelMargin: 4,
+  captureCompact: true,
+});
+assert.equal(captureWithRemoteAssignment.height, 100,
+  'a player with a valid responsibility remains inside the crop even when remote from the area');
 assert.equal(getSetPiecePresentationName('Jugada 1'), '');
 assert.equal(getSetPiecePresentationName('Jugada 2 · copia'), '');
 assert.equal(getSetPiecePresentationName('Córner ofensivo A'), 'Córner ofensivo A');
@@ -71,7 +88,7 @@ const presentationSource = appSource.slice(presentationStart, genericCaptureStar
 
 assert.ok(presentationStart > 0 && genericCaptureStart > presentationStart, 'ABP tiene una presentación dedicada sin sustituir las demás fases');
 assert.match(presentationSource, /data-set-piece-presentation="true"/);
-assert.match(presentationSource, /renderFacingSystemsOverview\(true\)/, 'ABP reutiliza el renderer táctico completo');
+assert.match(presentationSource, /renderFacingSystemsOverview\(true, \{ captureViewport:/, 'ABP reutiliza el renderer táctico completo');
 assert.match(presentationSource, /setPieceTypeLabel/);
 assert.match(presentationSource, /setPieceActionLabel/);
 assert.match(presentationSource, /capturePresentation\.description/);
@@ -81,8 +98,9 @@ assert.match(presentationSource, /selectSetPiecePlay\([\s\S]*?\{ markDirty: fals
 assert.doesNotMatch(presentationSource, /caudalSystem|rivalSystem|Jugada 1|Jugada 2|Guardar|Duplicar|Eliminar|Plantillas|defensiveTool/, 'la superficie ABP no muestra sistemas, numeración ni herramientas editoriales');
 assert.match(appSource, /getSetPiecePresentationName\(selectedSetPiecePlay\?\.name\)/, 'un nombre concreto puede mostrarse y los nombres genéricos se filtran');
 assert.match(appSource, /getTacticalZones\(\)/, 'las zonas activas participan en el encuadre sin duplicarse');
+assert.match(appSource, /requiredPlayerPositions: Object\.values\(setPieceCaptureResponsibilities\?\.visibleByPlayerId/, 'el encuadre conserva las badges válidas');
 
-assert.match(cssSource, /\.tactical-abp-presentation-frame\s*\{[\s\S]*aspect-ratio: 16 \/ 9;[\s\S]*grid-template-columns: minmax\(0, 2\.08fr\) minmax\(270px, 0\.92fr\);/);
+assert.match(cssSource, /\.tactical-abp-presentation-frame\s*\{[\s\S]*aspect-ratio: 16 \/ 9;[\s\S]*grid-template-columns: minmax\(0, 3\.35fr\) minmax\(250px, 1fr\);/);
 assert.match(cssSource, /\.tactical-abp-presentation-controls\s*\{[\s\S]*position: fixed;/, 'anterior, siguiente, selector y salir quedan fuera del frame');
 assert.match(cssSource, /\.tactical-abp-pitch-pane\s*\{[\s\S]*container-type: size;[\s\S]*overflow: hidden;/);
 assert.match(cssSource, /\.tactical-abp-board-host \.facing-tactical-board\s*\{[\s\S]*max-width: none;/, 'el campo autoencuadrado no hereda el límite del tablero completo');

@@ -11,10 +11,11 @@ const normalizePoint = (point) => {
     : null;
 };
 
-const getBaseViewport = (setPieceAction, ball) => {
+const getBaseViewport = (setPieceAction, ball, captureCompact = false) => {
   const attacksBottomGoal = ball.y >= 50;
   if (setPieceAction === 'corner') {
-    return { x: 0, y: attacksBottomGoal ? 38 : 0, width: 100, height: 62 };
+    const height = captureCompact ? 52 : 62;
+    return { x: 0, y: attacksBottomGoal ? 100 - height : 0, width: 100, height };
   }
   if (setPieceAction === 'wide_free_kick') {
     return { x: 0, y: attacksBottomGoal ? 22 : 0, width: 100, height: 78 };
@@ -46,15 +47,21 @@ export const buildSetPiecePresentationViewport = ({
   setPieceAction = 'corner',
   ballStartPosition,
   playerPositions = {},
+  requiredPlayerPositions = [],
   arrows = [],
   zones = [],
+  labelMargin = 0,
+  captureCompact = false,
 } = {}) => {
   const ball = normalizePoint(ballStartPosition) || { x: 5, y: 95 };
-  const base = getBaseViewport(setPieceAction, ball);
+  const base = getBaseViewport(setPieceAction, ball, captureCompact);
   const playerPoints = Object.values(playerPositions || {})
     .map(normalizePoint)
     .filter(Boolean)
     .filter((point) => isNearViewport(point, base));
+  const requiredPoints = (Array.isArray(requiredPlayerPositions) ? requiredPlayerPositions : [])
+    .map(normalizePoint)
+    .filter(Boolean);
   const arrowPoints = (Array.isArray(arrows) ? arrows : []).flatMap((arrow) => (
     [arrow?.start, arrow?.end, arrow?.controlPoint].map(normalizePoint).filter(Boolean)
   ));
@@ -68,6 +75,7 @@ export const buildSetPiecePresentationViewport = ({
     { x: base.x + base.width, y: base.y + base.height },
     ball,
     ...playerPoints,
+    ...requiredPoints,
     ...arrowPoints,
     ...zonePoints,
   ];
@@ -75,7 +83,7 @@ export const buildSetPiecePresentationViewport = ({
   const maxX = Math.max(...points.map((point) => point.x));
   const minY = Math.min(...points.map((point) => point.y));
   const maxY = Math.max(...points.map((point) => point.y));
-  const safety = 4;
+  const safety = 4 + clamp(Number(labelMargin) || 0, 0, 8);
   const x = clamp(minX - safety, 0, 100);
   const y = clamp(minY - safety, 0, 100);
   const right = clamp(maxX + safety, 0, 100);

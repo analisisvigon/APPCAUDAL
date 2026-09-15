@@ -5,7 +5,7 @@ import {
   getSetPieceResponsibilitiesForPhase,
 } from '../../utils/setPieceResponsibilities';
 
-export function SetPieceResponsibilityBadge({ responsibilityId, phase, placement = 'below' }) {
+export function SetPieceResponsibilityBadge({ responsibilityId, phase, placement = 'below', capture = false }) {
   const definition = getSetPieceResponsibility(responsibilityId);
   if (!definition || definition.phase !== phase) return null;
   const placementClass = {
@@ -13,7 +13,7 @@ export function SetPieceResponsibilityBadge({ responsibilityId, phase, placement
     left: 'absolute right-[calc(50%+22px)] top-3',
     right: 'absolute left-[calc(50%+22px)] top-3',
   }[placement] || '';
-  return <span role="img" aria-label={definition.label} data-abp-responsibility-badge="true" className={`pointer-events-none inline-flex min-w-6 items-center justify-center rounded-md border border-caudal-electric/45 bg-caudal-950/90 px-1.5 py-0.5 text-[10px] font-black leading-none tracking-[0.03em] text-white shadow-sm ${placementClass}`}>{definition.abbreviation}</span>;
+  return <span role="img" aria-label={definition.label} data-abp-responsibility-badge="true" className={`pointer-events-none inline-flex min-w-6 items-center justify-center rounded-md border border-caudal-electric/45 bg-caudal-950/90 px-1.5 py-0.5 text-[10px] font-black leading-none tracking-[0.03em] text-white shadow-sm ${capture ? 'tactical-abp-capture-badge' : ''} ${placementClass}`}>{definition.abbreviation}</span>;
 }
 
 export default function SetPieceResponsibilityPanel({

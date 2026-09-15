@@ -405,7 +405,7 @@ table {
   width: min(calc(100vw - 24px), calc((100dvh - 60px) * 1.777778));
   max-height: calc(100dvh - 60px);
   aspect-ratio: 16 / 9;
-  grid-template-columns: minmax(0, 2.08fr) minmax(270px, 0.92fr);
+  grid-template-columns: minmax(0, 3.35fr) minmax(250px, 1fr);
   gap: clamp(8px, 0.8vw, 14px);
   overflow: hidden;
   padding: clamp(8px, 1vw, 16px);
@@ -458,13 +458,14 @@ table {
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-  padding: clamp(15px, 2vw, 34px);
+  padding: clamp(12px, 1.5vw, 24px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: clamp(12px, 1.2vw, 20px);
   background: linear-gradient(145deg, rgba(15, 31, 55, 0.95), rgba(8, 19, 39, 0.97));
 }
 
 .tactical-abp-heading p,
+.tactical-abp-responsibility-legend h3,
 .tactical-abp-information-list dt,
 .tactical-abp-description h3 {
   color: #60a5fa;
@@ -478,7 +479,7 @@ table {
 .tactical-abp-heading h2 {
   margin-top: 5px;
   color: #f8fafc;
-  font-size: clamp(22px, 2.35vw, 40px);
+  font-size: clamp(20px, 2vw, 34px);
   font-weight: 950;
   letter-spacing: -0.025em;
   line-height: 1;
@@ -487,7 +488,7 @@ table {
 
 .tactical-abp-information-list {
   display: grid;
-  margin-top: clamp(14px, 2vh, 24px);
+  margin-top: clamp(8px, 1.2vh, 14px);
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
@@ -511,8 +512,8 @@ table {
 
 .tactical-abp-description {
   min-height: 0;
-  margin-top: clamp(16px, 2.5vh, 28px);
-  padding-top: clamp(14px, 2vh, 22px);
+  margin-top: clamp(10px, 1.5vh, 18px);
+  padding-top: clamp(8px, 1.2vh, 14px);
   overflow: hidden;
   border-top: 1px solid rgba(96, 165, 250, 0.28);
 }
@@ -529,6 +530,93 @@ table {
   white-space: pre-wrap;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 15;
+}
+
+.tactical-abp-review-warning {
+  margin-top: 9px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 8px;
+  background: rgba(251, 191, 36, 0.08);
+  padding: 6px 8px;
+  color: #fde68a;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.tactical-abp-responsibility-legend {
+  margin-top: 14px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tactical-abp-responsibility-legend ul {
+  display: grid;
+  margin-top: 7px;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 5px 7px;
+}
+
+.tactical-abp-responsibility-legend li {
+  display: flex;
+  min-width: 0;
+  min-height: 25px;
+  align-items: center;
+  gap: 6px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.045);
+  padding: 3px 5px;
+  color: #f8fafc;
+  font-size: 11px;
+  line-height: 1.1;
+}
+
+.tactical-abp-responsibility-legend li strong {
+  min-width: 39px;
+  color: #93c5fd;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.tactical-abp-responsibility-legend li span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tactical-abp-capture-marker {
+  --abp-marker-shift-x: -50%;
+  --abp-marker-shift-y: -50%;
+  transform: translate(var(--abp-marker-shift-x), var(--abp-marker-shift-y));
+}
+
+.tactical-abp-capture-marker[data-abp-capture-anchor-x="left"] { --abp-marker-shift-x: -15%; }
+.tactical-abp-capture-marker[data-abp-capture-anchor-x="right"] { --abp-marker-shift-x: -85%; }
+.tactical-abp-capture-marker[data-abp-capture-anchor-y="top"] { --abp-marker-shift-y: -15%; }
+.tactical-abp-capture-marker[data-abp-capture-anchor-y="bottom"] { --abp-marker-shift-y: -85%; }
+
+.tactical-abp-capture-marker [data-abp-capture-name="true"] {
+  max-width: 140px;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.1;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.tactical-abp-capture-badge {
+  z-index: 1;
+  min-height: 23px;
+  border-color: #93c5fd;
+  border-width: 1px;
+  background: rgba(4, 17, 37, 0.96);
+  padding: 3px 7px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 950;
+  line-height: 1;
+  text-shadow: 0 1px 1px #000;
 }
 
 @supports (width: 1cqh) {

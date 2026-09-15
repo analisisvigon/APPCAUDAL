@@ -107,10 +107,10 @@ try {
   assert.match(boardSource, /finishCaudalSetPiecePlayerPointer/);
   assert.match(boardSource, /selectCaudalSetPiecePlayer/);
   assert.match(appSource, /caudalSetPieceSuppressClickRef\.current = wasSetPieceCaudalDrag/);
-  assert.match(boardSource, /!tacticalCaptureMode && tacticalGamePhase === 'set_piece' && responsibilityId/,
-    'badges are normal-field-only');
+  assert.match(boardSource, /isSetPieceCapture\s*\? captureResponsibilities\?\.visibleByPlayerId\s*: setPieceVisibleResponsibilities/,
+    'the normal field and capture select responsibilities from separate readers');
   assert.match(boardSource, /<SetPieceResponsibilityBadge/);
-  assert.match(boardSource, /getSetPieceBadgePlacement\(index, renderedCaudalPositions\)/);
+  assert.match(boardSource, /getSetPieceBadgePlacement\(index, renderedCaudalPositions, isSetPieceCapture \? captureViewport : null\)/);
   assert.match(boardSource, /tacticalGamePhase === 'set_piece' && selectedCaudalPanelPlayer/);
   assert.match(appSource, /updateSetPiecePlay\(play\.id, \{ responsibilities: result\.responsibilities \}\)/,
     'assignment uses the existing save coordinator');
@@ -121,7 +121,7 @@ try {
   assert.match(appSource, /Quitar responsabilidad ABP pendiente de/,
     'a stored assignment can be removed after the original player leaves the XI');
   assert.match(appSource, /responsibilities: normalizeSetPieceResponsibilities\(play\.responsibilities\)/);
-  const rivalSource = boardSource.slice(boardSource.indexOf('{layers.rival ? rivalSlots.map'), boardSource.indexOf('{layers.caudal ? caudalCoordinates.map'));
+  const rivalSource = boardSource.slice(boardSource.indexOf('{layers.rival ? rivalSlots.map'), boardSource.indexOf('{(layers.caudal ||'));
   assert.doesNotMatch(rivalSource, /SetPieceResponsibilityBadge|assignSetPieceResponsibility|Responsabilidad ABP/,
     'rival markers do not receive Caudal responsibilities');
 } finally {

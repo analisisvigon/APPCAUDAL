@@ -49,7 +49,8 @@ import {
   startSetPieceCaudalGesture,
   wasSetPieceCaudalDrag,
 } from './utils/setPieceCaudalGesture';
-import { getSetPieceBadgePlacement } from './utils/setPieceBadgePlacement';
+import { getSetPieceBadgePlacement, getSetPieceCaptureMarkerAnchor } from './utils/setPieceBadgePlacement';
+import { buildSetPieceCaptureResponsibilities } from './utils/setPieceCaptureResponsibilities';
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
 import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
 import { getPlayerPositionUsage } from './utils/playerPositionUsage';
@@ -13531,13 +13532,30 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       playStyleLabel: capturePlayStyleLabel,
       selectedPlay: selectedTacticalPlay,
     });
+    const setPieceCaptureResponsibilities = tacticalGamePhase === 'set_piece'
+      ? buildSetPieceCaptureResponsibilities(
+        selectedSetPiecePlay?.responsibilities,
+        setPieceResponsibilityPhase,
+        setPieceCurrentPlayerIdByPositionKey
+      )
+      : null;
     const setPieceCaptureViewport = tacticalGamePhase === 'set_piece'
       ? buildSetPiecePresentationViewport({
         setPieceAction,
         ballStartPosition: selectedSetPiecePlay?.ballStartPosition || setPieceBallStartPosition,
         playerPositions: selectedSetPiecePlay?.playerPositions,
+        requiredPlayerPositions: Object.values(setPieceCaptureResponsibilities?.visibleByPlayerId || {})
+          .map((item) => selectedSetPiecePlay?.playerPositions?.[item.positionKey]
+            || mapFormationSlotToFacingPitch(
+              getFormationSlots(selectedMatch?.preCaudalSystem || '4-4-2', 'own')[Number(item.positionKey.split(':')[1])],
+              'caudal',
+              0.42
+            ))
+          .filter(Boolean),
         arrows: selectedSetPiecePlay?.arrows,
         zones: getTacticalZones(),
+        labelMargin: 4,
+        captureCompact: true,
       })
       : null;
     const setPieceCaptureCrop = setPieceCaptureViewport
@@ -13618,15 +13636,31 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 style={{ '--abp-crop-aspect': String(setPieceCaptureCrop?.aspectRatio || (7 / 8.4)) }}
               >
                 <div className="tactical-abp-board-host" style={setPieceCaptureCrop?.hostStyle}>
-                  {renderFacingSystemsOverview(true)}
+                  {renderFacingSystemsOverview(true, { captureViewport: setPieceCaptureViewport, captureResponsibilities: setPieceCaptureResponsibilities })}
                 </div>
               </div>
             </section>
             <aside className="tactical-abp-information-panel">
               <header className="tactical-abp-heading">
                 <p>{setPieceTypeLabel}</p>
-                <h2>{setPieceActionLabel}</h2>
+                <h2>{captureSituationLabel || setPieceActionLabel}</h2>
               </header>
+              {setPieceCaptureResponsibilities?.hasNeedsReview ? (
+                <p className="tactical-abp-review-warning" role="status">Responsabilidades pendientes de revisar</p>
+              ) : null}
+              {setPieceCaptureResponsibilities?.legend.length ? (
+                <section className="tactical-abp-responsibility-legend" aria-label="Responsabilidades utilizadas">
+                  <h3>Responsabilidades</h3>
+                  <ul>
+                    {setPieceCaptureResponsibilities.legend.map((definition) => (
+                      <li key={definition.id}>
+                        <strong>{definition.abbreviation}</strong>
+                        <span>{definition.label}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
               {setPieceCaptureInformation.length ? (
                 <dl className="tactical-abp-information-list">
                   {setPieceCaptureInformation.map(([label, value]) => (
@@ -25924,7 +25958,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     setFacingSystemsPlayerReturn(null);
   };
 
-  const renderFacingSystemsOverview = (enableDefensiveEditing = false) => {
+  const renderFacingSystemsOverview = (enableDefensiveEditing = false, { captureViewport = null, captureResponsibilities = null } = {}) => {
     if (!selectedMatch) {
       return (
         <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] p-6 text-sm text-slate-400">
@@ -26350,15 +26384,21 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
           </div>
           );
         }) : null}
-        {layers.caudal ? caudalCoordinates.map((baseSlot, index) => {
+        {(layers.caudal || (tacticalCaptureMode && tacticalGamePhase === 'set_piece')) ? caudalCoordinates.map((baseSlot, index) => {
           const slot = renderedCaudalPositions[index];
           const caudalPlayer = setPieceCaudalPlayersBySlot[index];
-          const responsibilityId = setPieceVisibleResponsibilities[String(caudalPlayer?.id || '')]?.responsibilityId || '';
+          const isSetPieceCapture = tacticalCaptureMode && tacticalGamePhase === 'set_piece';
+          const responsibilityId = (isSetPieceCapture
+            ? captureResponsibilities?.visibleByPlayerId
+            : setPieceVisibleResponsibilities)?.[String(caudalPlayer?.id || '')]?.responsibilityId || '';
+          const captureAnchor = isSetPieceCapture ? getSetPieceCaptureMarkerAnchor(slot, captureViewport) : null;
           return (
           <div
             key={`caudal-overview-${index}`}
-            className={`absolute z-30 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center ${tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? defensiveTool === 'move' ? 'cursor-grab' : 'cursor-pointer' : ''}`}
+            className={`absolute z-30 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center ${isSetPieceCapture ? 'tactical-abp-capture-marker' : ''} ${tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? defensiveTool === 'move' ? 'cursor-grab' : 'cursor-pointer' : ''}`}
             style={{ left: `${slot.x}%`, top: `${slot.y}%`, touchAction: enableDefensiveEditing ? 'none' : undefined }}
+            data-abp-capture-anchor-x={captureAnchor?.horizontal}
+            data-abp-capture-anchor-y={captureAnchor?.vertical}
             role={tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? 'button' : undefined}
             tabIndex={tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? 0 : undefined}
             aria-label={tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? `Seleccionar ${caudalPlayer.name || displayPlayerName(caudalPlayer)} para responsabilidad ABP` : undefined}
@@ -26379,10 +26419,10 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
             <span className={`flex items-center justify-center overflow-hidden rounded-lg border border-white/15 bg-white font-black text-slate-500 shadow-sm transition duration-300 ${tacticalCaptureMode ? 'h-11 w-11 text-xs' : 'h-9 w-9 text-[10px]'} ${tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && selectedCaudalSetPiecePlayer?.playerId === String(caudalPlayer?.id || '') ? 'ring-4 ring-caudal-electric/60' : ''}`}>
               {caudalPlayer ? <PlayerPortrait player={caudalPlayer} className="h-full w-full" imgClassName="h-full w-full object-cover object-center" fallbackTextClassName="text-[9px]" /> : index === 0 ? 'P' : index}
             </span>
-            {layers.caudalNames ? <span className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
+            {(layers.caudalNames || isSetPieceCapture) ? <span data-abp-capture-name={isSetPieceCapture ? 'true' : undefined} className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
               {caudalPlayer ? displayPlayerName(caudalPlayer) : caudalLineup[index] || caudalRoles[index] || `C${index + 1}`}
             </span> : null}
-            {!tacticalCaptureMode && tacticalGamePhase === 'set_piece' && responsibilityId ? <SetPieceResponsibilityBadge responsibilityId={responsibilityId} phase={setPieceResponsibilityPhase} placement={getSetPieceBadgePlacement(index, renderedCaudalPositions)} /> : null}
+            {tacticalGamePhase === 'set_piece' && responsibilityId ? <SetPieceResponsibilityBadge responsibilityId={responsibilityId} phase={setPieceResponsibilityPhase} capture={isSetPieceCapture} placement={getSetPieceBadgePlacement(index, renderedCaudalPositions, isSetPieceCapture ? captureViewport : null)} /> : null}
           </div>
           );
         }) : null}
