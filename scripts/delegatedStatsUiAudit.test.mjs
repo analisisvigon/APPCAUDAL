@@ -3,6 +3,10 @@ import fs from 'node:fs';
 
 const component = fs.readFileSync(new URL('../src/components/delegated/DelegatedStatsDashboard.jsx', import.meta.url), 'utf8');
 const app = fs.readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+const playersView = component.slice(
+  component.indexOf("view === 'Jugadores'"),
+  component.indexOf("view === 'Equipo'"),
+);
 
 assert.match(component, /\['Resumen', 'Jugadores', 'Equipo', 'Evolución'\]/, 'expone las cuatro vistas solicitadas');
 assert.match(component, /buildDelegatedStatsDataset/, 'todas las vistas parten del dataset central');
@@ -15,7 +19,13 @@ assert.match(component, /buildDelegatedContextComparison/, 'Equipo compara conte
 assert.match(component, /buildDelegatedEvolution/, 'Evolución usa la serie central');
 assert.match(component, /"Total"[\s\S]*"Media\/partido"[\s\S]*"Por90"/, 'incluye Total, Media/partido y Por90');
 assert.match(component, /useState\('average'\)/, 'Media/partido es la vista predeterminada de jugadores');
+assert.match(component, /useState\(\{ key: 'goals', direction: 'desc' \}\)/, 'la tabla empieza ordenada por la primera columna estadística visible');
 assert.match(component, /Goles \+ asistencias[\s\S]*short: 'G\+A'|goalContributions/, 'la producción individual incluye G, A y G+A');
+assert.doesNotMatch(playersView, /toggleSort\('matchesPlayed'\)|sortMark\('matchesPlayed'\)|row\.matchesPlayed/, 'Jugadores no muestra ni reserva la columna PJ');
+assert.doesNotMatch(playersView, /toggleSort\('minutes'\)|sortMark\('minutes'\)|row\.minutesReliable|formatDelegatedNumber\(row\.minutes\)/, 'Jugadores no muestra ni reserva la columna MIN');
+assert.doesNotMatch(playersView, /PJ y minutos proceden|G, A y MIN proceden/, 'la ayuda ya no menciona las columnas retiradas');
+assert.match(playersView, /Pulsa una fila para abrir el perfil\./, 'la ayuda conserva la indicación útil para abrir el perfil');
+assert.match(playersView, /min-w-\[1020px\][\s\S]*min-w-\[200px\][\s\S]*PLAYER_COLUMNS\.map[\s\S]*PLAYER_COLUMNS\.map/, 'la tabla reduce su ancho mínimo, amplía Jugador y conserva las estadísticas restantes');
 assert.match(component, /Oficial · goles, asistencias y minutos[\s\S]*Registro delegado · acciones/, 'identifica discretamente las dos fuentes');
 assert.match(component, /Más filtros[\s\S]*aria-label="Resultado"[\s\S]*aria-label="Jugador"[\s\S]*aria-label="Equipo"[\s\S]*aria-label="Evento"[\s\S]*aria-label="Tramo"[\s\S]*aria-label="Muestra"/, 'los filtros secundarios viven en Más filtros');
 assert.match(component, /aria-label="Partido"[\s\S]*aria-label="Competición"[\s\S]*aria-label="Local o visitante"[\s\S]*Más filtros/, 'la cabecera conserva solo los tres filtros principales');
