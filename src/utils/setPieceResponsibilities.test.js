@@ -118,16 +118,16 @@ assert.deepEqual(normalizeSetPieceResponsibilities(null), {});
 const historicalCaudalAssignment = {
   'own-player-id': { responsibilityId: 'def_zona_1', positionKey: 'caudal:4' },
 };
-assert.deepEqual(normalizeSetPieceResponsibilities(historicalCaudalAssignment), historicalCaudalAssignment,
-  'an erroneous historical Caudal assignment is preserved without being reinterpreted');
+assert.deepEqual(normalizeSetPieceResponsibilities(historicalCaudalAssignment), {},
+  'an erroneous historical Caudal assignment is removed during normalization');
 assert.deepEqual(getValidSetPieceResponsibilities(historicalCaudalAssignment, 'defensive'), {},
   'an erroneous historical Caudal assignment is never rendered as a rival assignment');
 const rivalAfterHistoricalCaudal = assignSetPieceResponsibility(historicalCaudalAssignment, {
   playerId: 'rival-player-id', positionKey: 'rival:4', responsibilityId: 'def_zona_1', phase: 'defensive',
 });
 assert.equal(rivalAfterHistoricalCaudal.ok, true,
-  'an inert historical Caudal entry cannot block the canonical rival assignment');
-assert.deepEqual(rivalAfterHistoricalCaudal.responsibilities['own-player-id'], historicalCaudalAssignment['own-player-id']);
+  'a historical Caudal entry cannot block the canonical rival assignment');
+assert.equal(rivalAfterHistoricalCaudal.responsibilities['own-player-id'], undefined);
 assert.deepEqual(removeSetPieceResponsibility(julioMarca.responsibilities, 'julio-id'), borjaMarca.responsibilities);
 assert.equal(Object.keys(julioMarca.responsibilities).length, 2, 'removal is immutable');
 

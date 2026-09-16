@@ -10,3 +10,7 @@ vite-dev*.log
 
 # Artefactos temporales del QA visual de multas
 /artifacts/fines-mobile-qa/
+
+# Artefactos temporales de validación visual ABP rival
+/artifacts/abp-block3/
+/artifacts/abp-block4/

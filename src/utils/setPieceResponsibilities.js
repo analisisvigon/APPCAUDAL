@@ -54,8 +54,8 @@ export const getSetPieceResponsibilityPhase = (setPieceType) => ({
   offensive_set_piece: 'offensive',
 })[setPieceType] || null;
 
-// Preserve stored IDs, including unknown or wrong-phase IDs, so loading cannot silently erase data.
-// Phase-aware readers and validators decide whether an entry may be consumed.
+// Preserve stored IDs, including unknown or wrong-phase IDs, only for canonical rival positions.
+// This also removes stale assignments created by the retired Caudal implementation.
 export const normalizeSetPieceResponsibilities = (source) => Object.fromEntries(
   Object.entries(asObject(source))
     .filter(([playerId, entry]) => clean(playerId) && entry && typeof entry === 'object' && !Array.isArray(entry))
@@ -63,6 +63,7 @@ export const normalizeSetPieceResponsibilities = (source) => Object.fromEntries(
       responsibilityId: clean(entry.responsibilityId),
       positionKey: clean(entry.positionKey),
     }])
+    .filter(([, entry]) => /^rival:(?:[0-9]|10)$/.test(entry.positionKey))
 );
 
 export const getValidSetPieceResponsibilities = (source, phase) => Object.fromEntries(
