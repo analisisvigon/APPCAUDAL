@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict';
+﻿import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -8,10 +8,10 @@ import { buildSetPieceCaptureResponsibilities } from './setPieceCaptureResponsib
 import { getSetPieceResponsibilitiesForPhase } from './setPieceResponsibilities.js';
 
 const assign = (ids) => Object.fromEntries(ids.map((responsibilityId, index) => [
-  `player-${index}`, { responsibilityId, positionKey: `caudal:${index}` },
+  `player-${index}`, { responsibilityId, positionKey: `rival:${index}` },
 ]));
 const currentXi = (count) => Object.fromEntries(Array.from({ length: count }, (_, index) => [
-  `caudal:${index}`, `player-${index}`,
+  `rival:${index}`, `player-${index}`,
 ]));
 const defensiveIds = getSetPieceResponsibilitiesForPhase('defensive').map(({ id }) => id);
 const offensiveIds = getSetPieceResponsibilitiesForPhase('offensive').map(({ id }) => id);
@@ -43,13 +43,13 @@ const firstPlay = buildSetPieceCaptureResponsibilities(assign(['def_zona_1']), '
 const nextPlay = buildSetPieceCaptureResponsibilities(assign(['def_zona_3']), 'defensive', currentXi(1));
 assert.deepEqual(firstPlay.legend.map(({ abbreviation }) => abbreviation), ['Z1']);
 assert.deepEqual(nextPlay.legend.map(({ abbreviation }) => abbreviation), ['Z3']);
-const changedXi = { 'caudal:0': 'replacement-player' };
+const changedXi = { 'rival:0': 'replacement-player' };
 const stale = buildSetPieceCaptureResponsibilities(assign(['def_zona_1']), 'defensive', changedXi);
 assert.equal(stale.hasNeedsReview, true);
 assert.deepEqual(stale.visibleByPlayerId, {}, 'a needsReview assignment is not shown as valid');
 assert.deepEqual(stale.legend, [], 'a hidden doubtful badge cannot appear in the legend');
 const mixed = buildSetPieceCaptureResponsibilities(assign(['def_zona_1', 'def_zona_2']),
-  'defensive', { 'caudal:0': 'replacement-player', 'caudal:1': 'player-1' });
+  'defensive', { 'rival:0': 'replacement-player', 'rival:1': 'player-1' });
 assert.deepEqual(mixed.legend.map(({ abbreviation }) => abbreviation), ['Z2']);
 assert.equal(mixed.hasNeedsReview, true);
 
@@ -86,13 +86,16 @@ const appSource = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../index.css', import.meta.url), 'utf8');
 const boardSource = appSource.slice(appSource.indexOf('const renderFacingSystemsOverview ='),
   appSource.indexOf('const clearSelectedTeamField ='));
-const rivalSource = boardSource.slice(boardSource.indexOf('{layers.rival ? rivalSlots.map'),
+const rivalSource = boardSource.slice(boardSource.indexOf('{(layers.rival ||'),
   boardSource.indexOf('{(layers.caudal ||'));
-assert.doesNotMatch(rivalSource, /SetPieceResponsibilityBadge|captureResponsibilities/,
-  'rival players never receive ABP badges');
+const caudalSource = boardSource.slice(boardSource.indexOf('{(layers.caudal ||'));
+assert.match(rivalSource, /SetPieceResponsibilityBadge|captureResponsibilities/,
+  'rival players receive ABP badges from the capture model');
+assert.doesNotMatch(caudalSource, /SetPieceResponsibilityBadge|captureResponsibilities/,
+  'Caudal players never receive ABP badges');
 assert.match(boardSource, /captureResponsibilities\?\.visibleByPlayerId/);
 assert.match(boardSource, /getSetPieceCaptureMarkerAnchor\(slot, captureViewport\)/);
-assert.match(boardSource, /getSetPieceBadgePlacement\(index, renderedCaudalPositions, isSetPieceCapture \? captureViewport : null\)/);
+assert.match(boardSource, /getSetPieceBadgePlacement\(index, renderedRivalPositions, isSetPieceCapture \? captureViewport : null\)/);
 assert.match(boardSource, /layers\.caudalNames \|\| isSetPieceCapture/,
   'Caudal names remain visible in the team capture');
 assert.match(appSource, /buildSetPieceCaptureResponsibilities\([\s\S]*?selectedSetPiecePlay\?\.responsibilities/,

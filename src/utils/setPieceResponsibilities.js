@@ -67,14 +67,19 @@ export const normalizeSetPieceResponsibilities = (source) => Object.fromEntries(
 
 export const getValidSetPieceResponsibilities = (source, phase) => Object.fromEntries(
   Object.entries(normalizeSetPieceResponsibilities(source))
-    .filter(([, entry]) => Boolean(getSetPieceResponsibility(entry.responsibilityId)?.phase === phase))
+    .filter(([, entry]) => Boolean(
+      getSetPieceResponsibility(entry.responsibilityId)?.phase === phase
+      && /^rival:(?:[0-9]|10)$/.test(entry.positionKey)
+    ))
 );
 
 export const findSetPieceResponsibilityConflict = (source, playerId, responsibilityId) => {
   const definition = getSetPieceResponsibility(responsibilityId);
   if (!definition || definition.allowMultiplePlayers) return null;
   return Object.entries(normalizeSetPieceResponsibilities(source)).find(([assignedPlayerId, entry]) => (
-    assignedPlayerId !== clean(playerId) && entry.responsibilityId === definition.id
+    assignedPlayerId !== clean(playerId)
+    && /^rival:(?:[0-9]|10)$/.test(entry.positionKey)
+    && entry.responsibilityId === definition.id
   ))?.[0] || null;
 };
 
@@ -83,7 +88,7 @@ export const assignSetPieceResponsibility = (source, { playerId, positionKey, re
   const normalizedPlayerId = clean(playerId);
   const normalizedPositionKey = clean(positionKey);
   const definition = getSetPieceResponsibility(responsibilityId);
-  if (!normalizedPlayerId || !/^caudal:(?:[0-9]|10)$/.test(normalizedPositionKey)) {
+  if (!normalizedPlayerId || !/^rival:(?:[0-9]|10)$/.test(normalizedPositionKey)) {
     return { ok: false, errorCode: 'INVALID_PLAYER_POSITION', responsibilities };
   }
   if (!definition || definition.phase !== phase) {

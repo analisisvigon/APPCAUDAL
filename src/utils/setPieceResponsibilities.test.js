@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict';
+﻿import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   SET_PIECE_RESPONSIBILITIES,
@@ -47,21 +47,21 @@ assert.equal(allowsMultipleSetPiecePlayers('off_se_queda'), false);
 assert.equal(SET_PIECE_RESPONSIBILITIES.defensive, defensive);
 
 const borjaZ1 = assignSetPieceResponsibility({}, {
-  playerId: 'borja-id', positionKey: 'caudal:4', responsibilityId: 'def_zona_1', phase: 'defensive',
+  playerId: 'borja-id', positionKey: 'rival:4', responsibilityId: 'def_zona_1', phase: 'defensive',
 });
 assert.equal(borjaZ1.ok, true);
 const borjaZ2 = assignSetPieceResponsibility(borjaZ1.responsibilities, {
-  playerId: 'borja-id', positionKey: 'caudal:4', responsibilityId: 'def_zona_2', phase: 'defensive',
+  playerId: 'borja-id', positionKey: 'rival:4', responsibilityId: 'def_zona_2', phase: 'defensive',
 });
 assert.deepEqual(borjaZ2.responsibilities, {
-  'borja-id': { responsibilityId: 'def_zona_2', positionKey: 'caudal:4' },
+  'borja-id': { responsibilityId: 'def_zona_2', positionKey: 'rival:4' },
 }, 'changing a player responsibility replaces the former one');
 assert.deepEqual(borjaZ1.responsibilities, {
-  'borja-id': { responsibilityId: 'def_zona_1', positionKey: 'caudal:4' },
+  'borja-id': { responsibilityId: 'def_zona_1', positionKey: 'rival:4' },
 }, 'assignment does not mutate its source');
 
 const julioZ1 = assignSetPieceResponsibility(borjaZ1.responsibilities, {
-  playerId: 'julio-id', positionKey: 'caudal:5', responsibilityId: 'def_zona_1', phase: 'defensive',
+  playerId: 'julio-id', positionKey: 'rival:5', responsibilityId: 'def_zona_1', phase: 'defensive',
 });
 assert.equal(julioZ1.ok, false);
 assert.equal(julioZ1.errorCode, 'RESPONSIBILITY_ALREADY_ASSIGNED');
@@ -69,26 +69,26 @@ assert.equal(julioZ1.conflictingPlayerId, 'borja-id');
 assert.equal(findSetPieceResponsibilityConflict(borjaZ1.responsibilities, 'julio-id', 'def_zona_1'), 'borja-id');
 assert.deepEqual(julioZ1.responsibilities, borjaZ1.responsibilities, 'conflict never transfers the assignment');
 const conflictingStored = inspectSetPieceResponsibilities({
-  'borja-id': { responsibilityId: 'def_zona_1', positionKey: 'caudal:4' },
-  'julio-id': { responsibilityId: 'def_zona_1', positionKey: 'caudal:5' },
+  'borja-id': { responsibilityId: 'def_zona_1', positionKey: 'rival:4' },
+  'julio-id': { responsibilityId: 'def_zona_1', positionKey: 'rival:5' },
 }, 'defensive');
 assert.equal(conflictingStored[1].conflictingPlayerId, 'borja-id', 'stored uniqueness conflicts remain detectable');
 
 for (const responsibilityId of ['off_rematador_1', 'off_se_queda']) {
   const first = assignSetPieceResponsibility({}, {
-    playerId: 'borja-id', positionKey: 'caudal:4', responsibilityId, phase: 'offensive',
+    playerId: 'borja-id', positionKey: 'rival:4', responsibilityId, phase: 'offensive',
   });
   const second = assignSetPieceResponsibility(first.responsibilities, {
-    playerId: 'julio-id', positionKey: 'caudal:5', responsibilityId, phase: 'offensive',
+    playerId: 'julio-id', positionKey: 'rival:5', responsibilityId, phase: 'offensive',
   });
   assert.equal(second.errorCode, 'RESPONSIBILITY_ALREADY_ASSIGNED', `${responsibilityId} is unique`);
 }
 
 const borjaMarca = assignSetPieceResponsibility({}, {
-  playerId: 'borja-id', positionKey: 'caudal:4', responsibilityId: 'def_marca', phase: 'defensive',
+  playerId: 'borja-id', positionKey: 'rival:4', responsibilityId: 'def_marca', phase: 'defensive',
 });
 const julioMarca = assignSetPieceResponsibility(borjaMarca.responsibilities, {
-  playerId: 'julio-id', positionKey: 'caudal:5', responsibilityId: 'def_marca', phase: 'defensive',
+  playerId: 'julio-id', positionKey: 'rival:5', responsibilityId: 'def_marca', phase: 'defensive',
 });
 assert.equal(julioMarca.ok, true);
 assert.equal(Object.keys(julioMarca.responsibilities).length, 2);
@@ -96,15 +96,15 @@ assert.equal(findSetPieceResponsibilityConflict(julioMarca.responsibilities, 'vi
 
 for (const responsibilityId of ['off_bloqueo', 'off_arrastre']) {
   const first = assignSetPieceResponsibility({}, {
-    playerId: 'borja-id', positionKey: 'caudal:4', responsibilityId, phase: 'offensive',
+    playerId: 'borja-id', positionKey: 'rival:4', responsibilityId, phase: 'offensive',
   });
   const second = assignSetPieceResponsibility(first.responsibilities, {
-    playerId: 'julio-id', positionKey: 'caudal:5', responsibilityId, phase: 'offensive',
+    playerId: 'julio-id', positionKey: 'rival:5', responsibilityId, phase: 'offensive',
   });
   assert.equal(second.ok, true, `${responsibilityId} may be assigned to several players`);
 }
 const wrongPhase = assignSetPieceResponsibility({}, {
-  playerId: 'borja-id', positionKey: 'caudal:4', responsibilityId: 'def_zona_1', phase: 'offensive',
+  playerId: 'borja-id', positionKey: 'rival:4', responsibilityId: 'def_zona_1', phase: 'offensive',
 });
 assert.equal(wrongPhase.errorCode, 'INVALID_RESPONSIBILITY_FOR_PHASE');
 assert.deepEqual(wrongPhase.responsibilities, {});
@@ -115,6 +115,19 @@ assert.deepEqual(normalizeSetPieceResponsibilities(borjaZ1.responsibilities), bo
 
 assert.deepEqual(normalizeSetPieceResponsibilities(undefined), {}, 'historical play without assignments remains empty');
 assert.deepEqual(normalizeSetPieceResponsibilities(null), {});
+const historicalCaudalAssignment = {
+  'own-player-id': { responsibilityId: 'def_zona_1', positionKey: 'caudal:4' },
+};
+assert.deepEqual(normalizeSetPieceResponsibilities(historicalCaudalAssignment), historicalCaudalAssignment,
+  'an erroneous historical Caudal assignment is preserved without being reinterpreted');
+assert.deepEqual(getValidSetPieceResponsibilities(historicalCaudalAssignment, 'defensive'), {},
+  'an erroneous historical Caudal assignment is never rendered as a rival assignment');
+const rivalAfterHistoricalCaudal = assignSetPieceResponsibility(historicalCaudalAssignment, {
+  playerId: 'rival-player-id', positionKey: 'rival:4', responsibilityId: 'def_zona_1', phase: 'defensive',
+});
+assert.equal(rivalAfterHistoricalCaudal.ok, true,
+  'an inert historical Caudal entry cannot block the canonical rival assignment');
+assert.deepEqual(rivalAfterHistoricalCaudal.responsibilities['own-player-id'], historicalCaudalAssignment['own-player-id']);
 assert.deepEqual(removeSetPieceResponsibility(julioMarca.responsibilities, 'julio-id'), borjaMarca.responsibilities);
 assert.equal(Object.keys(julioMarca.responsibilities).length, 2, 'removal is immutable');
 
@@ -133,13 +146,13 @@ const stored = JSON.parse(JSON.stringify({ setPiecePhaseV1: {
   plays: [{ ...originalPlay, responsibilities: normalizeSetPieceResponsibilities(originalPlay.responsibilities) }],
 } }));
 assert.deepEqual(normalizeSetPieceResponsibilities(stored.setPiecePhaseV1.plays[0].responsibilities), {
-  'borja-id': { responsibilityId: 'def_zona_1', positionKey: 'caudal:4' },
+  'borja-id': { responsibilityId: 'def_zona_1', positionKey: 'rival:4' },
 }, 'JSON persistence preserves player ID, position key and canonical responsibility ID');
 const historicalStored = JSON.parse(JSON.stringify({ setPiecePhaseV1: { plays: [{ id: 'old' }] } }));
 assert.deepEqual(normalizeSetPieceResponsibilities(historicalStored.setPiecePhaseV1.plays[0].responsibilities), {});
 
-const unchangedXi = { 'caudal:4': 'borja-id' };
-const changedXi = { 'caudal:4': 'vicente-id' };
+const unchangedXi = { 'rival:4': 'borja-id' };
+const changedXi = { 'rival:4': 'vicente-id' };
 assert.equal(inspectSetPieceResponsibilities(borjaZ1.responsibilities, 'defensive', unchangedXi)[0].needsReview, false);
 const review = inspectSetPieceResponsibilities(borjaZ1.responsibilities, 'defensive', changedXi)[0];
 assert.equal(review.needsReview, true);

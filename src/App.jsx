@@ -44,14 +44,8 @@ import {
   normalizeSetPieceResponsibilities,
   removeSetPieceResponsibility,
 } from './utils/setPieceResponsibilities';
-import {
-  advanceSetPieceCaudalGesture,
-  startSetPieceCaudalGesture,
-  wasSetPieceCaudalDrag,
-} from './utils/setPieceCaudalGesture';
 import { getSetPieceBadgePlacement, getSetPieceCaptureMarkerAnchor } from './utils/setPieceBadgePlacement';
 import { buildSetPieceCaptureResponsibilities } from './utils/setPieceCaptureResponsibilities';
-import { resolveSetPieceCaudalPlayersBySlot } from './utils/setPieceCaudalLineupIdentity';
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
 import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
 import { getPlayerPositionUsage } from './utils/playerPositionUsage';
@@ -1721,6 +1715,8 @@ const createJugadorPayload = (formState) => ({
 });
 
 const isUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+const getCanonicalRivalPlayerId = (player) =>
+  [player?.globalPlayerId, player?.jugadorRivalId, player?.id].find((id) => isUuid(id)) || '';
 
 const snakeToCamel = (value) => value.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 
@@ -5822,10 +5818,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const [tacticalBoardViewState, setTacticalBoardViewState] = useState(createTacticalBoardViewState);
   const [selectedFacingSystemsPlayer, setSelectedFacingSystemsPlayer] = useState(null);
   const facingSystemsPlayerGestureRef = useRef({ longPressTimer: null, moved: false, playerKey: '' });
-  const [selectedCaudalSetPiecePlayer, setSelectedCaudalSetPiecePlayer] = useState(null);
   const [setPieceResponsibilityFeedback, setSetPieceResponsibilityFeedback] = useState(null);
-  const caudalSetPieceGestureRef = useRef(null);
-  const caudalSetPieceSuppressClickRef = useRef(false);
   const [setPieceBallStartPosition, setSetPieceBallStartPosition] = useState(() => (
     getDefaultSetPieceBallPosition('offensive_set_piece', 'corner')
   ));
@@ -6826,11 +6819,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     setMatches((current) => {
       const exists = current.some((match) => match.id === partidoId);
       if (!exists) return [...current, detailedMatch];
-      return current.map((match) => (match.id === partidoId ? {
-        ...match,
-        ...detailedMatch,
-        lineupSlots: { ...match.lineupSlots, ...detailedMatch.lineupSlots },
-      } : match));
+      return current.map((match) => (match.id === partidoId ? { ...match, ...detailedMatch } : match));
     });
     setStatsRefreshing(false);
     return detailedMatch;
@@ -6894,23 +6883,9 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         preRivalLineupPlayers,
         prePlayerNotes,
         preRivalPlayerNotes,
-        lineupSlots: {
-          preCaudal: (slotsResponse.data || [])
-            .filter((slot) => slot.scope === 'pre_caudal' && Number.isInteger(slot.slot) && slot.slot >= 0 && slot.slot <= 10)
-            .map((slot) => ({
-              scope: 'pre_caudal',
-              slot: slot.slot,
-              playerName: slot.player_name || '',
-              jugadorId: slot.jugador_id || null,
-            })),
-        },
       };
 
-      setMatches((current) => current.map((match) => (match.id === partidoId ? {
-        ...match,
-        ...detailedMatch,
-        lineupSlots: { ...match.lineupSlots, ...detailedMatch.lineupSlots },
-      } : match)));
+      setMatches((current) => current.map((match) => (match.id === partidoId ? { ...match, ...detailedMatch } : match)));
       return detailedMatch;
     } catch (loadError) {
       console.error('Error cargando PRE desde Supabase:', loadError);
@@ -7718,7 +7693,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     setTacticalCaptureMode(false);
     setTacticalBoardViewState(createTacticalBoardViewState());
     setSelectedFacingSystemsPlayer(null);
-    setSelectedCaudalSetPiecePlayer(null);
     setSetPieceResponsibilityFeedback(null);
     if (defensiveAutosaveTimerRef.current) {
       window.clearTimeout(defensiveAutosaveTimerRef.current);
@@ -10530,19 +10504,14 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     || '';
   const selectedSetPiecePlay = setPieceWorkspace.plays.find((play) => play.id === selectedSetPiecePlayId) || null;
   const setPieceResponsibilityPhase = getSetPieceResponsibilityPhase(selectedSetPiecePlay?.setPieceType || setPieceType);
-  const setPieceCaudalLineup = safeArray(selectedMatch?.preCaudalLineup);
-  const setPieceCaudalPlayersBySlot = resolveSetPieceCaudalPlayersBySlot(
-    setPieceCaudalLineup,
-    selectedMatch?.lineupSlots?.preCaudal,
-    players
-  );
+  const setPieceRivalSlots = getRivalFormationSlots();
   const setPieceCurrentPlayerIdByPositionKey = Object.fromEntries(
-    setPieceCaudalPlayersBySlot.map((player, index) => [`caudal:${index}`, String(player?.id || '')])
+    setPieceRivalSlots.map((slot) => [`rival:${slot.slot}`, getCanonicalRivalPlayerId(slot.player)])
   );
   const setPieceResponsibilityReviews = inspectSetPieceResponsibilities(
     selectedSetPiecePlay?.responsibilities,
     setPieceResponsibilityPhase,
-    setPieceCaudalLineup.some(Boolean) && players.length ? setPieceCurrentPlayerIdByPositionKey : null
+    Object.values(setPieceCurrentPlayerIdByPositionKey).some(Boolean) ? setPieceCurrentPlayerIdByPositionKey : null
   );
   const setPieceVisibleResponsibilities = getValidSetPieceResponsibilities(
     selectedSetPiecePlay?.responsibilities,
@@ -11831,8 +11800,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       plays: remainingPlays,
     }));
   };
-  const assignSelectedCaudalSetPieceResponsibility = (responsibilityId) => {
-    const selection = selectedCaudalSetPiecePlayer;
+  const assignSelectedRivalSetPieceResponsibility = (responsibilityId) => {
+    const selection = selectedFacingSystemsPlayer;
     if (tacticalGamePhase !== 'set_piece' || !selection) return;
     if (setPieceCurrentPlayerIdByPositionKey[selection.positionKey] !== selection.playerId) return;
     const play = selectedSetPiecePlay || createSetPiecePlay({ promptForName: false });
@@ -11845,7 +11814,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     });
     if (!result.ok) {
       const definition = getSetPieceResponsibility(responsibilityId);
-      const occupant = players.find((player) => String(player.id) === result.conflictingPlayerId);
+      const occupant = getRivalAvailablePlayers().find((player) => getCanonicalRivalPlayerId(player) === result.conflictingPlayerId);
       const message = result.errorCode === 'RESPONSIBILITY_ALREADY_ASSIGNED'
         ? `${definition?.label || 'Esta responsabilidad'} ya está asignada${occupant ? ` a ${displayPlayerName(occupant)}` : ''}.`
         : 'No se pudo asignar esta responsabilidad.';
@@ -11855,13 +11824,13 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     setSetPieceResponsibilityFeedback(null);
     updateSetPiecePlay(play.id, { responsibilities: result.responsibilities });
   };
-  const removeSelectedCaudalSetPieceResponsibility = () => {
-    if (tacticalGamePhase !== 'set_piece' || !selectedSetPiecePlay || !selectedCaudalSetPiecePlayer) return;
+  const removeSelectedRivalSetPieceResponsibility = () => {
+    if (tacticalGamePhase !== 'set_piece' || !selectedSetPiecePlay || !selectedFacingSystemsPlayer) return;
     setSetPieceResponsibilityFeedback(null);
     updateSetPiecePlay(selectedSetPiecePlay.id, (play) => ({
       responsibilities: removeSetPieceResponsibility(
         play.responsibilities,
-        selectedCaudalSetPiecePlayer.playerId
+        selectedFacingSystemsPlayer.playerId
       ),
     }));
   };
@@ -13567,11 +13536,13 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         playerPositions: selectedSetPiecePlay?.playerPositions,
         requiredPlayerPositions: Object.values(setPieceCaptureResponsibilities?.visibleByPlayerId || {})
           .map((item) => selectedSetPiecePlay?.playerPositions?.[item.positionKey]
-            || mapFormationSlotToFacingPitch(
-              getFormationSlots(selectedMatch?.preCaudalSystem || '4-4-2', 'own')[Number(item.positionKey.split(':')[1])],
-              'caudal',
-              0.42
-            ))
+            || (() => {
+              const rivalSlot = getTacticalBoardRivalFormationSlots()
+                .find((slot) => `rival:${slot.slot}` === item.positionKey);
+              return rivalSlot ? mapFormationSlotToFacingPitch(
+                rivalSlot.coordinates || { x: 50, y: 50 }, 'rival', 0.42
+              ) : null;
+            })())
           .filter(Boolean),
         arrows: selectedSetPiecePlay?.arrows,
         zones: getTacticalZones(),
@@ -14084,7 +14055,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                   <summary className="cursor-pointer">Responsabilidades ABP pendientes de revisar</summary>
                   <div className="mt-2 grid gap-1.5">
                     {setPieceResponsibilityReviews.filter((item) => item.needsReview).map((item) => {
-                      const player = players.find((entry) => String(entry.id) === item.playerId);
+                      const player = getRivalAvailablePlayers().find((entry) => getCanonicalRivalPlayerId(entry) === item.playerId);
                       const playerName = player ? displayPlayerName(player) : `Jugador ${item.playerId}`;
                       const definition = getSetPieceResponsibility(item.responsibilityId);
                       return (
@@ -25775,8 +25746,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     );
   };
 
-  const getFacingSystemsPlayerId = (player) =>
-    [player?.globalPlayerId, player?.jugadorRivalId, player?.id].find((id) => isUuid(id)) || '';
+  const getFacingSystemsPlayerId = getCanonicalRivalPlayerId;
 
   const getFacingSystemsSaveStatus = () => {
     if (tacticalGamePhase === 'offensive') return offensiveSaveStatus;
@@ -25856,8 +25826,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       gesture.longPressTimer = window.setTimeout(() => {
         gesture.longPressTimer = null;
         if (!gesture.moved && gesture.playerKey === playerKey) {
-          setSelectedCaudalSetPiecePlayer(null);
-          setSelectedFacingSystemsPlayer({ player, playerId });
+          setSetPieceResponsibilityFeedback(null);
+          setSelectedFacingSystemsPlayer({ player, playerId, positionKey: playerKey });
         }
       }, 650);
     }
@@ -25875,16 +25845,17 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     }
   };
 
-  const selectFacingSystemsPlayer = (event, player) => {
+  const selectFacingSystemsPlayer = (event, rivalSlot) => {
     event.stopPropagation();
     const gesture = facingSystemsPlayerGestureRef.current;
     if (gesture.moved || tacticalCaptureMode) {
       gesture.moved = false;
       return;
     }
+    const player = rivalSlot?.player;
     const playerId = getFacingSystemsPlayerId(player);
-    setSelectedCaudalSetPiecePlayer(null);
-    setSelectedFacingSystemsPlayer(playerId ? { player, playerId } : null);
+    setSetPieceResponsibilityFeedback(null);
+    setSelectedFacingSystemsPlayer(playerId ? { player, playerId, positionKey: `rival:${rivalSlot.slot}` } : null);
   };
 
   const openFacingSystemsPlayerOnDoubleClick = (event, player) => {
@@ -25896,63 +25867,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       return;
     }
     setSelectedFacingSystemsPlayer(null);
-    setSelectedCaudalSetPiecePlayer(null);
     requestFacingSystemsPlayerProfile(player);
-  };
-
-  const beginCaudalSetPiecePlayerPointer = (event, player, positionKey, enableDefensiveEditing) => {
-    if (tacticalCaptureMode) return;
-    if (tacticalGamePhase !== 'set_piece') {
-      if (enableDefensiveEditing) beginDefensivePlayerDrag(event, positionKey);
-      return;
-    }
-    if (!player?.id) return;
-    event.stopPropagation();
-    caudalSetPieceSuppressClickRef.current = false;
-    caudalSetPieceGestureRef.current = startSetPieceCaudalGesture(
-      event.pointerId, positionKey, event.clientX, event.clientY
-    );
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  };
-  const moveCaudalSetPiecePlayerPointer = (event, enableDefensiveEditing) => {
-    if (tacticalGamePhase !== 'set_piece' || tacticalCaptureMode) return;
-    const advanced = advanceSetPieceCaudalGesture(
-      caudalSetPieceGestureRef.current, event.pointerId, event.clientX, event.clientY
-    );
-    caudalSetPieceGestureRef.current = advanced.gesture;
-    if (!advanced.startedDrag) return;
-    caudalSetPieceSuppressClickRef.current = true;
-    if (!enableDefensiveEditing || defensiveTool !== 'move') return;
-    const play = beginDefensivePlayerDrag(event, advanced.gesture.playerKey);
-    const field = event.currentTarget.closest('.facing-tactical-board');
-    const position = field ? getDefensivePointerPosition(event, field) : null;
-    if (play && position) {
-      updateTacticalPlay(play.id, (current) => ({
-        playerPositions: { ...current.playerPositions, [advanced.gesture.playerKey]: position },
-      }));
-    }
-  };
-  const finishCaudalSetPiecePlayerPointer = (event, player, positionKey, cancelled = false) => {
-    if (caudalSetPieceGestureRef.current?.pointerId !== event.pointerId) return;
-    const dragged = wasSetPieceCaudalDrag(caudalSetPieceGestureRef.current);
-    caudalSetPieceGestureRef.current = null;
-    caudalSetPieceSuppressClickRef.current = dragged;
-    if (!dragged && !cancelled && player?.id) {
-      selectCaudalSetPiecePlayer(event, player, positionKey);
-      // React may dispatch a synthetic click after pointer up; selection is already done.
-      caudalSetPieceSuppressClickRef.current = true;
-    }
-  };
-  const selectCaudalSetPiecePlayer = (event, player, positionKey) => {
-    if (tacticalGamePhase !== 'set_piece' || tacticalCaptureMode) return;
-    event.stopPropagation();
-    if (caudalSetPieceSuppressClickRef.current || !player?.id) {
-      caudalSetPieceSuppressClickRef.current = false;
-      return;
-    }
-    setSelectedFacingSystemsPlayer(null);
-    setSetPieceResponsibilityFeedback(null);
-    setSelectedCaudalSetPiecePlayer({ playerId: String(player.id), positionKey });
   };
 
   const saveAndOpenFacingSystemsPlayer = async () => {
@@ -26040,16 +25955,20 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     const defensiveOffensiveRivalBoardBySlot = new Map(
       defensiveOffensiveRivalBoard.map((entry) => [entry.slot, entry])
     );
+    const renderedRivalPositions = rivalSlots.map((rivalSlot) => {
+      const baseSlot = mapFormationSlotToFacingPitch(rivalSlot.coordinates || { x: 50, y: 50 }, 'rival', 0.42);
+      return defensiveOffensiveRivalBoardBySlot.get(rivalSlot.slot)?.position
+        || (enableDefensiveEditing ? getRenderedPlayerPosition(`rival:${rivalSlot.slot}`, baseSlot) : baseSlot);
+    });
     const caudalCoordinates = getFormationSlots(caudalSystem, 'own').map((slot) => mapFormationSlotToFacingPitch(slot, 'caudal', 0.42));
     const renderedCaudalPositions = caudalCoordinates.map((baseSlot, index) => (
       enableDefensiveEditing ? getRenderedPlayerPosition(`caudal:${index}`, baseSlot) : baseSlot
     ));
     const caudalRoles = safeArray(getFormationRoles(caudalSystem));
     const caudalLineup = safeArray(selectedMatch.preCaudalLineup);
-    const selectedCaudalPanelPlayer = players.find((player) => String(player.id) === selectedCaudalSetPiecePlayer?.playerId);
-    const selectedCaudalResponsibilityId = setPieceVisibleResponsibilities[selectedCaudalSetPiecePlayer?.playerId]?.responsibilityId || '';
-    const selectedCaudalFeedback = setPieceResponsibilityFeedback?.playId === selectedSetPiecePlay?.id
-      && setPieceResponsibilityFeedback?.playerId === selectedCaudalSetPiecePlayer?.playerId
+    const selectedRivalResponsibilityId = setPieceVisibleResponsibilities[selectedFacingSystemsPlayer?.playerId]?.responsibilityId || '';
+    const selectedRivalFeedback = setPieceResponsibilityFeedback?.playId === selectedSetPiecePlay?.id
+      && setPieceResponsibilityFeedback?.playerId === selectedFacingSystemsPlayer?.playerId
       ? setPieceResponsibilityFeedback.message
       : '';
     const identity = liveRivalIdentity;
@@ -26282,35 +26201,32 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         onPointerUp={enableDefensiveEditing && !tacticalCaptureMode ? handleDefensiveFieldPointerEnd : undefined}
         onPointerCancel={enableDefensiveEditing && !tacticalCaptureMode ? cancelDefensiveFieldPointer : undefined}
       >
-        {!tacticalCaptureMode && (selectedFacingSystemsPlayer || (tacticalGamePhase === 'set_piece' && selectedCaudalPanelPlayer)) ? (
+        {!tacticalCaptureMode && selectedFacingSystemsPlayer ? (
           <div
             className="absolute right-4 top-14 z-50 max-h-[calc(100%-4.5rem)] w-[min(300px,calc(100%-2rem))] overflow-y-auto rounded-xl border border-caudal-electric/30 bg-caudal-950/95 px-3 py-2 shadow-2xl backdrop-blur"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
           >
-            {tacticalGamePhase === 'set_piece' && selectedCaudalPanelPlayer ? (
-              <>
+            <>
+              {tacticalGamePhase === 'set_piece' ? (
                 <SetPieceResponsibilityPanel
-                  player={selectedCaudalPanelPlayer}
+                  player={selectedFacingSystemsPlayer.player}
                   phase={setPieceResponsibilityPhase}
-                  responsibilityId={selectedCaudalResponsibilityId}
-                  canAssign={setPieceCurrentPlayerIdByPositionKey[selectedCaudalSetPiecePlayer.positionKey] === selectedCaudalSetPiecePlayer.playerId}
-                  feedback={selectedCaudalFeedback}
-                  onAssign={assignSelectedCaudalSetPieceResponsibility}
-                  onRemove={removeSelectedCaudalSetPieceResponsibility}
+                  responsibilityId={selectedRivalResponsibilityId}
+                  canAssign={setPieceCurrentPlayerIdByPositionKey[selectedFacingSystemsPlayer.positionKey] === selectedFacingSystemsPlayer.playerId}
+                  feedback={selectedRivalFeedback}
+                  onAssign={assignSelectedRivalSetPieceResponsibility}
+                  onRemove={removeSelectedRivalSetPieceResponsibility}
                 />
-                {setPieceResponsibilityReviews.some((item) => item.needsReview) ? <p className="mt-2 text-[10px] font-semibold text-amber-100">Responsabilidades ABP pendientes de revisar</p> : null}
-                <button type="button" onClick={() => setSelectedCaudalSetPiecePlayer(null)} className="mt-2 min-h-9 w-full rounded-lg border border-white/10 px-3 text-[9px] font-black uppercase text-slate-300">Cerrar</button>
-              </>
-            ) : (
-              <>
+              ) : (
                 <p className="max-w-56 truncate text-[10px] font-black text-white">{displayPlayerName(selectedFacingSystemsPlayer.player)}</p>
-                <div className="mt-2 flex gap-2">
-                  <button type="button" onClick={() => requestFacingSystemsPlayerProfile(selectedFacingSystemsPlayer.player)} className="bg-caudal-electric px-3 py-1.5 text-[9px] font-black uppercase text-slate-950">Ver ficha</button>
-                  <button type="button" onClick={() => setSelectedFacingSystemsPlayer(null)} className="border border-white/10 px-3 py-1.5 text-[9px] font-black uppercase text-slate-300">Cerrar</button>
-                </div>
-              </>
-            )}
+              )}
+              {tacticalGamePhase === 'set_piece' && setPieceResponsibilityReviews.some((item) => item.needsReview) ? <p className="mt-2 text-[10px] font-semibold text-amber-100">Responsabilidades ABP pendientes de revisar</p> : null}
+              <div className="mt-2 flex gap-2">
+                <button type="button" onClick={() => requestFacingSystemsPlayerProfile(selectedFacingSystemsPlayer.player)} className="bg-caudal-electric px-3 py-1.5 text-[9px] font-black uppercase text-slate-950">Ver ficha</button>
+                <button type="button" onClick={() => setSelectedFacingSystemsPlayer(null)} className="border border-white/10 px-3 py-1.5 text-[9px] font-black uppercase text-slate-300">Cerrar</button>
+              </div>
+            </>
           </div>
         ) : null}
         {layers.zones && showStaffDetails ? renderHudGroup(leftHud, 'left-4 top-1/2 -translate-y-1/2 flex-col items-start') : null}
@@ -26364,22 +26280,36 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
             </div>
           </div>
         ) : null}
-        {layers.rival ? rivalSlots.map((rivalSlot) => {
-          const baseSlot = mapFormationSlotToFacingPitch(rivalSlot.coordinates || { x: 50, y: 50 }, 'rival', 0.42);
-          const phaseBoardPosition = defensiveOffensiveRivalBoardBySlot.get(rivalSlot.slot)?.position;
-          const slot = phaseBoardPosition
-            || (enableDefensiveEditing ? getRenderedPlayerPosition(`rival:${rivalSlot.slot}`, baseSlot) : baseSlot);
+        {(layers.rival || (tacticalCaptureMode && tacticalGamePhase === 'set_piece')) ? rivalSlots.map((rivalSlot, index) => {
+          const slot = renderedRivalPositions[index];
           const realPlayerId = getFacingSystemsPlayerId(rivalSlot.player);
+          const isSetPieceCapture = tacticalCaptureMode && tacticalGamePhase === 'set_piece';
+          const responsibilityId = (isSetPieceCapture
+            ? captureResponsibilities?.visibleByPlayerId
+            : setPieceVisibleResponsibilities)?.[realPlayerId]?.responsibilityId || '';
+          const captureAnchor = isSetPieceCapture ? getSetPieceCaptureMarkerAnchor(slot, captureViewport) : null;
           return (
           <div
             key={`rival-overview-${rivalSlot.slot}-${rivalSlot.player?.name || rivalSlot.role}`}
-            className="absolute z-30 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center"
+            className={`absolute z-30 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center ${isSetPieceCapture ? 'tactical-abp-capture-marker' : ''}`}
             style={{ left: `${slot.x}%`, top: `${slot.y}%`, touchAction: enableDefensiveEditing ? 'none' : undefined }}
+            data-abp-capture-anchor-x={captureAnchor?.horizontal}
+            data-abp-capture-anchor-y={captureAnchor?.vertical}
+            role={!tacticalCaptureMode && realPlayerId ? 'button' : undefined}
+            tabIndex={!tacticalCaptureMode && realPlayerId ? 0 : undefined}
+            aria-label={!tacticalCaptureMode && realPlayerId ? `Seleccionar ${rivalSlot.player?.name || displayPlayerName(rivalSlot.player)}` : undefined}
+            aria-pressed={!tacticalCaptureMode && realPlayerId ? selectedFacingSystemsPlayer?.playerId === realPlayerId : undefined}
             onPointerDown={(event) => beginFacingSystemsPlayerGesture(event, rivalSlot, enableDefensiveEditing)}
             onPointerUp={finishFacingSystemsPlayerGesture}
             onPointerCancel={finishFacingSystemsPlayerGesture}
-            onClick={(event) => selectFacingSystemsPlayer(event, rivalSlot.player)}
+            onClick={(event) => selectFacingSystemsPlayer(event, rivalSlot)}
             onDoubleClick={(event) => openFacingSystemsPlayerOnDoubleClick(event, rivalSlot.player)}
+            onKeyDown={!tacticalCaptureMode && realPlayerId ? (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                selectFacingSystemsPlayer(event, rivalSlot);
+              }
+            } : undefined}
           >
             {(() => {
               const statusPlayer = rivalSlot.player || null;
@@ -26405,51 +26335,36 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 </span>
               );
             })()}
-            {layers.rivalNames ? <span className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
+            {(layers.rivalNames || isSetPieceCapture) ? <span data-abp-capture-name={isSetPieceCapture ? 'true' : undefined} className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
               {rivalSlot.player ? displayPlayerName(rivalSlot.player) : rivalSlot.role}
             </span> : null}
+            {tacticalGamePhase === 'set_piece' && responsibilityId ? <SetPieceResponsibilityBadge responsibilityId={responsibilityId} phase={setPieceResponsibilityPhase} capture={isSetPieceCapture} placement={getSetPieceBadgePlacement(index, renderedRivalPositions, isSetPieceCapture ? captureViewport : null)} /> : null}
           </div>
           );
         }) : null}
         {(layers.caudal || (tacticalCaptureMode && tacticalGamePhase === 'set_piece')) ? caudalCoordinates.map((baseSlot, index) => {
           const slot = renderedCaudalPositions[index];
-          const caudalPlayer = setPieceCaudalPlayersBySlot[index];
+          const caudalPlayer = players.find((player) => player.name === caudalLineup[index]) || null;
           const isSetPieceCapture = tacticalCaptureMode && tacticalGamePhase === 'set_piece';
-          const responsibilityId = (isSetPieceCapture
-            ? captureResponsibilities?.visibleByPlayerId
-            : setPieceVisibleResponsibilities)?.[String(caudalPlayer?.id || '')]?.responsibilityId || '';
           const captureAnchor = isSetPieceCapture ? getSetPieceCaptureMarkerAnchor(slot, captureViewport) : null;
           return (
           <div
             key={`caudal-overview-${index}`}
-            className={`absolute z-30 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center ${isSetPieceCapture ? 'tactical-abp-capture-marker' : ''} ${tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? defensiveTool === 'move' ? 'cursor-grab' : 'cursor-pointer' : ''}`}
+            className={`absolute z-30 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center ${isSetPieceCapture ? 'tactical-abp-capture-marker' : ''}`}
             style={{ left: `${slot.x}%`, top: `${slot.y}%`, touchAction: enableDefensiveEditing ? 'none' : undefined }}
             data-abp-capture-anchor-x={captureAnchor?.horizontal}
             data-abp-capture-anchor-y={captureAnchor?.vertical}
-            role={tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? 'button' : undefined}
-            tabIndex={tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? 0 : undefined}
-            aria-label={tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? `Seleccionar ${caudalPlayer.name || displayPlayerName(caudalPlayer)} para responsabilidad ABP` : undefined}
-            aria-pressed={tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? selectedCaudalSetPiecePlayer?.playerId === String(caudalPlayer.id) : undefined}
-            onPointerDown={(event) => beginCaudalSetPiecePlayerPointer(event, caudalPlayer, `caudal:${index}`, enableDefensiveEditing)}
-            onPointerMove={(event) => moveCaudalSetPiecePlayerPointer(event, enableDefensiveEditing)}
-            onPointerUp={(event) => finishCaudalSetPiecePlayerPointer(event, caudalPlayer, `caudal:${index}`)}
-            onPointerCancel={(event) => finishCaudalSetPiecePlayerPointer(event, caudalPlayer, `caudal:${index}`, true)}
-            onClick={(event) => selectCaudalSetPiecePlayer(event, caudalPlayer, `caudal:${index}`)}
-            onKeyDown={tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && caudalPlayer ? (event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                caudalSetPieceSuppressClickRef.current = false;
-                selectCaudalSetPiecePlayer(event, caudalPlayer, `caudal:${index}`);
-              }
+            onPointerDown={enableDefensiveEditing && !tacticalCaptureMode ? (event) => {
+              if (defensiveTool === 'move') beginDefensivePlayerDrag(event, `caudal:${index}`);
+              else event.stopPropagation();
             } : undefined}
           >
-            <span className={`flex items-center justify-center overflow-hidden rounded-lg border border-white/15 bg-white font-black text-slate-500 shadow-sm transition duration-300 ${tacticalCaptureMode ? 'h-11 w-11 text-xs' : 'h-9 w-9 text-[10px]'} ${tacticalGamePhase === 'set_piece' && !tacticalCaptureMode && selectedCaudalSetPiecePlayer?.playerId === String(caudalPlayer?.id || '') ? 'ring-4 ring-caudal-electric/60' : ''}`}>
+            <span className={`flex items-center justify-center overflow-hidden rounded-lg border border-white/15 bg-white font-black text-slate-500 shadow-sm transition duration-300 ${tacticalCaptureMode ? 'h-11 w-11 text-xs' : 'h-9 w-9 text-[10px]'}`}>
               {caudalPlayer ? <PlayerPortrait player={caudalPlayer} className="h-full w-full" imgClassName="h-full w-full object-cover object-center" fallbackTextClassName="text-[9px]" /> : index === 0 ? 'P' : index}
             </span>
             {(layers.caudalNames || isSetPieceCapture) ? <span data-abp-capture-name={isSetPieceCapture ? 'true' : undefined} className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
               {caudalPlayer ? displayPlayerName(caudalPlayer) : caudalLineup[index] || caudalRoles[index] || `C${index + 1}`}
             </span> : null}
-            {tacticalGamePhase === 'set_piece' && responsibilityId ? <SetPieceResponsibilityBadge responsibilityId={responsibilityId} phase={setPieceResponsibilityPhase} capture={isSetPieceCapture} placement={getSetPieceBadgePlacement(index, renderedCaudalPositions, isSetPieceCapture ? captureViewport : null)} /> : null}
           </div>
           );
         }) : null}
