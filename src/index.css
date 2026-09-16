@@ -553,15 +553,16 @@ table {
 .tactical-abp-responsibility-legend ul {
   display: grid;
   margin-top: 7px;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 5px 7px;
 }
 
 .tactical-abp-responsibility-legend li {
-  display: flex;
+  display: grid;
+  grid-template-columns: 39px minmax(0, 0.9fr) minmax(0, 1.15fr);
   min-width: 0;
   min-height: 25px;
-  align-items: center;
+  align-items: start;
   gap: 6px;
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.045);
@@ -572,15 +573,21 @@ table {
 }
 
 .tactical-abp-responsibility-legend li strong {
-  min-width: 39px;
   color: #93c5fd;
   font-size: 12px;
   font-weight: 950;
 }
 
-.tactical-abp-responsibility-legend li span {
+.tactical-abp-responsibility-label,
+.tactical-abp-responsibility-players {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.tactical-abp-responsibility-players {
+  color: #fff;
+  font-weight: 800;
+  white-space: normal;
 }
 
 .tactical-abp-capture-marker {
@@ -607,13 +614,13 @@ table {
 
 .tactical-abp-capture-badge {
   z-index: 1;
-  min-height: 23px;
+  min-height: 25px;
   border-color: #93c5fd;
   border-width: 1px;
   background: rgba(4, 17, 37, 0.96);
-  padding: 3px 7px;
+  padding: 4px 8px;
   color: #fff;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 950;
   line-height: 1;
   text-shadow: 0 1px 1px #000;

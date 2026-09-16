@@ -11,7 +11,7 @@ const cssSource = readFileSync(new URL('../index.css', import.meta.url), 'utf8')
 const captureStart = appSource.indexOf("if (tacticalCaptureMode && typeof document !== 'undefined')");
 const normalViewStart = appSource.indexOf("<div className={isPreTalkMode ? 'space-y-4' : 'space-y-5'}>", captureStart);
 const captureViewSource = appSource.slice(captureStart, normalViewStart);
-const boardStart = appSource.indexOf('const renderFacingSystemsOverview = (enableDefensiveEditing = false) =>');
+const boardStart = appSource.indexOf('const renderFacingSystemsOverview =');
 const boardEnd = appSource.indexOf('\n  const clearSelectedTeamField', boardStart);
 const boardSource = appSource.slice(boardStart, boardEnd);
 
@@ -82,8 +82,8 @@ viewState = updateTacticalBoardViewState(viewState, { layers: { caudal: false, r
 assert.equal(viewState.layers.caudal, false, 'E: CAUDAL permanece oculto');
 assert.equal(viewState.layers.rival, false, 'F: RIVAL permanece oculto');
 assert.match(boardSource, /const fieldView = getFieldViewSettings\(\);/);
-assert.match(boardSource, /\{layers\.rival \? rivalSlots\.map/);
-assert.match(boardSource, /\{layers\.caudal \? caudalCoordinates\.map/);
+assert.match(boardSource, /\{\(layers\.rival \|\| \(tacticalCaptureMode && tacticalGamePhase === 'set_piece'\)\) \? rivalSlots\.map/);
+assert.match(boardSource, /\{layers\.caudal && !\(tacticalCaptureMode && tacticalGamePhase === 'set_piece'\) \? caudalCoordinates\.map/);
 assert.match(boardSource, /rivalSlot\.player \? displayPlayerName\(rivalSlot\.player\) : rivalSlot\.role/, 'rival prioriza nombre de camiseta mediante el helper común');
 assert.match(boardSource, /caudalPlayer \? displayPlayerName\(caudalPlayer\)/, 'Caudal prioriza nombre de camiseta mediante el helper común');
 

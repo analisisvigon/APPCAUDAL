@@ -10508,6 +10508,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const setPieceCurrentPlayerIdByPositionKey = Object.fromEntries(
     setPieceRivalSlots.map((slot) => [`rival:${slot.slot}`, getCanonicalRivalPlayerId(slot.player)])
   );
+  const setPieceRivalPlayerNameById = Object.fromEntries(
+    setPieceRivalSlots
+      .map((slot) => [getCanonicalRivalPlayerId(slot.player), slot.player ? displayPlayerName(slot.player) : ''])
+      .filter(([playerId, playerName]) => playerId && playerName)
+  );
   const setPieceResponsibilityReviews = inspectSetPieceResponsibilities(
     selectedSetPiecePlay?.responsibilities,
     setPieceResponsibilityPhase,
@@ -13526,7 +13531,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       ? buildSetPieceCaptureResponsibilities(
         selectedSetPiecePlay?.responsibilities,
         setPieceResponsibilityPhase,
-        setPieceCurrentPlayerIdByPositionKey
+        setPieceCurrentPlayerIdByPositionKey,
+        setPieceRivalPlayerNameById
       )
       : null;
     const setPieceCaptureViewport = tacticalGamePhase === 'set_piece'
@@ -13647,7 +13653,12 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                     {setPieceCaptureResponsibilities.legend.map((definition) => (
                       <li key={definition.id}>
                         <strong>{definition.abbreviation}</strong>
-                        <span>{definition.label}</span>
+                        <span className="tactical-abp-responsibility-label">{definition.label}</span>
+                        {definition.playerNames.length ? (
+                          <span className="tactical-abp-responsibility-players">
+                            {definition.playerNames.join(' · ')}
+                          </span>
+                        ) : null}
                       </li>
                     ))}
                   </ul>
@@ -26335,14 +26346,14 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 </span>
               );
             })()}
-            {(layers.rivalNames || isSetPieceCapture) ? <span data-abp-capture-name={isSetPieceCapture ? 'true' : undefined} className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
+            {(isSetPieceCapture ? Boolean(rivalSlot.player) : layers.rivalNames) ? <span data-abp-capture-name={isSetPieceCapture ? 'true' : undefined} className={`${tacticalCaptureMode ? 'max-w-32 px-2 py-1 text-[10px]' : 'max-w-24 px-1.5 py-0.5 text-[8px]'} truncate rounded-md bg-black/65 font-semibold text-white shadow-sm`}>
               {rivalSlot.player ? displayPlayerName(rivalSlot.player) : rivalSlot.role}
             </span> : null}
             {tacticalGamePhase === 'set_piece' && responsibilityId ? <SetPieceResponsibilityBadge responsibilityId={responsibilityId} phase={setPieceResponsibilityPhase} capture={isSetPieceCapture} placement={getSetPieceBadgePlacement(index, renderedRivalPositions, isSetPieceCapture ? captureViewport : null)} /> : null}
           </div>
           );
         }) : null}
-        {(layers.caudal || (tacticalCaptureMode && tacticalGamePhase === 'set_piece')) ? caudalCoordinates.map((baseSlot, index) => {
+        {layers.caudal && !(tacticalCaptureMode && tacticalGamePhase === 'set_piece') ? caudalCoordinates.map((baseSlot, index) => {
           const slot = renderedCaudalPositions[index];
           const caudalPlayer = players.find((player) => player.name === caudalLineup[index]) || null;
           const isSetPieceCapture = tacticalCaptureMode && tacticalGamePhase === 'set_piece';

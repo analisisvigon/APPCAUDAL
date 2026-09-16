@@ -84,8 +84,12 @@ for (const [name, scenario] of Object.entries(cases)) {
   });
   const currentXi = { ...xi };
   if (scenario.staleFirst) currentXi['rival:0'] = 'replacement-rival-player';
+  const playerNameById = Object.fromEntries(Object.entries(currentXi).map(([positionKey, playerId]) => {
+    const slotIndex = Number.parseInt(positionKey.split(':')[1], 10);
+    return [playerId, scenario.staleFirst && slotIndex === 0 ? 'NUEVO' : names[slotIndex]];
+  }));
   const captureResponsibilities = buildSetPieceCaptureResponsibilities(
-    roleEntries(scenario.roles), phase, currentXi
+    roleEntries(scenario.roles), phase, currentXi, playerNameById
   );
   const requiredPlayerPositions = Object.values(captureResponsibilities.visibleByPlayerId)
     .map((item) => positions[item.positionKey]);
@@ -107,17 +111,13 @@ for (const [name, scenario] of Object.entries(cases)) {
       <span class="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-rose-200 bg-rose-500/80 font-black text-white shadow-sm">${playerName[0]}</span>
       <span data-abp-capture-name="true" class="max-w-32 truncate rounded-md bg-black/65 px-2 py-1 text-[10px] font-semibold text-white shadow-sm">${playerName}</span>${badge}</div>`;
   }).join('');
-  const caudalMarkers = Array.from({ length: 11 }, (_, index) => {
-    const point = positions[`caudal:${index}`];
-    return point ? `<div class="absolute z-30 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style="left:${point.x}%;top:${point.y}%"><span class="flex h-11 w-11 items-center justify-center rounded-lg border border-white/15 bg-white font-black text-slate-500">C${index}</span></div>` : '';
-  }).join('');
-  const legend = captureResponsibilities.legend.length ? `<section class="tactical-abp-responsibility-legend" aria-label="Responsabilidades utilizadas"><h3>Responsabilidades</h3><ul>${captureResponsibilities.legend.map((item) => `<li><strong>${item.abbreviation}</strong><span>${item.label}</span></li>`).join('')}</ul></section>` : '';
+  const legend = captureResponsibilities.legend.length ? `<section class="tactical-abp-responsibility-legend" aria-label="Responsabilidades utilizadas"><h3>Responsabilidades</h3><ul>${captureResponsibilities.legend.map((item) => `<li><strong>${item.abbreviation}</strong><span class="tactical-abp-responsibility-label">${item.label}</span>${item.playerNames.length ? `<span class="tactical-abp-responsibility-players">${item.playerNames.map(escapeHtml).join(' · ')}</span>` : ''}</li>`).join('')}</ul></section>` : '';
   const warning = captureResponsibilities.hasNeedsReview ? '<p class="tactical-abp-review-warning">Responsabilidades pendientes de revisar</p>' : '';
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${stylesheet}</style></head><body>
   <div class="tactical-abp-presentation-root"><nav class="tactical-abp-presentation-controls"><button>← Anterior</button><select><option>${escapeHtml(scenario.name)}</option></select><button>Siguiente →</button><button>Salir</button></nav>
     <main class="tactical-abp-presentation-frame"><section class="tactical-abp-pitch-pane"><div class="tactical-abp-board-crop" style="--abp-crop-aspect:${crop.aspectRatio}"><div class="tactical-abp-board-host" style="width:${crop.hostStyle.width};left:${crop.hostStyle.left};top:${crop.hostStyle.top}"><div class="facing-tactical-board relative mx-auto aspect-[7/8.4] min-h-[560px] w-full max-w-4xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner">
       <div class="absolute inset-4 rounded-[28px] border-2 border-white/55"></div><div class="absolute left-4 right-4 top-1/2 h-px bg-white/35"></div><div class="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/35"></div><div class="absolute left-1/2 top-4 h-20 w-48 -translate-x-1/2 rounded-b-3xl border-x-2 border-b-2 border-white/35"></div><div class="absolute bottom-4 left-1/2 h-20 w-48 -translate-x-1/2 rounded-t-3xl border-x-2 border-t-2 border-white/35"></div>
-      <svg class="pointer-events-none absolute inset-0 z-[25] h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none"><path d="M 8 94 Q 32 67 55 84" fill="none" stroke="#60a5fa" stroke-width="0.8" stroke-dasharray="2 1"/></svg>${rivalMarkers}${caudalMarkers}
+      <svg class="pointer-events-none absolute inset-0 z-[25] h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none"><path d="M 8 94 Q 32 67 55 84" fill="none" stroke="#60a5fa" stroke-width="0.8" stroke-dasharray="2 1"/></svg>${rivalMarkers}
     </div></div></div></section><aside class="tactical-abp-information-panel"><header class="tactical-abp-heading"><p>${scenario.title}</p><h2>${scenario.action}</h2></header>${warning}${legend}<dl class="tactical-abp-information-list"><div><dt>Nombre</dt><dd>${escapeHtml(scenario.name)}</dd></div><div><dt>Zona del balón</dt><dd>Esquina</dd></div></dl><section class="tactical-abp-description"><h3>Descripción</h3><p>${escapeHtml(scenario.description)}</p></section></aside></main></div></body></html>`;
   fs.writeFileSync(path.join(outputRoot, `${name}.html`), html);
   console.log(`${name}: ${viewport.width}×${viewport.height} viewport, ${captureResponsibilities.legend.length} legend rows`);
