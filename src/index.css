@@ -279,19 +279,32 @@ table {
   border-radius: 1.5rem;
 }
 
-.facing-tactical-board[data-touch-context='abp-editor'] {
+.tactical-board-scroll,
+.set-piece-diagram-scroll-shell {
+  overscroll-behavior-y: auto;
+  touch-action: pan-x pan-y pinch-zoom;
+}
+
+.facing-tactical-board[data-interaction-mode='navigate'],
+.set-piece-diagram-canvas[data-interaction-mode='navigate'] {
+  touch-action: pan-x pan-y pinch-zoom;
+}
+
+.facing-tactical-board[data-interaction-mode='draw'] {
+  touch-action: none;
+}
+
+.facing-tactical-board[data-interaction-mode='readonly'],
+.set-piece-diagram-canvas[data-interaction-mode='readonly'] {
+  touch-action: auto;
+}
+
+.facing-tactical-board .tactical-board-touch-target,
+.set-piece-diagram-canvas .diagram-draggable {
   touch-action: none;
 }
 
 @media (max-width: 768px) and (pointer: coarse) {
-  .facing-tactical-board[data-touch-context='abp-editor'][data-touch-mode='navigate'] {
-    touch-action: pan-y;
-  }
-
-  .facing-tactical-board[data-touch-context='abp-editor'] .tactical-board-touch-target {
-    touch-action: none;
-  }
-
   .facing-systems-abp-editor-mobile-safe {
     padding-bottom: calc(5rem + var(--app-safe-area-bottom));
   }
@@ -1019,7 +1032,6 @@ table {
   height: auto;
   max-height: min(72vh, 760px);
   color: #111827;
-  touch-action: none;
 }
 
 .set-piece-diagram-canvas text {

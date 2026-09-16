@@ -751,7 +751,6 @@
   aspect-ratio: 100 / 72;
   color: #000;
   background: #fff;
-  touch-action: none;
   user-select: none;
 }
 

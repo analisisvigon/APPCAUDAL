@@ -260,6 +260,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
     event.stopPropagation();
     onSelect(element.id);
     if (!interaction.draggable) return;
+    event.preventDefault();
     const point = getPoint(event, svgRef.current);
     event.currentTarget.setPointerCapture?.(event.pointerId);
     setDrag({
@@ -270,7 +271,17 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
     });
   };
 
-  const stopDrag = () => setDrag(null);
+  const stopDrag = (event) => {
+    const pointerTarget = event?.target;
+    if (pointerTarget?.hasPointerCapture?.(event.pointerId)) {
+      pointerTarget.releasePointerCapture?.(event.pointerId);
+    }
+    setDrag(null);
+  };
+
+  const draggableClassName = (element) => (
+    !readOnly && !element.locked ? 'diagram-draggable' : ''
+  );
 
   const moveCurveControlWithKeyboard = (event, element) => {
     const offsets = {
@@ -299,9 +310,11 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
       overflow={printOptimized ? 'visible' : undefined}
       role="img"
       aria-label={readOnly ? 'Diagrama táctico ABP' : 'Editor táctico ABP'}
-      style={{ touchAction: readOnly ? 'auto' : 'none' }}
+      data-interaction-mode={readOnly ? 'readonly' : 'navigate'}
       onPointerMove={handlePointerMove}
       onPointerUp={stopDrag}
+      onPointerCancel={stopDrag}
+      onLostPointerCapture={stopDrag}
       onPointerLeave={stopDrag}
       onPointerDown={() => !readOnly && onSelect('')}
     >
@@ -325,7 +338,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           const controlPoint = getSetPieceCurveControlPoint(element);
           const path = curved ? `M${element.x1} ${element.y1} Q${controlPoint.x} ${controlPoint.y} ${element.x2} ${element.y2}` : `M${element.x1} ${element.y1} L${element.x2} ${element.y2}`;
           return (
-            <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
+            <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={draggableClassName(element)}>
               {selected && !readOnly ? <path d={path} fill="none" stroke="#3DD9FF" strokeWidth={tokens.arrowWidth + 1.25} strokeDasharray={dashed ? '2.2 1.8' : ''} opacity="0.38" /> : null}
               <path d={path} fill="none" stroke="currentColor" strokeWidth={selected ? tokens.arrowWidth + 0.28 : tokens.arrowWidth} strokeDasharray={dashed ? '2.2 1.8' : ''} markerEnd={`url(#${arrowMarkerId})`} markerStart={double ? `url(#${arrowStartMarkerId})` : undefined} />
               {selected && !readOnly ? (
@@ -353,7 +366,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
         if (element.type === 'block') {
           const radius = tokens.blockRadius;
           return (
-            <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
+            <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={draggableClassName(element)}>
               {selected && !readOnly ? <circle cx={element.x} cy={element.y} r={radius + 1.05} fill="none" stroke="#3DD9FF" strokeWidth="0.75" opacity="0.8" /> : null}
               <circle cx={element.x} cy={element.y} r={radius} fill="white" stroke="currentColor" strokeWidth={selected ? 0.85 : 0.62} />
               <path d={`M${element.x - radius * 0.58} ${element.y - radius * 0.58}L${element.x + radius * 0.58} ${element.y + radius * 0.58}M${element.x + radius * 0.58} ${element.y - radius * 0.58}L${element.x - radius * 0.58} ${element.y + radius * 0.58}`} stroke="currentColor" strokeWidth="0.48" strokeLinecap="round" />
@@ -371,7 +384,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           const lines = splitLines(element.label || (element.type === 'block' ? 'BLOQUEO' : ''))
             .map((line) => (readOnly ? compactDiagramLabel(line, element.type === 'text_box' ? 24 : 18) : line));
           return (
-            <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
+            <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={draggableClassName(element)}>
               {selected && !readOnly ? <rect x={Number(element.x) - 0.9} y={Number(element.y) - 0.9} width={width + 1.8} height={height + 1.8} rx="1" fill="none" stroke="#3DD9FF" strokeWidth="0.7" opacity="0.82" /> : null}
               <rect x={element.x} y={element.y} width={width} height={height} fill="white" stroke="currentColor" strokeWidth={selected ? 1.2 : 0.85} strokeDasharray={element.type === 'zone' ? '3 2' : ''} />
               {lines.map((line, index) => (
@@ -387,7 +400,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
         }
         if (element.type === 'ball') {
           return (
-            <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
+            <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={draggableClassName(element)}>
               <BallIcon x={element.x} y={element.y} selected={selected} radius={tokens.ballRadius} />
             </g>
           );
@@ -396,7 +409,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           const labelX = Number(element.x || 0);
           const labelY = Number(element.y || 0);
           return (
-            <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
+            <g key={element.id} onPointerDown={(event) => startDrag(event, element)} className={draggableClassName(element)}>
               {selected && !readOnly ? <circle cx={labelX} cy={labelY - 0.9} r="4.4" fill="#3DD9FF" opacity="0.16" stroke="#3DD9FF" strokeWidth="0.55" /> : null}
               <text x={labelX} y={labelY} textAnchor="middle" fontSize={selected ? tokens.annotationSize + 0.35 : tokens.annotationSize} fontWeight="900" fill="currentColor" paintOrder="stroke" stroke="white" strokeWidth={printOptimized ? '0.7' : '0.45'}>
                 {element.label || 'Texto'}
@@ -423,7 +436,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
         const participantFill = usesMatchPlanIdentity ? (isOpponent ? '#111827' : '#ffffff') : (isOpponent ? 'white' : 'currentColor');
         const participantText = usesMatchPlanIdentity ? (isOpponent ? '#ffffff' : '#111827') : (isOpponent ? 'currentColor' : 'white');
         return (
-          <g key={element.id} data-participant-side={isOpponent ? 'rival' : 'own'} onPointerDown={(event) => startDrag(event, element)} className={readOnly ? '' : 'diagram-draggable'}>
+          <g key={element.id} data-participant-side={isOpponent ? 'rival' : 'own'} onPointerDown={(event) => startDrag(event, element)} className={draggableClassName(element)}>
             {!usesMatchPlanIdentity && usesOptimizedLabels && showAbbreviation && element.printLabelLeader ? (
               <line x1={element.x} y1={element.y} x2={labelX} y2={labelY - 1.2} stroke="currentColor" strokeWidth="0.24" opacity="0.58" />
             ) : null}

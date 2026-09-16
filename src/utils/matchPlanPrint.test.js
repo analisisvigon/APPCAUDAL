@@ -140,7 +140,7 @@ assert.match(cssSource, /grid-template-rows: repeat\(2, minmax\(0, 1fr\)\)/);
 assert.match(cssSource, /page: landscape/);
 assert.match(cssSource, /background: #fff/);
 assert.match(cssSource, /color: #111827/);
-assert.match(cssSource, /body:has\(> \.print-dossier-portal\) > :not\(\.print-dossier-portal\)/, 'el árbol normal sale del flujo físico durante el dossier');
+assert.match(cssSource, /body:has\(> \.printing-dossier\.print-dossier-portal\) > :not\(\.printing-dossier\.print-dossier-portal\)/, 'el árbol normal sale del flujo físico durante el dossier');
 assert.doesNotMatch(cssSource, /html:has\(\.printing-dossier \.print-dossier > \.match-plan-print-sheet\)/, 'no queda el ajuste sintomático exclusivo para Plan');
 
 console.log('Match plan print tests passed.');

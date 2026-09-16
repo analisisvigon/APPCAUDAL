@@ -483,7 +483,7 @@ export default function SetPieceDiagramEditor({
             </div>
           </section>
           <p className="flex items-center gap-2 px-1 text-[10px] font-bold text-slate-500 sm:hidden" aria-hidden="true"><span>↔</span> Desliza dentro del campo para recorrerlo</p>
-          <div className={`relative mx-auto w-full min-w-0 overflow-auto rounded-[28px] bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] p-2 text-black shadow-[0_24px_70px_rgba(0,0,0,0.24)] ${roleOnly ? 'max-w-[820px]' : 'max-w-[940px]'}`}>
+          <div className={`set-piece-diagram-scroll-shell relative mx-auto w-full min-w-0 overflow-auto rounded-[28px] bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] p-2 text-black shadow-[0_24px_70px_rgba(0,0,0,0.24)] ${roleOnly ? 'max-w-[820px]' : 'max-w-[940px]'}`}>
             <div style={{ width: `${zoom * 100}%`, minWidth: '100%' }}>
               <SetPieceDiagramCanvas elements={drawableElements} selectedId={selectedId} onSelect={selectElement} onChange={updateElements} players={players} snap={snapEnabled} fullField={fullFieldOverride ?? String(diagram.tipo || '').includes('saque_inicio')} visibleLayers={visibleLayers} identityConvention={editorContext === 'match-plan' ? 'match-plan' : 'default'} renderMode={renderMode} optimizeLabels={renderMode === 'abp'} />
             </div>

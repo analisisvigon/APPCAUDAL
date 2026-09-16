@@ -26118,7 +26118,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
             return (
               <g
                 key={arrow.id}
-                className={isPreview || tacticalCaptureMode ? 'pointer-events-none' : 'pointer-events-auto cursor-pointer'}
+                className={isPreview || tacticalCaptureMode ? 'pointer-events-none' : 'tactical-board-touch-target pointer-events-auto cursor-pointer'}
                 onPointerDown={isPreview ? undefined : (event) => {
                   if (tacticalCaptureMode || defensiveTool !== 'select') return;
                   event.preventDefault();
@@ -26211,26 +26211,21 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         ))}
       </div>
     );
-    const isInteractiveSetPieceEditor = enableDefensiveEditing
-      && !tacticalCaptureMode
-      && tacticalGamePhase === 'set_piece';
-    const setPieceTouchMode = isInteractiveSetPieceEditor
-      ? ['pass', 'movement'].includes(defensiveTool)
-        ? 'drawing'
-        : defensiveTool === 'ball'
-          ? 'placing'
-          : 'navigate'
-      : undefined;
+    const tacticalInteractionMode = tacticalCaptureMode || !enableDefensiveEditing
+      ? 'readonly'
+      : ['pass', 'movement', 'ball'].includes(defensiveTool)
+        ? 'draw'
+        : 'navigate';
     return (
       <div
         className={`facing-tactical-board relative mx-auto aspect-[7/8.4] min-h-[560px] w-full max-w-4xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner ${enableDefensiveEditing && !tacticalCaptureMode && ['pass', 'movement', 'ball'].includes(defensiveTool) ? 'cursor-crosshair' : ''}`}
-        data-touch-context={isInteractiveSetPieceEditor ? 'abp-editor' : undefined}
-        data-touch-mode={setPieceTouchMode}
-        style={enableDefensiveEditing && !isInteractiveSetPieceEditor ? { touchAction: 'none' } : undefined}
+        data-tactical-surface="facing-systems"
+        data-interaction-mode={tacticalInteractionMode}
         onPointerDown={enableDefensiveEditing && !tacticalCaptureMode ? beginDefensiveDrawing : undefined}
         onPointerMove={enableDefensiveEditing && !tacticalCaptureMode ? handleDefensiveFieldPointerMove : undefined}
         onPointerUp={enableDefensiveEditing && !tacticalCaptureMode ? handleDefensiveFieldPointerEnd : undefined}
         onPointerCancel={enableDefensiveEditing && !tacticalCaptureMode ? cancelDefensiveFieldPointer : undefined}
+        onLostPointerCapture={enableDefensiveEditing && !tacticalCaptureMode ? cancelDefensiveFieldPointer : undefined}
       >
         {!tacticalCaptureMode && selectedFacingSystemsPlayer ? (
           <div
