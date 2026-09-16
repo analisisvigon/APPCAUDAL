@@ -11192,17 +11192,25 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     moveDefensiveArrowHandle(event);
     moveDefensiveDrawing(event);
   };
+  const releaseDefensivePointerCapture = (event) => {
+    const pointerTarget = event?.target;
+    if (pointerTarget?.hasPointerCapture?.(event.pointerId)) {
+      pointerTarget.releasePointerCapture(event.pointerId);
+    }
+  };
   const handleDefensiveFieldPointerEnd = (event) => {
     endDefensivePlayerDrag();
     endTacticalBallDrag();
     endDefensiveArrowHandleDrag();
     finishDefensiveDrawing(event);
+    releaseDefensivePointerCapture(event);
   };
-  const cancelDefensiveFieldPointer = () => {
+  const cancelDefensiveFieldPointer = (event) => {
     endDefensivePlayerDrag();
     endTacticalBallDrag();
     endDefensiveArrowHandleDrag();
     setDefensiveDrawingPreview(null);
+    releaseDefensivePointerCapture(event);
   };
   const changeSelectedTacticalArrowType = (type) => {
     if (!selectedTacticalArrow || !['pass', 'movement'].includes(type) || selectedTacticalArrow.type === type) return;
@@ -13750,7 +13758,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
           </div>
         </nav>
 
-        <div className={`grid gap-4 ${facingSystemsView === 'PIZARRA' && !isPreTalkMode ? 'xl:grid-cols-[minmax(320px,0.32fr)_minmax(0,0.68fr)]' : 'xl:grid-cols-2'}`}>
+        <div className={`grid gap-4 ${facingSystemsView === 'PIZARRA' && !isPreTalkMode ? 'xl:grid-cols-[minmax(320px,0.32fr)_minmax(0,0.68fr)]' : 'xl:grid-cols-2'} ${facingSystemsView === 'PIZARRA' && tacticalGamePhase === 'set_piece' ? 'facing-systems-abp-editor-mobile-safe' : ''}`}>
           {facingSystemsView === 'EVIDENCIAS' ? (
             <>
             <section className="rounded-[1.6rem] border border-white/10 bg-[#091428]/82 p-4 xl:col-span-2">
@@ -26160,7 +26168,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                       fill="#ffffff"
                       stroke="#4f8cff"
                       strokeWidth="0.65"
-                      className="cursor-grab"
+                      className="tactical-board-touch-target cursor-grab"
                       onPointerDown={(event) => beginDefensiveArrowHandleDrag(event, arrow.id, 'start')}
                     />
                     {controlPoint ? (
@@ -26171,7 +26179,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                         fill="#4f8cff"
                         stroke="#ffffff"
                         strokeWidth="0.65"
-                        className="cursor-grab"
+                        className="tactical-board-touch-target cursor-grab"
                         onPointerDown={(event) => beginDefensiveArrowHandleDrag(event, arrow.id, 'controlPoint')}
                       />
                     ) : null}
@@ -26182,7 +26190,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                       fill="#ffffff"
                       stroke="#4f8cff"
                       strokeWidth="0.65"
-                      className="cursor-grab"
+                      className="tactical-board-touch-target cursor-grab"
                       onPointerDown={(event) => beginDefensiveArrowHandleDrag(event, arrow.id, 'end')}
                     />
                   </>
@@ -26203,10 +26211,22 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         ))}
       </div>
     );
+    const isInteractiveSetPieceEditor = enableDefensiveEditing
+      && !tacticalCaptureMode
+      && tacticalGamePhase === 'set_piece';
+    const setPieceTouchMode = isInteractiveSetPieceEditor
+      ? ['pass', 'movement'].includes(defensiveTool)
+        ? 'drawing'
+        : defensiveTool === 'ball'
+          ? 'placing'
+          : 'navigate'
+      : undefined;
     return (
       <div
         className={`facing-tactical-board relative mx-auto aspect-[7/8.4] min-h-[560px] w-full max-w-4xl overflow-hidden rounded-3xl border border-white/15 bg-[#102616] shadow-inner ${enableDefensiveEditing && !tacticalCaptureMode && ['pass', 'movement', 'ball'].includes(defensiveTool) ? 'cursor-crosshair' : ''}`}
-        style={enableDefensiveEditing ? { touchAction: 'none' } : undefined}
+        data-touch-context={isInteractiveSetPieceEditor ? 'abp-editor' : undefined}
+        data-touch-mode={setPieceTouchMode}
+        style={enableDefensiveEditing && !isInteractiveSetPieceEditor ? { touchAction: 'none' } : undefined}
         onPointerDown={enableDefensiveEditing && !tacticalCaptureMode ? beginDefensiveDrawing : undefined}
         onPointerMove={enableDefensiveEditing && !tacticalCaptureMode ? handleDefensiveFieldPointerMove : undefined}
         onPointerUp={enableDefensiveEditing && !tacticalCaptureMode ? handleDefensiveFieldPointerEnd : undefined}

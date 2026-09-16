@@ -279,6 +279,24 @@ table {
   border-radius: 1.5rem;
 }
 
+.facing-tactical-board[data-touch-context='abp-editor'] {
+  touch-action: none;
+}
+
+@media (max-width: 768px) and (pointer: coarse) {
+  .facing-tactical-board[data-touch-context='abp-editor'][data-touch-mode='navigate'] {
+    touch-action: pan-y;
+  }
+
+  .facing-tactical-board[data-touch-context='abp-editor'] .tactical-board-touch-target {
+    touch-action: none;
+  }
+
+  .facing-systems-abp-editor-mobile-safe {
+    padding-bottom: calc(5rem + var(--app-safe-area-bottom));
+  }
+}
+
 /* Normal application shell only. Presentation, capture and print surfaces do not use these classes. */
 .app-shell-content {
   padding-bottom: calc(10rem + var(--app-safe-area-bottom));
