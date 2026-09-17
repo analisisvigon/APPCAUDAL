@@ -28,4 +28,8 @@ assert.match(appSource, /pendingRivalPlacementSave[\s\S]*Reintentar/, 'un fallo 
 assert.match(appSource, /isRivalSaveResponseCurrent/, 'descarta respuestas tardías de otro rival');
 assert.match(appSource, /supabase\.rpc\('remove_rival_player_from_team_atomic'/, 'el borrado de plantilla tampoco deja XI parcial');
 
+assert.match(appSource, /resolveCurrentRivalTeamMembership\([\s\S]*preferredMembershipId: legacyPlayer\.membershipId/, 'la carga valida la membership legacy contra el equipo actual');
+assert.match(appSource, /membershipId: membership\?\.id \|\| null/, 'solo propaga una membership previamente validada');
+assert.match(appSource, /normalizeSquadEntry\(\{ \.\.\.legacyPlayer, membershipId: null \}\)/, 'el modo compatible persiste por jugador_rival_id, no por una membership sin validar');
+
 console.log('rival lineup atomic SQL/UI audit: ok');

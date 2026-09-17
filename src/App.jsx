@@ -334,7 +334,11 @@ import {
   sanitizeTacticalLineup,
   getTacticalPlayerKey,
 } from './utils/rivalTactics';
-import { buildRivalLineupAtomicSnapshot, isRivalSaveResponseCurrent } from './utils/rivalLineupAtomic';
+import {
+  buildRivalLineupAtomicSnapshot,
+  isRivalSaveResponseCurrent,
+  resolveCurrentRivalTeamMembership,
+} from './utils/rivalLineupAtomic';
 import {
   buildDefensiveOffensiveRivalBoard,
   hasLegacyDefensiveOffensiveOrientation,
@@ -6190,7 +6194,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         globalPlayerId: player.id,
         jugadorRivalId: legacyPlayer?.jugadorRivalId || null,
         legacyId: legacyPlayer?.legacyId || null,
-        membershipId: membership?.id || legacyPlayer?.membershipId || null,
+        membershipId: membership?.id || null,
         teamId: membership?.team_id || legacyPlayer?.teamId || '',
         number: membership?.number ?? legacyPlayer?.number ?? '',
         captain: membership?.captain ?? legacyPlayer?.captain ?? false,
@@ -6207,10 +6211,14 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       const playersByTeam = (playersResponse.data || []).reduce((acc, player) => {
         const legacyPlayer = normalizeSupabaseRivalPlayer(player);
         const globalPlayer = legacyPlayer.globalPlayerId ? globalPlayersById.get(String(legacyPlayer.globalPlayerId)) : null;
-        const membership = globalPlayer?.memberships?.find((item) => item.id === legacyPlayer.membershipId)
-          || globalPlayer?.memberships?.find((item) => item.team_id === player.equipo_rival_id && item.is_current)
-          || null;
-        const resolvedPlayer = globalPlayer ? playerWithMembership(globalPlayer, membership, legacyPlayer) : legacyPlayer;
+        const membership = globalPlayer ? resolveCurrentRivalTeamMembership({
+          memberships: globalPlayer.memberships,
+          teamId: player.equipo_rival_id,
+          preferredMembershipId: legacyPlayer.membershipId,
+        }) : null;
+        const resolvedPlayer = globalPlayer
+          ? playerWithMembership(globalPlayer, membership, legacyPlayer)
+          : normalizeSquadEntry({ ...legacyPlayer, membershipId: null });
         acc[player.equipo_rival_id] = [...(acc[player.equipo_rival_id] || []), resolvedPlayer];
         return acc;
       }, {});

@@ -2,6 +2,22 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 
 const isUuid = (value) => UUID_PATTERN.test(String(value || ''));
 
+export const resolveCurrentRivalTeamMembership = ({
+  memberships = [],
+  teamId,
+  preferredMembershipId = null,
+} = {}) => {
+  const belongsToCurrentTeam = (membership) => (
+    String(membership?.team_id || membership?.teamId || '') === String(teamId || '')
+    && Boolean(membership?.is_current ?? membership?.isCurrent)
+  );
+  const preferred = memberships.find((membership) => (
+    String(membership?.id || '') === String(preferredMembershipId || '')
+    && belongsToCurrentTeam(membership)
+  ));
+  return preferred || memberships.find(belongsToCurrentTeam) || null;
+};
+
 const placementFields = (placement = {}) => {
   if (placement.status === 'starter') {
     return { tactical_role: 'Titular', tactical_slot: Number(placement.slotIndex), tactical_reserve_slot: null, squad_role: 'Titular' };
