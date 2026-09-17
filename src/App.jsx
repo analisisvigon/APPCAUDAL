@@ -44,6 +44,13 @@ import {
   normalizeSetPieceResponsibilities,
   removeSetPieceResponsibility,
 } from './utils/setPieceResponsibilities';
+import {
+  getRivalCornerRoleIds,
+  isRivalOffensiveCornerPlay,
+  normalizeRivalCornerPlayExtension,
+  normalizeRivalCornerReferences,
+  toggleRivalCornerReference,
+} from './utils/setPieceRivalCornerReferences';
 import { getSetPieceBadgePlacement, getSetPieceCaptureMarkerAnchor } from './utils/setPieceBadgePlacement';
 import { buildSetPieceCaptureResponsibilities } from './utils/setPieceCaptureResponsibilities';
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
@@ -1408,6 +1415,7 @@ const normalizeSetPieceWorkspace = (value) => {
         ? play.playerPositions
         : {},
       responsibilities: normalizeSetPieceResponsibilities(play.responsibilities),
+      ...normalizeRivalCornerPlayExtension(play),
       arrows: normalizeTacticalBoardArrows(play.arrows),
       ...normalizeTacticalPlayBall(play, {
         fallback: getDefaultSetPieceBallPosition(play.setPieceType, play.setPieceAction),
@@ -10257,6 +10265,21 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     return Array.from(byName.values());
   };
 
+  const getRivalReferencePlayers = () => {
+    const linkedPlayers = (selectedMatchRivalTeam?.squad || getRivalBaseTeam()?.squad || []).map(normalizeSquadEntry);
+    const manualPlayers = (selectedMatch?.preRivalManualPlayers || []).map((player) => (
+      typeof player === 'string' ? { ...createBlankTeamPlayer(), name: player } : normalizeSquadEntry(player)
+    ));
+    const byCanonicalIdentity = new Map();
+    [...linkedPlayers, ...manualPlayers].forEach((player) => {
+      const playerId = getCanonicalRivalPlayerId(player);
+      const fallbackKey = normalizePlayerIdentityName(player.name);
+      const identityKey = playerId ? `uuid:${playerId}` : fallbackKey ? `unresolved:${fallbackKey}` : '';
+      if (identityKey) byCanonicalIdentity.set(identityKey, player);
+    });
+    return Array.from(byCanonicalIdentity.values());
+  };
+
   const getRivalFormationSlots = () => {
     const system = getCurrentRivalSystem();
     const baseSlots = getFormationSlots(system, 'own');
@@ -10829,6 +10852,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
               setPieceAction: targetSetPieceAction,
               ballStartPosition: { ...targetBallStartPosition },
               ballVisible: true,
+              includeRivalReferencesInPrint: isRivalOffensiveCornerPlay({
+                setPieceType: targetSetPieceType,
+                setPieceAction: targetSetPieceAction,
+              }),
+              rivalCornerReferences: {},
             }
             : { defensiveSituation: targetSituation }),
       name: String(requestedName || '').trim() || defaultName,
@@ -11752,6 +11780,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         selectedMatch?.preCaudalSystem || '4-4-2'
       ),
       responsibilities: {},
+      includeRivalReferencesInPrint: isRivalOffensiveCornerPlay({ setPieceType, setPieceAction }),
+      rivalCornerReferences: {},
       arrows: [],
       description: '',
       createdAt: timestamp,
@@ -11789,6 +11819,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         Object.entries(selectedSetPiecePlay.playerPositions || {}).map(([key, position]) => [key, { ...position }])
       ),
       responsibilities: normalizeSetPieceResponsibilities(selectedSetPiecePlay.responsibilities),
+      includeRivalReferencesInPrint: selectedSetPiecePlay.includeRivalReferencesInPrint === true,
+      rivalCornerReferences: normalizeRivalCornerReferences(selectedSetPiecePlay.rivalCornerReferences),
       arrows: selectedSetPiecePlay.arrows.map((arrow) => cloneTacticalBoardArrow(arrow, createSetPiecePlayId())),
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -11853,6 +11885,22 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         play.responsibilities,
         selectedFacingSystemsPlayer.playerId
       ),
+    }));
+  };
+  const toggleSelectedRivalCornerReference = (roleId) => {
+    if (
+      tacticalGamePhase !== 'set_piece'
+      || !isRivalOffensiveCornerPlay(selectedSetPiecePlay)
+      || !selectedFacingSystemsPlayer
+    ) return;
+    const playerId = getCanonicalRivalPlayerId(selectedFacingSystemsPlayer.player);
+    if (!playerId || playerId !== selectedFacingSystemsPlayer.playerId) return;
+    updateSetPiecePlay(selectedSetPiecePlay.id, (play) => ({
+      rivalCornerReferences: toggleRivalCornerReference(play.rivalCornerReferences, {
+        playerId,
+        positionKey: selectedFacingSystemsPlayer.positionKey,
+        roleId,
+      }),
     }));
   };
   const buildOffensiveInitialPlayerPositions = (situation, rivalSystem, caudalSystem, playStyle = 'combinative') => {
@@ -14077,6 +14125,19 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? deleteDefensivePlay : tacticalGamePhase === 'offensive' ? deleteOffensivePlay : tacticalGamePhase === 'transition' ? deleteTransitionPlay : deleteSetPiecePlay} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Eliminar</button>
                 {tacticalSaveStatus ? <span className={`self-center text-[9px] font-black uppercase tracking-[0.12em] ${tacticalSaveStatus === 'Error al guardar' ? 'text-red-200' : tacticalSaveStatus === 'Cambios sin guardar' ? 'text-amber-200' : 'text-slate-400'}`}>{tacticalSaveStatus}</span> : null}
               </div>
+              {tacticalGamePhase === 'set_piece' && isRivalOffensiveCornerPlay(selectedSetPiecePlay) ? (
+                <label className="mt-2 inline-flex min-h-9 cursor-pointer items-center gap-2 border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.08em] text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={selectedSetPiecePlay.includeRivalReferencesInPrint === true}
+                    onChange={(event) => updateSetPiecePlay(selectedSetPiecePlay.id, {
+                      includeRivalReferencesInPrint: event.target.checked === true,
+                    })}
+                    className="h-4 w-4 accent-caudal-electric"
+                  />
+                  Incluir referencias rival en IMPRESIÓN
+                </label>
+              ) : null}
               {tacticalGamePhase === 'set_piece' && selectedSetPiecePlay && setPieceResponsibilityReviews.some((item) => item.needsReview) ? (
                 <details className="mt-2 rounded-lg border border-amber-300/15 bg-amber-300/[0.07] px-2 py-1.5 text-[10px] font-semibold text-amber-100">
                   <summary className="cursor-pointer">Responsabilidades ABP pendientes de revisar</summary>
@@ -25994,6 +26055,10 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     const caudalRoles = safeArray(getFormationRoles(caudalSystem));
     const caudalLineup = safeArray(selectedMatch.preCaudalLineup);
     const selectedRivalResponsibilityId = setPieceVisibleResponsibilities[selectedFacingSystemsPlayer?.playerId]?.responsibilityId || '';
+    const selectedRivalCornerRoleIds = getRivalCornerRoleIds(
+      selectedSetPiecePlay?.rivalCornerReferences,
+      selectedFacingSystemsPlayer?.playerId
+    );
     const selectedRivalFeedback = setPieceResponsibilityFeedback
       && setPieceResponsibilityFeedback.playId === selectedSetPiecePlay?.id
       && setPieceResponsibilityFeedback?.playerId === selectedFacingSystemsPlayer?.playerId
@@ -26252,6 +26317,9 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                   feedback={selectedRivalFeedback}
                   onAssign={assignSelectedRivalSetPieceResponsibility}
                   onRemove={removeSelectedRivalSetPieceResponsibility}
+                  showCornerReferences={isRivalOffensiveCornerPlay(selectedSetPiecePlay)}
+                  cornerReferenceRoleIds={selectedRivalCornerRoleIds}
+                  onToggleCornerReference={toggleSelectedRivalCornerReference}
                 />
               ) : (
                 <p className="max-w-56 truncate text-[10px] font-black text-white">{displayPlayerName(selectedFacingSystemsPlayer.player)}</p>
@@ -35316,6 +35384,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                     match={selectedMatch}
                     matches={matches}
                     players={players}
+                    rivalPlayers={getRivalReferencePlayers()}
                     captainPriorities={captainPriorities}
                     onNavigateMatchSection={(section) => openMatchPage(selectedMatch, section)}
                     onMatchPlanDirtyChange={setPrintMatchPlanDirty}

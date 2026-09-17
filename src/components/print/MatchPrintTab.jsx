@@ -57,6 +57,7 @@ import {
   normalizeSetPieceDiagramOrders,
   sortSetPieceDiagramsByOrder,
 } from '../../utils/setPieceDiagramOrder';
+import { buildRivalCornerReferencesPrintModel } from '../../utils/setPieceRivalCornerReferences';
 
 const setPieceSections = [
   { id: 'penaltis', label: 'Penaltis' },
@@ -374,6 +375,7 @@ export default function MatchPrintTab({
   match,
   matches = [],
   players = [],
+  rivalPlayers = [],
   captainPriorities = [],
   onNavigateMatchSection,
   onMatchPlanDirtyChange,
@@ -713,6 +715,10 @@ export default function MatchPrintTab({
     availablePlayers: responsibilityPlayers,
     allPlayers: players,
   }), [matchResponsibilities, responsibilityPlayers, players]);
+  const rivalCornerReferences = useMemo(() => buildRivalCornerReferencesPrintModel({
+    preAiAnalysis: match?.preAiAnalysis,
+    rivalPlayers,
+  }), [match?.preAiAnalysis, rivalPlayers]);
 
   const professionalSetPieceSuggestions = useMemo(() => {
     const suggestions = [];
@@ -1830,7 +1836,7 @@ export default function MatchPrintTab({
     }
     if (page.id === 'defensive') {
       return chunkDiagrams(dossierContent.defensiveDiagrams).map((diagrams, index) => (
-        <SetPieceDiagramPrintSheet key={`defensive-dossier-${index}`} match={match} title="ABP defensiva" diagrams={diagrams} players={players} totalPlayCount={dossierContent.defensiveDiagrams.length} startOrder={index * 2 + 1} />
+        <SetPieceDiagramPrintSheet key={`defensive-dossier-${index}`} match={match} title="ABP defensiva" diagrams={diagrams} players={players} totalPlayCount={dossierContent.defensiveDiagrams.length} startOrder={index * 2 + 1} rivalCornerReferences={diagrams.some((diagram) => diagram.tipo === 'corner_defensivo') ? rivalCornerReferences : []} />
       ));
     }
     if (page.id === 'kickoff') {
@@ -2255,6 +2261,7 @@ export default function MatchPrintTab({
               players={players}
               totalPlayCount={getPrintDiagrams('defensive').length}
               startOrder={index * 2 + 1}
+              rivalCornerReferences={defensiveType === 'corner_defensivo' ? rivalCornerReferences : []}
             />
           ))
         )}

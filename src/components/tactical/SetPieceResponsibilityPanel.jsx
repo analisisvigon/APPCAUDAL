@@ -4,6 +4,7 @@ import {
   getSetPieceResponsibility,
   getSetPieceResponsibilitiesForPhase,
 } from '../../utils/setPieceResponsibilities';
+import { RIVAL_CORNER_REFERENCE_ROLES } from '../../utils/setPieceRivalCornerReferences';
 
 export function SetPieceResponsibilityBadge({ responsibilityId, phase, placement = 'below', capture = false }) {
   const definition = getSetPieceResponsibility(responsibilityId);
@@ -24,6 +25,9 @@ export default function SetPieceResponsibilityPanel({
   feedback = '',
   onAssign,
   onRemove,
+  showCornerReferences = false,
+  cornerReferenceRoleIds = [],
+  onToggleCornerReference,
 }) {
   const playerName = getPlayerDisplayName(player);
   const accessiblePlayerName = String(player?.name || '').trim() || playerName;
@@ -41,6 +45,29 @@ export default function SetPieceResponsibilityPanel({
           <p className="truncate text-[10px] font-semibold text-slate-300">{activeId ? `Actual: ${current.label}` : 'Sin responsabilidad'}</p>
         </div>
       </div>
+      {showCornerReferences ? (
+        <fieldset className="mt-3 border-t border-white/10 pt-2.5">
+          <legend className="px-1 text-[9px] font-black uppercase tracking-[0.12em] text-amber-200">Referencia en córner</legend>
+          <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+            {RIVAL_CORNER_REFERENCE_ROLES.map((role) => {
+              const checked = cornerReferenceRoleIds.includes(role.id);
+              return (
+                <label key={role.id} className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border px-2 text-[10px] font-black ${checked ? 'border-amber-300/45 bg-amber-300/15 text-white' : 'border-white/10 bg-white/[0.04] text-slate-200'} ${canAssign ? '' : 'cursor-not-allowed opacity-40'}`}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={!canAssign}
+                    onChange={() => onToggleCornerReference?.(role.id)}
+                    aria-label={`${role.label} para ${accessiblePlayerName}`}
+                    className="h-4 w-4 shrink-0 accent-amber-300"
+                  />
+                  {role.label}
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+      ) : null}
       {!canAssign ? <p className="mt-2 text-[10px] font-semibold text-amber-100">Este jugador ya no ocupa el puesto seleccionado. Revisa el XI.</p> : null}
       <div className="mt-3 grid min-w-0 grid-cols-2 gap-1.5" aria-label="Asignar responsabilidad ABP">
         {options.map((option) => (

@@ -19,6 +19,30 @@ function PrintDetail({ label, value, className = '' }) {
   return <section className={className}><h3>{label}</h3><p>{value}</p></section>;
 }
 
+function RivalCornerReferences({ plays }) {
+  if (!plays.length) return null;
+  return (
+    <section className="set-piece-rival-references" aria-label="Referencias rival">
+      <h2>Referencias rival</h2>
+      <div className="set-piece-rival-reference-plays" data-count={plays.length}>
+        {plays.map((play) => (
+          <div key={play.id} data-source-play-id={play.id}>
+            <h3>{play.name}</h3>
+            <dl>
+              {play.roles.map((role) => (
+                <div key={role.id}>
+                  <dt>{role.printLabel}</dt>
+                  <dd>{role.players.length ? role.players.join(' · ') : '—'}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function PrintPlay({ play }) {
   const hasChronology = play.chronology.length > 0;
   const indications = play.individualInstructions;
@@ -118,22 +142,26 @@ function PrintPlay({ play }) {
   );
 }
 
-export default function SetPieceDiagramPrintSheet({ match, title = 'ABP', diagrams = [], players = [], preview = false, totalPlayCount = diagrams.length, startOrder = 1 }) {
+export default function SetPieceDiagramPrintSheet({ match, title = 'ABP', diagrams = [], players = [], preview = false, totalPlayCount = diagrams.length, startOrder = 1, rivalCornerReferences = [] }) {
   const pages = buildSetPiecePrintPages(diagrams, players, { totalPlayCount, startOrder });
   if (!pages.length) return null;
   const matchLabel = getMatchLabel(match);
   const matchDate = formatDate(match?.date);
+  const printableRivalReferences = Array.isArray(rivalCornerReferences) ? rivalCornerReferences : [];
+  const hasRivalReferences = printableRivalReferences.length > 0;
 
   return (
     <>
       {pages.map((page) => {
         const pageKey = `${title}-${page.pageNumber}-${page.plays.map((play) => play.id || `${play.typeLabel}-${play.order}`).join('-')}`;
         return (
-          <article key={pageKey} data-render-model="set-piece-print" data-page-format="A4-landscape" className={`lineup-print-sheet print-sheet-a4 diagram-print-sheet diagram-print-landscape set-piece-pro-sheet abp-print-page ${preview ? 'set-piece-preview-sheet set-piece-is-preview' : ''}`}>
+          <article key={pageKey} data-render-model="set-piece-print" data-page-format="A4-landscape" data-has-rival-references={hasRivalReferences ? 'true' : 'false'} className={`lineup-print-sheet print-sheet-a4 diagram-print-sheet diagram-print-landscape set-piece-pro-sheet abp-print-page ${preview ? 'set-piece-preview-sheet set-piece-is-preview' : ''}`}>
             <header className="set-piece-print-sheet-header">
               <p>C.D. Caudal de Mieres · Dossier ABP</p>
               {(matchLabel || matchDate) ? <div>{matchLabel ? <strong>{matchLabel}</strong> : null}{matchDate ? <span>{matchDate}</span> : null}</div> : null}
             </header>
+
+            {hasRivalReferences ? <RivalCornerReferences plays={printableRivalReferences} /> : null}
 
             <div className="set-piece-pro-plays" data-count={page.plays.length} data-page-number={page.pageNumber}>
               {page.plays.map((play) => <PrintPlay key={play.id || `${play.typeLabel}-${play.order}`} play={play} />)}
