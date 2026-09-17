@@ -25986,7 +25986,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     const caudalRoles = safeArray(getFormationRoles(caudalSystem));
     const caudalLineup = safeArray(selectedMatch.preCaudalLineup);
     const selectedRivalResponsibilityId = setPieceVisibleResponsibilities[selectedFacingSystemsPlayer?.playerId]?.responsibilityId || '';
-    const selectedRivalFeedback = setPieceResponsibilityFeedback?.playId === selectedSetPiecePlay?.id
+    const selectedRivalFeedback = setPieceResponsibilityFeedback
+      && setPieceResponsibilityFeedback.playId === selectedSetPiecePlay?.id
       && setPieceResponsibilityFeedback?.playerId === selectedFacingSystemsPlayer?.playerId
       ? setPieceResponsibilityFeedback.message
       : '';

@@ -51,6 +51,7 @@
     "test:rival-assistant": "node src/utils/rivalCollectiveAssistant.test.js",
     "test:rival-center": "node src/utils/rivalTacticalCenter.test.js",
     "test:facing-systems": "node src/utils/facingSystemsView.test.js",
+    "test:facing-systems-runtime": "node scripts/facingSystemsRuntimeTest.mjs",
     "test:rival-players": "node src/utils/rivalPlayerTacticalAssistant.test.js",
     "test:rival-scouting": "node src/utils/rivalScoutingPersistence.test.js && node src/utils/rivalScoutingStore.test.js && node src/utils/rivalStrengthsWeaknesses.test.js && node scripts/rivalScoutingSqlAudit.test.mjs",
     "test:rival-strengths": "node src/utils/rivalStrengthsWeaknesses.test.js",
