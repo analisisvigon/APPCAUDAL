@@ -9,12 +9,15 @@ export const RIVAL_CORNER_REFERENCE_ROLES = Object.freeze([
 ]);
 
 export const RIVAL_CORNER_RESPONSIBILITY_PRINT_ROLE = Object.freeze({
+  off_lanzador: 'corner_taker',
   off_lanzador_1: 'corner_taker',
   off_lanzador_2: 'corner_taker',
+  off_rematador: 'corner_target',
   off_rematador_1: 'corner_target',
   off_rematador_2: 'corner_target',
   off_rematador_3: 'corner_target',
   off_rematador_4: 'corner_target',
+  off_rechace: 'corner_second_ball',
   off_rechace_1: 'corner_second_ball',
   off_rechace_2: 'corner_second_ball',
   off_se_queda: 'corner_stay_back',

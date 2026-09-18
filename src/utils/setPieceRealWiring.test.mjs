@@ -103,13 +103,13 @@ try {
   assert.match(initialPanel, /Responsabilidad ABP/);
   assert.match(initialPanel, />M\. SECADES</);
   assert.match(initialPanel, /secades\.jpg/);
-  clickRole('Asignar Rematador 1 a Manuel Secades');
+  clickRole('Asignar Rematador a Manuel Secades');
   assert.deepEqual(plays[0].responsibilities[secades.jugadorRivalId], {
-    responsibilityId: 'off_rematador_1', positionKey: 'rival:4',
+    responsibilityId: 'off_rematador', positionKey: 'rival:4',
   });
   assert.match(renderToStaticMarkup(createElement(Badge, {
-    responsibilityId: 'off_rematador_1', phase: 'offensive',
-  })), />REM1<\/span>/, 'REM1 renders next to the rival');
+    responsibilityId: 'off_rematador', phase: 'offensive',
+  })), />REM<\/span>/, 'the collective finisher badge renders next to the rival');
 
   for (const responsibilityId of ['def_marca', 'off_bloqueo', 'off_arrastre']) {
     const phase = responsibilityId.startsWith('def_') ? 'defensive' : 'offensive';
@@ -155,17 +155,17 @@ try {
   selectSetPiecePlay('play-1');
   const reloaded = JSON.parse(saved)[0];
   assert.deepEqual(reloaded.responsibilities[secades.jugadorRivalId], {
-    responsibilityId: 'off_rematador_1', positionKey: 'rival:4',
+    responsibilityId: 'off_rematador', positionKey: 'rival:4',
   });
   const capture = buildSetPieceCaptureResponsibilities(
     reloaded.responsibilities, 'offensive', context.setPieceCurrentPlayerIdByPositionKey
   );
-  assert.equal(capture.visibleByPlayerId[secades.jugadorRivalId].responsibilityId, 'off_rematador_1');
-  assert.deepEqual(capture.legend.map((item) => item.abbreviation), ['REM1']);
+  assert.equal(capture.visibleByPlayerId[secades.jugadorRivalId].responsibilityId, 'off_rematador');
+  assert.deepEqual(capture.legend.map((item) => item.abbreviation), ['REM']);
   assert.match(renderToStaticMarkup(createElement(Badge, {
     responsibilityId: capture.visibleByPlayerId[secades.jugadorRivalId].responsibilityId,
     phase: 'offensive', capture: true,
-  })), /tactical-abp-capture-badge[^>]*>REM1<\/span>/);
+  })), /tactical-abp-capture-badge[^>]*>REM<\/span>/);
 } finally {
   await vite.close();
 }

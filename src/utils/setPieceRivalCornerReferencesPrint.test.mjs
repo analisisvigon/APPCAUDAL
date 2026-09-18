@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
@@ -53,12 +54,39 @@ try {
   assert.match(one, /5 Diego · 9 Marcos/);
   assert.match(one, />Luis</, 'sin dorsal muestra solo el nombre');
   assert.match(one, /<dt>Atrás<\/dt><dd>—<\/dd>/, 'categoría vacía muestra raya');
+  const referenceIndex = one.indexOf('class="set-piece-rival-references"');
+  const enclosingAsideStart = one.lastIndexOf('<aside class="set-piece-print-copy"', referenceIndex);
+  const enclosingAsideEnd = one.indexOf('</aside>', referenceIndex);
+  assert.ok(enclosingAsideStart >= 0 && enclosingAsideStart < referenceIndex && enclosingAsideEnd > referenceIndex,
+    'el bloque rival vive dentro de la columna auxiliar de la jugada');
+  assert.ok(referenceIndex > one.indexOf('set-piece-print-pitch'),
+    'el bloque rival aparece después del campo y del contenido operativo');
+  assert.doesNotMatch(one.slice(0, one.indexOf('class="set-piece-pro-plays"')), /set-piece-rival-references/,
+    'el bloque rival ya no ocupa una fila de ancho completo sobre las jugadas');
+
+  for (const finisherCount of [2, 3, 4, 5, 6]) {
+    const finishers = Array.from({ length: finisherCount }, (_, index) => `${index + 2} Rematador Nombre Largo ${index + 1}`);
+    const markup = render([referencePlay(`finishers-${finisherCount}`, `Rival con ${finisherCount} rematadores`, {
+      corner_taker: ['10 Lanzador Principal'],
+      corner_target: finishers,
+      corner_second_ball: ['8 Segundo Balón'],
+      corner_stay_back: ['4 Cierre Preventivo'],
+    })]);
+    finishers.forEach((name) => assert.match(markup, new RegExp(name)));
+    assert.equal((markup.match(/class="set-piece-rival-references"/g) || []).length, 1,
+      `${finisherCount} rematadores permanecen en un único bloque auxiliar compacto`);
+  }
 
   for (const count of [1, 2, 3]) {
     const plays = Array.from({ length: count }, (_, index) => referencePlay(
       `stable-${index + 1}`,
-      `Jugada rival ${index + 1}`,
-      { corner_taker: [`${index + 7} Jugador ${index + 1}`] }
+      `Jugada rival larga número ${index + 1}`,
+      {
+        corner_taker: [`${index + 7} Lanzador con nombre muy largo ${index + 1}`],
+        corner_target: Array.from({ length: 6 }, (_, playerIndex) => `${playerIndex + 2} Rematador Largo ${index + 1}-${playerIndex + 1}`),
+        corner_second_ball: [`8 Especialista de rechace largo ${index + 1}`],
+        corner_stay_back: [`4 Cierre defensivo largo ${index + 1}`],
+      }
     ));
     const markup = render(plays);
     assert.equal((markup.match(/data-source-play-id=/g) || []).length, count, `${count} jugada(s) se representan sin fusionarse`);
@@ -71,5 +99,13 @@ try {
 } finally {
   await vite.close();
 }
+
+const printCss = readFileSync(new URL('../styles/print.css', import.meta.url), 'utf8');
+assert.doesNotMatch(printCss, /\.set-piece-pro-sheet\[data-has-rival-references="true"\][^{]*\{[\s\S]*?grid-template-rows:/,
+  'las referencias no alteran las filas de la hoja ni la geometría del campo');
+assert.match(printCss, /\.set-piece-rival-references\s*\{[\s\S]*?border-top:/,
+  'el bloque compacto se separa visualmente dentro de la columna auxiliar');
+assert.match(printCss, /\.set-piece-rival-reference-plays\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)/,
+  'varias jugadas rivales se apilan en la columna auxiliar estrecha');
 
 console.log('setPieceRivalCornerReferencesPrint tests passed');

@@ -82,7 +82,7 @@ try {
       createElement(Panel, {
         player: { name: 'Pablo García', number: 10 },
         phase: 'offensive',
-        responsibilityId: 'off_rematador_1',
+        responsibilityId: 'off_rematador',
         canAssign: true,
         onAssign() {}, onRemove() {},
       })
@@ -123,9 +123,9 @@ try {
   })];
   const threePlays = [...twoPlays, referencePlay('rival-corner-3', 'Bloqueo primer palo', {
     corner_taker: [],
-    corner_target: ['4 Pedro', '11 Álvaro', '18 Martín', '20 Sergio'],
-    corner_second_ball: ['6 Óscar', '8 Luis'],
-    corner_stay_back: ['2 Juan', '3 David', '14 Hugo'],
+    corner_target: ['4 Pedro González', '11 Álvaro Fernández', '18 Martín Rodríguez', '20 Sergio Menéndez', '21 Ignacio García', '23 Alejandro Suárez'],
+    corner_second_ball: ['6 Óscar Álvarez', '8 Luis Martínez'],
+    corner_stay_back: ['2 Juan Pérez', '3 David Alonso', '14 Hugo Iglesias'],
   })];
   const renderSheet = (references) => renderToStaticMarkup(createElement('div', { className: 'p-4' }, createElement(Sheet, {
     match, title: 'Córner defensivo', diagrams: [diagram], players: [], rivalCornerReferences: references,

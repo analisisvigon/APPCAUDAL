@@ -11,26 +11,30 @@ const defensive = [
 ];
 
 const offensive = [
-  ['off_lanzador_1', 'Lanzador 1', 'L1', false],
-  ['off_lanzador_2', 'Lanzador 2', 'L2', false],
-  ['off_rechace_1', 'Rechace 1', 'R1', false],
-  ['off_rechace_2', 'Rechace 2', 'R2', false],
-  ['off_rematador_1', 'Rematador 1', 'REM1', false],
-  ['off_rematador_2', 'Rematador 2', 'REM2', false],
-  ['off_rematador_3', 'Rematador 3', 'REM3', false],
-  ['off_rematador_4', 'Rematador 4', 'REM4', false],
+  ['off_lanzador', 'Lanzador', 'LAN', true],
+  ['off_rechace', 'Rechace', 'REC', true],
+  ['off_rematador', 'Rematador', 'REM', true],
+  ['off_lanzador_1', 'Lanzador 1', 'L1', false, false],
+  ['off_lanzador_2', 'Lanzador 2', 'L2', false, false],
+  ['off_rechace_1', 'Rechace 1', 'R1', false, false],
+  ['off_rechace_2', 'Rechace 2', 'R2', false, false],
+  ['off_rematador_1', 'Rematador 1', 'REM1', false, false],
+  ['off_rematador_2', 'Rematador 2', 'REM2', false, false],
+  ['off_rematador_3', 'Rematador 3', 'REM3', false, false],
+  ['off_rematador_4', 'Rematador 4', 'REM4', false, false],
   ['off_bloqueo', 'Bloqueo', 'BLQ', true],
   ['off_arrastre', 'Arrastre', 'ARR', true],
-  ['off_se_queda', 'Se queda', 'Q', false],
+  ['off_se_queda', 'Se queda', 'Q', true],
 ];
 
-const definePhase = (entries, phase) => Object.freeze(entries.map(([id, label, abbreviation, allowMultiplePlayers], index) => Object.freeze({
+const definePhase = (entries, phase) => Object.freeze(entries.map(([id, label, abbreviation, allowMultiplePlayers, assignable = true], index) => Object.freeze({
   id,
   phase,
   label,
   abbreviation,
   order: index + 1,
   allowMultiplePlayers,
+  assignable,
 })));
 
 export const SET_PIECE_RESPONSIBILITIES = Object.freeze({
@@ -43,6 +47,9 @@ const clean = (value) => String(value ?? '').trim();
 const asObject = (value) => (value && typeof value === 'object' && !Array.isArray(value) ? value : {});
 
 export const getSetPieceResponsibilitiesForPhase = (phase) => SET_PIECE_RESPONSIBILITIES[phase] || [];
+export const getAssignableSetPieceResponsibilitiesForPhase = (phase) => (
+  getSetPieceResponsibilitiesForPhase(phase).filter((definition) => definition.assignable)
+);
 export const getSetPieceResponsibility = (responsibilityId) => byId.get(clean(responsibilityId)) || null;
 export const isValidSetPieceResponsibilityId = (responsibilityId, phase) => {
   const definition = getSetPieceResponsibility(responsibilityId);

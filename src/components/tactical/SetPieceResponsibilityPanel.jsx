@@ -1,8 +1,8 @@
 import PlayerAvatar from '../player/PlayerAvatar';
 import { getPlayerDisplayName } from '../../utils/playerDisplayName';
 import {
+  getAssignableSetPieceResponsibilitiesForPhase,
   getSetPieceResponsibility,
-  getSetPieceResponsibilitiesForPhase,
 } from '../../utils/setPieceResponsibilities';
 
 export function SetPieceResponsibilityBadge({ responsibilityId, phase, placement = 'below', capture = false }) {
@@ -29,7 +29,7 @@ export default function SetPieceResponsibilityPanel({
   const accessiblePlayerName = String(player?.name || '').trim() || playerName;
   const current = getSetPieceResponsibility(responsibilityId);
   const activeId = current?.phase === phase ? current.id : '';
-  const options = [...getSetPieceResponsibilitiesForPhase(phase)].sort((left, right) => left.order - right.order);
+  const options = [...getAssignableSetPieceResponsibilitiesForPhase(phase)].sort((left, right) => left.order - right.order);
 
   return (
     <section aria-label={`Responsabilidad ABP de ${playerName}`} data-abp-responsibility-panel="true" className="min-w-0">

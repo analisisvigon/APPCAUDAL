@@ -1316,19 +1316,11 @@
   font-size: 7.8pt;
 }
 
-.set-piece-pro-sheet[data-has-rival-references="true"] {
-  display: grid;
-  grid-template-rows: 7mm auto minmax(0, 1fr);
-}
-
-.set-piece-pro-sheet[data-has-rival-references="true"] .set-piece-pro-plays {
-  height: auto;
-}
-
 .set-piece-rival-references {
+  flex: 0 0 auto;
   min-width: 0;
-  border-bottom: 0.8pt solid #9ca3af;
-  padding: 1.2mm 0 1.5mm;
+  border-top: 0.8pt solid #9ca3af;
+  padding-top: 1.2mm;
   color: #111827;
 }
 
@@ -1344,29 +1336,25 @@
 
 .set-piece-rival-reference-plays {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 2.2mm;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.1mm;
   min-width: 0;
 }
 
-.set-piece-rival-reference-plays[data-count="1"] {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.set-piece-rival-reference-plays[data-count="2"] {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.set-piece-rival-reference-plays[data-count="3"] {
+  gap: 0.75mm;
 }
 
 .set-piece-rival-reference-plays > div {
   min-width: 0;
-  border-left: 1.2pt solid #111827;
-  padding-left: 1.5mm;
+  border-left: 1pt solid #111827;
+  padding-left: 1.2mm;
   break-inside: avoid;
 }
 
 .set-piece-rival-reference-plays h3 {
-  margin: 0 0 0.65mm;
-  font-size: 7.2pt;
+  margin: 0 0 0.45mm;
+  font-size: 7pt;
   font-weight: 950;
   line-height: 1.05;
   overflow-wrap: anywhere;
@@ -1375,14 +1363,14 @@
 
 .set-piece-rival-reference-plays dl {
   display: grid;
-  gap: 0.35mm;
+  gap: 0.25mm;
   margin: 0;
 }
 
 .set-piece-rival-reference-plays dl > div {
   display: grid;
   grid-template-columns: 19mm minmax(0, 1fr);
-  gap: 1mm;
+  gap: 0.8mm;
   min-width: 0;
   font-size: 6.4pt;
   line-height: 1.08;

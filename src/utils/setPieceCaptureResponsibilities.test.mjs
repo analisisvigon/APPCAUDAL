@@ -24,12 +24,22 @@ const defensive = buildSetPieceCaptureResponsibilities(
 assert.deepEqual(defensive.legend.map(({ id }) => id), defensiveIds,
   'a complete defensive legend follows canonical order and deduplicates Marca');
 assert.equal(Object.keys(defensive.visibleByPlayerId).length, 11);
-const offensive = buildSetPieceCaptureResponsibilities(assign(offensiveIds), 'offensive', currentXi(11));
-assert.deepEqual(offensive.legend.map(({ id }) => id), offensiveIds,
-  'REM1–REM4 and all offensive roles stay distinct and ordered');
+const legacyOffensiveIds = offensiveIds.filter((id) => !['off_lanzador', 'off_rechace', 'off_rematador'].includes(id));
+const offensive = buildSetPieceCaptureResponsibilities(assign(legacyOffensiveIds), 'offensive', currentXi(11));
+assert.deepEqual(offensive.legend.map(({ id }) => id), legacyOffensiveIds,
+  'REM1–REM4 and all historical offensive roles stay distinct and ordered');
 assert.deepEqual(offensive.legend.filter(({ id }) => id.startsWith('off_rematador_'))
   .map(({ abbreviation }) => abbreviation), ['REM1', 'REM2', 'REM3', 'REM4']);
 assert.equal(Object.keys(offensive.visibleByPlayerId).length, 11);
+const sixDynamicFinishers = buildSetPieceCaptureResponsibilities(
+  assign(Array(6).fill('off_rematador')), 'offensive', currentXi(6),
+  Object.fromEntries(Array.from({ length: 6 }, (_, index) => [`player-${index}`, `REMATADOR ${index + 1}`]))
+);
+assert.deepEqual(sixDynamicFinishers.legend.map(({ id }) => id), ['off_rematador']);
+assert.deepEqual(sixDynamicFinishers.legend[0].playerNames, [
+  'REMATADOR 1', 'REMATADOR 2', 'REMATADOR 3', 'REMATADOR 4', 'REMATADOR 5', 'REMATADOR 6',
+], 'six finishers share one compact collective legend row');
+assert.equal(Object.keys(sixDynamicFinishers.visibleByPlayerId).length, 6);
 const repeatedAssignments = {
   'player-4': { responsibilityId: 'off_rematador_4', positionKey: 'rival:4' },
   'player-3': { responsibilityId: 'off_arrastre', positionKey: 'rival:3' },

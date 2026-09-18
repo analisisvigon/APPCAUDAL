@@ -34,7 +34,8 @@ try {
   }));
   assert.match(markup, /Responsabilidad ABP/);
   assert.match(markup, /Actual: Rematador 1/);
-  assert.match(markup, /Asignar Lanzador 1 a Pablo/);
+  assert.doesNotMatch(markup, /Asignar Lanzador 1 a Pablo/);
+  assert.match(markup, /Asignar Lanzador a Pablo/);
   assert.doesNotMatch(markup, /Referencia en córner|type="checkbox"/);
 } finally {
   await vite.close();

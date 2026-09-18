@@ -5,6 +5,7 @@ import {
   allowsMultipleSetPiecePlayers,
   assignSetPieceResponsibility,
   findSetPieceResponsibilityConflict,
+  getAssignableSetPieceResponsibilitiesForPhase,
   getSetPieceResponsibilitiesForPhase,
   getSetPieceResponsibility,
   getSetPieceResponsibilityPhase,
@@ -22,15 +23,20 @@ assert.deepEqual(defensive.map(({ label, abbreviation }) => [label, abbreviation
   ['Zona 4', 'Z4'], ['Zona 5', 'Z5'], ['Rechace 1', 'R1'], ['Rechace 2', 'R2'], ['Marca', 'MAR'],
 ]);
 assert.deepEqual(offensive.map(({ label, abbreviation }) => [label, abbreviation]), [
+  ['Lanzador', 'LAN'], ['Rechace', 'REC'], ['Rematador', 'REM'],
   ['Lanzador 1', 'L1'], ['Lanzador 2', 'L2'], ['Rechace 1', 'R1'], ['Rechace 2', 'R2'],
   ['Rematador 1', 'REM1'], ['Rematador 2', 'REM2'], ['Rematador 3', 'REM3'], ['Rematador 4', 'REM4'],
   ['Bloqueo', 'BLQ'], ['Arrastre', 'ARR'], ['Se queda', 'Q'],
 ]);
 assert.equal(defensive.length, 9);
-assert.equal(offensive.length, 11);
-assert.equal(new Set([...defensive, ...offensive].map(({ id }) => id)).size, 20);
+assert.equal(offensive.length, 14);
+assert.equal(new Set([...defensive, ...offensive].map(({ id }) => id)).size, 23);
 assert.deepEqual(defensive.map(({ order }) => order), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
-assert.deepEqual(offensive.map(({ order }) => order), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+assert.deepEqual(offensive.map(({ order }) => order), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
+assert.deepEqual(getAssignableSetPieceResponsibilitiesForPhase('offensive').map(({ id }) => id), [
+  'off_lanzador', 'off_rechace', 'off_rematador', 'off_bloqueo', 'off_arrastre', 'off_se_queda',
+], 'new assignments use collective roles while historical numbered slots remain readable');
+assert.equal(getSetPieceResponsibility('off_rematador_1').assignable, false);
 assert.equal(getSetPieceResponsibility('def_rechace_1').phase, 'defensive');
 assert.equal(getSetPieceResponsibility('off_rechace_1').phase, 'offensive');
 assert.equal(isValidSetPieceResponsibilityId('def_zona_1', 'defensive'), true);
@@ -41,9 +47,10 @@ assert.equal(getSetPieceResponsibilityPhase('offensive_set_piece'), 'offensive')
 assert.equal(allowsMultipleSetPiecePlayers('def_zona_1'), false);
 assert.equal(allowsMultipleSetPiecePlayers('def_marca'), true);
 assert.equal(allowsMultipleSetPiecePlayers('off_rematador_1'), false);
+assert.equal(allowsMultipleSetPiecePlayers('off_rematador'), true);
 assert.equal(allowsMultipleSetPiecePlayers('off_bloqueo'), true);
 assert.equal(allowsMultipleSetPiecePlayers('off_arrastre'), true);
-assert.equal(allowsMultipleSetPiecePlayers('off_se_queda'), false);
+assert.equal(allowsMultipleSetPiecePlayers('off_se_queda'), true);
 assert.equal(SET_PIECE_RESPONSIBILITIES.defensive, defensive);
 
 const borjaZ1 = assignSetPieceResponsibility({}, {
@@ -74,7 +81,7 @@ const conflictingStored = inspectSetPieceResponsibilities({
 }, 'defensive');
 assert.equal(conflictingStored[1].conflictingPlayerId, 'borja-id', 'stored uniqueness conflicts remain detectable');
 
-for (const responsibilityId of ['off_rematador_1', 'off_se_queda']) {
+for (const responsibilityId of ['off_rematador_1']) {
   const first = assignSetPieceResponsibility({}, {
     playerId: 'borja-id', positionKey: 'rival:4', responsibilityId, phase: 'offensive',
   });
@@ -82,6 +89,43 @@ for (const responsibilityId of ['off_rematador_1', 'off_se_queda']) {
     playerId: 'julio-id', positionKey: 'rival:5', responsibilityId, phase: 'offensive',
   });
   assert.equal(second.errorCode, 'RESPONSIBILITY_ALREADY_ASSIGNED', `${responsibilityId} is unique`);
+}
+
+for (const count of [2, 3, 4, 5, 6]) {
+  let dynamicFinishers = {};
+  for (let index = 0; index < count; index += 1) {
+    const assignment = assignSetPieceResponsibility(dynamicFinishers, {
+      playerId: `finisher-${index}`,
+      positionKey: `rival:${index}`,
+      responsibilityId: 'off_rematador',
+      phase: 'offensive',
+    });
+    assert.equal(assignment.ok, true, `${count} rematadores admiten al jugador ${index + 1}`);
+    dynamicFinishers = assignment.responsibilities;
+  }
+  assert.equal(Object.values(dynamicFinishers).filter(({ responsibilityId }) => responsibilityId === 'off_rematador').length, count);
+  assert.deepEqual(
+    normalizeSetPieceResponsibilities(JSON.parse(JSON.stringify(dynamicFinishers))),
+    dynamicFinishers,
+    `${count} rematadores sobreviven guardado y recarga`,
+  );
+  const afterRemoval = removeSetPieceResponsibility(dynamicFinishers, 'finisher-1');
+  assert.equal(Object.keys(afterRemoval).length, count - 1, `quitar uno de ${count} no borra el resto`);
+  assert.equal(afterRemoval['finisher-0'].responsibilityId, 'off_rematador');
+  Object.entries(afterRemoval).forEach(([playerId, entry]) => {
+    assert.notEqual(playerId, 'finisher-1');
+    assert.equal(entry.responsibilityId, 'off_rematador');
+  });
+}
+
+for (const responsibilityId of ['off_lanzador', 'off_rechace', 'off_se_queda']) {
+  const first = assignSetPieceResponsibility({}, {
+    playerId: 'borja-id', positionKey: 'rival:4', responsibilityId, phase: 'offensive',
+  });
+  const second = assignSetPieceResponsibility(first.responsibilities, {
+    playerId: 'julio-id', positionKey: 'rival:5', responsibilityId, phase: 'offensive',
+  });
+  assert.equal(second.ok, true, `${responsibilityId} is a dynamic collective role`);
 }
 
 const borjaMarca = assignSetPieceResponsibility({}, {
@@ -150,6 +194,28 @@ assert.deepEqual(normalizeSetPieceResponsibilities(stored.setPiecePhaseV1.plays[
 }, 'JSON persistence preserves player ID, position key and canonical responsibility ID');
 const historicalStored = JSON.parse(JSON.stringify({ setPiecePhaseV1: { plays: [{ id: 'old' }] } }));
 assert.deepEqual(normalizeSetPieceResponsibilities(historicalStored.setPiecePhaseV1.plays[0].responsibilities), {});
+
+let sixFinishers = {};
+for (let index = 0; index < 6; index += 1) {
+  sixFinishers = assignSetPieceResponsibility(sixFinishers, {
+    playerId: `persisted-finisher-${index}`,
+    positionKey: `rival:${index}`,
+    responsibilityId: 'off_rematador',
+    phase: 'offensive',
+  }).responsibilities;
+}
+const storedDynamicPlay = JSON.parse(JSON.stringify({
+  id: 'dynamic-original', responsibilities: normalizeSetPieceResponsibilities(sixFinishers),
+}));
+const duplicatedDynamicPlay = {
+  ...storedDynamicPlay,
+  id: 'dynamic-copy',
+  responsibilities: normalizeSetPieceResponsibilities(storedDynamicPlay.responsibilities),
+};
+assert.deepEqual(duplicatedDynamicPlay.responsibilities, sixFinishers, 'duplicating preserves all six finishers');
+assert.notEqual(duplicatedDynamicPlay.responsibilities, storedDynamicPlay.responsibilities);
+assert.deepEqual(normalizeSetPieceResponsibilities(JSON.parse(JSON.stringify(storedDynamicPlay)).responsibilities), sixFinishers,
+  'save and reload preserve the dynamic collection without a counter or schema change');
 
 const unchangedXi = { 'rival:4': 'borja-id' };
 const changedXi = { 'rival:4': 'vicente-id' };

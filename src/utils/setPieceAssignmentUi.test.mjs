@@ -6,6 +6,7 @@ import { createServer } from 'vite';
 import { getSetPieceBadgePlacement } from './setPieceBadgePlacement.js';
 import {
   assignSetPieceResponsibility,
+  getAssignableSetPieceResponsibilitiesForPhase,
   getSetPieceResponsibilitiesForPhase,
   inspectSetPieceResponsibilities,
   normalizeSetPieceResponsibilities,
@@ -35,13 +36,16 @@ try {
   const defensiveMarkup = renderPanel('defensive', 'def_zona_1');
   const offensiveMarkup = renderPanel('offensive', 'off_rematador_1');
   assert.equal((defensiveMarkup.match(/<button[^>]*aria-label="Asignar /g) || []).length, 9);
-  assert.equal((offensiveMarkup.match(/<button[^>]*aria-label="Asignar /g) || []).length, 11);
+  assert.equal((offensiveMarkup.match(/<button[^>]*aria-label="Asignar /g) || []).length, 6);
   for (const option of getSetPieceResponsibilitiesForPhase('defensive')) {
     assert.ok(defensiveMarkup.includes(`aria-label="Asignar ${option.label} a Manuel Secades"`));
   }
-  for (const option of getSetPieceResponsibilitiesForPhase('offensive')) {
+  for (const option of getAssignableSetPieceResponsibilitiesForPhase('offensive')) {
     assert.ok(offensiveMarkup.includes(`aria-label="Asignar ${option.label} a Manuel Secades"`));
   }
+  assert.doesNotMatch(offensiveMarkup, /aria-label="Asignar Rematador [1-4] /,
+    'numbered legacy slots are readable but cannot create new fixed-limit assignments');
+  assert.match(offensiveMarkup, /Actual: Rematador 1/, 'a historical numbered assignment can still be inspected and removed');
   assert.doesNotMatch(defensiveMarkup, /Asignar Rematador/);
   assert.doesNotMatch(offensiveMarkup, /Asignar Zona/);
   assert.match(defensiveMarkup, /aria-label="Asignar Zona 1 a Manuel Secades" aria-pressed="true"/);

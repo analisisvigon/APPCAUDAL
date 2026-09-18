@@ -43,7 +43,7 @@ function RivalCornerReferences({ plays }) {
   );
 }
 
-function PrintPlay({ play }) {
+function PrintPlay({ play, rivalCornerReferences = [] }) {
   const hasChronology = play.chronology.length > 0;
   const indications = play.individualInstructions;
   const hasIndications = indications.length > 0;
@@ -51,7 +51,8 @@ function PrintPlay({ play }) {
   const movesObjectiveToHeader = indicationDensity !== 'roomy' && Boolean(play.objective);
   const headerFacts = movesObjectiveToHeader ? [...play.headerFacts, { id: 'key', label: 'Clave', value: play.objective }] : play.headerFacts;
   const hasOperationalDetails = Boolean((!movesObjectiveToHeader && play.objective) || play.whenToUse || play.risk || play.alternative || play.observations);
-  const hasCopy = Boolean(play.instruction || hasChronology || hasIndications || hasOperationalDetails);
+  const hasRivalReferences = rivalCornerReferences.length > 0;
+  const hasCopy = Boolean(play.instruction || hasChronology || hasIndications || hasOperationalDetails || hasRivalReferences);
   const bodyClassName = [
     'set-piece-print-play-body',
     !play.instruction && !hasChronology ? 'set-piece-print-play-body--field-forward' : '',
@@ -136,6 +137,8 @@ function PrintPlay({ play }) {
             <PrintDetail label="Alternativa" value={play.alternative} />
             <PrintDetail label="Observaciones" value={play.observations} />
           </div> : null}
+
+          {hasRivalReferences ? <RivalCornerReferences plays={rivalCornerReferences} /> : null}
         </aside> : null}
       </div>
     </section>
@@ -161,10 +164,8 @@ export default function SetPieceDiagramPrintSheet({ match, title = 'ABP', diagra
               {(matchLabel || matchDate) ? <div>{matchLabel ? <strong>{matchLabel}</strong> : null}{matchDate ? <span>{matchDate}</span> : null}</div> : null}
             </header>
 
-            {hasRivalReferences ? <RivalCornerReferences plays={printableRivalReferences} /> : null}
-
             <div className="set-piece-pro-plays" data-count={page.plays.length} data-page-number={page.pageNumber}>
-              {page.plays.map((play) => <PrintPlay key={play.id || `${play.typeLabel}-${play.order}`} play={play} />)}
+              {page.plays.map((play) => <PrintPlay key={play.id || `${play.typeLabel}-${play.order}`} play={play} rivalCornerReferences={printableRivalReferences} />)}
             </div>
           </article>
         );

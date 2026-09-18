@@ -34,12 +34,15 @@ assert.deepEqual(RIVAL_CORNER_REFERENCE_ROLES.map(({ id }) => id), [
   'corner_taker', 'corner_target', 'corner_second_ball', 'corner_stay_back',
 ]);
 assert.deepEqual(RIVAL_CORNER_RESPONSIBILITY_PRINT_ROLE, {
+  off_lanzador: 'corner_taker',
   off_lanzador_1: 'corner_taker',
   off_lanzador_2: 'corner_taker',
+  off_rematador: 'corner_target',
   off_rematador_1: 'corner_target',
   off_rematador_2: 'corner_target',
   off_rematador_3: 'corner_target',
   off_rematador_4: 'corner_target',
+  off_rechace: 'corner_second_ball',
   off_rechace_1: 'corner_second_ball',
   off_rechace_2: 'corner_second_ball',
   off_se_queda: 'corner_stay_back',
@@ -150,6 +153,19 @@ assert.deepEqual(model[0].roles.find(({ id }) => id === 'corner_second_ball').pl
 assert.deepEqual(model[0].roles.find(({ id }) => id === 'corner_stay_back').players, ['4 Hugo']);
 assert.deepEqual(model[1].roles.find(({ id }) => id === 'corner_second_ball').players, ['Luis']);
 assert.equal(model.every((item) => item.roles.length === 4), true, 'siempre mantiene las cuatro categorías');
+
+const dynamicModel = buildRivalCornerReferencesPrintModel({
+  preAiAnalysis: { setPiecePhaseV1: { plays: [play('dynamic-six', 'Seis rematadores', true, {
+    responsibilities: Object.fromEntries(Object.values(ids).map((playerId, index) => [playerId, {
+      responsibilityId: 'off_rematador',
+      positionKey: `rival:${index}`,
+    }])),
+  })] } },
+  rivalPlayers: players,
+});
+assert.deepEqual(dynamicModel[0].roles.find(({ id }) => id === 'corner_target').players,
+  ['10 Pablo', '5 Diego', 'Luis', '2 Juan', '9 Marco', '4 Hugo'],
+  'la impresión deriva los seis rematadores dinámicos de la colección de responsabilidades');
 
 for (const include of [false, undefined]) {
   assert.deepEqual(buildRivalCornerReferencesPrintModel({
