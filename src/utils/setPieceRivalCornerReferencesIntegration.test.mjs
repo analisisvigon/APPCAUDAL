@@ -65,13 +65,13 @@ const vite = await createServer({
 
 try {
   const { MatchPrintSetPieceSheet } = await vite.ssrLoadModule('/src/components/print/MatchPrintTab.jsx');
-  const render = (includeRivalReferencesInPrint) => renderToStaticMarkup(createElement(MatchPrintSetPieceSheet, {
+  const render = (includeRivalReferencesInPrint, diagrams = [diagram]) => renderToStaticMarkup(createElement(MatchPrintSetPieceSheet, {
     match: createMatch(includeRivalReferencesInPrint),
     title: 'Córner defensivo',
-    diagrams: [diagram],
+    diagrams,
     players: [],
     rivalPlayers,
-    totalPlayCount: 1,
+    totalPlayCount: diagrams.length,
     startOrder: 1,
     includeRivalCornerReferences: true,
   }));
@@ -91,6 +91,29 @@ try {
   assert.doesNotMatch(disabled, /Referencias rival|set-piece-rival-references|data-source-play-id/,
     'toggle false no crea wrapper, título, margen ni contenido');
   assert.match(disabled, /data-has-rival-references="false"/);
+
+  const lateralDiagram = {
+    ...diagram,
+    id: 'caudal-falta-lateral-defensiva',
+    tipo: 'falta_lateral_defensiva',
+    titulo: 'Defensa de falta lateral',
+  };
+  const lateral = render(true, [lateralDiagram]);
+  assert.doesNotMatch(lateral, /Referencias rival|set-piece-rival-references|data-source-play-id/,
+    'el puente no calcula ni pasa referencias a una falta lateral aislada');
+  assert.match(lateral, /data-has-rival-references="false"/);
+  assert.match(lateral, /set-piece-print-play-body--field-only/);
+  assert.doesNotMatch(lateral, /set-piece-print-copy/,
+    'la falta lateral no conserva columna ni espacio residual');
+
+  const mixed = render(true, [diagram, lateralDiagram]);
+  assert.equal((mixed.match(/class="set-piece-rival-references"/g) || []).length, 1,
+    'un grupo mixto imprime referencias una sola vez, únicamente en el córner defensivo');
+  const cornerStart = mixed.indexOf('data-set-piece-type="corner_defensivo"');
+  const referencesStart = mixed.indexOf('class="set-piece-rival-references"');
+  const lateralStart = mixed.indexOf('data-set-piece-type="falta_lateral_defensiva"');
+  assert.ok(cornerStart >= 0 && referencesStart > cornerStart && lateralStart > referencesStart,
+    'la referencia pertenece al córner anterior y no a la falta lateral posterior');
 } finally {
   await vite.close();
 }

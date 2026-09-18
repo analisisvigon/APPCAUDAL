@@ -43,7 +43,10 @@ import {
 } from '../../utils/setPieceLineupAdaptation';
 import { duplicateMatchSetPiece } from '../../utils/setPieceMatchDuplication';
 import { SET_PIECE_HEADER_MENUS, transitionSetPieceHeaderMenu } from '../../utils/setPieceHeaderMenu';
-import { areSetPieceLabelsEquivalent } from '../../utils/setPiecePrintModel';
+import {
+  areSetPieceLabelsEquivalent,
+  isDefensiveCornerSetPieceType,
+} from '../../utils/setPiecePrintModel';
 import {
   buildGoalkeeperProtocolModel,
   buildMatchResponsibilityPlayers,
@@ -381,11 +384,13 @@ export function MatchPrintSetPieceSheet({
   totalPlayCount,
   startOrder,
 }) {
+  const hasDefensiveCorner = Array.isArray(diagrams)
+    && diagrams.some((diagram) => isDefensiveCornerSetPieceType(diagram?.tipo));
   const rivalCornerReferences = useMemo(() => (
-    includeRivalCornerReferences
+    includeRivalCornerReferences && hasDefensiveCorner
       ? buildRivalCornerReferencesPrintModel({ preAiAnalysis: match?.preAiAnalysis, rivalPlayers })
       : []
-  ), [includeRivalCornerReferences, match?.preAiAnalysis, rivalPlayers]);
+  ), [hasDefensiveCorner, includeRivalCornerReferences, match?.preAiAnalysis, rivalPlayers]);
 
   return (
     <SetPieceDiagramPrintSheet
@@ -1860,7 +1865,7 @@ export default function MatchPrintTab({
     }
     if (page.id === 'defensive') {
       return chunkDiagrams(dossierContent.defensiveDiagrams).map((diagrams, index) => (
-        <MatchPrintSetPieceSheet key={`defensive-dossier-${index}`} match={match} title="ABP defensiva" diagrams={diagrams} players={players} rivalPlayers={rivalPlayers} totalPlayCount={dossierContent.defensiveDiagrams.length} startOrder={index * 2 + 1} includeRivalCornerReferences={diagrams.some((diagram) => diagram.tipo === 'corner_defensivo')} />
+        <MatchPrintSetPieceSheet key={`defensive-dossier-${index}`} match={match} title="ABP defensiva" diagrams={diagrams} players={players} rivalPlayers={rivalPlayers} totalPlayCount={dossierContent.defensiveDiagrams.length} startOrder={index * 2 + 1} includeRivalCornerReferences={diagrams.some((diagram) => isDefensiveCornerSetPieceType(diagram.tipo))} />
       ));
     }
     if (page.id === 'kickoff') {
@@ -2286,7 +2291,7 @@ export default function MatchPrintTab({
               rivalPlayers={rivalPlayers}
               totalPlayCount={getPrintDiagrams('defensive').length}
               startOrder={index * 2 + 1}
-              includeRivalCornerReferences={defensiveType === 'corner_defensivo'}
+              includeRivalCornerReferences={isDefensiveCornerSetPieceType(defensiveType)}
             />
           ))
         )}

@@ -33,6 +33,11 @@ export const normalizeSetPieceComparableText = (value) => String(value || '')
 
 const normalizeComparableText = normalizeSetPieceComparableText;
 
+export const DEFENSIVE_CORNER_SET_PIECE_TYPE_ID = 'corner_defensivo';
+export const isDefensiveCornerSetPieceType = (type) => (
+  String(type || '').trim() === DEFENSIVE_CORNER_SET_PIECE_TYPE_ID
+);
+
 export const areSetPieceLabelsEquivalent = (type, title, order) => {
   const normalizedType = normalizeComparableText(type);
   const normalizedTitle = normalizeComparableText(title);
@@ -140,6 +145,7 @@ export const buildSetPiecePrintPlayModel = (diagram, players = [], fallbackOrder
     : rawObjective;
   return {
     id: diagram?.id,
+    typeId: String(diagram?.tipo || '').trim(),
     order,
     typeLabel,
     defensive,

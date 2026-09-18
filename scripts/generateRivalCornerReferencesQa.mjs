@@ -69,6 +69,12 @@ const diagram = {
   consigna: '',
   elements: [],
 };
+const lateralDefensiveDiagram = {
+  ...diagram,
+  id: 'falta-lateral-defensiva-qa',
+  tipo: 'falta_lateral_defensiva',
+  titulo: 'Defensa de falta lateral',
+};
 const match = { opponent: 'Rival QA', isHome: true, date: '2026-09-17' };
 
 const vite = await createServer({ configFile: false, esbuild: { jsx: 'automatic' }, server: { middlewareMode: true }, appType: 'custom' });
@@ -134,6 +140,10 @@ try {
   await screenshot('04-corner-defensivo-dos-jugadas', renderSheet(twoPlays), { width: 1200, height: 860, background: '#d1d5db' });
   await screenshot('05-corner-defensivo-sin-referencias', renderSheet([]), { width: 1200, height: 860, background: '#d1d5db' });
   await screenshot('06-corner-defensivo-tres-jugadas-stress', renderSheet(threePlays), { width: 1200, height: 860, background: '#d1d5db' });
+  const lateralSheet = renderToStaticMarkup(createElement('div', { className: 'p-4' }, createElement(Sheet, {
+    match, title: 'Falta lateral defensiva', diagrams: [lateralDefensiveDiagram], players: [], rivalCornerReferences: threePlays,
+  })));
+  await screenshot('07-falta-lateral-sin-referencias-rival', lateralSheet, { width: 1200, height: 860, background: '#d1d5db' });
 } finally {
   await vite.close();
   await rm(temporaryDirectory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });

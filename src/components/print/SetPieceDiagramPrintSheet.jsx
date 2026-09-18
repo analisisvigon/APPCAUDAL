@@ -1,5 +1,8 @@
 import SetPieceDiagramCanvas from './SetPieceDiagramCanvas';
-import { buildSetPiecePrintPages } from '../../utils/setPiecePrintModel';
+import {
+  buildSetPiecePrintPages,
+  isDefensiveCornerSetPieceType,
+} from '../../utils/setPiecePrintModel';
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -52,7 +55,7 @@ function PrintPlay({ play, rivalCornerReferences = [] }) {
   const movesObjectiveToHeader = indicationDensity !== 'roomy' && Boolean(play.objective);
   const headerFacts = movesObjectiveToHeader ? [...play.headerFacts, { id: 'key', label: 'Clave', value: play.objective }] : play.headerFacts;
   const hasOperationalDetails = Boolean((!movesObjectiveToHeader && play.objective) || play.whenToUse || play.risk || play.alternative || play.observations);
-  const hasRivalReferences = rivalCornerReferences.length > 0;
+  const hasRivalReferences = isDefensiveCornerSetPieceType(play.typeId) && rivalCornerReferences.length > 0;
   const hasCopy = Boolean(play.instruction || hasChronology || hasIndications || hasOperationalDetails || hasRivalReferences);
   const bodyClassName = [
     'set-piece-print-play-body',
@@ -62,7 +65,7 @@ function PrintPlay({ play, rivalCornerReferences = [] }) {
     !hasCopy ? 'set-piece-print-play-body--field-only' : '',
   ].filter(Boolean).join(' ');
   return (
-    <section className="set-piece-print-play" data-play-order={play.order} data-play-id={play.id || ''} data-has-chronology={hasChronology ? 'true' : 'false'} data-has-title={play.displayTitle ? 'true' : 'false'} data-density={indicationDensity}>
+    <section className="set-piece-print-play" data-play-order={play.order} data-play-id={play.id || ''} data-set-piece-type={play.typeId} data-has-chronology={hasChronology ? 'true' : 'false'} data-has-title={play.displayTitle ? 'true' : 'false'} data-density={indicationDensity}>
       <header className="set-piece-print-play-header" data-has-signal={play.signal ? 'true' : 'false'}>
         <div className="set-piece-print-play-heading">
           <div className="set-piece-print-play-kicker"><strong>{play.typeLabel}{play.defenseTypeLabel ? ` · Defensa ${play.defenseTypeLabel}` : ''}</strong>{play.showPlayNumber ? <span>Jugada {play.order}</span> : null}</div>
@@ -152,14 +155,15 @@ export default function SetPieceDiagramPrintSheet({ match, title = 'ABP', diagra
   const matchLabel = getMatchLabel(match);
   const matchDate = formatDate(match?.date);
   const printableRivalReferences = Array.isArray(rivalCornerReferences) ? rivalCornerReferences : [];
-  const hasRivalReferences = printableRivalReferences.length > 0;
 
   return (
     <>
       {pages.map((page) => {
         const pageKey = `${title}-${page.pageNumber}-${page.plays.map((play) => play.id || `${play.typeLabel}-${play.order}`).join('-')}`;
+        const pageHasRivalReferences = printableRivalReferences.length > 0
+          && page.plays.some((play) => isDefensiveCornerSetPieceType(play.typeId));
         return (
-          <article key={pageKey} data-render-model="set-piece-print" data-page-format="A4-landscape" data-has-rival-references={hasRivalReferences ? 'true' : 'false'} className={`lineup-print-sheet print-sheet-a4 diagram-print-sheet diagram-print-landscape set-piece-pro-sheet abp-print-page ${preview ? 'set-piece-preview-sheet set-piece-is-preview' : ''}`}>
+          <article key={pageKey} data-render-model="set-piece-print" data-page-format="A4-landscape" data-has-rival-references={pageHasRivalReferences ? 'true' : 'false'} className={`lineup-print-sheet print-sheet-a4 diagram-print-sheet diagram-print-landscape set-piece-pro-sheet abp-print-page ${preview ? 'set-piece-preview-sheet set-piece-is-preview' : ''}`}>
             <header className="set-piece-print-sheet-header">
               <p>C.D. Caudal de Mieres · Dossier ABP</p>
               {(matchLabel || matchDate) ? <div>{matchLabel ? <strong>{matchLabel}</strong> : null}{matchDate ? <span>{matchDate}</span> : null}</div> : null}

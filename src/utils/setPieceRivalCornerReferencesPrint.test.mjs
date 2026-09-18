@@ -29,10 +29,10 @@ const vite = await createServer({
 
 try {
   const { default: SetPieceDiagramPrintSheet } = await vite.ssrLoadModule('/src/components/print/SetPieceDiagramPrintSheet.jsx');
-  const render = (rivalCornerReferences) => renderToStaticMarkup(createElement(SetPieceDiagramPrintSheet, {
+  const render = (rivalCornerReferences, type = 'corner_defensivo') => renderToStaticMarkup(createElement(SetPieceDiagramPrintSheet, {
     match: { opponent: 'Rival', isHome: true, date: '2026-09-17' },
     title: 'Córner defensivo',
-    diagrams: [diagram],
+    diagrams: [{ ...diagram, tipo: type }],
     players: [],
     rivalCornerReferences,
   }));
@@ -63,6 +63,29 @@ try {
     'el bloque rival aparece después del campo y del contenido operativo');
   assert.doesNotMatch(one.slice(0, one.indexOf('class="set-piece-pro-plays"')), /set-piece-rival-references/,
     'el bloque rival ya no ocupa una fila de ancho completo sobre las jugadas');
+
+  const excludedSetPieceTypes = [
+    'falta_lateral_defensiva',
+    'falta_frontal_defensiva',
+    'falta_directa_defensiva',
+    'saque_banda_defensivo',
+    'corner_ofensivo',
+    'falta_lateral_ofensiva',
+    'otra_abp',
+  ];
+  excludedSetPieceTypes.forEach((type) => {
+    const markup = render([referencePlay('must-not-render', 'Referencia ajena', {
+      corner_taker: ['10 Lanzador'],
+      corner_target: ['9 Rematador'],
+    })], type);
+    assert.doesNotMatch(markup, /Referencias rival|set-piece-rival-references|data-source-play-id="must-not-render"/,
+      `${type} no renderiza referencias aunque estén disponibles`);
+    assert.match(markup, /data-has-rival-references="false"/);
+    assert.match(markup, /set-piece-print-play-body--field-only/,
+      `${type} recupera el layout sin columna ni espacio reservado`);
+    assert.doesNotMatch(markup, /set-piece-print-copy/,
+      `${type} no conserva wrapper, margen, padding ni altura de referencias`);
+  });
 
   for (const finisherCount of [2, 3, 4, 5, 6, 8]) {
     const finishers = Array.from({ length: finisherCount }, (_, index) => `${index + 2} Rematador Nombre Largo ${index + 1}`);
