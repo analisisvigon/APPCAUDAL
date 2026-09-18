@@ -1,4 +1,5 @@
 import { getPlayerDisplayName } from './playerDisplayName.js';
+import { normalizeSetPieceResponsibilities } from './setPieceResponsibilities.js';
 
 export const RIVAL_CORNER_REFERENCE_ROLES = Object.freeze([
   Object.freeze({ id: 'corner_taker', label: 'Lanzador', printLabel: 'Lanzador' }),
@@ -6,6 +7,18 @@ export const RIVAL_CORNER_REFERENCE_ROLES = Object.freeze([
   Object.freeze({ id: 'corner_second_ball', label: 'Rechace', printLabel: 'Rechace' }),
   Object.freeze({ id: 'corner_stay_back', label: 'Atrás', printLabel: 'Atrás' }),
 ]);
+
+export const RIVAL_CORNER_RESPONSIBILITY_PRINT_ROLE = Object.freeze({
+  off_lanzador_1: 'corner_taker',
+  off_lanzador_2: 'corner_taker',
+  off_rematador_1: 'corner_target',
+  off_rematador_2: 'corner_target',
+  off_rematador_3: 'corner_target',
+  off_rematador_4: 'corner_target',
+  off_rechace_1: 'corner_second_ball',
+  off_rechace_2: 'corner_second_ball',
+  off_se_queda: 'corner_stay_back',
+});
 
 const roleIds = new Set(RIVAL_CORNER_REFERENCE_ROLES.map((role) => role.id));
 const clean = (value) => String(value ?? '').trim();
@@ -99,15 +112,27 @@ export const buildRivalCornerReferencesPrintModel = ({ preAiAnalysis, rivalPlaye
   return plays
     .filter((play) => isRivalOffensiveCornerPlay(play) && play.includeRivalReferencesInPrint === true)
     .map((play) => {
+      const responsibilities = normalizeSetPieceResponsibilities(play.responsibilities);
       const references = normalizeRivalCornerReferences(play.rivalCornerReferences);
+      const canonicalPlayerIds = new Set(Object.keys(responsibilities));
+      const playerIdsByRole = new Map(RIVAL_CORNER_REFERENCE_ROLES.map((role) => [role.id, new Set()]));
+
+      Object.entries(responsibilities).forEach(([playerId, entry]) => {
+        const roleId = RIVAL_CORNER_RESPONSIBILITY_PRINT_ROLE[entry.responsibilityId];
+        if (roleId) playerIdsByRole.get(roleId)?.add(playerId);
+      });
+      Object.entries(references).forEach(([playerId, entry]) => {
+        if (canonicalPlayerIds.has(playerId)) return;
+        entry.roles.forEach((roleId) => playerIdsByRole.get(roleId)?.add(playerId));
+      });
+
       return {
         id: clean(play.id),
         name: clean(play.name) || 'Jugada',
         roles: RIVAL_CORNER_REFERENCE_ROLES.map((role) => ({
           ...role,
-          players: Object.entries(references)
-            .filter(([, entry]) => entry.roles.includes(role.id))
-            .map(([playerId]) => playersById.get(playerId))
+          players: [...(playerIdsByRole.get(role.id) || [])]
+            .map((playerId) => playersById.get(playerId))
             .filter(Boolean)
             .map(formatRivalCornerReferencePlayer)
             .filter(Boolean),

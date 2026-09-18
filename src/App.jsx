@@ -45,11 +45,9 @@ import {
   removeSetPieceResponsibility,
 } from './utils/setPieceResponsibilities';
 import {
-  getRivalCornerRoleIds,
   isRivalOffensiveCornerPlay,
   normalizeRivalCornerPlayExtension,
   normalizeRivalCornerReferences,
-  toggleRivalCornerReference,
 } from './utils/setPieceRivalCornerReferences';
 import { getSetPieceBadgePlacement, getSetPieceCaptureMarkerAnchor } from './utils/setPieceBadgePlacement';
 import { buildSetPieceCaptureResponsibilities } from './utils/setPieceCaptureResponsibilities';
@@ -11885,22 +11883,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         play.responsibilities,
         selectedFacingSystemsPlayer.playerId
       ),
-    }));
-  };
-  const toggleSelectedRivalCornerReference = (roleId) => {
-    if (
-      tacticalGamePhase !== 'set_piece'
-      || !isRivalOffensiveCornerPlay(selectedSetPiecePlay)
-      || !selectedFacingSystemsPlayer
-    ) return;
-    const playerId = getCanonicalRivalPlayerId(selectedFacingSystemsPlayer.player);
-    if (!playerId || playerId !== selectedFacingSystemsPlayer.playerId) return;
-    updateSetPiecePlay(selectedSetPiecePlay.id, (play) => ({
-      rivalCornerReferences: toggleRivalCornerReference(play.rivalCornerReferences, {
-        playerId,
-        positionKey: selectedFacingSystemsPlayer.positionKey,
-        roleId,
-      }),
     }));
   };
   const buildOffensiveInitialPlayerPositions = (situation, rivalSystem, caudalSystem, playStyle = 'combinative') => {
@@ -26055,10 +26037,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     const caudalRoles = safeArray(getFormationRoles(caudalSystem));
     const caudalLineup = safeArray(selectedMatch.preCaudalLineup);
     const selectedRivalResponsibilityId = setPieceVisibleResponsibilities[selectedFacingSystemsPlayer?.playerId]?.responsibilityId || '';
-    const selectedRivalCornerRoleIds = getRivalCornerRoleIds(
-      selectedSetPiecePlay?.rivalCornerReferences,
-      selectedFacingSystemsPlayer?.playerId
-    );
     const selectedRivalFeedback = setPieceResponsibilityFeedback
       && setPieceResponsibilityFeedback.playId === selectedSetPiecePlay?.id
       && setPieceResponsibilityFeedback?.playerId === selectedFacingSystemsPlayer?.playerId
@@ -26317,9 +26295,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                   feedback={selectedRivalFeedback}
                   onAssign={assignSelectedRivalSetPieceResponsibility}
                   onRemove={removeSelectedRivalSetPieceResponsibility}
-                  showCornerReferences={isRivalOffensiveCornerPlay(selectedSetPiecePlay)}
-                  cornerReferenceRoleIds={selectedRivalCornerRoleIds}
-                  onToggleCornerReference={toggleSelectedRivalCornerReference}
                 />
               ) : (
                 <p className="max-w-56 truncate text-[10px] font-black text-white">{displayPlayerName(selectedFacingSystemsPlayer.player)}</p>

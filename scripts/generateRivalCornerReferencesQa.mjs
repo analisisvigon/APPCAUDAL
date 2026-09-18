@@ -84,9 +84,7 @@ try {
         phase: 'offensive',
         responsibilityId: 'off_rematador_1',
         canAssign: true,
-        showCornerReferences: true,
-        cornerReferenceRoleIds: ['corner_taker', 'corner_target'],
-        onAssign() {}, onRemove() {}, onToggleCornerReference() {},
+        onAssign() {}, onRemove() {},
       })
     )
   ));

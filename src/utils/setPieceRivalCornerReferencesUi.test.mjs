@@ -5,12 +5,15 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 
 const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
-assert.match(appSource, /showCornerReferences=\{isRivalOffensiveCornerPlay\(selectedSetPiecePlay\)\}/,
-  'los controles solo se habilitan para offensive_set_piece + corner');
+const panelSource = fs.readFileSync(new URL('../components/tactical/SetPieceResponsibilityPanel.jsx', import.meta.url), 'utf8');
 assert.match(appSource, /tacticalGamePhase === 'set_piece' && isRivalOffensiveCornerPlay\(selectedSetPiecePlay\)[\s\S]*Incluir referencias rival en IMPRESIÓN/,
-  'el toggle aparece junto a las acciones solo en el contexto correcto');
+  'el único control adicional aparece solo en offensive_set_piece + corner');
 assert.match(appSource, /checked=\{selectedSetPiecePlay\.includeRivalReferencesInPrint === true\}/,
   'el toggle respeta false histórico sin default implícito');
+assert.doesNotMatch(appSource, /toggleSelectedRivalCornerReference|cornerReferenceRoleIds|onToggleCornerReference/,
+  'App ya no mantiene la asignación duplicada de referencias');
+assert.doesNotMatch(panelSource, /RIVAL_CORNER_REFERENCE_ROLES|Referencia en córner|type="checkbox"/,
+  'el panel conserva solo las responsabilidades ABP originales');
 
 const vite = await createServer({
   configFile: false,
@@ -21,46 +24,18 @@ const vite = await createServer({
 
 try {
   const { default: Panel } = await vite.ssrLoadModule('/src/components/tactical/SetPieceResponsibilityPanel.jsx');
-  const player = { id: '11111111-1111-4111-8111-111111111111', name: 'Pablo' };
-  const common = {
-    player,
+  const markup = renderToStaticMarkup(createElement(Panel, {
+    player: { id: '11111111-1111-4111-8111-111111111111', name: 'Pablo' },
     phase: 'offensive',
     canAssign: true,
-    responsibilityId: '',
+    responsibilityId: 'off_rematador_1',
     onAssign() {},
     onRemove() {},
-  };
-  const hidden = renderToStaticMarkup(createElement(Panel, common));
-  assert.doesNotMatch(hidden, /Referencia en córner|Lanzador para Pablo/, 'otras ABP no muestran controles de referencia');
-
-  const selected = ['corner_taker', 'corner_target'];
-  const visible = renderToStaticMarkup(createElement(Panel, {
-    ...common,
-    showCornerReferences: true,
-    cornerReferenceRoleIds: selected,
-    onToggleCornerReference() {},
   }));
-  assert.match(visible, /Referencia en córner/);
-  for (const label of ['Lanzador', 'Rematador', 'Rechace', 'Atrás']) {
-    assert.match(visible, new RegExp(`${label} para Pablo`), `${label} está disponible`);
-  }
-  assert.equal((visible.match(/type="checkbox"/g) || []).length, 4, 'son cuatro controles multi-selección');
-  assert.equal((visible.match(/checked=""/g) || []).length, 2, 'varios roles pueden estar activos a la vez');
-
-  const toggled = [];
-  const tree = Panel({
-    ...common,
-    showCornerReferences: true,
-    cornerReferenceRoleIds: selected,
-    onToggleCornerReference: (roleId) => toggled.push(roleId),
-  });
-  const descendants = (element) => !element || typeof element !== 'object'
-    ? []
-    : [element, ...[element.props?.children].flat(Infinity).flatMap(descendants)];
-  descendants(tree)
-    .filter((element) => element.type === 'input' && element.props.type === 'checkbox')
-    .forEach((input) => input.props.onChange());
-  assert.deepEqual(toggled, ['corner_taker', 'corner_target', 'corner_second_ball', 'corner_stay_back']);
+  assert.match(markup, /Responsabilidad ABP/);
+  assert.match(markup, /Actual: Rematador 1/);
+  assert.match(markup, /Asignar Lanzador 1 a Pablo/);
+  assert.doesNotMatch(markup, /Referencia en córner|type="checkbox"/);
 } finally {
   await vite.close();
 }

@@ -371,6 +371,35 @@ const getLineupBench = ({ match, players, starters, playersByName, playersById }
   return Array.from(byName.values());
 };
 
+export function MatchPrintSetPieceSheet({
+  match,
+  diagrams,
+  players,
+  rivalPlayers = [],
+  includeRivalCornerReferences = false,
+  title,
+  totalPlayCount,
+  startOrder,
+}) {
+  const rivalCornerReferences = useMemo(() => (
+    includeRivalCornerReferences
+      ? buildRivalCornerReferencesPrintModel({ preAiAnalysis: match?.preAiAnalysis, rivalPlayers })
+      : []
+  ), [includeRivalCornerReferences, match?.preAiAnalysis, rivalPlayers]);
+
+  return (
+    <SetPieceDiagramPrintSheet
+      match={match}
+      title={title}
+      diagrams={diagrams}
+      players={players}
+      totalPlayCount={totalPlayCount}
+      startOrder={startOrder}
+      rivalCornerReferences={rivalCornerReferences}
+    />
+  );
+}
+
 export default function MatchPrintTab({
   match,
   matches = [],
@@ -715,11 +744,6 @@ export default function MatchPrintTab({
     availablePlayers: responsibilityPlayers,
     allPlayers: players,
   }), [matchResponsibilities, responsibilityPlayers, players]);
-  const rivalCornerReferences = useMemo(() => buildRivalCornerReferencesPrintModel({
-    preAiAnalysis: match?.preAiAnalysis,
-    rivalPlayers,
-  }), [match?.preAiAnalysis, rivalPlayers]);
-
   const professionalSetPieceSuggestions = useMemo(() => {
     const suggestions = [];
     const add = (text, source) => {
@@ -1836,7 +1860,7 @@ export default function MatchPrintTab({
     }
     if (page.id === 'defensive') {
       return chunkDiagrams(dossierContent.defensiveDiagrams).map((diagrams, index) => (
-        <SetPieceDiagramPrintSheet key={`defensive-dossier-${index}`} match={match} title="ABP defensiva" diagrams={diagrams} players={players} totalPlayCount={dossierContent.defensiveDiagrams.length} startOrder={index * 2 + 1} rivalCornerReferences={diagrams.some((diagram) => diagram.tipo === 'corner_defensivo') ? rivalCornerReferences : []} />
+        <MatchPrintSetPieceSheet key={`defensive-dossier-${index}`} match={match} title="ABP defensiva" diagrams={diagrams} players={players} rivalPlayers={rivalPlayers} totalPlayCount={dossierContent.defensiveDiagrams.length} startOrder={index * 2 + 1} includeRivalCornerReferences={diagrams.some((diagram) => diagram.tipo === 'corner_defensivo')} />
       ));
     }
     if (page.id === 'kickoff') {
@@ -2253,15 +2277,16 @@ export default function MatchPrintTab({
           ))
         ) : (
           chunkDiagrams(getPrintDiagrams('defensive')).map((diagrams, index) => (
-            <SetPieceDiagramPrintSheet
+            <MatchPrintSetPieceSheet
               key={`defensive-current-${index}`}
               match={match}
               title={defensiveSetPieceTypes.find((type) => type.id === defensiveType)?.label || 'ABP defensiva'}
               diagrams={diagrams}
               players={players}
+              rivalPlayers={rivalPlayers}
               totalPlayCount={getPrintDiagrams('defensive').length}
               startOrder={index * 2 + 1}
-              rivalCornerReferences={defensiveType === 'corner_defensivo' ? rivalCornerReferences : []}
+              includeRivalCornerReferences={defensiveType === 'corner_defensivo'}
             />
           ))
         )}
