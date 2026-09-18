@@ -79,7 +79,8 @@ try {
   const enabled = render(true);
   assert.match(enabled, /aria-label="Referencias rival"/, 'el puente MatchPrintTab crea el bloque');
   assert.match(enabled, /data-source-play-id="58031594-7427-42c2-b62d-d833312397e1"/);
-  assert.match(enabled, /Córner Covadonga/);
+  assert.doesNotMatch(enabled, /Córner Covadonga/,
+    'el nombre real permanece almacenado pero no se imprime cuando solo hay una jugada rival');
   assert.match(enabled, /<dt>Lanzador<\/dt><dd>1 Jugador A<\/dd>/);
   assert.match(enabled, /<dt>Rematadores<\/dt><dd>2 Jugador B · 3 Jugador C · 4 Jugador D · 5 Jugador E<\/dd>/);
   assert.match(enabled, /<dt>Rechace<\/dt><dd>—<\/dd>/);

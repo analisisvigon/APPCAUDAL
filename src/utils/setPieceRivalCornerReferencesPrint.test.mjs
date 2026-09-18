@@ -49,7 +49,7 @@ try {
   })]);
   assert.match(one, /aria-label="Referencias rival"/);
   assert.match(one, /data-source-play-id="rival-play-1"/);
-  assert.match(one, /Córner corto/);
+  assert.doesNotMatch(one, /Córner corto/, 'una única jugada conserva su nombre en datos pero no lo imprime');
   assert.match(one, /10 Pablo/);
   assert.match(one, /5 Diego · 9 Marcos/);
   assert.match(one, />Luis</, 'sin dorsal muestra solo el nombre');
@@ -64,7 +64,7 @@ try {
   assert.doesNotMatch(one.slice(0, one.indexOf('class="set-piece-pro-plays"')), /set-piece-rival-references/,
     'el bloque rival ya no ocupa una fila de ancho completo sobre las jugadas');
 
-  for (const finisherCount of [2, 3, 4, 5, 6]) {
+  for (const finisherCount of [2, 3, 4, 5, 6, 8]) {
     const finishers = Array.from({ length: finisherCount }, (_, index) => `${index + 2} Rematador Nombre Largo ${index + 1}`);
     const markup = render([referencePlay(`finishers-${finisherCount}`, `Rival con ${finisherCount} rematadores`, {
       corner_taker: ['10 Lanzador Principal'],
@@ -75,6 +75,8 @@ try {
     finishers.forEach((name) => assert.match(markup, new RegExp(name)));
     assert.equal((markup.match(/class="set-piece-rival-references"/g) || []).length, 1,
       `${finisherCount} rematadores permanecen en un único bloque auxiliar compacto`);
+    assert.doesNotMatch(markup, new RegExp(`Rival con ${finisherCount} rematadores`),
+      'el nombre de una única jugada no se imprime aunque tenga muchos rematadores');
   }
 
   for (const count of [1, 2, 3]) {
@@ -90,10 +92,13 @@ try {
     ));
     const markup = render(plays);
     assert.equal((markup.match(/data-source-play-id=/g) || []).length, count, `${count} jugada(s) se representan sin fusionarse`);
+    assert.equal((markup.match(/<h2>Referencias rival<\/h2>/g) || []).length, 1,
+      `${count} jugada(s) mantienen un único encabezado principal`);
     assert.match(markup, new RegExp(`data-count="${count}"`));
     plays.forEach((play) => {
       assert.match(markup, new RegExp(play.id));
-      assert.match(markup, new RegExp(play.name));
+      if (count === 1) assert.doesNotMatch(markup, new RegExp(play.name));
+      else assert.match(markup, new RegExp(play.name));
     });
   }
 } finally {
@@ -107,5 +112,11 @@ assert.match(printCss, /\.set-piece-rival-references\s*\{[\s\S]*?border-top:/,
   'el bloque compacto se separa visualmente dentro de la columna auxiliar');
 assert.match(printCss, /\.set-piece-rival-reference-plays\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)/,
   'varias jugadas rivales se apilan en la columna auxiliar estrecha');
+assert.match(printCss, /\.set-piece-rival-reference-plays dl > div\s*\{[\s\S]*?grid-template-columns:\s*19mm minmax\(0, 1fr\)/,
+  'la etiqueta y los valores conservan columnas separadas para alinear las continuaciones');
+assert.match(printCss, /\.set-piece-rival-reference-plays dd\s*\{[\s\S]*?overflow-wrap:\s*break-word;[\s\S]*?white-space:\s*normal;[\s\S]*?word-break:\s*normal;/,
+  'los jugadores envuelven naturalmente dentro de la celda de valores');
+assert.doesNotMatch(printCss, /\.set-piece-rival-references[^}]*justify-content:\s*space-between/,
+  'el bloque rival no redistribuye artificialmente el espacio vertical');
 
 console.log('setPieceRivalCornerReferencesPrint tests passed');

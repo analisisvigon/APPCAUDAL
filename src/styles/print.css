@@ -1385,7 +1385,9 @@
   min-width: 0;
   margin: 0;
   font-weight: 700;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  white-space: normal;
+  word-break: normal;
 }
 
 .set-piece-pro-plays {

@@ -21,13 +21,14 @@ function PrintDetail({ label, value, className = '' }) {
 
 function RivalCornerReferences({ plays }) {
   if (!plays.length) return null;
+  const showPlayNames = plays.length > 1;
   return (
     <section className="set-piece-rival-references" aria-label="Referencias rival">
       <h2>Referencias rival</h2>
       <div className="set-piece-rival-reference-plays" data-count={plays.length}>
         {plays.map((play) => (
           <div key={play.id} data-source-play-id={play.id}>
-            <h3>{play.name}</h3>
+            {showPlayNames ? <h3>{play.name}</h3> : null}
             <dl>
               {play.roles.map((role) => (
                 <div key={role.id}>

@@ -110,22 +110,22 @@ try {
   await screenshot('02-toggle-impresion', toggle, { width: 980, height: 320 });
 
   const onePlay = [referencePlay('rival-corner-1', 'Córner corto', {
-    corner_taker: ['10 Pablo'],
-    corner_target: ['5 Diego', '9 Marcos', '4 Pedro'],
-    corner_second_ball: ['8 Luis'],
-    corner_stay_back: ['2 Juan', '3 David'],
+    corner_taker: ['7 Alex Arias'],
+    corner_target: ['21 Xurde', '8 Tineo', '5 Trabanco', '9 Fassani', '4 Madrigal', '10 M. Secades'],
+    corner_second_ball: ['17 C. Cid'],
+    corner_stay_back: ['18 D. Ruiz', '11 Nino'],
   })];
   const twoPlays = [...onePlay, referencePlay('rival-corner-2', 'Córner cerrado', {
-    corner_taker: ['7 Mario'],
-    corner_target: ['5 Diego', '4 Pedro'],
-    corner_second_ball: ['8 Luis'],
-    corner_stay_back: ['2 Juan', '3 David'],
+    corner_taker: ['12 Alejandro Fernández', '7 Mario García'],
+    corner_target: ['5 Diego Álvarez', '4 Pedro González', '11 Álvaro Fernández', '18 Martín Rodríguez', '20 Sergio Menéndez', '21 Ignacio García'],
+    corner_second_ball: ['8 Luis Martínez', '6 Óscar Álvarez'],
+    corner_stay_back: ['2 Juan Pérez', '3 David Alonso'],
   })];
   const threePlays = [...twoPlays, referencePlay('rival-corner-3', 'Bloqueo primer palo', {
     corner_taker: [],
-    corner_target: ['4 Pedro González', '11 Álvaro Fernández', '18 Martín Rodríguez', '20 Sergio Menéndez', '21 Ignacio García', '23 Alejandro Suárez'],
-    corner_second_ball: ['6 Óscar Álvarez', '8 Luis Martínez'],
-    corner_stay_back: ['2 Juan Pérez', '3 David Alonso', '14 Hugo Iglesias'],
+    corner_target: ['4 Pedro González', '11 Álvaro Fernández', '18 Martín Rodríguez', '20 Sergio Menéndez', '21 Ignacio García', '23 Alejandro Suárez', '25 Maximiliano Rodríguez', '27 Francisco Javier Menéndez'],
+    corner_second_ball: ['6 Óscar Álvarez', '8 Luis Martínez', '16 Roberto Fernández'],
+    corner_stay_back: ['2 Juan Pérez', '3 David Alonso', '14 Hugo Iglesias', '22 Miguel Ángel Suárez'],
   })];
   const renderSheet = (references) => renderToStaticMarkup(createElement('div', { className: 'p-4' }, createElement(Sheet, {
     match, title: 'Córner defensivo', diagrams: [diagram], players: [], rivalCornerReferences: references,
