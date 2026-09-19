@@ -14,9 +14,8 @@ export default function TacticalCaptureSidebar({
       data-capture-phase={identity.key}
       aria-label={identity.accessibleLabel}
     >
-      <span className="tactical-capture-watermark" aria-hidden="true">{identity.mark}</span>
       <section className="tactical-capture-phase-block">
-        <p className="tactical-capture-eyebrow">{presentation.phase || identity.accessibleLabel}</p>
+        <p className="tactical-capture-eyebrow">FASE DEL JUEGO</p>
         <h2 className="tactical-capture-phase">{identity.macroLabel}</h2>
         {identity.directionLabel ? (
           <p className="tactical-capture-direction" aria-label={identity.accessibleLabel}>

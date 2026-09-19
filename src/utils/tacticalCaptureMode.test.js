@@ -24,7 +24,7 @@ assert.match(captureViewSource, /createPortal\(/, 'captura cubre la navegación 
 assert.match(captureViewSource, /data-tactical-capture="true"/);
 assert.match(captureViewSource, /renderFacingSystemsOverview\(true\)/, 'captura reutiliza exactamente el renderer existente');
 assert.match(captureViewSource, /<TacticalCaptureSidebar[\s\S]*?phase=\{tacticalGamePhase\}[\s\S]*?transitionType=\{transitionType\}[\s\S]*?presentation=\{capturePresentation\}/);
-assert.match(sidebarSource, /presentation\.phase/);
+assert.doesNotMatch(sidebarSource, /presentation\.phase/, 'el supratítulo no depende de la macrofase canónica');
 assert.match(sidebarSource, /presentation\.situation/);
 assert.match(sidebarSource, /presentation\.playStyle/);
 assert.match(sidebarSource, /presentation\.description/);
@@ -66,7 +66,6 @@ assert.equal(buildTacticalCapturePresentation({}).playStyle, '', 'una jugada sin
 assert.deepEqual(getTacticalCaptureVisualIdentity({ phase: 'defensive' }), {
   key: 'defensive',
   macroLabel: 'DEFENSA',
-  mark: 'DEF',
   accessibleLabel: 'Fase defensiva',
 });
 assert.equal(getTacticalCaptureVisualIdentity({ phase: 'offensive' }).macroLabel, 'ATAQUE');
@@ -77,7 +76,6 @@ assert.deepEqual(getTacticalCaptureVisualIdentity({
   key: 'transition-defense-attack',
   macroLabel: 'TRANSICIÓN',
   directionLabel: 'DEF → ATQ',
-  mark: 'D→A',
   accessibleLabel: 'Transición defensa a ataque',
 });
 assert.deepEqual(getTacticalCaptureVisualIdentity({
@@ -87,11 +85,12 @@ assert.deepEqual(getTacticalCaptureVisualIdentity({
   key: 'transition-attack-defense',
   macroLabel: 'TRANSICIÓN',
   directionLabel: 'ATQ → DEF',
-  mark: 'A→D',
   accessibleLabel: 'Transición ataque a defensa',
 });
 assert.match(sidebarSource, /aria-label=\{identity\.accessibleLabel\}/, 'las abreviaturas mantienen un nombre completo accesible');
 assert.match(sidebarSource, /data-capture-phase=\{identity\.key\}/, 'cada macrofase expone una identidad visual estable');
+assert.match(sidebarSource, /tactical-capture-eyebrow">FASE DEL JUEGO</, 'todas las macrofases comparten el mismo supratítulo');
+assert.doesNotMatch(sidebarSource, /tactical-capture-watermark|identity\.mark/, 'el panel no incluye una marca tipográfica decorativa');
 assert.match(appSource, /transitionBehaviourOptions\[transitionType\]\?\.find[\s\S]*?transitionFieldZoneOptions\.find/, 'la transición muestra comportamiento y zona reales como momento');
 
 assert.equal(buildTacticalCapturePresentation({
@@ -173,12 +172,18 @@ assert.match(cssSource, /\.tactical-capture-board-shell\s*\{[\s\S]*container-typ
 assert.match(cssSource, /flex-basis: min\(896px, calc\(\(100dvh - 32px\) \* 0\.833333\)\);/, 'el campo usa toda la altura salvo los dos márgenes de 16 px');
 assert.match(cssSource, /width: min\(100cqw, calc\(100cqh \* 0\.833333\)\)/, 'el campo conserva su proporción usando el espacio real del contenedor');
 assert.match(cssSource, /\.tactical-capture-sidebar\s*\{[\s\S]*flex: 1 1 0;[\s\S]*align-self: flex-start;[\s\S]*justify-content: flex-start;/, 'fase y descripción comparten un panel compacto');
-assert.match(cssSource, /\.tactical-capture-phase\s*\{[\s\S]*font-size: clamp\(50px, 5\.8vw, 104px\)/, 'la macrofase domina la jerarquía de proyección');
+assert.match(cssSource, /\.tactical-capture-phase\s*\{[\s\S]*font-size: clamp\(44px, 5\.1vw, 92px\)/, 'la macrofase mantiene la jerarquía con una reducción aproximada del 12 %');
 assert.match(cssSource, /\.tactical-capture-direction\s*\{[\s\S]*border-left:[\s\S]*font-size: clamp\(34px, 3\.8vw, 66px\)/, 'las transiciones tienen dirección textual y señal gráfica');
-['defensive', 'offensive', 'transition-defense-attack', 'transition-attack-defense'].forEach((identity) => {
-  assert.match(cssSource, new RegExp(`data-capture-phase='${identity}'`), `${identity}: identidad cromática definida`);
+assert.match(cssSource, /data-capture-phase\^='transition-'[\s\S]*?\.tactical-capture-situation[\s\S]*?white-space: normal;/, 'los comportamientos largos de transición se muestran completos');
+[
+  ['defensive', '56, 189, 248'],
+  ['offensive', '251, 191, 36'],
+  ['transition-defense-attack', '52, 211, 153'],
+  ['transition-attack-defense', '251, 113, 133'],
+].forEach(([identity, accent]) => {
+  assert.match(cssSource, new RegExp(`data-capture-phase='${identity}'[\\s\\S]*?--capture-accent-rgb: ${accent}`), `${identity}: conserva su acento cromático aprobado`);
 });
-assert.match(cssSource, /\.tactical-capture-watermark\s*\{/, 'la identidad no depende solo del color');
+assert.doesNotMatch(cssSource, /\.tactical-capture-watermark\s*\{/, 'la marca tipográfica gigante se elimina también de los estilos');
 assert.match(cssSource, /\.tactical-capture-description\s*\{[\s\S]*font-size: clamp\(18px,[\s\S]*line-height: 1\.48;/, 'la descripción mantiene tamaño de presentación');
 assert.match(cssSource, /\.tactical-capture-description\s*\{[\s\S]*overflow-wrap: anywhere;[\s\S]*white-space: pre-wrap;/, 'captura conserva saltos manuales y mantiene wrap automático');
 assert.match(cssSource, /\.tactical-capture-exit\s*\{[\s\S]*position: fixed;[\s\S]*right: 7px;[\s\S]*writing-mode: vertical-rl;/, 'Salir queda en el margen exterior de la composición');

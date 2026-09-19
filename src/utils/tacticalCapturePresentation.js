@@ -16,27 +16,23 @@ const TACTICAL_CAPTURE_VISUAL_IDENTITIES = {
   defensive: {
     key: 'defensive',
     macroLabel: 'DEFENSA',
-    mark: 'DEF',
     accessibleLabel: 'Fase defensiva',
   },
   offensive: {
     key: 'offensive',
     macroLabel: 'ATAQUE',
-    mark: 'ATQ',
     accessibleLabel: 'Fase ofensiva',
   },
   transitionDefenseAttack: {
     key: 'transition-defense-attack',
     macroLabel: 'TRANSICIÓN',
     directionLabel: 'DEF → ATQ',
-    mark: 'D→A',
     accessibleLabel: 'Transición defensa a ataque',
   },
   transitionAttackDefense: {
     key: 'transition-attack-defense',
     macroLabel: 'TRANSICIÓN',
     directionLabel: 'ATQ → DEF',
-    mark: 'A→D',
     accessibleLabel: 'Transición ataque a defensa',
   },
 };
@@ -51,7 +47,6 @@ export const getTacticalCaptureVisualIdentity = ({ phase = '', transitionType = 
   return {
     key: 'neutral',
     macroLabel: 'FASE DE JUEGO',
-    mark: 'FASE',
     accessibleLabel: 'Fase del juego',
   };
 };

@@ -9,7 +9,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
-const outputDirectory = join(repoRoot, 'artifacts', 'tactical-capture-visual-phases');
+const outputDirectory = join(repoRoot, 'artifacts', 'tactical-capture-final-polish');
 const temporaryDirectory = await mkdtemp(join(tmpdir(), 'appcaudal-tactical-capture-qa-'));
 const browserCandidates = [
   process.env.CHROME_PATH,
@@ -87,28 +87,24 @@ const pitch = `
 
 const cases = [
   {
-    file: 'A-defensa-bloque-alto', phase: 'defensive', phaseLabel: 'Fase defensiva', situation: 'Bloque alto',
-    description: 'Saltar sobre primera construcción. Extremos orientan hacia fuera y el pivote protege el pase interior.',
+    file: 'A-defensa-bloque-medio', phase: 'defensive', phaseLabel: 'Fase defensiva', situation: 'Bloque medio',
+    description: 'Problema con balones a la espalda. Trabanco más bajo. Espacio al girarse.',
   },
   {
-    file: 'B-defensa-bloque-bajo', phase: 'defensive', phaseLabel: 'Fase defensiva', situation: 'Bloque bajo',
-    description: 'Cerrar carril central, defender el área con dos líneas juntas y preparar la salida tras recuperación.',
+    file: 'B-ataque-creacion-juego-combinativo', phase: 'offensive', phaseLabel: 'Fase ofensiva', situation: 'Creación', playStyle: 'Juego combinativo',
+    description: 'Secades entre central y lateral. Fijar por dentro y atacar el intervalo cuando el rival cierre el centro.',
   },
   {
-    file: 'C-ataque-inicio', phase: 'offensive', phaseLabel: 'Fase ofensiva', situation: 'Inicio', playStyle: 'Juego combinativo',
-    description: 'Atraer la primera presión para encontrar al hombre libre a la espalda de la primera línea.',
+    file: 'C-ataque-creacion-juego-directo', phase: 'offensive', phaseLabel: 'Fase ofensiva', situation: 'Creación', playStyle: 'Juego directo',
+    description: 'Buscar al delantero de referencia y preparar las cercanías para disputar la segunda jugada.',
   },
   {
-    file: 'D-ataque-creacion', phase: 'offensive', phaseLabel: 'Fase ofensiva', situation: 'Creación', playStyle: 'Juego combinativo',
-    description: 'Fijar por dentro, dar amplitud con laterales y atacar el intervalo cuando el rival cierre el centro.',
+    file: 'D-transicion-ataque-defensa', phase: 'transition', transitionType: 'defensive_transition', phaseLabel: 'Transiciones', situation: 'Presión tras pérdida · Campo defensivo',
+    description: 'Laterales muy altos con huecos a la espalda. Cerrar al poseedor y proteger el primer pase vertical.',
   },
   {
     file: 'E-transicion-defensa-ataque', phase: 'transition', transitionType: 'offensive_transition', phaseLabel: 'Transiciones', situation: 'Ataque rápido · Campo defensivo',
     description: 'Primer pase hacia delante y ocupación inmediata de los tres carriles para superar la reorganización rival.',
-  },
-  {
-    file: 'F-transicion-ataque-defensa', phase: 'transition', transitionType: 'defensive_transition', phaseLabel: 'Transiciones', situation: 'Presión tras pérdida · Campo ofensivo',
-    description: 'Cerrar al poseedor y las líneas cercanas durante los primeros segundos; si supera la presión, replegar.',
   },
 ];
 
@@ -142,7 +138,7 @@ try {
 
   const responsiveCases = [
     { file: 'QA-1440x900-defensa', source: cases[0], width: 1440, height: 900 },
-    { file: 'QA-1366x768-ataque', source: cases[3], width: 1366, height: 768 },
+    { file: 'QA-1366x768-ataque', source: cases[1], width: 1366, height: 768 },
     { file: 'QA-768x1024-transicion', source: cases[4], width: 768, height: 1024 },
   ];
   for (const qaCase of responsiveCases) {
