@@ -804,46 +804,60 @@ table {
 
 .tactical-capture-eyebrow,
 .tactical-capture-description-title {
-  color: #60a5fa;
-  font-size: clamp(8px, 0.9vh, 10px);
+  color: rgb(var(--capture-accent-rgb));
+  font-size: clamp(10px, 1.15vh, 13px);
   font-weight: 900;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.22em;
   line-height: 1;
   text-transform: uppercase;
 }
 
 .tactical-capture-phase {
-  margin-top: 3px;
+  max-width: 100%;
+  margin-top: clamp(8px, 1.3vh, 14px);
   color: #f8fafc;
-  font-size: clamp(22px, 3.3vh, 36px);
+  font-size: clamp(50px, 5.8vw, 104px);
   font-weight: 950;
-  letter-spacing: -0.025em;
-  line-height: 0.98;
+  letter-spacing: -0.065em;
+  line-height: 0.82;
+  text-transform: uppercase;
+}
+
+.tactical-capture-direction {
+  width: fit-content;
+  margin-top: clamp(18px, 2.5vh, 28px);
+  border-left: clamp(5px, 0.45vw, 8px) solid rgb(var(--capture-accent-rgb));
+  padding: 2px 0 3px clamp(13px, 1.4vw, 22px);
+  color: rgb(var(--capture-accent-rgb));
+  font-size: clamp(34px, 3.8vw, 66px);
+  font-weight: 950;
+  letter-spacing: -0.045em;
+  line-height: 0.9;
   text-transform: uppercase;
 }
 
 .tactical-capture-situation {
-  margin-top: 3px;
+  margin-top: clamp(16px, 2.3vh, 26px);
   min-width: 0;
   overflow: hidden;
-  color: #93c5fd;
-  font-size: clamp(11px, 1.45vh, 15px);
+  color: #f8fafc;
+  font-size: clamp(21px, 1.75vw, 34px);
   font-weight: 900;
-  letter-spacing: 0.1em;
-  line-height: 1.1;
+  letter-spacing: 0.055em;
+  line-height: 1.04;
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
 .tactical-capture-play-style {
-  margin-top: 6px;
+  margin-top: clamp(8px, 1.3vh, 14px);
   min-width: 0;
   overflow: hidden;
-  color: rgba(203, 213, 225, 0.72);
-  font-size: clamp(9px, 1.05vh, 12px);
+  color: rgba(226, 232, 240, 0.72);
+  font-size: clamp(11px, 1.15vw, 17px);
   font-weight: 800;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   line-height: 1.1;
   text-overflow: ellipsis;
   text-transform: uppercase;
@@ -913,6 +927,9 @@ table {
 }
 
 .tactical-capture-sidebar {
+  --capture-accent-rgb: 96, 165, 250;
+  --capture-panel-glow-rgb: 30, 64, 175;
+  position: relative;
   display: flex;
   width: auto;
   min-width: 0;
@@ -924,22 +941,75 @@ table {
   justify-content: flex-start;
   overflow: hidden;
   padding: clamp(22px, 2.2vw, 38px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(var(--capture-accent-rgb), 0.38);
   border-radius: clamp(16px, 2vh, 24px);
   background:
-    linear-gradient(145deg, rgba(15, 31, 55, 0.94), rgba(8, 19, 39, 0.96));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+    radial-gradient(circle at 88% 8%, rgba(var(--capture-panel-glow-rgb), 0.27), transparent 37%),
+    linear-gradient(145deg, rgba(15, 31, 55, 0.97), rgba(5, 14, 31, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.055),
+    inset 0 0 48px rgba(var(--capture-panel-glow-rgb), 0.07),
+    0 22px 54px rgba(0, 0, 0, 0.28);
+}
+
+.tactical-capture-sidebar::before {
+  position: absolute;
+  top: 0;
+  right: clamp(24px, 3vw, 52px);
+  left: clamp(24px, 3vw, 52px);
+  height: clamp(5px, 0.65vh, 8px);
+  border-radius: 0 0 999px 999px;
+  background: rgb(var(--capture-accent-rgb));
+  box-shadow: 0 0 24px rgba(var(--capture-accent-rgb), 0.64);
+  content: '';
+}
+
+.tactical-capture-sidebar[data-capture-phase='defensive'] {
+  --capture-accent-rgb: 56, 189, 248;
+  --capture-panel-glow-rgb: 14, 116, 144;
+}
+
+.tactical-capture-sidebar[data-capture-phase='offensive'] {
+  --capture-accent-rgb: 251, 191, 36;
+  --capture-panel-glow-rgb: 180, 83, 9;
+}
+
+.tactical-capture-sidebar[data-capture-phase='transition-defense-attack'] {
+  --capture-accent-rgb: 52, 211, 153;
+  --capture-panel-glow-rgb: 5, 150, 105;
+}
+
+.tactical-capture-sidebar[data-capture-phase='transition-attack-defense'] {
+  --capture-accent-rgb: 251, 113, 133;
+  --capture-panel-glow-rgb: 190, 24, 93;
+}
+
+.tactical-capture-watermark {
+  position: absolute;
+  right: clamp(-18px, -1vw, -6px);
+  bottom: clamp(-10px, -0.7vw, -2px);
+  max-width: 84%;
+  overflow: hidden;
+  color: rgba(var(--capture-accent-rgb), 0.07);
+  font-size: clamp(92px, 10vw, 180px);
+  font-weight: 950;
+  letter-spacing: -0.09em;
+  line-height: 0.72;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 .tactical-capture-phase-block,
 .tactical-capture-description-block {
+  position: relative;
+  z-index: 1;
   min-width: 0;
 }
 
 .tactical-capture-divider {
-  height: 1px;
+  height: 2px;
   margin: clamp(22px, 3vh, 34px) 0;
-  background: linear-gradient(90deg, rgba(96, 165, 250, 0.5), rgba(255, 255, 255, 0.08));
+  background: linear-gradient(90deg, rgba(var(--capture-accent-rgb), 0.9), rgba(var(--capture-accent-rgb), 0.18) 62%, transparent);
 }
 
 .tactical-capture-description {
@@ -981,9 +1051,32 @@ table {
 
   .tactical-capture-sidebar {
     width: 100%;
-    max-height: 28dvh;
+    max-height: 32dvh;
     justify-content: flex-start;
-    padding: 12px 14px;
+    padding: 16px 18px;
+  }
+
+  .tactical-capture-phase {
+    margin-top: 5px;
+    font-size: clamp(34px, 10vw, 58px);
+  }
+
+  .tactical-capture-direction {
+    margin-top: 10px;
+    font-size: clamp(27px, 8vw, 42px);
+  }
+
+  .tactical-capture-situation {
+    margin-top: 9px;
+    overflow: visible;
+    font-size: clamp(15px, 4.2vw, 22px);
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .tactical-capture-play-style {
+    margin-top: 5px;
+    font-size: 10px;
   }
 
   .tactical-capture-description {

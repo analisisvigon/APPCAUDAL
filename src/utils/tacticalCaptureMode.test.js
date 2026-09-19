@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildTacticalCapturePresentation } from './tacticalCapturePresentation.js';
+import {
+  buildTacticalCapturePresentation,
+  getTacticalCaptureVisualIdentity,
+} from './tacticalCapturePresentation.js';
 import {
   createTacticalBoardViewState,
   updateTacticalBoardViewState,
@@ -8,6 +11,7 @@ import {
 
 const appSource = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../index.css', import.meta.url), 'utf8');
+const sidebarSource = readFileSync(new URL('../components/tactical/TacticalCaptureSidebar.jsx', import.meta.url), 'utf8');
 const captureStart = appSource.indexOf("if (tacticalCaptureMode && typeof document !== 'undefined')");
 const normalViewStart = appSource.indexOf("<div className={isPreTalkMode ? 'space-y-4' : 'space-y-5'}>", captureStart);
 const captureViewSource = appSource.slice(captureStart, normalViewStart);
@@ -19,16 +23,17 @@ assert.ok(captureStart > 0 && normalViewStart > captureStart, 'existe una única
 assert.match(captureViewSource, /createPortal\(/, 'captura cubre la navegación general');
 assert.match(captureViewSource, /data-tactical-capture="true"/);
 assert.match(captureViewSource, /renderFacingSystemsOverview\(true\)/, 'captura reutiliza exactamente el renderer existente');
-assert.match(captureViewSource, /capturePresentation\.phase/);
-assert.match(captureViewSource, /capturePresentation\.situation/);
-assert.match(captureViewSource, /capturePresentation\.playStyle/);
-assert.match(captureViewSource, /capturePresentation\.description/);
-assert.match(captureViewSource, /tactical-capture-sidebar/);
-assert.match(captureViewSource, /tactical-capture-phase-block/);
-assert.match(captureViewSource, /tactical-capture-description-block/);
+assert.match(captureViewSource, /<TacticalCaptureSidebar[\s\S]*?phase=\{tacticalGamePhase\}[\s\S]*?transitionType=\{transitionType\}[\s\S]*?presentation=\{capturePresentation\}/);
+assert.match(sidebarSource, /presentation\.phase/);
+assert.match(sidebarSource, /presentation\.situation/);
+assert.match(sidebarSource, /presentation\.playStyle/);
+assert.match(sidebarSource, /presentation\.description/);
+assert.match(sidebarSource, /tactical-capture-sidebar/);
+assert.match(sidebarSource, /tactical-capture-phase-block/);
+assert.match(sidebarSource, /tactical-capture-description-block/);
 assert.match(captureViewSource, />\s*Salir de captura\s*</);
 assert.doesNotMatch(captureViewSource, /caudalSystem|rivalSystem|selectedTacticalPlay\.name/, 'la composición no muestra sistemas ni nombres técnicos de jugada');
-assert.doesNotMatch(captureViewSource, /<header|tactical-capture-context/, 'no existe una cabecera superior que reste altura al campo');
+assert.doesNotMatch(`${captureViewSource}\n${sidebarSource}`, /<header|tactical-capture-context/, 'no existe una cabecera superior que reste altura al campo');
 assert.doesNotMatch(captureViewSource, /playLabel|Jugada\s*[1-9]/i, 'captura nunca presenta una numeración de jugada');
 assert.doesNotMatch(captureViewSource, /Sin descripción|textarea|selectDefensiveSituation|createTacticalPlayForEditing|saveActiveTacticalWorkspace/);
 
@@ -57,6 +62,37 @@ assert.deepEqual(buildTacticalCapturePresentation({
 }, 'la presentación ofensiva incluye el tipo de juego canónico');
 assert.equal(buildTacticalCapturePresentation({ playStyleLabel: 'Juego directo' }).playStyle, 'Juego directo');
 assert.equal(buildTacticalCapturePresentation({}).playStyle, '', 'una jugada sin tipo no genera una línea vacía');
+
+assert.deepEqual(getTacticalCaptureVisualIdentity({ phase: 'defensive' }), {
+  key: 'defensive',
+  macroLabel: 'DEFENSA',
+  mark: 'DEF',
+  accessibleLabel: 'Fase defensiva',
+});
+assert.equal(getTacticalCaptureVisualIdentity({ phase: 'offensive' }).macroLabel, 'ATAQUE');
+assert.deepEqual(getTacticalCaptureVisualIdentity({
+  phase: 'transition',
+  transitionType: 'offensive_transition',
+}), {
+  key: 'transition-defense-attack',
+  macroLabel: 'TRANSICIÓN',
+  directionLabel: 'DEF → ATQ',
+  mark: 'D→A',
+  accessibleLabel: 'Transición defensa a ataque',
+});
+assert.deepEqual(getTacticalCaptureVisualIdentity({
+  phase: 'transition',
+  transitionType: 'defensive_transition',
+}), {
+  key: 'transition-attack-defense',
+  macroLabel: 'TRANSICIÓN',
+  directionLabel: 'ATQ → DEF',
+  mark: 'A→D',
+  accessibleLabel: 'Transición ataque a defensa',
+});
+assert.match(sidebarSource, /aria-label=\{identity\.accessibleLabel\}/, 'las abreviaturas mantienen un nombre completo accesible');
+assert.match(sidebarSource, /data-capture-phase=\{identity\.key\}/, 'cada macrofase expone una identidad visual estable');
+assert.match(appSource, /transitionBehaviourOptions\[transitionType\]\?\.find[\s\S]*?transitionFieldZoneOptions\.find/, 'la transición muestra comportamiento y zona reales como momento');
 
 assert.equal(buildTacticalCapturePresentation({
   phaseLabel: 'Fase defensiva',
@@ -137,6 +173,12 @@ assert.match(cssSource, /\.tactical-capture-board-shell\s*\{[\s\S]*container-typ
 assert.match(cssSource, /flex-basis: min\(896px, calc\(\(100dvh - 32px\) \* 0\.833333\)\);/, 'el campo usa toda la altura salvo los dos márgenes de 16 px');
 assert.match(cssSource, /width: min\(100cqw, calc\(100cqh \* 0\.833333\)\)/, 'el campo conserva su proporción usando el espacio real del contenedor');
 assert.match(cssSource, /\.tactical-capture-sidebar\s*\{[\s\S]*flex: 1 1 0;[\s\S]*align-self: flex-start;[\s\S]*justify-content: flex-start;/, 'fase y descripción comparten un panel compacto');
+assert.match(cssSource, /\.tactical-capture-phase\s*\{[\s\S]*font-size: clamp\(50px, 5\.8vw, 104px\)/, 'la macrofase domina la jerarquía de proyección');
+assert.match(cssSource, /\.tactical-capture-direction\s*\{[\s\S]*border-left:[\s\S]*font-size: clamp\(34px, 3\.8vw, 66px\)/, 'las transiciones tienen dirección textual y señal gráfica');
+['defensive', 'offensive', 'transition-defense-attack', 'transition-attack-defense'].forEach((identity) => {
+  assert.match(cssSource, new RegExp(`data-capture-phase='${identity}'`), `${identity}: identidad cromática definida`);
+});
+assert.match(cssSource, /\.tactical-capture-watermark\s*\{/, 'la identidad no depende solo del color');
 assert.match(cssSource, /\.tactical-capture-description\s*\{[\s\S]*font-size: clamp\(18px,[\s\S]*line-height: 1\.48;/, 'la descripción mantiene tamaño de presentación');
 assert.match(cssSource, /\.tactical-capture-description\s*\{[\s\S]*overflow-wrap: anywhere;[\s\S]*white-space: pre-wrap;/, 'captura conserva saltos manuales y mantiene wrap automático');
 assert.match(cssSource, /\.tactical-capture-exit\s*\{[\s\S]*position: fixed;[\s\S]*right: 7px;[\s\S]*writing-mode: vertical-rl;/, 'Salir queda en el margen exterior de la composición');
@@ -155,6 +197,21 @@ const boardRatio = 7 / 8.4;
   assert.ok(boardHeight <= availableHeight + 0.01, `${viewportWidth}x${viewportHeight}: campo completo sin corte vertical`);
   assert.ok(boardWidth <= contentWidth + 0.01, `${viewportWidth}x${viewportHeight}: campo completo sin corte horizontal`);
 });
+
+[
+  [768, 1024],
+  [390, 844],
+].forEach(([viewportWidth, viewportHeight]) => {
+  const contentWidth = viewportWidth - 44;
+  const availableHeight = viewportHeight - 16;
+  const panelHeight = Math.min(availableHeight * 0.32, availableHeight);
+  const boardHeightLimit = availableHeight - panelHeight - 10;
+  const boardWidth = Math.min(contentWidth, boardHeightLimit * boardRatio);
+  const boardHeight = boardWidth / boardRatio;
+  assert.ok(boardWidth <= contentWidth + 0.01, `${viewportWidth}x${viewportHeight}: campo móvil sin corte horizontal`);
+  assert.ok(boardHeight + panelHeight + 10 <= availableHeight + 0.01, `${viewportWidth}x${viewportHeight}: campo y panel móviles caben en vertical`);
+});
+assert.match(cssSource, /@media \(max-width: 820px\)[\s\S]*?\.tactical-capture-stage\s*\{[\s\S]*?flex-direction: column;/, 'tablet y móvil apilan campo y panel');
 
 const boardWidth1920 = Math.min(896, (1080 - 32) * boardRatio);
 const boardWidth1600 = Math.min(896, (900 - 32) * boardRatio);

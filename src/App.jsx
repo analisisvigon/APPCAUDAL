@@ -20,6 +20,7 @@ import MatchPlanWorkspace from './components/tactical/MatchPlanWorkspace';
 import MatchKeysPanel from './components/tactical/MatchKeysPanel';
 import MobileReadonlyTacticalPitch from './components/tactical/MobileReadonlyTacticalPitch';
 import MobileEditableTacticalPitch from './components/tactical/MobileEditableTacticalPitch';
+import TacticalCaptureSidebar from './components/tactical/TacticalCaptureSidebar';
 import PlayerDatabaseForm from './components/players/PlayerDatabaseForm';
 import GlobalPlayerDatabase from './components/players/GlobalPlayerDatabase';
 import DailyLoadCard from './components/performance/DailyLoadCard';
@@ -13558,7 +13559,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         ? offensiveSituationOptions.find((option) => option.value === offensiveSituation)?.label
         : tacticalGamePhase === 'transition'
           ? [
-            transitionTypeOptions.find((option) => option.value === transitionType)?.label,
+            transitionBehaviourOptions[transitionType]?.find((option) => option.value === transitionBehaviour)?.label,
             transitionFieldZoneOptions.find((option) => option.value === transitionFieldZone)?.label,
           ].filter(Boolean).join(' · ')
           : `${setPieceActionOptions.find((option) => option.value === setPieceAction)?.label || ''} ${captureSetPieceQualifier}`.trim();
@@ -13746,25 +13747,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
             <section className="tactical-capture-board-shell" aria-label="Campo táctico">
               {renderFacingSystemsOverview(true)}
             </section>
-            <aside className="tactical-capture-sidebar">
-              <section className="tactical-capture-phase-block">
-                <p className="tactical-capture-eyebrow">Fase del juego</p>
-                <h2 className="tactical-capture-phase">{capturePresentation.phase}</h2>
-                {capturePresentation.situation ? (
-                  <p className="tactical-capture-situation">{capturePresentation.situation}</p>
-                ) : null}
-                {capturePresentation.playStyle ? (
-                  <p className="tactical-capture-play-style">{capturePresentation.playStyle}</p>
-                ) : null}
-              </section>
-              {capturePresentation.description ? (
-                <section className="tactical-capture-description-block">
-                  <div className="tactical-capture-divider" />
-                  <p className="tactical-capture-description-title">Descripción</p>
-                  <p className="tactical-capture-description">{capturePresentation.description}</p>
-                </section>
-              ) : null}
-            </aside>
+            <TacticalCaptureSidebar
+              phase={tacticalGamePhase}
+              transitionType={transitionType}
+              presentation={capturePresentation}
+            />
           </main>
         </div>,
         document.body
