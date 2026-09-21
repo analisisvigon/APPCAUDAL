@@ -43,7 +43,7 @@ assert.match(positionComponent, /buildPlayerPositionMapModel\(usage\)/);
 assert.match(positionComponent, /Sin información posicional suficiente/);
 assert.match(positionComponent, /Sin minutos registrados para este filtro/);
 assert.match(positionComponent, /sin posición registrada/);
-assert.match(positionComponent, /data-position=\{position\.position\}/);
+assert.match(positionComponent, /data-position=\{entry\.position\}/);
 assert.match(positionComponent, /break-words/);
 assert.doesNotMatch(positionComponent, /\btruncate\b/, 'los nombres de posiciones no deben truncarse en la leyenda');
 assert.match(positionSelector, /export const buildPlayerPositionUsage = getPlayerPositionUsage/);
@@ -80,7 +80,7 @@ assert.match(profile, /\['Finalización', event\.contact\]/);
 assert.match(profile, /\['Zona de asistencia', event\.assistZoneLabel\]/);
 assert.equal(profile.includes('aspect-video'), false);
 
-assert.match(profile, /\['Fecha', 'Rival', 'Resultado', 'Competición', 'L\/V', 'Rol', 'Min', 'Goles', 'Asist\.', 'Tarjetas', 'Lesión'\]/);
+assert.match(profile, /\['Fecha', 'Rival', 'Resultado', 'Competición', 'L\/V', 'Rol', 'Pos\.\/Sist\.', 'Min', 'Goles', 'Asist\.', 'Tarjetas', 'Lesión'\]/);
 assert.match(profile, /score\.hasScore \? `\$\{resultLabel\} · \$\{score\.caudalGoals\}-\$\{score\.rivalGoals\}` : 'Sin resultado'/);
 assert.match(profile, /overflow-x-auto player-history-table/);
 

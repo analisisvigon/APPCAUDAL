@@ -1,14 +1,23 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { buildPlayerPositionMapModel } from '../../utils/playerPositionMap';
+import {
+  buildPositionTimelineEntries,
+  formatPositionSegmentRange,
+  getPositionTimelineMatches,
+} from '../../utils/playerPositionTimelinePresentation';
 
 const formatMinutes = (value) => Math.round(Math.max(0, Number(value || 0))).toLocaleString('es-ES');
+const displayDate = (value) => {
+  const [year, month, day] = String(value || '').slice(0, 10).split('-');
+  return year && month && day ? `${day}/${month}/${year}` : value || 'Sin fecha';
+};
 const markerStyle = {
   principal: { radius: 4.3, fill: '#20bfea', dot: 'border-caudal-electric bg-caudal-electric text-slate-950' },
   secondary: { radius: 3.7, fill: '#38bdf8', dot: 'border-sky-300 bg-sky-400 text-slate-950' },
   other: { radius: 3.2, fill: '#94a3b8', dot: 'border-slate-300 bg-slate-400 text-slate-950' },
 };
 
-const PositionPitch = ({ model }) => (
+const PositionPitch = ({ model, activePosition = '' }) => (
   <div className="mx-auto w-full max-w-[190px]" data-player-position-map>
     <p className="mb-2 text-center text-[9px] font-black uppercase tracking-[0.16em] text-emerald-300/80">Ataque ↑</p>
     <svg viewBox="0 0 68 105" className="block h-auto w-full drop-shadow-[0_12px_25px_rgba(0,0,0,0.2)]" role="img" aria-label="Mapa de las posiciones utilizadas">
@@ -29,6 +38,8 @@ const PositionPitch = ({ model }) => (
         return (
           <g
             key={position.position}
+            className="transition-opacity"
+            opacity={activePosition && activePosition !== position.position ? 0.3 : 1}
             data-position-map-marker={position.position}
             data-position-map-level={position.level}
             data-position-map-x={position.coordinates.x}
@@ -45,27 +56,63 @@ const PositionPitch = ({ model }) => (
   </div>
 );
 
-const PositionLegend = ({ model }) => (
+const PositionLegend = ({ model, usage, openPosition, onToggle }) => (
   <div className="min-w-0 space-y-2.5" aria-label="Distribución de posiciones">
     <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">Distribución</p>
-    {model.positions.map((position) => {
-      const presentation = markerStyle[position.level];
+    {buildPositionTimelineEntries(usage).map((entry) => {
+      const position = model.positions.find((candidate) => candidate.position === entry.position);
+      const level = position?.level || 'other';
+      const presentation = markerStyle[level];
+      const details = getPositionTimelineMatches(usage, entry.key);
+      const isOpen = openPosition === entry.key;
       return (
         <div
-          key={position.position}
-          className="grid min-w-0 grid-cols-[26px_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.025] px-2.5 py-2"
-          data-position={position.position}
-          data-minutes={position.minutes}
-          data-percentage={position.percentage}
+          key={entry.key}
+          className={`overflow-hidden rounded-xl border transition ${isOpen ? 'border-caudal-electric/25 bg-caudal-electric/[0.055]' : 'border-white/[0.07] bg-white/[0.025]'}`}
+          data-position={entry.position}
+          data-minutes={entry.minutes}
+          data-percentage={entry.percentage}
+          data-position-timeline-entry
         >
-          <span className={`flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-black ${position.coordinates ? presentation.dot : 'border-slate-600 bg-transparent text-slate-400'}`}>
-            {position.coordinates ? position.markerNumber : '—'}
-          </span>
-          <div className="min-w-0">
-            <span className={`block text-[9px] font-black uppercase tracking-[0.12em] ${position.level === 'principal' ? 'text-caudal-electric' : 'text-slate-500'}`}>{position.levelLabel}</span>
-            <strong className="mt-0.5 block break-words text-xs leading-4 text-slate-100">{position.position}</strong>
-          </div>
-          <span className="shrink-0 text-right text-xs font-black text-slate-300">{formatMinutes(position.minutes)}' · {position.percentage}%</span>
+          <button
+            type="button"
+            className="grid min-h-11 w-full min-w-0 grid-cols-[26px_minmax(0,1fr)_auto] items-center gap-2 px-2.5 py-2 text-left"
+            onClick={() => onToggle(isOpen ? '' : entry.key)}
+            aria-expanded={isOpen}
+          >
+            <span className={`flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-black ${position?.coordinates ? presentation.dot : 'border-slate-600 bg-transparent text-slate-400'}`}>
+              {position?.coordinates ? position.markerNumber : '—'}
+            </span>
+            <span className="min-w-0">
+              <span className={`block text-[9px] font-black uppercase tracking-[0.12em] ${level === 'principal' ? 'text-caudal-electric' : 'text-slate-500'}`}>{position?.levelLabel || 'Cobertura pendiente'}</span>
+              <strong className="mt-0.5 block break-words text-xs leading-4 text-slate-100">{entry.position}</strong>
+              <span className="mt-1 block text-[9px] font-bold text-slate-500">{isOpen ? 'Ocultar partidos ▴' : 'Ver partidos ▾'}</span>
+            </span>
+            <span className="shrink-0 text-right text-xs font-black text-slate-300">{formatMinutes(entry.minutes)}' · {entry.percentage}%</span>
+          </button>
+          {isOpen ? (
+            <div className="border-t border-white/[0.07] px-2.5 pb-2.5 pt-2" data-position-timeline-details>
+              {details.length ? <div className="space-y-2">
+                {details.map((match) => (
+                  <article key={match.matchId} className="rounded-lg bg-black/15 px-2.5 py-2">
+                    <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                      <strong className="min-w-0 break-words text-[11px] text-slate-100">{match.opponent || 'Rival no registrado'}</strong>
+                      <span className="shrink-0 text-[9px] font-bold text-slate-500">{displayDate(match.date)}</span>
+                    </div>
+                    <p className="mt-0.5 text-[9px] text-slate-500">{[match.competition, match.venue, match.result].filter(Boolean).join(' · ')}</p>
+                    <div className="mt-1.5 space-y-1">
+                      {match.segments.map((segment, index) => (
+                        <div key={`${match.matchId}-${segment.fromMinute}-${segment.toMinute}-${index}`} className="flex flex-wrap items-center justify-between gap-x-3 text-[10px]">
+                          <span className="font-bold text-slate-300">{segment.system || 'Sistema —'} · {segment.identified ? entry.abbreviation : 'Posición —'}</span>
+                          <span className="text-slate-400">{formatPositionSegmentRange(segment)} · {formatMinutes(segment.minutes)}'</span>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                ))}
+              </div> : <p className="text-[10px] text-slate-500">Sin detalle temporal disponible.</p>}
+            </div>
+          ) : null}
         </div>
       );
     })}
@@ -75,8 +122,10 @@ const PositionLegend = ({ model }) => (
   </div>
 );
 
-const PlayerPositionUsageSummary = ({ usage, className = '' }) => {
+const PlayerPositionUsageSummary = ({ usage, className = '', initialOpenPosition = '' }) => {
   const model = buildPlayerPositionMapModel(usage);
+  const [openPosition, setOpenPosition] = useState(initialOpenPosition);
+  const hasTimelineEntries = buildPositionTimelineEntries(usage).length > 0;
 
   return (
     <section
@@ -97,17 +146,13 @@ const PlayerPositionUsageSummary = ({ usage, className = '' }) => {
       </div>
 
       {model.empty ? (
-        <p className="mt-4 rounded-xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-3 text-xs text-slate-400">
-          Sin minutos registrados para este filtro.
-        </p>
-      ) : !model.hasPositionData ? (
-        <p className="mt-4 rounded-xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-3 text-xs text-slate-400">
-          Sin información posicional suficiente para este filtro.
-        </p>
+        <p className="mt-4 rounded-xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-3 text-xs text-slate-400">Sin minutos registrados para este filtro.</p>
+      ) : !hasTimelineEntries ? (
+        <p className="mt-4 rounded-xl border border-dashed border-white/10 bg-white/[0.025] px-3 py-3 text-xs text-slate-400">Sin información posicional suficiente para este filtro.</p>
       ) : (
         <div className="mt-4 grid items-start gap-4 sm:grid-cols-[minmax(130px,0.62fr)_minmax(0,1.38fr)] lg:gap-5">
-          <PositionPitch model={model} />
-          <PositionLegend model={model} />
+          <PositionPitch model={model} activePosition={openPosition} />
+          <PositionLegend model={model} usage={usage} openPosition={openPosition} onToggle={setOpenPosition} />
         </div>
       )}
 

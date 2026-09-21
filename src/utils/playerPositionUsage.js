@@ -35,12 +35,35 @@ const SLOT_POSITION_LABELS = {
   DC_I: 'Delantero centro',
 };
 
+const POSITION_ABBREVIATIONS = {
+  Portero: 'POR',
+  'Lateral derecho': 'LD',
+  'Lateral izquierdo': 'LI',
+  'Central derecho': 'DFC',
+  'Defensa central': 'DFC',
+  'Central izquierdo': 'DFC',
+  Pivote: 'MCD',
+  'Pivote derecho': 'MCD',
+  'Pivote izquierdo': 'MCD',
+  'Interior derecho': 'ID',
+  Mediocentro: 'MC',
+  'Interior izquierdo': 'II',
+  'Extremo derecho': 'ED',
+  'Extremo izquierdo': 'EI',
+  Mediapunta: 'MP',
+  'Carrilero derecho': 'CAD',
+  'Carrilero izquierdo': 'CAI',
+  'Delantero centro': 'DC',
+};
+
 export const getTacticalPositionLabel = ({ system, slot, explicitPosition = '' } = {}) => {
   if (clean(explicitPosition)) return SLOT_POSITION_LABELS[clean(explicitPosition).toUpperCase()] || clean(explicitPosition);
   const slotRow = getFormationSlotsForSavedLineup(system)[Number(slot)];
   if (!slotRow) return '';
   return SLOT_POSITION_LABELS[slotRow.id] || clean(slotRow.role || slotRow.label);
 };
+
+export const getTacticalPositionAbbreviation = (position = '') => POSITION_ABBREVIATIONS[clean(position)] || clean(position) || '—';
 
 const playerMatches = (row, { playerId, playerName }) => {
   const rowId = clean(row?.playerId || row?.jugadorId || row?.jugador_id);
@@ -77,6 +100,137 @@ const getInitialPosition = ({ initialSlots, system, identity }) => {
   });
 };
 
+const getMatchMetadata = (row = {}) => {
+  const metadata = row.matchMetadata || row.metadata || {};
+  return {
+    opponent: clean(metadata.opponent || row.opponent),
+    date: clean(metadata.date || row.date),
+    competition: clean(metadata.competition || row.competition),
+    venue: clean(metadata.venue || row.venue),
+    result: clean(metadata.result || row.result),
+  };
+};
+
+const sameSystem = (left, right) => normalizeIdentity(left) === normalizeIdentity(right);
+
+const buildPlayerMatchPositionUsage = ({ row, identity }) => {
+  const duration = Math.max(0, Number(row.duration || 90));
+  const actualMinutes = Math.max(0, Math.min(duration, Number(row.minutes || 0)));
+  const playerStats = row.playerStats || {};
+  const stats = findPlayerStats(playerStats, identity);
+  const participation = getParticipationWindow({
+    minutes: actualMinutes,
+    role: row.role || stats.role,
+    duration,
+    playerStats,
+    identity,
+  });
+  const initialPosition = getInitialPosition({
+    initialSlots: row.initialSlots,
+    system: row.initialSystem,
+    identity,
+  });
+  const intervals = rows(row.intervals)
+    .filter((interval) => Number(interval?.toMinute) > Number(interval?.fromMinute))
+    .slice()
+    .sort((left, right) => Number(left.fromMinute) - Number(right.fromMinute) || Number(left.toMinute) - Number(right.toMinute));
+  const segments = [];
+  const addSegment = ({ fromMinute, toMinute, system = '', position = '', source = 'unknown' }) => {
+    const safeFrom = Math.max(participation.fromMinute, Number(fromMinute));
+    const safeTo = Math.min(participation.toMinute, Number(toMinute));
+    if (safeTo <= safeFrom) return;
+    segments.push({
+      matchId: clean(row.matchId),
+      fromMinute: safeFrom,
+      toMinute: safeTo,
+      startMinute: safeFrom,
+      endMinute: safeTo,
+      minutes: safeTo - safeFrom,
+      system: clean(system),
+      position: clean(position),
+      identified: Boolean(clean(position)),
+      positionIdentified: Boolean(clean(position)),
+      systemIdentified: Boolean(clean(system)),
+      source,
+    });
+  };
+
+  if (actualMinutes > 0) {
+    if (!intervals.length) {
+      addSegment({
+        fromMinute: participation.fromMinute,
+        toMinute: participation.toMinute,
+        system: row.initialSystem,
+        position: participation.fromMinute === 0 ? initialPosition : '',
+        source: participation.fromMinute === 0 && initialPosition ? 'initialSlot' : 'unknown',
+      });
+    } else {
+      let cursor = participation.fromMinute;
+      intervals.forEach((interval) => {
+        const intervalFrom = Math.max(participation.fromMinute, Number(interval.fromMinute));
+        const intervalTo = Math.min(participation.toMinute, Number(interval.toMinute));
+        if (intervalTo <= cursor || intervalTo <= intervalFrom) return;
+        if (intervalFrom > cursor) {
+          const canUseInitialGap = cursor === 0 && Boolean(initialPosition);
+          addSegment({
+            fromMinute: cursor,
+            toMinute: intervalFrom,
+            system: canUseInitialGap ? row.initialSystem : '',
+            position: canUseInitialGap ? initialPosition : '',
+            source: canUseInitialGap ? 'initialSlot' : 'unknown',
+          });
+        }
+        const fromMinute = Math.max(cursor, intervalFrom);
+        const candidates = interval.isComplete
+          ? rows(interval.slots).filter((slot) => playerMatches(slot, identity))
+          : [];
+        const slot = candidates.length === 1 ? candidates[0] : null;
+        const explicitPosition = clean(slot?.position || slot?.role || slot?.tacticalPosition || slot?.tactical_position);
+        const resolvedPosition = slot
+          ? getTacticalPositionLabel({ system: interval.system, slot: slot.slot, explicitPosition })
+          : '';
+        const isInitialInterval = Number(interval.fromMinute) === 0
+          && participation.fromMinute === 0
+          && Boolean(initialPosition)
+          && (!clean(interval.system) || !clean(row.initialSystem) || sameSystem(interval.system, row.initialSystem));
+        addSegment({
+          fromMinute,
+          toMinute: intervalTo,
+          system: interval.system || (isInitialInterval ? row.initialSystem : ''),
+          position: resolvedPosition || (isInitialInterval ? initialPosition : ''),
+          source: resolvedPosition ? (explicitPosition ? 'explicit' : 'tacticalSlot') : isInitialInterval ? 'initialSlot' : 'unknown',
+        });
+        cursor = Math.max(cursor, intervalTo);
+      });
+      if (cursor < participation.toMinute) {
+        const canUseInitialTail = cursor === 0 && Boolean(initialPosition);
+        addSegment({
+          fromMinute: cursor,
+          toMinute: participation.toMinute,
+          system: canUseInitialTail ? row.initialSystem : '',
+          position: canUseInitialTail ? initialPosition : '',
+          source: canUseInitialTail ? 'initialSlot' : 'unknown',
+        });
+      }
+    }
+  }
+
+  const identifiedMinutes = segments.filter((segment) => segment.identified).reduce((sum, segment) => sum + segment.minutes, 0);
+  const unidentifiedMinutes = segments.filter((segment) => !segment.identified).reduce((sum, segment) => sum + segment.minutes, 0);
+  const coveredMinutes = segments.reduce((sum, segment) => sum + segment.minutes, 0);
+  const overlap = segments.some((segment, index) => index > 0 && segment.fromMinute < segments[index - 1].toMinute);
+  return {
+    matchId: clean(row.matchId),
+    ...getMatchMetadata(row),
+    totalMinutes: actualMinutes,
+    identifiedMinutes,
+    unidentifiedMinutes,
+    coveragePercent: actualMinutes ? Math.round((identifiedMinutes / actualMinutes) * 100) : 0,
+    segments,
+    valid: !overlap && coveredMinutes === actualMinutes && identifiedMinutes + unidentifiedMinutes === actualMinutes,
+  };
+};
+
 export const getPlayerPositionUsage = ({
   playerId = '',
   playerName = '',
@@ -85,79 +239,16 @@ export const getPlayerPositionUsage = ({
   const identity = { playerId: clean(playerId), playerName: clean(playerName) };
   const allocations = new Map();
   const sources = { explicit: 0, tacticalSlot: 0, initialSlot: 0, unknown: 0 };
-  let totalMinutes = 0;
-
-  const add = (position, minutes, source) => {
-    const safeMinutes = Math.max(0, Number(minutes || 0));
-    if (!safeMinutes) return;
-    if (!position) {
-      sources.unknown += safeMinutes;
-      return;
-    }
-    const key = normalizeIdentity(position);
-    const current = allocations.get(key) || { position: clean(position), minutes: 0, sources: new Set() };
-    current.minutes += safeMinutes;
-    current.sources.add(source);
+  const matches = rows(matchRows).map((row) => buildPlayerMatchPositionUsage({ row, identity }));
+  const totalMinutes = matches.reduce((sum, match) => sum + match.totalMinutes, 0);
+  matches.flatMap((match) => match.segments).forEach((segment) => {
+    sources[segment.source] = (sources[segment.source] || 0) + segment.minutes;
+    if (!segment.identified) return;
+    const key = normalizeIdentity(segment.position);
+    const current = allocations.get(key) || { position: segment.position, minutes: 0, sources: new Set() };
+    current.minutes += segment.minutes;
+    current.sources.add(segment.source);
     allocations.set(key, current);
-    sources[source] += safeMinutes;
-  };
-
-  rows(matchRows).forEach((row) => {
-    const duration = Math.max(0, Number(row.duration || 90));
-    const actualMinutes = Math.max(0, Math.min(duration, Number(row.minutes || 0)));
-    if (!actualMinutes) return;
-    totalMinutes += actualMinutes;
-    const playerStats = row.playerStats || {};
-    const stats = findPlayerStats(playerStats, identity);
-    const participation = getParticipationWindow({
-      minutes: actualMinutes,
-      role: row.role || stats.role,
-      duration,
-      playerStats,
-      identity,
-    });
-    let coveredUntil = participation.fromMinute;
-    const resolvedSegments = [];
-    const orderedIntervals = rows(row.intervals)
-      .filter((interval) => Number(interval?.toMinute) > Number(interval?.fromMinute))
-      .slice()
-      .sort((left, right) => Number(left.fromMinute) - Number(right.fromMinute) || Number(left.toMinute) - Number(right.toMinute));
-
-    orderedIntervals.forEach((interval) => {
-      const fromMinute = Math.max(participation.fromMinute, coveredUntil, Number(interval.fromMinute));
-      const toMinute = Math.min(participation.toMinute, Number(interval.toMinute));
-      if (toMinute <= fromMinute || !interval.isComplete) return;
-      const candidates = rows(interval.slots).filter((slot) => playerMatches(slot, identity));
-      if (candidates.length !== 1) return;
-      const slot = candidates[0];
-      const explicitPosition = clean(slot.position || slot.role || slot.tacticalPosition || slot.tactical_position);
-      const position = getTacticalPositionLabel({ system: interval.system, slot: slot.slot, explicitPosition });
-      if (!position) return;
-      const minutesInPosition = toMinute - fromMinute;
-      resolvedSegments.push({ fromMinute, toMinute, position, source: explicitPosition ? 'explicit' : 'tacticalSlot' });
-      coveredUntil = Math.max(coveredUntil, toMinute);
-    });
-
-    const initialPosition = getInitialPosition({
-      initialSlots: row.initialSlots,
-      system: row.initialSystem,
-      identity,
-    });
-    if (!resolvedSegments.length) {
-      if (initialPosition) add(initialPosition, actualMinutes, 'initialSlot');
-      else add('', actualMinutes, 'unknown');
-      return;
-    }
-
-    let cursor = participation.fromMinute;
-    resolvedSegments.forEach((segment, index) => {
-      const gap = Math.max(0, segment.fromMinute - cursor);
-      if (gap) add(index === 0 && initialPosition ? initialPosition : '', gap, index === 0 && initialPosition ? 'initialSlot' : 'unknown');
-      add(segment.position, segment.toMinute - segment.fromMinute, segment.source);
-      cursor = Math.max(cursor, segment.toMinute);
-    });
-    const trailingGap = Math.max(0, participation.toMinute - cursor);
-    if (trailingGap) add('', trailingGap, 'unknown');
   });
 
   const positions = [...allocations.values()]
@@ -169,15 +260,26 @@ export const getPlayerPositionUsage = ({
     }))
     .sort((left, right) => right.minutes - left.minutes || left.position.localeCompare(right.position, 'es'));
   const determinedMinutes = positions.reduce((sum, row) => sum + row.minutes, 0);
-  const unknownMinutes = Math.max(0, totalMinutes - determinedMinutes);
+  const unknownMinutes = matches.reduce((sum, match) => sum + match.unidentifiedMinutes, 0);
+  const temporalCoverageValid = matches.every((match) => match.valid);
+  const arithmeticValid = determinedMinutes <= totalMinutes && determinedMinutes + unknownMinutes === totalMinutes;
   return {
     positions,
     totalMinutes,
     determinedMinutes,
     unknownMinutes,
+    identifiedMinutes: determinedMinutes,
+    unidentifiedMinutes: unknownMinutes,
+    coveragePercent: totalMinutes ? Math.round((determinedMinutes / totalMinutes) * 100) : 0,
     determinedPercentage: totalMinutes ? Math.round((determinedMinutes / totalMinutes) * 100) : 0,
     sources,
-    valid: determinedMinutes <= totalMinutes && determinedMinutes + unknownMinutes === totalMinutes,
+    matches,
+    segments: matches.flatMap((match) => match.segments),
+    quality: {
+      arithmeticValid,
+      temporalCoverageValid,
+    },
+    valid: arithmeticValid && temporalCoverageValid,
   };
 };
 

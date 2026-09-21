@@ -4,12 +4,49 @@ import '../index.css';
 import '../styles/print.css';
 import PlayerProfilePdfReport from '../components/print/PlayerProfilePdfReport';
 import PlayerPositionUsageSummary from '../components/player/PlayerPositionUsageSummary';
+import PlayerMatchPositionSummary from '../components/player/PlayerMatchPositionSummary';
 import { buildPlayerProfilePrintReport } from '../utils/playerProfilePrintReport';
 import { createPlayerProfilePdf, downloadPlayerProfilePdf } from '../utils/playerProfilePdfExport';
 
 const params = new URLSearchParams(window.location.search);
 const shouldExport = params.get('export') === '1';
 const appPositionOnly = params.get('appPosition') === '1';
+const positionTimelineOnly = params.get('positionTimeline') === '1';
+const openTimelinePosition = params.get('openPosition') === '1' ? 'Mediapunta' : '';
+const openHistoryDetail = params.get('openHistory') === '1';
+
+const timelineUsage = {
+  totalMinutes: 200,
+  determinedMinutes: 180,
+  identifiedMinutes: 180,
+  unknownMinutes: 20,
+  unidentifiedMinutes: 20,
+  positions: [
+    { position: 'Mediapunta', minutes: 150, percentage: 75 },
+    { position: 'Extremo derecho', minutes: 30, percentage: 15 },
+  ],
+  matches: [
+    {
+      matchId: 'timeline-covadonga', opponent: 'CD Covadonga', date: '2026-09-20', competition: 'Liga', venue: 'Local', result: '2-1', totalMinutes: 90,
+      segments: [
+        { matchId: 'timeline-covadonga', fromMinute: 0, toMinute: 60, minutes: 60, system: '4-2-3-1', position: 'Mediapunta', identified: true },
+        { matchId: 'timeline-covadonga', fromMinute: 60, toMinute: 90, minutes: 30, system: '4-3-3', position: 'Mediapunta', identified: true },
+      ],
+    },
+    {
+      matchId: 'timeline-ceares', opponent: 'Unión Club Ceares', date: '2026-09-13', competition: 'Liga', venue: 'Visitante', result: '1-1', totalMinutes: 90,
+      segments: [
+        { matchId: 'timeline-ceares', fromMinute: 0, toMinute: 30, minutes: 30, system: '4-2-3-1', position: 'Mediapunta', identified: true },
+        { matchId: 'timeline-ceares', fromMinute: 30, toMinute: 60, minutes: 30, system: '4-3-3', position: 'Extremo derecho', identified: true },
+        { matchId: 'timeline-ceares', fromMinute: 60, toMinute: 90, minutes: 30, system: '4-2-3-1', position: 'Mediapunta', identified: true },
+      ],
+    },
+    {
+      matchId: 'timeline-long', opponent: 'Real Sporting de Gijón Atlético', date: '2026-09-06', competition: 'Copa RFEF', venue: 'Local', result: '0-0', totalMinutes: 20,
+      segments: [{ matchId: 'timeline-long', fromMinute: 70, toMinute: 90, minutes: 20, system: '4-4-2', position: '', identified: false }],
+    },
+  ],
+};
 
 const report = buildPlayerProfilePrintReport({
   identity: {
@@ -144,6 +181,40 @@ function Audit() {
       window.clearTimeout(timer);
     };
   }, []);
+
+  if (positionTimelineOnly) {
+    return (
+      <main className="min-h-screen bg-[#06101f] p-4 text-white sm:p-8">
+        <div className="mx-auto max-w-6xl space-y-5">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Ficha individual · QA temporal</p>
+            <h1 className="mt-1 text-xl font-black">Jugador de prueba · Posición y sistema</h1>
+          </div>
+          <PlayerPositionUsageSummary usage={timelineUsage} initialOpenPosition={openTimelinePosition} />
+          <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/72 p-4 shadow-[0_16px_48px_rgba(0,0,0,0.18)] sm:p-5">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-black uppercase tracking-[0.18em]">Historial partido a partido</h2>
+              <span className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-black text-slate-300">3 registros</span>
+            </div>
+            <div className="mt-4 overflow-x-auto player-history-table">
+              <table className="min-w-[900px] w-full text-left text-sm">
+                <thead className="text-xs uppercase tracking-[0.16em] text-slate-500"><tr>{['Fecha', 'Rival', 'Resultado', 'Competición', 'Rol', 'Pos./Sist.', 'Min'].map((head) => <th key={head} className="whitespace-nowrap px-3 py-3">{head}</th>)}</tr></thead>
+                <tbody>{timelineUsage.matches.map((match, index) => <tr key={match.matchId} className="border-t border-white/10">
+                  <td className="whitespace-nowrap px-3 py-4 text-slate-300">{match.date.split('-').reverse().join('/')}</td>
+                  <td className="min-w-[220px] px-3 py-4 font-bold">{match.opponent}</td>
+                  <td className="px-3 py-4 text-slate-300">{match.result}</td>
+                  <td className="px-3 py-4 text-slate-300">{match.competition}</td>
+                  <td className="px-3 py-4"><span className="rounded-xl bg-caudal-electric/15 px-2 py-1 text-xs font-black text-caudal-electric">Titular</span></td>
+                  <td className="min-w-[132px] px-3 py-3 align-top" data-player-match-position-summary><PlayerMatchPositionSummary matchUsage={match} initialOpen={openHistoryDetail && index === 0} /></td>
+                  <td className="px-3 py-4 font-black">{match.totalMinutes}'</td>
+                </tr>)}</tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </main>
+    );
+  }
 
   if (appPositionOnly) {
     return (

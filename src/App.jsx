@@ -32,6 +32,7 @@ import AccordionSection from './components/shared/AccordionSection';
 import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
 import PlayerPositionUsageSummary from './components/player/PlayerPositionUsageSummary';
+import PlayerMatchPositionSummary from './components/player/PlayerMatchPositionSummary';
 import PlayerAvatar from './components/player/PlayerAvatar';
 import SetPieceResponsibilityPanel, { SetPieceResponsibilityBadge } from './components/tactical/SetPieceResponsibilityPanel';
 import PlayerNumberName from './components/player/PlayerNumberName';
@@ -30048,6 +30049,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 playerName: selectedPlayerProfile.name,
                 matchRows: aggregate.rows.map((row) => {
                   const tacticalHistory = getMatchTacticalHistory(row.match);
+                  const score = getMatchScoreData(row.match);
                   return {
                     matchId: row.match.id,
                     minutes: row.minutes,
@@ -30057,9 +30059,17 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                     initialSlots: getMatchInitialTacticalSlots(row.match),
                     intervals: tacticalHistory.intervals,
                     playerStats: safeObject(row.match.statsPlayerData),
+                    matchMetadata: {
+                      opponent: row.match.opponent,
+                      date: row.match.date,
+                      competition: getCompetitionFromCatalog(row.match).label,
+                      venue: row.match.isHome ? 'Local' : 'Visitante',
+                      result: score.hasScore ? `${score.caudalGoals}-${score.rivalGoals}` : '',
+                    },
                   };
                 }),
               });
+              const playerPositionUsageByMatchId = new Map(playerPositionUsage.matches.map((match) => [match.matchId, match]));
               const playerPdfActions = [...allGoalActions, ...allAssistActions].map((event) => ({
                 ...event,
                 id: `${event.action}-${event.match.id}-${event.id}`,
@@ -30518,15 +30528,16 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                       <span className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-black text-slate-300">{aggregate.rows.length} registros</span>
                     </div>
                     <div className="mt-4 overflow-x-auto player-history-table">
-                      <table className="min-w-[1120px] w-full text-left text-sm">
+                      <table className="min-w-[1240px] w-full text-left text-sm">
                         <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
-                          <tr>{['Fecha', 'Rival', 'Resultado', 'Competición', 'L/V', 'Rol', 'Min', 'Goles', 'Asist.', 'Tarjetas', 'Lesión'].map((head) => <th key={head} className="whitespace-nowrap px-3 py-3">{head}</th>)}</tr>
+                          <tr>{['Fecha', 'Rival', 'Resultado', 'Competición', 'L/V', 'Rol', 'Pos./Sist.', 'Min', 'Goles', 'Asist.', 'Tarjetas', 'Lesión'].map((head) => <th key={head} className="whitespace-nowrap px-3 py-3">{head}</th>)}</tr>
                         </thead>
                         <tbody>
                           {aggregate.rows.length ? aggregate.rows.map((row) => {
                             const score = getMatchScoreData(row.match);
                             const resultLabel = score.hasScore ? (score.caudalGoals > score.rivalGoals ? 'V' : score.caudalGoals < score.rivalGoals ? 'D' : 'E') : null;
                             const cardLabel = [row.yellow ? `${row.yellow} TA` : null, row.red ? '1 TR' : null].filter(Boolean).join(' · ') || '-';
+                            const matchPositionUsage = playerPositionUsageByMatchId.get(row.match.id);
                             return (
                             <tr key={row.match.id} className={`border-t border-white/10 ${row.goals.length || row.assists.length ? 'bg-emerald-200/[0.04]' : row.red || row.injured ? 'bg-red-200/[0.03]' : ''}`}>
                               <td className="whitespace-nowrap px-3 py-4 text-slate-300">{matchDisplayDate(row.match.date)}</td>
@@ -30544,6 +30555,9 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                               <td className="min-w-[160px] px-3 py-4 text-slate-300">{getCompetitionFromCatalog(row.match).label}</td>
                               <td className="whitespace-nowrap px-3 py-4 text-slate-300">{row.match.isHome ? 'Local' : 'Visitante'}</td>
                               <td className="px-3 py-4"><span className={`rounded-xl px-2 py-1 text-xs font-black ${row.role === 'Titular' ? 'bg-caudal-electric/15 text-caudal-electric' : 'bg-white/[0.06] text-slate-300'}`}>{row.role}</span></td>
+                              <td className="min-w-[132px] px-3 py-3 align-top" data-player-match-position-summary>
+                                <PlayerMatchPositionSummary matchUsage={matchPositionUsage} />
+                              </td>
                               <td className="px-3 py-4 font-black text-white">{row.minutes === null ? '—' : `${row.minutes}'`}</td>
                               <td className="px-3 py-4 text-emerald-100">{row.goals.length || '-'}</td>
                               <td className="px-3 py-4 text-caudal-electric">{row.assists.length || '-'}</td>
@@ -30551,7 +30565,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                               <td className="px-3 py-4 text-red-100">{row.injured ? 'Sí' : '-'}</td>
                             </tr>
                           );
-                          }) : <tr><td colSpan="11" className="px-3 py-6 text-center text-slate-500">Sin datos registrados</td></tr>}
+                          }) : <tr><td colSpan="12" className="px-3 py-6 text-center text-slate-500">Sin datos registrados</td></tr>}
                         </tbody>
                       </table>
                     </div>
