@@ -1,5 +1,16 @@
 import { hasFormationSlotsForSavedLineup } from './formationSlotCoordinates.js';
-import { buildAutomaticSubstitutionSnapshot } from './tacticalDispositionEditor.js';
+import {
+  buildAutomaticSubstitutionSnapshot,
+  buildKnownOnFieldPlayers,
+  getTacticalSubstitutionsAtMinute,
+} from './tacticalDispositionEditor.js';
+import {
+  buildMatchPlayerIdentityRecordsFromStats,
+  createMatchPlayerIdentityIndex,
+  getMatchPlayerIdentityKey,
+  inspectMatchPlayerIdentity,
+  resolveMatchPlayerCandidate,
+} from './matchPlayerIdentity.js';
 
 const clean = (value) => String(value ?? '').trim();
 const rows = (value) => Array.isArray(value) ? value : [];
@@ -60,6 +71,199 @@ export const getHistoricalSubstitutionMinutes = (playerStats = {}) => Array.from
     return replacement && minute !== null && minute > 0 && minute < 130 ? [minute] : [];
   })
 )).sort((left, right) => left - right);
+
+const duplicateValues = (values = []) => Array.from(new Set(values.filter((value, index) => values.indexOf(value) !== index)));
+
+const getActiveSystemAtMinute = ({ initialSystem = '', systemEvents = [], minute = 0 } = {}) => rows(systemEvents)
+  .map((event) => ({ minute: getSystemEventMinute(event), system: getSystemEventTarget(event) }))
+  .filter((event) => event.minute !== null && event.minute <= Number(minute) && event.system)
+  .sort((left, right) => left.minute - right.minute)
+  .reduce((system, event) => event.system || system, clean(initialSystem));
+
+const getIdentityConflict = (slot, identityIndex) => {
+  const inspected = inspectMatchPlayerIdentity(slot, identityIndex);
+  return inspected.ambiguousIds || inspected.nameConflict
+    ? { slot: Number(slot.slot), playerId: inspected.rawIds[0] || '', playerName: slot.playerName || '' }
+    : null;
+};
+
+const auditNormalizedSnapshot = ({ snapshot, system, expectedPlayers, expectedValid, identityIndex }) => {
+  const slotIndexes = snapshot.slots.map((slot) => Number(slot.slot));
+  const validSlotIndexes = slotIndexes.filter((slot) => Number.isInteger(slot) && slot >= 0 && slot <= 10);
+  const playerKeys = snapshot.slots.map((slot) => getMatchPlayerIdentityKey(slot, identityIndex)).filter(Boolean);
+  const duplicateSlots = duplicateValues(validSlotIndexes);
+  const duplicatePlayers = duplicateValues(playerKeys);
+  const identityConflicts = snapshot.slots.map((slot) => getIdentityConflict(slot, identityIndex)).filter(Boolean);
+  const structuralComplete = Boolean(
+    snapshot.isComplete
+    && hasFormationSlotsForSavedLineup(system)
+    && snapshot.slots.length === 11
+    && validSlotIndexes.length === 11
+    && new Set(validSlotIndexes).size === 11
+    && playerKeys.length === 11
+    && new Set(playerKeys).size === 11
+    && !identityConflicts.length
+  );
+  const usedSlots = new Set();
+  const missingExpectedPlayers = [];
+  const comparisonConflicts = [];
+  if (expectedValid) {
+    expectedPlayers.forEach((expectedPlayer) => {
+      const available = snapshot.slots.filter((_, index) => !usedSlots.has(index));
+      const resolution = resolveMatchPlayerCandidate({ reference: expectedPlayer, candidates: available, identityIndex });
+      if (resolution.status === 'resolved') {
+        usedSlots.add(snapshot.slots.indexOf(resolution.candidate));
+        return;
+      }
+      missingExpectedPlayers.push(expectedPlayer);
+      if (resolution.status === 'identity_conflict' || resolution.status === 'ambiguous') {
+        comparisonConflicts.push({ expectedPlayer, status: resolution.status, candidates: resolution.conflicts });
+      }
+    });
+  }
+  const unexpectedPlayers = expectedValid
+    ? snapshot.slots.filter((_, index) => !usedSlots.has(index))
+    : [];
+  const allIdentityConflicts = [...identityConflicts, ...comparisonConflicts];
+  const temporallyConsistent = expectedValid
+    ? structuralComplete && !missingExpectedPlayers.length && !unexpectedPlayers.length && !allIdentityConflicts.length
+    : null;
+  return {
+    snapshotId: snapshot.id,
+    minute: snapshot.minute,
+    system,
+    source: snapshot.source,
+    structuralComplete,
+    temporalAuditAvailable: expectedValid,
+    temporallyConsistent,
+    missingExpectedPlayers,
+    unexpectedPlayers,
+    identityConflicts: allIdentityConflicts,
+    duplicateSlots,
+    duplicatePlayers,
+    slotCount: snapshot.slots.length,
+    uniqueSlotCount: new Set(validSlotIndexes).size,
+    uniquePlayerCount: new Set(playerKeys).size,
+  };
+};
+
+const tryRepairHistoricalSubstitutionSnapshot = ({
+  snapshot,
+  audit,
+  playerStats,
+  identityIndex,
+  hasSameMinuteSystemChange,
+}) => {
+  if (!audit.structuralComplete || audit.temporallyConsistent !== false || hasSameMinuteSystemChange) return null;
+  const substitutions = getTacticalSubstitutionsAtMinute({ playerStats, minute: snapshot.minute });
+  if (!substitutions.length) return null;
+  const nextSlots = snapshot.slots.map((slot) => ({ ...slot }));
+  const repairs = [];
+  for (const substitution of substitutions) {
+    const outgoing = resolveMatchPlayerCandidate({ reference: substitution.outPlayer, candidates: nextSlots, identityIndex });
+    const incoming = resolveMatchPlayerCandidate({ reference: substitution.inPlayer, candidates: nextSlots, identityIndex });
+    if (outgoing.status !== 'resolved' || incoming.status === 'ambiguous' || incoming.status === 'identity_conflict') return null;
+    if (incoming.status === 'resolved') continue;
+    const slotIndex = nextSlots.indexOf(outgoing.candidate);
+    if (slotIndex < 0) return null;
+    nextSlots[slotIndex] = {
+      ...nextSlots[slotIndex],
+      playerId: substitution.inPlayer.playerId,
+      playerName: substitution.inPlayer.playerName,
+      position: nextSlots[slotIndex].position || '',
+    };
+    repairs.push({
+      slot: nextSlots[slotIndex].slot,
+      outPlayer: substitution.outPlayer,
+      inPlayer: substitution.inPlayer,
+    });
+  }
+  return repairs.length ? {
+    ...snapshot,
+    slots: nextSlots,
+    derivedTemporalRepair: true,
+    derivedTemporalRepairs: repairs,
+  } : null;
+};
+
+export const auditTacticalMatchSnapshots = ({
+  matchId = '',
+  initialSystem = '',
+  initialSlots = [],
+  snapshots = [],
+  systemEvents = [],
+  substitutionMinutes = [],
+  playerStats = {},
+  playerIdentities = [],
+  repairHistoricalSubstitutions = true,
+} = {}) => {
+  const normalizedSnapshots = rows(snapshots).map(normalizeTacticalSnapshot);
+  const identityIndex = createMatchPlayerIdentityIndex([
+    ...rows(playerIdentities),
+    ...buildMatchPlayerIdentityRecordsFromStats(playerStats),
+    ...rows(initialSlots),
+  ]);
+  const knownSubstitutionMinutes = getHistoricalSubstitutionMinutes(playerStats);
+  const requestedSubstitutionMinutes = rows(substitutionMinutes).map(parseTacticalMinute).filter((minute) => minute !== null);
+  const substitutionEvidenceComplete = requestedSubstitutionMinutes.every((minute) => knownSubstitutionMinutes.includes(minute));
+  const systemChangeMinutes = new Set(rows(systemEvents).map(getSystemEventMinute).filter((minute) => minute !== null));
+  const details = [];
+  const auditedSnapshots = normalizedSnapshots.map((snapshot) => {
+    const system = getActiveSystemAtMinute({ initialSystem, systemEvents, minute: snapshot.minute }) || snapshot.system;
+    const expected = buildKnownOnFieldPlayers({ initialSlots, playerStats, atMinute: snapshot.minute, identityIndex });
+    const expectedValid = expected.valid && substitutionEvidenceComplete;
+    let audit = auditNormalizedSnapshot({ snapshot, system, expectedPlayers: expected.players, expectedValid, identityIndex });
+    const repaired = repairHistoricalSubstitutions
+      ? tryRepairHistoricalSubstitutionSnapshot({
+        snapshot,
+        audit,
+        playerStats,
+        identityIndex,
+        hasSameMinuteSystemChange: systemChangeMinutes.has(snapshot.minute),
+      })
+      : null;
+    if (repaired) {
+      const repairedAudit = auditNormalizedSnapshot({ snapshot: repaired, system, expectedPlayers: expected.players, expectedValid, identityIndex });
+      if (repairedAudit.structuralComplete && repairedAudit.temporallyConsistent) {
+        audit = { ...repairedAudit, repairedInMemory: true, repairs: repaired.derivedTemporalRepairs };
+        details.push(audit);
+        return {
+          ...repaired,
+          isComplete: true,
+          structuralComplete: true,
+          temporallyConsistent: true,
+          snapshotAudit: audit,
+        };
+      }
+    }
+    details.push(audit);
+    const reliable = audit.structuralComplete && audit.temporallyConsistent !== false;
+    return {
+      ...snapshot,
+      isComplete: reliable,
+      structuralComplete: audit.structuralComplete,
+      temporallyConsistent: audit.temporallyConsistent,
+      snapshotAudit: audit,
+    };
+  });
+  return {
+    matchId,
+    totalSnapshots: details.length,
+    structurallyCompleteSnapshots: details.filter((detail) => detail.structuralComplete).length,
+    temporallyConsistentSnapshots: details.filter((detail) => detail.temporallyConsistent === true).length,
+    temporallyInconsistentSnapshots: details.filter((detail) => detail.temporallyConsistent === false).length,
+    temporallyUnauditableSnapshots: details.filter((detail) => detail.temporallyConsistent === null).length,
+    missingExpectedPlayers: details.flatMap((detail) => detail.missingExpectedPlayers.map((player) => ({ snapshotId: detail.snapshotId, minute: detail.minute, player }))),
+    unexpectedPlayers: details.flatMap((detail) => detail.unexpectedPlayers.map((player) => ({ snapshotId: detail.snapshotId, minute: detail.minute, player }))),
+    identityConflicts: details.flatMap((detail) => detail.identityConflicts.map((conflict) => ({ snapshotId: detail.snapshotId, minute: detail.minute, conflict }))),
+    duplicateSlots: details.flatMap((detail) => detail.duplicateSlots.map((slot) => ({ snapshotId: detail.snapshotId, minute: detail.minute, slot }))),
+    duplicatePlayers: details.flatMap((detail) => detail.duplicatePlayers.map((playerKey) => ({ snapshotId: detail.snapshotId, minute: detail.minute, playerKey }))),
+    repairedSnapshots: details.filter((detail) => detail.repairedInMemory).length,
+    snapshots: auditedSnapshots,
+    details,
+    identityIndex,
+  };
+};
 
 export const buildTacticalSnapshotIntervals = ({
   duration = 90,
@@ -145,11 +349,14 @@ export const buildTacticalSnapshotIntervals = ({
     const systemMismatch = Boolean(hasCanonicalSystemTimeline && storedSystem && activeSystem && storedSystem !== activeSystem);
     if (toMinute <= fromMinute) return [];
     const slotKeys = snapshot.slots.map(playerKey).filter(Boolean);
+    const slotIndexes = snapshot.slots.map((slot) => Number(slot.slot));
     const hasCompleteDisposition = Boolean(
       snapshot.isComplete
       && !systemMismatch
       && hasFormationSlotsForSavedLineup(activeSystem)
       && snapshot.slots.length === 11
+      && slotIndexes.every((slot) => Number.isInteger(slot) && slot >= 0 && slot <= 10)
+      && new Set(slotIndexes).size === 11
       && new Set(slotKeys).size === 11
     );
     return [{
@@ -166,6 +373,11 @@ export const buildTacticalSnapshotIntervals = ({
       sourceSystemEventId: snapshot.sourceSystemEventId || '',
       source: snapshot.source,
       slots: snapshot.slots,
+      structuralComplete: snapshot.structuralComplete ?? hasCompleteDisposition,
+      temporallyConsistent: snapshot.temporallyConsistent ?? null,
+      derivedTemporalRepair: Boolean(snapshot.derivedTemporalRepair),
+      derivedTemporalRepairs: rows(snapshot.derivedTemporalRepairs),
+      snapshotAudit: snapshot.snapshotAudit || null,
     }];
   });
 };
@@ -272,9 +484,15 @@ export const buildTacticalMatchHistory = ({
   systemEvents = [],
   substitutionMinutes = [],
   playerStats = {},
+  playerIdentities = [],
 } = {}) => {
   const initialSnapshot = buildInitialTacticalSnapshot({ matchId, system: initialSystem, slots: initialSlots });
-  const resolvedSnapshots = [...rows(snapshots)];
+  let resolvedSnapshots = [...rows(snapshots)];
+  const identityIndex = createMatchPlayerIdentityIndex([
+    ...rows(playerIdentities),
+    ...buildMatchPlayerIdentityRecordsFromStats(playerStats),
+    ...rows(initialSlots),
+  ]);
   const systemChangeMinutes = new Set(rows(systemEvents).map(getSystemEventMinute).filter((minute) => minute !== null));
   rows(substitutionMinutes)
     .map(parseTacticalMinute)
@@ -298,6 +516,7 @@ export const buildTacticalMatchHistory = ({
         initialSlots,
         playerStats,
         systemSlotCount: hasFormationSlotsForSavedLineup(interval?.system || initialSystem) ? 11 : 0,
+        identityIndex,
       });
       if (plan.status !== 'complete') return;
       resolvedSnapshots.push({
@@ -311,6 +530,17 @@ export const buildTacticalMatchHistory = ({
         slots: plan.slots,
       });
     });
+  const snapshotAudit = auditTacticalMatchSnapshots({
+    matchId,
+    initialSystem,
+    initialSlots,
+    snapshots: resolvedSnapshots,
+    systemEvents,
+    substitutionMinutes,
+    playerStats,
+    playerIdentities,
+  });
+  resolvedSnapshots = snapshotAudit.snapshots;
   const intervals = buildTacticalSnapshotIntervals({
     duration,
     initialSnapshot,
@@ -324,6 +554,7 @@ export const buildTacticalMatchHistory = ({
     intervals,
     systemSegments: buildTacticalSystemSegments(intervals),
     invariant: getTacticalTimelineInvariantReport({ intervals, duration }),
+    snapshotAudit,
   };
 };
 

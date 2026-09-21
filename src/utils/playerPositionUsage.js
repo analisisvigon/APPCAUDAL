@@ -1,4 +1,9 @@
 import { getFormationSlotsForSavedLineup } from './formationSlotCoordinates.js';
+import {
+  buildMatchPlayerIdentityRecordsFromStats,
+  createMatchPlayerIdentityIndex,
+  resolveMatchPlayerCandidate,
+} from './matchPlayerIdentity.js';
 
 const rows = (value) => Array.isArray(value) ? value : [];
 const clean = (value) => String(value ?? '').trim();
@@ -65,15 +70,20 @@ export const getTacticalPositionLabel = ({ system, slot, explicitPosition = '' }
 
 export const getTacticalPositionAbbreviation = (position = '') => POSITION_ABBREVIATIONS[clean(position)] || clean(position) || '—';
 
-const playerMatches = (row, { playerId, playerName }) => {
-  const rowId = clean(row?.playerId || row?.jugadorId || row?.jugador_id);
-  if (clean(playerId) && rowId) return rowId === clean(playerId);
-  return Boolean(normalizeIdentity(playerName) && normalizeIdentity(row?.playerName || row?.player_name || row?.playerNameSnapshot || row?.player_name_snapshot) === normalizeIdentity(playerName));
-};
+const resolvePlayerCandidate = (candidates, identity, identityIndex) => resolveMatchPlayerCandidate({
+  reference: identity,
+  candidates,
+  identityIndex,
+});
 
-const findPlayerStats = (playerStats, identity) => Object.entries(playerStats || {}).find(([name, stats]) => (
-  playerMatches({ playerId: stats?.jugadorId || stats?.jugador_id, playerName: name }, identity)
-))?.[1] || {};
+const findPlayerStats = (playerStats, identity, identityIndex) => {
+  const candidates = Object.entries(playerStats || {}).map(([name, stats]) => ({
+    ...stats,
+    playerId: stats?.jugadorId || stats?.jugador_id || stats?.playerId || '',
+    playerName: name,
+  }));
+  return resolvePlayerCandidate(candidates, identity, identityIndex).candidate || {};
+};
 
 const getParticipationWindow = ({ minutes, role, duration, playerStats, identity }) => {
   const playedMinutes = Math.max(0, Math.min(Number(duration || 90), Number(minutes || 0)));
@@ -89,10 +99,9 @@ const getParticipationWindow = ({ minutes, role, duration, playerStats, identity
   return { fromMinute, toMinute: Math.min(Number(duration || 90), fromMinute + playedMinutes), minutes: playedMinutes };
 };
 
-const getInitialPosition = ({ initialSlots, system, identity }) => {
-  const candidates = rows(initialSlots).filter((slot) => playerMatches(slot, identity));
-  if (candidates.length !== 1) return '';
-  const slot = candidates[0];
+const getInitialPosition = ({ initialSlots, system, identity, identityIndex }) => {
+  const slot = resolvePlayerCandidate(rows(initialSlots), identity, identityIndex).candidate;
+  if (!slot) return '';
   return getTacticalPositionLabel({
     system,
     slot: slot.slot,
@@ -159,7 +168,12 @@ const buildPlayerMatchPositionUsage = ({ row, identity }) => {
   const duration = Math.max(0, Number(row.duration || 90));
   const actualMinutes = Math.max(0, Math.min(duration, Number(row.minutes || 0)));
   const playerStats = row.playerStats || {};
-  const stats = findPlayerStats(playerStats, identity);
+  const identityIndex = createMatchPlayerIdentityIndex([
+    ...rows(row.playerIdentities),
+    ...buildMatchPlayerIdentityRecordsFromStats(playerStats),
+    identity,
+  ]);
+  const stats = findPlayerStats(playerStats, identity, identityIndex);
   const participation = getParticipationWindow({
     minutes: actualMinutes,
     role: row.role || stats.role,
@@ -171,13 +185,14 @@ const buildPlayerMatchPositionUsage = ({ row, identity }) => {
     initialSlots: row.initialSlots,
     system: row.initialSystem,
     identity,
+    identityIndex,
   });
   const intervals = rows(row.intervals)
     .filter((interval) => Number(interval?.toMinute) > Number(interval?.fromMinute))
     .slice()
     .sort((left, right) => Number(left.fromMinute) - Number(right.fromMinute) || Number(left.toMinute) - Number(right.toMinute));
   const segments = [];
-  const addSegment = ({ fromMinute, toMinute, system = '', position = '', source = 'unknown', interval = null }) => {
+  const addSegment = ({ fromMinute, toMinute, system = '', position = '', source = 'unknown', interval = null, playerResolution = '' }) => {
     const safeFrom = Math.max(participation.fromMinute, Number(fromMinute));
     const safeTo = Math.min(participation.toMinute, Number(toMinute));
     if (safeTo <= safeFrom) return;
@@ -206,6 +221,7 @@ const buildPlayerMatchPositionUsage = ({ row, identity }) => {
         reason: clean(interval.reason),
         isComplete: Boolean(interval.isComplete),
         slotCount: rows(interval.slots).length,
+        playerResolution,
       } : null,
     });
   };
@@ -236,10 +252,10 @@ const buildPlayerMatchPositionUsage = ({ row, identity }) => {
           });
         }
         const fromMinute = Math.max(cursor, intervalFrom);
-        const candidates = interval.isComplete
-          ? rows(interval.slots).filter((slot) => playerMatches(slot, identity))
-          : [];
-        const slot = candidates.length === 1 ? candidates[0] : null;
+        const slotResolution = interval.isComplete
+          ? resolvePlayerCandidate(rows(interval.slots), identity, identityIndex)
+          : { status: 'interval_incomplete', candidate: null };
+        const slot = slotResolution.candidate;
         const explicitPosition = clean(slot?.position || slot?.role || slot?.tacticalPosition || slot?.tactical_position);
         const resolvedPosition = slot
           ? getTacticalPositionLabel({ system: interval.system, slot: slot.slot, explicitPosition })
@@ -255,6 +271,7 @@ const buildPlayerMatchPositionUsage = ({ row, identity }) => {
           position: resolvedPosition || (isInitialInterval ? initialPosition : ''),
           source: resolvedPosition ? (explicitPosition ? 'explicit' : 'tacticalSlot') : isInitialInterval ? 'initialSlot' : 'unknown',
           interval,
+          playerResolution: slotResolution.status,
         });
         cursor = Math.max(cursor, intervalTo);
       });
@@ -327,12 +344,22 @@ const buildPlayerMatchPositionUsage = ({ row, identity }) => {
 export const getPlayerPositionUsage = ({
   playerId = '',
   playerName = '',
+  playerIdentity = {},
+  playerIdentities = [],
   matchRows = [],
 } = {}) => {
-  const identity = { playerId: clean(playerId), playerName: clean(playerName) };
+  const identity = {
+    ...playerIdentity,
+    canonicalPlayerId: clean(playerIdentity.canonicalPlayerId || playerId),
+    playerId: clean(playerId || playerIdentity.playerId || playerIdentity.id),
+    playerName: clean(playerName || playerIdentity.playerName || playerIdentity.name),
+  };
   const allocations = new Map();
   const sources = { explicit: 0, tacticalSlot: 0, initialSlot: 0, unknown: 0 };
-  const matches = rows(matchRows).map((row) => buildPlayerMatchPositionUsage({ row, identity }));
+  const matches = rows(matchRows).map((row) => buildPlayerMatchPositionUsage({
+    row: { ...row, playerIdentities: rows(row.playerIdentities).length ? row.playerIdentities : playerIdentities },
+    identity,
+  }));
   const totalMinutes = matches.reduce((sum, match) => sum + match.totalMinutes, 0);
   matches.flatMap((match) => match.segments).forEach((segment) => {
     sources[segment.source] = (sources[segment.source] || 0) + segment.minutes;

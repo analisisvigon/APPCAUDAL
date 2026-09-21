@@ -164,6 +164,8 @@ const minutes = playedRows.reduce((sum, { row }) => sum + Number(row.minutes || 
 const positionUsage = buildPlayerPositionUsage({
   playerId,
   playerName: player.name,
+  playerIdentity: player,
+  playerIdentities: rows(rosterResponse.data),
   matchRows: playedRows.map(({ row, match }) => ({
     matchId: match.id,
     minutes: Number(row.minutes || 0),
@@ -180,6 +182,7 @@ const positionUsage = buildPlayerPositionUsage({
       systemEvents: systemEventsByMatch[match.id] || [],
       substitutionMinutes: getHistoricalSubstitutionMinutes(statsByMatch[match.id] || {}),
       playerStats: statsByMatch[match.id] || {},
+      playerIdentities: rows(rosterResponse.data),
     }).intervals,
     playerStats: statsByMatch[match.id] || {},
   })),

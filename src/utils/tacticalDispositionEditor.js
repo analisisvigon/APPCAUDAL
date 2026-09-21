@@ -1,3 +1,5 @@
+import { getMatchPlayerIdentityKey } from './matchPlayerIdentity.js';
+
 const clean = (value) => String(value ?? '').trim();
 const normalizeName = (value) => clean(value)
   .normalize('NFD')
@@ -13,9 +15,9 @@ export const normalizeTacticalParticipant = (row = {}) => {
   };
 };
 
-export const getTacticalParticipantKey = (row = {}) => {
+export const getTacticalParticipantKey = (row = {}, identityIndex = null) => {
   const participant = normalizeTacticalParticipant(row);
-  return participant.playerId ? `id:${participant.playerId}` : participant.playerName ? `name:${normalizeName(participant.playerName)}` : '';
+  return getMatchPlayerIdentityKey({ ...row, ...participant }, identityIndex);
 };
 
 const findStatsEntry = (playerStats = {}, playerName = '') => {
@@ -45,18 +47,18 @@ export const getTacticalSubstitutionsAtMinute = ({ playerStats = {}, minute } = 
   }).sort((left, right) => getTacticalParticipantKey(left.outPlayer).localeCompare(getTacticalParticipantKey(right.outPlayer)));
 };
 
-export const buildKnownOnFieldPlayers = ({ initialSlots = [], playerStats = {}, atMinute = 0 } = {}) => {
+export const buildKnownOnFieldPlayers = ({ initialSlots = [], playerStats = {}, atMinute = 0, identityIndex = null } = {}) => {
   const errors = [];
   const initial = initialSlots
     .slice()
     .sort((left, right) => Number(left.slot) - Number(right.slot))
     .map(normalizeTacticalParticipant)
-    .filter((row) => getTacticalParticipantKey(row));
-  const initialKeys = initial.map(getTacticalParticipantKey);
+    .filter((row) => getTacticalParticipantKey(row, identityIndex));
+  const initialKeys = initial.map((player) => getTacticalParticipantKey(player, identityIndex));
   if (initial.length !== 11 || new Set(initialKeys).size !== 11) {
     errors.push('La alineación inicial no contiene 11 jugadores únicos.');
   }
-  const playersByKey = new Map(initial.map((player) => [getTacticalParticipantKey(player), player]));
+  const playersByKey = new Map(initial.map((player) => [getTacticalParticipantKey(player, identityIndex), player]));
   const substitutions = Object.entries(playerStats || {}).flatMap(([outName, stats]) => {
     const minute = Number(stats?.minutes);
     const replacementName = clean(stats?.replacementName || stats?.replacement_name);
@@ -71,8 +73,8 @@ export const buildKnownOnFieldPlayers = ({ initialSlots = [], playerStats = {}, 
   }).sort((left, right) => left.minute - right.minute || getTacticalParticipantKey(left.outPlayer).localeCompare(getTacticalParticipantKey(right.outPlayer)));
 
   substitutions.forEach(({ minute, outPlayer, inPlayer }) => {
-    const outKey = getTacticalParticipantKey(outPlayer);
-    const inKey = getTacticalParticipantKey(inPlayer);
+    const outKey = getTacticalParticipantKey(outPlayer, identityIndex);
+    const inKey = getTacticalParticipantKey(inPlayer, identityIndex);
     if (!outKey || !playersByKey.has(outKey)) {
       errors.push(`Sustitución ${minute}': el jugador saliente no estaba identificado en el campo.`);
       return;
@@ -86,7 +88,7 @@ export const buildKnownOnFieldPlayers = ({ initialSlots = [], playerStats = {}, 
   });
 
   const players = Array.from(playersByKey.values());
-  if (players.length !== 11 || new Set(players.map(getTacticalParticipantKey)).size !== 11) {
+  if (players.length !== 11 || new Set(players.map((player) => getTacticalParticipantKey(player, identityIndex))).size !== 11) {
     errors.push(`El intervalo contiene ${players.length} jugadores inequívocos en lugar de 11.`);
   }
   return { valid: errors.length === 0, players, substitutions, errors };
@@ -124,6 +126,7 @@ export const buildAutomaticSubstitutionSnapshot = ({
   initialSlots = [],
   playerStats = {},
   systemSlotCount = 11,
+  identityIndex = null,
 } = {}) => {
   const targetMinute = Number(minute);
   const substitutions = getTacticalSubstitutionsAtMinute({ playerStats, minute: targetMinute });
@@ -165,16 +168,16 @@ export const buildAutomaticSubstitutionSnapshot = ({
     const slot = Number(slotRow.slot);
     if (Number.isInteger(slot) && slot >= 0 && slot <= 10) lineup[slot] = normalizeTacticalParticipant(slotRow);
   });
-  if (lineup.filter(Boolean).length !== 11 || new Set(lineup.filter(Boolean).map(getTacticalParticipantKey)).size !== 11) {
+  if (lineup.filter(Boolean).length !== 11 || new Set(lineup.filter(Boolean).map((player) => getTacticalParticipantKey(player, identityIndex))).size !== 11) {
     return fail('incomplete_previous_snapshot', ['El snapshot base no contiene 11 slots y 11 jugadores únicos.']);
   }
 
   const errors = [];
   substitutions.forEach(({ outPlayer, inPlayer }) => {
-    const outKey = getTacticalParticipantKey(outPlayer);
-    const inKey = getTacticalParticipantKey(inPlayer);
-    const outSlot = lineup.findIndex((player) => getTacticalParticipantKey(player) === outKey);
-    const inSlot = lineup.findIndex((player) => getTacticalParticipantKey(player) === inKey);
+    const outKey = getTacticalParticipantKey(outPlayer, identityIndex);
+    const inKey = getTacticalParticipantKey(inPlayer, identityIndex);
+    const outSlot = lineup.findIndex((player) => getTacticalParticipantKey(player, identityIndex) === outKey);
+    const inSlot = lineup.findIndex((player) => getTacticalParticipantKey(player, identityIndex) === inKey);
     if (outSlot >= 0 && inSlot < 0) {
       lineup[outSlot] = inPlayer;
       return;
@@ -186,8 +189,8 @@ export const buildAutomaticSubstitutionSnapshot = ({
   });
   if (errors.length) return fail('ambiguous_substitution', errors);
 
-  const known = buildKnownOnFieldPlayers({ initialSlots, playerStats, atMinute: targetMinute });
-  const validation = validateTacticalDisposition({ lineup, knownPlayers: known.players });
+  const known = buildKnownOnFieldPlayers({ initialSlots, playerStats, atMinute: targetMinute, identityIndex });
+  const validation = validateTacticalDisposition({ lineup, knownPlayers: known.players, identityIndex });
   if (!known.valid || !validation.valid) {
     return fail('lineup_validation_failed', [...known.errors, ...validation.errors]);
   }
@@ -224,10 +227,10 @@ export const removeTacticalDispositionPlayer = ({ lineup = [], player } = {}) =>
   });
 };
 
-export const validateTacticalDisposition = ({ lineup = [], knownPlayers = [], allowKnownPlayerSubset = false } = {}) => {
+export const validateTacticalDisposition = ({ lineup = [], knownPlayers = [], allowKnownPlayerSubset = false, identityIndex = null } = {}) => {
   const placed = lineup.filter(Boolean).map(normalizeTacticalParticipant);
-  const placedKeys = placed.map(getTacticalParticipantKey);
-  const knownKeys = knownPlayers.map(getTacticalParticipantKey).filter(Boolean);
+  const placedKeys = placed.map((player) => getTacticalParticipantKey(player, identityIndex));
+  const knownKeys = knownPlayers.map((player) => getTacticalParticipantKey(player, identityIndex)).filter(Boolean);
   const knownSet = new Set(knownKeys);
   const errors = [];
   if (placed.length !== 11) errors.push(`Debes colocar los 11 jugadores (${placed.length}/11).`);

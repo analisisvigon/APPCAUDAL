@@ -56,6 +56,7 @@ import { buildSetPieceCaptureResponsibilities } from './utils/setPieceCaptureRes
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
 import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
 import { getPlayerPositionUsage } from './utils/playerPositionUsage';
+import { resolveMatchPlayerCandidate } from './utils/matchPlayerIdentity';
 import { getSportsSeason, resolveSportsSeasonFromMatches } from './utils/sportsSeason';
 import {
   buildPlayerBodyPartSummary,
@@ -18508,6 +18509,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       systemEvents: safeArray(match.systemEvents),
       substitutionMinutes: getHistoricalSubstitutionMinutes(safeObject(match.statsPlayerData)),
       playerStats: safeObject(match.statsPlayerData),
+      playerIdentities: players,
     });
   };
 
@@ -18573,10 +18575,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
 
   const enrichTacticalParticipant = (row = {}) => {
     const participant = normalizeTacticalParticipant(row);
-    const rosterPlayer = players.find((player) => (
-      (participant.playerId && String(player.id) === String(participant.playerId))
-      || (participant.playerName && normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(participant.playerName))
-    ));
+    const rosterPlayer = resolveMatchPlayerCandidate({ reference: participant, candidates: players }).candidate;
     return normalizeTacticalParticipant({
       playerId: participant.playerId || rosterPlayer?.id || '',
       playerName: participant.playerName || rosterPlayer?.name || '',
@@ -30048,6 +30047,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
               const playerPositionUsage = getPlayerPositionUsage({
                 playerId: selectedPlayerProfile.id,
                 playerName: selectedPlayerProfile.name,
+                playerIdentity: selectedPlayerProfile,
+                playerIdentities: players,
                 matchRows: aggregate.rows.map((row) => {
                   const tacticalHistory = getMatchTacticalHistory(row.match);
                   const score = getMatchScoreData(row.match);
