@@ -1,4 +1,5 @@
 import { hasFormationSlotsForSavedLineup } from './formationSlotCoordinates.js';
+import { buildAutomaticSubstitutionSnapshot } from './tacticalDispositionEditor.js';
 
 const clean = (value) => String(value ?? '').trim();
 const rows = (value) => Array.isArray(value) ? value : [];
@@ -115,7 +116,7 @@ export const buildTacticalSnapshotIntervals = ({
     }));
   }
 
-  const priority = { persisted: 4, virtual_initial: 3, missing_system_snapshot: 2, missing_substitution_snapshot: 1, missing_initial_snapshot: 0 };
+  const priority = { persisted: 5, inferred_substitution: 4, virtual_initial: 3, missing_system_snapshot: 2, missing_substitution_snapshot: 1, missing_initial_snapshot: 0 };
   const byMinute = new Map();
   candidates
     .filter((snapshot) => snapshot.minute <= matchDuration)
@@ -270,12 +271,50 @@ export const buildTacticalMatchHistory = ({
   snapshots = [],
   systemEvents = [],
   substitutionMinutes = [],
+  playerStats = {},
 } = {}) => {
   const initialSnapshot = buildInitialTacticalSnapshot({ matchId, system: initialSystem, slots: initialSlots });
+  const resolvedSnapshots = [...rows(snapshots)];
+  const systemChangeMinutes = new Set(rows(systemEvents).map(getSystemEventMinute).filter((minute) => minute !== null));
+  rows(substitutionMinutes)
+    .map(parseTacticalMinute)
+    .filter((minute) => minute !== null && minute > 0 && minute <= Number(duration || 90))
+    .sort((left, right) => left - right)
+    .forEach((minute) => {
+      if (systemChangeMinutes.has(minute) || resolvedSnapshots.some((snapshot) => parseTacticalMinute(snapshot?.minute) === minute)) return;
+      const provisionalIntervals = buildTacticalSnapshotIntervals({
+        duration,
+        initialSnapshot,
+        snapshots: resolvedSnapshots,
+        systemEvents,
+        substitutionMinutes,
+        initialSystem,
+      });
+      const interval = provisionalIntervals.find((candidate) => Number(candidate.fromMinute) === minute);
+      const plan = buildAutomaticSubstitutionSnapshot({
+        minute,
+        system: interval?.system || initialSystem,
+        intervals: provisionalIntervals,
+        initialSlots,
+        playerStats,
+        systemSlotCount: hasFormationSlotsForSavedLineup(interval?.system || initialSystem) ? 11 : 0,
+      });
+      if (plan.status !== 'complete') return;
+      resolvedSnapshots.push({
+        id: `inferred-substitution-${matchId || 'match'}-${minute}`,
+        matchId,
+        minute,
+        system: plan.system,
+        reason: 'Continuidad inequívoca del slot en sustitución sin cambio de sistema',
+        isComplete: true,
+        source: 'inferred_substitution',
+        slots: plan.slots,
+      });
+    });
   const intervals = buildTacticalSnapshotIntervals({
     duration,
     initialSnapshot,
-    snapshots,
+    snapshots: resolvedSnapshots,
     systemEvents,
     substitutionMinutes,
     initialSystem,

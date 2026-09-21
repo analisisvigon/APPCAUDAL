@@ -11,9 +11,9 @@ assert.match(component, /onToggle\(isOpen \? '' : entry\.key\)/, 'solo una posic
 assert.match(component, /getPositionTimelineMatches\(usage, entry\.key\)/, 'el detalle consume los tramos canónicos');
 assert.match(component, /data-position-timeline-entry/);
 assert.match(component, /data-position-timeline-details/);
-assert.match(component, /match\.segments\.map/, 'un partido admite varios tramos sin fusionarlos');
+assert.match(component, /match\.segments\.map/, 'un partido admite varios tramos visuales');
 assert.match(component, /segment\.system \|\| 'Sistema —'/, 'el sistema desconocido se muestra sin inferencias');
-assert.match(component, /'Posición —'/, 'la posición desconocida permanece visible');
+assert.match(component, /entry\.abbreviation : '—'/, 'la posición desconocida permanece visible de forma compacta');
 assert.match(component, /min-h-11/, 'los controles mantienen un target táctil suficiente');
 assert.match(component, /flex-wrap/, 'los metadatos y tramos pueden apilarse en móvil');
 assert.doesNotMatch(component, /overflow-x-auto/, 'el detalle por posición no introduce scroll horizontal propio');
@@ -26,5 +26,7 @@ assert.match(matchSummary, /buildMatchPositionSummary\(matchUsage\)/);
 assert.match(matchSummary, /data-player-match-position-details/);
 assert.match(matchSummary, /summary\.segments\.map/, 'el detalle del partido admite de dos a cuatro o más tramos');
 assert.match(matchSummary, /<details className=/, 'la tabla no muestra todos los tramos abiertos');
+assert.match(matchSummary, /data-player-match-position-compact/, 'un único tramo se comporta como una celda sin tarjeta');
+assert.doesNotMatch(matchSummary, /rounded-lg border/, 'POS.\/SIST. ya no usa una tarjeta de borde pesado');
 
 console.log('player position timeline UI audit passed');

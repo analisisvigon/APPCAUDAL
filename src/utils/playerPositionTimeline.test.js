@@ -37,7 +37,7 @@ const matchRow = ({
   playerStats = {},
   matchId = 'match-1',
 } = {}) => {
-  const history = buildTacticalMatchHistory({ matchId, duration, initialSystem, initialSlots, snapshots, systemEvents, substitutionMinutes });
+  const history = buildTacticalMatchHistory({ matchId, duration, initialSystem, initialSlots, snapshots, systemEvents, substitutionMinutes, playerStats });
   return {
     matchId,
     minutes,
@@ -196,8 +196,91 @@ const knownPositionUnknownSystem = usage({
 });
 assert.deepEqual(compact(knownPositionUnknownSystem), [[0, 90, '', 'Mediapunta', true]]);
 
+// N) Sustitución sin cambio de sistema: el entrante hereda únicamente el slot táctico inequívoco.
+const initialN = lineup({ targetId: 'player-a', targetName: 'Jugador A', targetSlot: 7 });
+const statsN = {
+  'Jugador A': { role: 'Titular', minutes: 63, replacementName: PLAYER.playerName, jugadorId: 'player-a' },
+  [PLAYER.playerName]: { role: 'Suplente', minutes: 27, replacementName: '', jugadorId: PLAYER.playerId },
+};
+const incomingN = usage(matchRow({
+  minutes: 27, role: 'Suplente', initialSlots: initialN, playerStats: statsN, substitutionMinutes: [63],
+}));
+assert.deepEqual(compact(incomingN), [[63, 90, '4-2-3-1', 'Extremo derecho', true]]);
+assert.equal(incomingN.matches[0].segments[0].intervalSource, 'inferred_substitution');
+assert.deepEqual(incomingN.reconstructionAudit.map(({ fromMinute, toMinute, evidence }) => [fromMinute, toMinute, evidence]), [[63, 90, 'same_system_direct_replacement_slot']]);
+const outgoingN = usage(matchRow({
+  minutes: 63, initialSlots: initialN, playerStats: statsN, substitutionMinutes: [63],
+}), { playerId: 'player-a', playerName: 'Jugador A' });
+assert.deepEqual(compact(outgoingN), [[0, 63, '4-2-3-1', 'Extremo derecho', true]]);
+
+// O) Los otros diez jugadores conservan sus slots cuando la única evidencia es una sustitución directa.
+const remainingO = usage(matchRow({
+  initialSlots: initialN, playerStats: statsN, substitutionMinutes: [63],
+}), { playerId: 'player-8', playerName: 'Jugador 8' });
+assert.deepEqual(remainingO.positions.map(({ position, minutes }) => [position, minutes]), [['Mediapunta', 90]]);
+assert.equal(remainingO.unknownMinutes, 0);
+
+// P) Un snapshot explícito posterior manda sobre la continuidad automática.
+const at63N = withReplacement(initialN, { outId: 'player-a', inId: PLAYER.playerId, inName: PLAYER.playerName });
+const explicitP = usage(matchRow({
+  minutes: 27,
+  role: 'Suplente',
+  initialSlots: initialN,
+  playerStats: statsN,
+  substitutionMinutes: [63],
+  snapshots: [{ id: 'snapshot-63', minute: 63, system: '4-2-3-1', isComplete: true, slots: moveTarget(at63N, 8) }],
+}));
+assert.deepEqual(compact(explicitP), [[63, 90, '4-2-3-1', 'Mediapunta', true]]);
+
+// Q) Si el saliente no ocupa un slot inequívoco en la foto previa, no se infiere.
+const ambiguousQStats = {
+  'Jugador ausente': { role: 'Titular', minutes: 63, replacementName: PLAYER.playerName, jugadorId: 'absent-player' },
+  [PLAYER.playerName]: { role: 'Suplente', minutes: 27, replacementName: '', jugadorId: PLAYER.playerId },
+};
+const ambiguousQ = usage(matchRow({
+  minutes: 27, role: 'Suplente', initialSlots: lineup({ targetId: 'someone-else', targetName: 'Otro jugador', targetSlot: 9 }), playerStats: ambiguousQStats, substitutionMinutes: [63],
+}));
+assert.deepEqual(compact(ambiguousQ), [[63, 90, '4-2-3-1', '', false]]);
+
+// R) Sustitución y cambio de sistema en el mismo minuto: no hereda el slot antiguo.
+const sameMinuteR = usage(matchRow({
+  minutes: 27,
+  role: 'Suplente',
+  initialSlots: initialN,
+  playerStats: statsN,
+  substitutionMinutes: [63],
+  systemEvents: [{ id: 'system-63', minute: 63, toSystem: '4-4-2' }],
+}));
+assert.deepEqual(compact(sameMinuteR), [[63, 90, '4-4-2', '', false]]);
+
+// S) La continuidad segura termina en el cambio de sistema posterior.
+const laterSystemS = usage(matchRow({
+  minutes: 27,
+  role: 'Suplente',
+  initialSlots: initialN,
+  playerStats: statsN,
+  substitutionMinutes: [63],
+  systemEvents: [{ id: 'system-70', minute: 70, toSystem: '4-4-2' }],
+}));
+assert.deepEqual(compact(laterSystemS), [
+  [63, 70, '4-2-3-1', 'Extremo derecho', true],
+  [70, 90, '4-4-2', '', false],
+]);
+
+// T) Dos sustituciones simultáneas solo se resuelven si ambos pares son directos y únicos.
+const initialT = initialN.map((row) => row.slot === 10 ? { ...row, playerId: 'player-d', playerName: 'Jugador D' } : row);
+const statsT = {
+  ...statsN,
+  'Jugador D': { role: 'Titular', minutes: 63, replacementName: 'Jugador C', jugadorId: 'player-d' },
+  'Jugador C': { role: 'Suplente', minutes: 27, replacementName: '', jugadorId: 'player-c' },
+};
+const simultaneousT = usage(matchRow({
+  minutes: 27, role: 'Suplente', initialSlots: initialT, playerStats: statsT, substitutionMinutes: [63],
+}));
+assert.deepEqual(compact(simultaneousT), [[63, 90, '4-2-3-1', 'Extremo derecho', true]]);
+
 // M) La cobertura temporal y la suma oficial son invariantes públicas distintas.
-for (const result of [initialOnly, missingAfterChange, reliableChange, outgoing, incoming, incomingSameMinute, multiple, returnToPrevious, samePositionTwoSystems, incomplete, knownPositionUnknownSystem]) {
+for (const result of [initialOnly, missingAfterChange, reliableChange, outgoing, incoming, incomingSameMinute, multiple, returnToPrevious, samePositionTwoSystems, incomplete, knownPositionUnknownSystem, incomingN, outgoingN, remainingO, explicitP, ambiguousQ, sameMinuteR, laterSystemS, simultaneousT]) {
   assert.equal(result.identifiedMinutes + result.unidentifiedMinutes, result.totalMinutes);
   assert.equal(result.quality.arithmeticValid, true);
   assert.equal(result.quality.temporalCoverageValid, true);

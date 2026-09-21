@@ -18507,6 +18507,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       snapshots: safeArray(match.tacticalSnapshots),
       systemEvents: safeArray(match.systemEvents),
       substitutionMinutes: getHistoricalSubstitutionMinutes(safeObject(match.statsPlayerData)),
+      playerStats: safeObject(match.statsPlayerData),
     });
   };
 
@@ -30059,6 +30060,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                     initialSlots: getMatchInitialTacticalSlots(row.match),
                     intervals: tacticalHistory.intervals,
                     playerStats: safeObject(row.match.statsPlayerData),
+                    systemEvents: safeArray(row.match.systemEvents),
+                    snapshots: safeArray(row.match.tacticalSnapshots),
                     matchMetadata: {
                       opponent: row.match.opponent,
                       date: row.match.date,
@@ -30070,6 +30073,19 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 }),
               });
               const playerPositionUsageByMatchId = new Map(playerPositionUsage.matches.map((match) => [match.matchId, match]));
+              if (import.meta.env.DEV && typeof window !== 'undefined') {
+                window.__APPCAUDAL_PLAYER_POSITION_AUDIT__ = {
+                  player: { id: selectedPlayerProfile.id, name: selectedPlayerProfile.name },
+                  filters: { competition: playerCompetitionFilter, venue: playerVenueFilter },
+                  totals: {
+                    minutes: playerPositionUsage.totalMinutes,
+                    identified: playerPositionUsage.identifiedMinutes,
+                    unknown: playerPositionUsage.unidentifiedMinutes,
+                  },
+                  reconstructedSegments: playerPositionUsage.reconstructionAudit,
+                  unknownSegments: playerPositionUsage.unknownAudit,
+                };
+              }
               const playerPdfActions = [...allGoalActions, ...allAssistActions].map((event) => ({
                 ...event,
                 id: `${event.action}-${event.match.id}-${event.id}`,

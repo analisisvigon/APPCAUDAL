@@ -5,6 +5,39 @@ const clean = (value) => String(value ?? '').trim();
 
 export const UNKNOWN_POSITION_KEY = '__unknown_position__';
 
+const segmentPlayerKey = (segment = {}) => clean(segment.playerId)
+  ? `id:${clean(segment.playerId)}`
+  : `name:${clean(segment.playerName).toLocaleLowerCase('es')}`;
+
+const canMergePositionSegments = (previous, current) => Boolean(
+  previous
+  && current
+  && clean(previous.matchId) === clean(current.matchId)
+  && segmentPlayerKey(previous) === segmentPlayerKey(current)
+  && clean(previous.system) === clean(current.system)
+  && clean(previous.position) === clean(current.position)
+  && Boolean(previous.identified) === Boolean(current.identified)
+  && Number(previous.toMinute) === Number(current.fromMinute)
+);
+
+export const mergeContiguousPositionSegments = (segments = []) => rows(segments).reduce((merged, source) => {
+  const segment = { ...source };
+  const previous = merged[merged.length - 1];
+  if (!canMergePositionSegments(previous, segment)) {
+    merged.push({
+      ...segment,
+      minutes: Math.max(0, Number(segment.toMinute) - Number(segment.fromMinute)),
+      canonicalSegments: [source],
+    });
+    return merged;
+  }
+  previous.toMinute = Number(segment.toMinute);
+  previous.endMinute = Number(segment.toMinute);
+  previous.minutes = Math.max(0, Number(previous.toMinute) - Number(previous.fromMinute));
+  previous.canonicalSegments.push(source);
+  return merged;
+}, []);
+
 export const buildPositionTimelineEntries = (usage = {}) => {
   const officialMinutes = Math.max(0, Number(usage.totalMinutes || 0));
   const known = rows(usage.positions).map((position) => ({
@@ -27,10 +60,11 @@ export const buildPositionTimelineEntries = (usage = {}) => {
 };
 
 export const getPositionTimelineMatches = (usage = {}, positionKey = '') => rows(usage.matches).flatMap((match) => {
-  const segments = rows(match.segments).filter((segment) => (
+  const canonicalSegments = rows(match.segments).filter((segment) => (
     positionKey === UNKNOWN_POSITION_KEY ? !segment.identified : segment.identified && clean(segment.position) === clean(positionKey)
   ));
-  if (!segments.length) return [];
+  if (!canonicalSegments.length) return [];
+  const segments = mergeContiguousPositionSegments(canonicalSegments);
   return [{
     matchId: match.matchId,
     opponent: match.opponent,
@@ -38,29 +72,46 @@ export const getPositionTimelineMatches = (usage = {}, positionKey = '') => rows
     competition: match.competition,
     venue: match.venue,
     result: match.result,
-    minutes: segments.reduce((sum, segment) => sum + Number(segment.minutes || 0), 0),
+    minutes: canonicalSegments.reduce((sum, segment) => sum + Number(segment.minutes || 0), 0),
     segments,
+    canonicalSegments,
   }];
 });
 
 export const buildMatchPositionSummary = (matchUsage = {}) => {
-  const segments = rows(matchUsage?.segments);
-  if (!segments.length) return { label: '—', systemLabel: 'Sin datos tácticos', segments: [], hasDetails: false };
+  const canonicalSegments = rows(matchUsage?.segments);
+  const segments = mergeContiguousPositionSegments(canonicalSegments);
+  if (!segments.length) return { label: '—', systemLabel: 'Sin datos tácticos', segments: [], canonicalSegments: [], hasDetails: false, positionCount: 0, systemCount: 0, visualSegmentCount: 0 };
+  const positions = [...new Set(segments.filter((segment) => segment.identified && clean(segment.position)).map((segment) => clean(segment.position)))];
+  const systems = [...new Set(segments.map((segment) => clean(segment.system)).filter(Boolean))];
+  const hasUnknownPosition = segments.some((segment) => !segment.identified);
   if (segments.length === 1) {
     const segment = segments[0];
     return {
       label: segment.identified ? getTacticalPositionAbbreviation(segment.position) : '—',
       systemLabel: clean(segment.system) || 'Sistema —',
       segments,
-      hasDetails: true,
+      canonicalSegments,
+      hasDetails: false,
+      positionCount: positions.length,
+      systemCount: systems.length,
+      visualSegmentCount: 1,
     };
   }
-  const systems = [...new Set(segments.map((segment) => clean(segment.system)).filter(Boolean))];
+  const positionLabel = positions.length > 1
+    ? `${positions.length} posiciones${hasUnknownPosition ? ' + sin posición' : ''}`
+    : positions.length === 1
+      ? `${getTacticalPositionAbbreviation(positions[0])}${hasUnknownPosition ? ' + sin posición' : ''}`
+      : 'Sin posición';
   return {
-    label: `${segments.length} tramos`,
+    label: positionLabel,
     systemLabel: systems.length === 1 ? systems[0] : systems.length > 1 ? `${systems.length} sistemas` : 'Sistema —',
     segments,
+    canonicalSegments,
     hasDetails: true,
+    positionCount: positions.length,
+    systemCount: systems.length,
+    visualSegmentCount: segments.length,
   };
 };
 

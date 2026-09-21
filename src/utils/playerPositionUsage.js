@@ -113,6 +113,48 @@ const getMatchMetadata = (row = {}) => {
 
 const sameSystem = (left, right) => normalizeIdentity(left) === normalizeIdentity(right);
 
+const classifyUnknownSegment = (segment = {}) => {
+  if (segment.intervalSource === 'missing_substitution_snapshot') return 'substitution_without_snapshot';
+  if (segment.intervalSource === 'missing_system_snapshot') return 'system_change_without_snapshot';
+  if (segment.intervalSource === 'missing_initial_snapshot') return 'missing_initial_snapshot';
+  if (segment.intervalSource === 'persisted' && segment.intervalComplete === false) return 'incomplete_persisted_snapshot';
+  if (segment.source === 'unknown' && segment.systemIdentified) return 'insufficient_positional_evidence';
+  return 'insufficient_historical_data';
+};
+
+const buildTacticalAuditEvents = (row = {}) => {
+  const substitutions = Object.entries(row.playerStats || {}).flatMap(([outPlayerName, stats]) => {
+    const minute = Number(stats?.minutes);
+    const inPlayerName = clean(stats?.replacementName || stats?.replacement_name);
+    return inPlayerName && Number.isFinite(minute) ? [{ type: 'substitution', minute, outPlayerName, inPlayerName }] : [];
+  });
+  const systemChanges = rows(row.systemEvents).flatMap((event) => {
+    const minute = Number(event?.minute);
+    if (!Number.isFinite(minute)) return [];
+    return [{
+      type: 'system_change',
+      minute,
+      fromSystem: clean(event.fromSystem || event.from_system),
+      toSystem: clean(event.toSystem || event.to_system),
+      eventId: clean(event.id),
+    }];
+  });
+  const snapshots = rows(row.snapshots).flatMap((snapshot) => {
+    const minute = Number(snapshot?.minute);
+    if (!Number.isFinite(minute)) return [];
+    return [{
+      type: 'snapshot',
+      minute,
+      snapshotId: clean(snapshot.id),
+      system: clean(snapshot.system),
+      isComplete: Boolean(snapshot.isComplete ?? snapshot.is_complete),
+      slotCount: rows(snapshot.slots).length,
+    }];
+  });
+  return [...substitutions, ...systemChanges, ...snapshots]
+    .sort((left, right) => left.minute - right.minute || left.type.localeCompare(right.type));
+};
+
 const buildPlayerMatchPositionUsage = ({ row, identity }) => {
   const duration = Math.max(0, Number(row.duration || 90));
   const actualMinutes = Math.max(0, Math.min(duration, Number(row.minutes || 0)));
@@ -135,7 +177,7 @@ const buildPlayerMatchPositionUsage = ({ row, identity }) => {
     .slice()
     .sort((left, right) => Number(left.fromMinute) - Number(right.fromMinute) || Number(left.toMinute) - Number(right.toMinute));
   const segments = [];
-  const addSegment = ({ fromMinute, toMinute, system = '', position = '', source = 'unknown' }) => {
+  const addSegment = ({ fromMinute, toMinute, system = '', position = '', source = 'unknown', interval = null }) => {
     const safeFrom = Math.max(participation.fromMinute, Number(fromMinute));
     const safeTo = Math.min(participation.toMinute, Number(toMinute));
     if (safeTo <= safeFrom) return;
@@ -152,6 +194,19 @@ const buildPlayerMatchPositionUsage = ({ row, identity }) => {
       positionIdentified: Boolean(clean(position)),
       systemIdentified: Boolean(clean(system)),
       source,
+      playerId: identity.playerId,
+      playerName: identity.playerName,
+      intervalId: clean(interval?.id),
+      intervalSource: clean(interval?.source),
+      intervalReason: clean(interval?.reason),
+      intervalComplete: interval ? Boolean(interval.isComplete) : null,
+      snapshot: interval ? {
+        id: clean(interval.id),
+        source: clean(interval.source),
+        reason: clean(interval.reason),
+        isComplete: Boolean(interval.isComplete),
+        slotCount: rows(interval.slots).length,
+      } : null,
     });
   };
 
@@ -199,6 +254,7 @@ const buildPlayerMatchPositionUsage = ({ row, identity }) => {
           system: interval.system || (isInitialInterval ? row.initialSystem : ''),
           position: resolvedPosition || (isInitialInterval ? initialPosition : ''),
           source: resolvedPosition ? (explicitPosition ? 'explicit' : 'tacticalSlot') : isInitialInterval ? 'initialSlot' : 'unknown',
+          interval,
         });
         cursor = Math.max(cursor, intervalTo);
       });
@@ -219,6 +275,41 @@ const buildPlayerMatchPositionUsage = ({ row, identity }) => {
   const unidentifiedMinutes = segments.filter((segment) => !segment.identified).reduce((sum, segment) => sum + segment.minutes, 0);
   const coveredMinutes = segments.reduce((sum, segment) => sum + segment.minutes, 0);
   const overlap = segments.some((segment, index) => index > 0 && segment.fromMinute < segments[index - 1].toMinute);
+  const tacticalEvents = buildTacticalAuditEvents(row);
+  const unknownAudit = segments.filter((segment) => !segment.identified).map((segment) => ({
+    matchId: clean(row.matchId),
+    ...getMatchMetadata(row),
+    playerId: identity.playerId,
+    playerName: identity.playerName,
+    role: clean(row.role || stats.role),
+    fromMinute: segment.fromMinute,
+    toMinute: segment.toMinute,
+    minutes: segment.minutes,
+    system: segment.system,
+    classification: classifyUnknownSegment(segment),
+    technicalReason: segment.intervalReason || classifyUnknownSegment(segment),
+    boundaryEvents: tacticalEvents.filter((event) => event.minute === segment.fromMinute),
+    previousEvent: tacticalEvents.filter((event) => event.minute < segment.fromMinute).at(-1) || null,
+    nextEvent: tacticalEvents.find((event) => event.minute > segment.fromMinute) || null,
+    snapshot: segment.snapshot,
+  }));
+  const reconstructionAudit = segments.filter((segment) => segment.intervalSource === 'inferred_substitution').map((segment) => ({
+    matchId: clean(row.matchId),
+    ...getMatchMetadata(row),
+    playerId: identity.playerId,
+    playerName: identity.playerName,
+    role: clean(row.role || stats.role),
+    fromMinute: segment.fromMinute,
+    toMinute: segment.toMinute,
+    minutes: segment.minutes,
+    system: segment.system,
+    position: segment.position,
+    evidence: 'same_system_direct_replacement_slot',
+    boundaryEvents: tacticalEvents.filter((event) => event.minute === segment.fromMinute),
+    previousEvent: tacticalEvents.filter((event) => event.minute < segment.fromMinute).at(-1) || null,
+    nextEvent: tacticalEvents.find((event) => event.minute > segment.fromMinute) || null,
+    snapshot: segment.snapshot,
+  }));
   return {
     matchId: clean(row.matchId),
     ...getMatchMetadata(row),
@@ -227,6 +318,8 @@ const buildPlayerMatchPositionUsage = ({ row, identity }) => {
     unidentifiedMinutes,
     coveragePercent: actualMinutes ? Math.round((identifiedMinutes / actualMinutes) * 100) : 0,
     segments,
+    unknownAudit,
+    reconstructionAudit,
     valid: !overlap && coveredMinutes === actualMinutes && identifiedMinutes + unidentifiedMinutes === actualMinutes,
   };
 };
@@ -274,6 +367,8 @@ export const getPlayerPositionUsage = ({
     determinedPercentage: totalMinutes ? Math.round((determinedMinutes / totalMinutes) * 100) : 0,
     sources,
     matches,
+    unknownAudit: matches.flatMap((match) => match.unknownAudit),
+    reconstructionAudit: matches.flatMap((match) => match.reconstructionAudit),
     segments: matches.flatMap((match) => match.segments),
     quality: {
       arithmeticValid,

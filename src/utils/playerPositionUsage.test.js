@@ -63,6 +63,9 @@ assert.equal(overlapping.valid, true);
 const partial = buildPlayerPositionUsage({ ...identity, matchRows: [match({ intervals: [interval(0, 60, '4-2-3-1', 9), { ...interval(60, 90, '4-2-3-1', 10), isComplete: false }] })] });
 assert.deepEqual(partial.positions.map((row) => [row.position, row.minutes, row.percentage]), [['Extremo izquierdo', 60, 67]], 'un tramo fiable conserva sus minutos exactos y calcula el porcentaje sobre minutos oficiales');
 assert.equal(partial.unknownMinutes, 30, 'los huecos posteriores no se rellenan con la posición inicial ni con la ficha');
+assert.equal(partial.matches[0].unknownAudit[0].classification, 'insufficient_positional_evidence', 'la auditoría conserva la causa técnica del tramo desconocido');
+assert.equal(partial.matches[0].unknownAudit[0].fromMinute, 60);
+assert.equal(partial.matches[0].unknownAudit[0].toMinute, 90);
 
 const partialPolyvalent = buildPlayerPositionUsage({ ...identity, matchRows: [match({ intervals: [interval(0, 45, '4-2-3-1', 1), interval(45, 75, '4-3-3', 8), { ...interval(75, 90, '4-3-3', 8), isComplete: false }] })] });
 assert.deepEqual(partialPolyvalent.positions.map((row) => [row.position, row.minutes, row.percentage]), [

@@ -6,7 +6,36 @@ import {
   buildPositionTimelineEntries,
   formatPositionSegmentRange,
   getPositionTimelineMatches,
+  mergeContiguousPositionSegments,
 } from './playerPositionTimelinePresentation.js';
+
+const segment = (fromMinute, toMinute, position, system, extra = {}) => ({
+  matchId: 'm1', playerId: 'p1', fromMinute, toMinute, minutes: toMinute - fromMinute,
+  position, system, identified: Boolean(position), ...extra,
+});
+
+const contiguous = [
+  segment(63, 71, 'Extremo derecho', '4-2-3-1'),
+  segment(71, 84, 'Extremo derecho', '4-2-3-1'),
+  segment(84, 90, 'Extremo derecho', '4-2-3-1'),
+];
+const visuallyMerged = mergeContiguousPositionSegments(contiguous);
+assert.deepEqual(visuallyMerged.map(({ fromMinute, toMinute, minutes }) => [fromMinute, toMinute, minutes]), [[63, 90, 27]], 'fusiona solo para presentación los segmentos idénticos contiguos');
+assert.equal(visuallyMerged[0].canonicalSegments.length, 3);
+assert.deepEqual(contiguous.map(({ fromMinute, toMinute }) => [fromMinute, toMinute]), [[63, 71], [71, 84], [84, 90]], 'no muta los segmentos canónicos');
+
+assert.equal(mergeContiguousPositionSegments([
+  segment(0, 45, 'Extremo derecho', '4-3-3'),
+  segment(45, 65, 'Extremo derecho', '4-2-3-1'),
+]).length, 2, 'no fusiona si cambia el sistema');
+assert.equal(mergeContiguousPositionSegments([
+  segment(0, 45, 'Extremo derecho', '4-2-3-1'),
+  segment(45, 65, 'Mediapunta', '4-2-3-1'),
+]).length, 2, 'no fusiona si cambia la posición');
+assert.equal(mergeContiguousPositionSegments([
+  segment(0, 30, 'Extremo derecho', '4-2-3-1'),
+  segment(40, 60, 'Extremo derecho', '4-2-3-1'),
+]).length, 2, 'no fusiona si existe un hueco');
 
 const usage = {
   totalMinutes: 110,
@@ -19,14 +48,14 @@ const usage = {
     {
       matchId: 'm1', opponent: 'Rival con nombre especialmente largo', date: '2026-09-20', competition: 'Liga', venue: 'Local', result: '2-1',
       segments: [
-        { fromMinute: 0, toMinute: 30, minutes: 30, position: 'Mediapunta', system: '4-2-3-1', identified: true },
-        { fromMinute: 30, toMinute: 60, minutes: 30, position: 'Extremo derecho', system: '4-3-3', identified: true },
-        { fromMinute: 60, toMinute: 90, minutes: 30, position: 'Mediapunta', system: '4-2-3-1', identified: true },
+        segment(0, 30, 'Mediapunta', '4-2-3-1'),
+        segment(30, 60, 'Extremo derecho', '4-3-3'),
+        segment(60, 90, 'Mediapunta', '4-2-3-1'),
       ],
     },
     {
       matchId: 'm2', opponent: 'Segundo rival', date: '2026-09-13', competition: 'Copa', venue: 'Visitante', result: '0-0',
-      segments: [{ fromMinute: 70, toMinute: 90, minutes: 20, position: '', system: '4-4-2', identified: false }],
+      segments: [{ ...segment(70, 90, '', '4-4-2'), matchId: 'm2' }],
     },
   ],
 };
@@ -42,14 +71,37 @@ assert.equal(attackingMidfielder.length, 1);
 assert.equal(attackingMidfielder[0].segments.length, 2, 'dos tramos no contiguos de un partido siguen separados');
 assert.equal(attackingMidfielder[0].minutes, 60);
 const unknown = getPositionTimelineMatches(usage, UNKNOWN_POSITION_KEY);
-assert.equal(unknown[0].segments[0].system, '4-4-2', 'sistema conocido y posición desconocida se conserva');
-assert.deepEqual(buildMatchPositionSummary(usage.matches[0]), {
-  label: '3 tramos',
-  systemLabel: '2 sistemas',
-  segments: usage.matches[0].segments,
-  hasDetails: true,
-});
-assert.equal(buildMatchPositionSummary(usage.matches[1]).label, '—');
+assert.equal(unknown[0].segments[0].system, '4-4-2', 'desconocido con sistema conocido conserva el sistema');
+assert.equal(mergeContiguousPositionSegments([segment(70, 82, '', '')])[0].system, '', 'desconocido con sistema desconocido no inventa sistema');
+
+const onePositionTwoSystems = buildMatchPositionSummary({ segments: [
+  segment(0, 45, 'Extremo derecho', '4-3-3'),
+  segment(45, 90, 'Extremo derecho', '4-2-3-1'),
+] });
+assert.equal(onePositionTwoSystems.label, 'ED');
+assert.equal(onePositionTwoSystems.systemLabel, '2 sistemas');
+
+const twoPositionsOneSystem = buildMatchPositionSummary({ segments: [
+  segment(0, 60, 'Mediapunta', '4-2-3-1'),
+  segment(60, 90, 'Mediocentro', '4-2-3-1'),
+] });
+assert.equal(twoPositionsOneSystem.label, '2 posiciones');
+assert.equal(twoPositionsOneSystem.systemLabel, '4-2-3-1');
+
+const twoPositionsTwoSystems = buildMatchPositionSummary({ segments: [
+  segment(0, 60, 'Mediapunta', '4-2-3-1'),
+  segment(60, 90, 'Mediocentro', '4-4-2'),
+] });
+assert.equal(twoPositionsTwoSystems.label, '2 posiciones');
+assert.equal(twoPositionsTwoSystems.systemLabel, '2 sistemas');
+
+const internalBoundaries = buildMatchPositionSummary({ segments: contiguous });
+assert.equal(internalBoundaries.visualSegmentCount, 1);
+assert.equal(internalBoundaries.label, 'ED');
+assert.equal(internalBoundaries.systemLabel, '4-2-3-1');
+assert.equal(internalBoundaries.hasDetails, false, 'un único tramo visual no ofrece detalle redundante');
+assert.equal(internalBoundaries.canonicalSegments.length, 3);
+
 assert.equal(formatPositionSegmentRange(usage.matches[0].segments[0]), "0'–30'");
 assert.equal(buildMatchPositionSummary({}).hasDetails, false);
 
@@ -58,7 +110,7 @@ const tenMatches = {
   matches: Array.from({ length: 10 }, (_, index) => ({
     matchId: `many-${index}`,
     opponent: `Rival ${index + 1}`,
-    segments: [{ fromMinute: 0, toMinute: 90, minutes: 90, position: 'Mediapunta', system: '4-2-3-1', identified: true }],
+    segments: [{ ...segment(0, 90, 'Mediapunta', '4-2-3-1'), matchId: `many-${index}` }],
   })),
 };
 assert.equal(getPositionTimelineMatches(tenMatches, 'Mediapunta').length, 10, 'el detalle admite diez partidos sin truncarlos');

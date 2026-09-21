@@ -103,7 +103,7 @@ const PositionLegend = ({ model, usage, openPosition, onToggle }) => (
                     <div className="mt-1.5 space-y-1">
                       {match.segments.map((segment, index) => (
                         <div key={`${match.matchId}-${segment.fromMinute}-${segment.toMinute}-${index}`} className="flex flex-wrap items-center justify-between gap-x-3 text-[10px]">
-                          <span className="font-bold text-slate-300">{segment.system || 'Sistema —'} · {segment.identified ? entry.abbreviation : 'Posición —'}</span>
+                          <span className="font-bold text-slate-300">{segment.system || 'Sistema —'} · {segment.identified ? entry.abbreviation : '—'}</span>
                           <span className="text-slate-400">{formatPositionSegmentRange(segment)} · {formatMinutes(segment.minutes)}'</span>
                         </div>
                       ))}

@@ -12,38 +12,55 @@ const params = new URLSearchParams(window.location.search);
 const shouldExport = params.get('export') === '1';
 const appPositionOnly = params.get('appPosition') === '1';
 const positionTimelineOnly = params.get('positionTimeline') === '1';
-const openTimelinePosition = params.get('openPosition') === '1' ? 'Mediapunta' : '';
-const openHistoryDetail = params.get('openHistory') === '1';
+const openTimelinePosition = {
+  ed: 'Extremo derecho',
+  cad: 'Carrilero derecho',
+  ei: 'Extremo izquierdo',
+  unknown: '__unknown_position__',
+}[params.get('openPosition')] || '';
+const openHistoryIndex = params.has('openHistory') && Number.isFinite(Number(params.get('openHistory'))) ? Number(params.get('openHistory')) : -1;
 
 const timelineUsage = {
-  totalMinutes: 200,
-  determinedMinutes: 180,
-  identifiedMinutes: 180,
-  unknownMinutes: 20,
-  unidentifiedMinutes: 20,
+  totalMinutes: 223,
+  determinedMinutes: 211,
+  identifiedMinutes: 211,
+  unknownMinutes: 12,
+  unidentifiedMinutes: 12,
   positions: [
-    { position: 'Mediapunta', minutes: 150, percentage: 75 },
-    { position: 'Extremo derecho', minutes: 30, percentage: 15 },
+    { position: 'Extremo derecho', minutes: 167, percentage: 75 },
+    { position: 'Carrilero derecho', minutes: 36, percentage: 16 },
+    { position: 'Extremo izquierdo', minutes: 8, percentage: 4 },
   ],
   matches: [
     {
+      matchId: 'timeline-praviano', opponent: 'CD Praviano', date: '2026-08-16', competition: 'Copa RFEF', venue: 'Local', result: '1-0', totalMinutes: 27,
+      segments: [
+        { matchId: 'timeline-praviano', playerId: 'player-qa', fromMinute: 63, toMinute: 71, minutes: 8, system: '4-2-3-1', position: 'Extremo derecho', identified: true },
+        { matchId: 'timeline-praviano', playerId: 'player-qa', fromMinute: 71, toMinute: 84, minutes: 13, system: '4-2-3-1', position: 'Extremo derecho', identified: true },
+        { matchId: 'timeline-praviano', playerId: 'player-qa', fromMinute: 84, toMinute: 90, minutes: 6, system: '4-2-3-1', position: 'Extremo derecho', identified: true },
+      ],
+    },
+    {
+      matchId: 'timeline-salamanca', opponent: 'Salamanca CF UDS', date: '2026-09-09', competition: 'Copa RFEF', venue: 'Visitante', result: '1-1', totalMinutes: 65,
+      segments: [
+        { matchId: 'timeline-salamanca', playerId: 'player-qa', fromMinute: 0, toMinute: 45, minutes: 45, system: '4-3-3', position: 'Extremo derecho', identified: true },
+        { matchId: 'timeline-salamanca', playerId: 'player-qa', fromMinute: 45, toMinute: 65, minutes: 20, system: '4-2-3-1', position: 'Extremo derecho', identified: true },
+      ],
+    },
+    {
       matchId: 'timeline-covadonga', opponent: 'CD Covadonga', date: '2026-09-20', competition: 'Liga', venue: 'Local', result: '2-1', totalMinutes: 90,
       segments: [
-        { matchId: 'timeline-covadonga', fromMinute: 0, toMinute: 60, minutes: 60, system: '4-2-3-1', position: 'Mediapunta', identified: true },
-        { matchId: 'timeline-covadonga', fromMinute: 60, toMinute: 90, minutes: 30, system: '4-3-3', position: 'Mediapunta', identified: true },
+        { matchId: 'timeline-covadonga', playerId: 'player-qa', fromMinute: 0, toMinute: 75, minutes: 75, system: '4-2-3-1', position: 'Extremo derecho', identified: true },
+        { matchId: 'timeline-covadonga', playerId: 'player-qa', fromMinute: 75, toMinute: 90, minutes: 15, system: '4-2-3-1', position: 'Carrilero derecho', identified: true },
       ],
     },
     {
-      matchId: 'timeline-ceares', opponent: 'Unión Club Ceares', date: '2026-09-13', competition: 'Liga', venue: 'Visitante', result: '1-1', totalMinutes: 90,
+      matchId: 'timeline-celta', opponent: 'RC Celta Fortuna', date: '2026-09-27', competition: 'Liga', venue: 'Visitante', result: '0-0', totalMinutes: 41,
       segments: [
-        { matchId: 'timeline-ceares', fromMinute: 0, toMinute: 30, minutes: 30, system: '4-2-3-1', position: 'Mediapunta', identified: true },
-        { matchId: 'timeline-ceares', fromMinute: 30, toMinute: 60, minutes: 30, system: '4-3-3', position: 'Extremo derecho', identified: true },
-        { matchId: 'timeline-ceares', fromMinute: 60, toMinute: 90, minutes: 30, system: '4-2-3-1', position: 'Mediapunta', identified: true },
+        { matchId: 'timeline-celta', playerId: 'player-qa', fromMinute: 49, toMinute: 70, minutes: 21, system: '5-2-3', position: 'Carrilero derecho', identified: true },
+        { matchId: 'timeline-celta', playerId: 'player-qa', fromMinute: 70, toMinute: 78, minutes: 8, system: '4-3-3', position: 'Extremo izquierdo', identified: true },
+        { matchId: 'timeline-celta', playerId: 'player-qa', fromMinute: 78, toMinute: 90, minutes: 12, system: '4-4-2', position: '', identified: false },
       ],
-    },
-    {
-      matchId: 'timeline-long', opponent: 'Real Sporting de Gijón Atlético', date: '2026-09-06', competition: 'Copa RFEF', venue: 'Local', result: '0-0', totalMinutes: 20,
-      segments: [{ matchId: 'timeline-long', fromMinute: 70, toMinute: 90, minutes: 20, system: '4-4-2', position: '', identified: false }],
     },
   ],
 };
@@ -194,7 +211,7 @@ function Audit() {
           <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/72 p-4 shadow-[0_16px_48px_rgba(0,0,0,0.18)] sm:p-5">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-sm font-black uppercase tracking-[0.18em]">Historial partido a partido</h2>
-              <span className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-black text-slate-300">3 registros</span>
+              <span className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-black text-slate-300">4 registros</span>
             </div>
             <div className="mt-4 overflow-x-auto player-history-table">
               <table className="min-w-[900px] w-full text-left text-sm">
@@ -205,7 +222,7 @@ function Audit() {
                   <td className="px-3 py-4 text-slate-300">{match.result}</td>
                   <td className="px-3 py-4 text-slate-300">{match.competition}</td>
                   <td className="px-3 py-4"><span className="rounded-xl bg-caudal-electric/15 px-2 py-1 text-xs font-black text-caudal-electric">Titular</span></td>
-                  <td className="min-w-[132px] px-3 py-3 align-top" data-player-match-position-summary><PlayerMatchPositionSummary matchUsage={match} initialOpen={openHistoryDetail && index === 0} /></td>
+                  <td className="min-w-[132px] px-3 py-3 align-top" data-player-match-position-summary><PlayerMatchPositionSummary matchUsage={match} initialOpen={openHistoryIndex === index} /></td>
                   <td className="px-3 py-4 font-black">{match.totalMinutes}'</td>
                 </tr>)}</tbody>
               </table>

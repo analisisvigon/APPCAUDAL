@@ -179,6 +179,7 @@ const positionUsage = buildPlayerPositionUsage({
       snapshots: snapshotsByMatch[match.id] || [],
       systemEvents: systemEventsByMatch[match.id] || [],
       substitutionMinutes: getHistoricalSubstitutionMinutes(statsByMatch[match.id] || {}),
+      playerStats: statsByMatch[match.id] || {},
     }).intervals,
     playerStats: statsByMatch[match.id] || {},
   })),
