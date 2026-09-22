@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-22T14:06:43.554Z",
+  "generatedAt": "2026-09-22T14:21:49.799Z",
   "dataClassification": "Fixture sintético exclusivo para QA visual; no representa los valores reales de la APP.",
   "fixtureBasis": "Escenario de maquetación con historial, Registro en vivo, máximos, finalización y enlaces contextuales.",
   "isma": {
@@ -58,7 +58,7 @@
       }
     ],
     "linkAudit": {
-      "bytes": 38901,
+      "bytes": 38551,
       "linkAnnotations": 3,
       "uriAnnotations": 3,
       "urls": [
@@ -80,9 +80,20 @@
       "matchesWithEvents": 6,
       "hasData": true,
       "layout": {
-        "columns": 5,
-        "rows": 2,
-        "cards": 10
+        "columns": 3,
+        "rows": 3,
+        "cards": 9,
+        "visibleMetricKeys": [
+          "matchesWithEvents",
+          "shotsPerMatch",
+          "shotsOnTargetPerMatch",
+          "shotAccuracyPercentage",
+          "crossesPerMatch",
+          "turnoversPerMatch",
+          "stealsPerMatch",
+          "foulsCommittedPerMatch",
+          "foulsReceivedPerMatch"
+        ]
       },
       "metrics": [
         {
@@ -372,7 +383,7 @@
       }
     ],
     "linkAudit": {
-      "bytes": 47167,
+      "bytes": 46818,
       "linkAnnotations": 12,
       "uriAnnotations": 12,
       "urls": [
@@ -412,9 +423,20 @@
       "matchesWithEvents": 6,
       "hasData": true,
       "layout": {
-        "columns": 5,
-        "rows": 2,
-        "cards": 10
+        "columns": 3,
+        "rows": 3,
+        "cards": 9,
+        "visibleMetricKeys": [
+          "matchesWithEvents",
+          "shotsPerMatch",
+          "shotsOnTargetPerMatch",
+          "shotAccuracyPercentage",
+          "crossesPerMatch",
+          "turnoversPerMatch",
+          "stealsPerMatch",
+          "foulsCommittedPerMatch",
+          "foulsReceivedPerMatch"
+        ]
       },
       "metrics": [
         {
@@ -983,7 +1005,7 @@
       }
     ],
     "linkAudit": {
-      "bytes": 39188,
+      "bytes": 38836,
       "linkAnnotations": 3,
       "uriAnnotations": 3,
       "urls": [
@@ -1005,9 +1027,20 @@
       "matchesWithEvents": 6,
       "hasData": true,
       "layout": {
-        "columns": 5,
-        "rows": 2,
-        "cards": 10
+        "columns": 3,
+        "rows": 3,
+        "cards": 9,
+        "visibleMetricKeys": [
+          "matchesWithEvents",
+          "shotsPerMatch",
+          "shotsOnTargetPerMatch",
+          "shotAccuracyPercentage",
+          "crossesPerMatch",
+          "turnoversPerMatch",
+          "stealsPerMatch",
+          "foulsCommittedPerMatch",
+          "foulsReceivedPerMatch"
+        ]
       },
       "metrics": [
         {

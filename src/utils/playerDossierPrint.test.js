@@ -360,7 +360,23 @@ assert.ok(fullSeason.pages > 2, 'N: una temporada completa pagina sin comprimir 
 assert.ok(fullSeason.pageSections.includes('REGISTRO EN VIVO · TEMPORADA COMPLETA'), 'el bloque de temporada queda después del historial y antes de la analítica');
 assert.equal(fullSeason.presentationAudit.liveSeason.window, 'full_scope');
 assert.equal(fullSeason.presentationAudit.liveSeason.registryScope, 'all_records');
-assert.deepEqual(fullSeason.presentationAudit.liveSeason.layout, { columns: 5, rows: 2, cards: 10 });
+assert.deepEqual(fullSeason.presentationAudit.liveSeason.layout, {
+  columns: 3,
+  rows: 3,
+  cards: 9,
+  visibleMetricKeys: [
+    'matchesWithEvents',
+    'shotsPerMatch',
+    'shotsOnTargetPerMatch',
+    'shotAccuracyPercentage',
+    'crossesPerMatch',
+    'turnoversPerMatch',
+    'stealsPerMatch',
+    'foulsCommittedPerMatch',
+    'foulsReceivedPerMatch',
+  ],
+});
+assert.equal(fullSeason.presentationAudit.liveSeason.layout.visibleMetricKeys.includes('goalsPerMatch'), false, 'Goles / partido se oculta sólo en la cuadrícula PDF');
 assert.equal(fullSeason.presentationAudit.liveSeason.matchesWithEvents, 6, 'el PDF conserva exactamente el denominador del presenter');
 assert.deepEqual(fullSeason.presentationAudit.liveSeason.metrics.map(({ key, value }) => [key, value]), [
   ['goalsPerMatch', 0], ['shotsPerMatch', 0.67], ['shotsOnTargetPerMatch', 0.33], ['shotAccuracyPercentage', 50],

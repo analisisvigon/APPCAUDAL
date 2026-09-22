@@ -481,7 +481,6 @@ const drawLiveSeason = (pdf, liveSeason, y, sectionNumber) => {
     .map((metric) => [metric.key, metric]));
   const cards = [
     { label: 'Partidos con eventos', value: number(liveSeason.matchesWithEvents), format: 'count' },
-    { ...metricValues.get('goalsPerMatch'), label: 'Goles / partido' },
     { ...metricValues.get('shotsPerMatch'), label: 'Tiros / partido' },
     { ...metricValues.get('shotsOnTargetPerMatch'), label: 'Tiros a puerta / partido' },
     { ...metricValues.get('shotAccuracyPercentage'), label: '% tiros a puerta' },
@@ -491,11 +490,11 @@ const drawLiveSeason = (pdf, liveSeason, y, sectionNumber) => {
     { ...metricValues.get('foulsCommittedPerMatch'), label: 'Faltas realizadas / partido' },
     { ...metricValues.get('foulsReceivedPerMatch'), label: 'Faltas recibidas / partido' },
   ];
-  const columns = 5;
+  const columns = 3;
   const gap = 3;
   const width = (CONTENT_WIDTH - gap * (columns - 1)) / columns;
-  const height = 25;
-  const rowGap = 3;
+  const height = 15.5;
+  const rowGap = 2.2;
   cards.forEach((card, index) => {
     const column = index % columns;
     const row = Math.floor(index / columns);
@@ -504,13 +503,13 @@ const drawLiveSeason = (pdf, liveSeason, y, sectionNumber) => {
     pdf.setFillColor(...COLORS.panel);
     pdf.setDrawColor(...COLORS.line);
     pdf.roundedRect(x, cardY, width, height, 1.2, 1.2, 'FD');
-    text(pdf, clean(card.label).toUpperCase(), x + 3, cardY + 5.2, { size: 4.7, style: 'bold', color: COLORS.muted, maxWidth: width - 6 });
+    text(pdf, clean(card.label).toUpperCase(), x + 3, cardY + 4.5, { size: 4.7, style: 'bold', color: COLORS.muted, maxWidth: width - 6 });
     const displayValue = card.format === 'count'
       ? number(card.value).toLocaleString('es-ES')
       : formatSeasonMetric(card.value, card.format);
-    singleLineText(pdf, displayValue, x + 3, cardY + 20.5, { size: 12.5, minSize: 10, style: 'bold', color: COLORS.navy, maxWidth: width - 6 });
+    singleLineText(pdf, displayValue, x + 3, cardY + 12.5, { size: 12.5, minSize: 10, style: 'bold', color: COLORS.navy, maxWidth: width - 6 });
   });
-  return y + height * 2 + rowGap + 7;
+  return y + height * 3 + rowGap * 2 + 7;
 };
 
 const drawSeasonMaximums = (pdf, maximums, y, sectionNumber, imageMap, addPage) => {
@@ -1112,7 +1111,22 @@ export const createPlayerProfilePdf = async ({
         registryScope: clean(report.liveSeason.registryScope) || 'validated',
         matchesWithEvents: number(report.liveSeason.matchesWithEvents),
         hasData: Boolean(report.liveSeason.hasData),
-        layout: { columns: 5, rows: 2, cards: 10 },
+        layout: {
+          columns: 3,
+          rows: 3,
+          cards: 9,
+          visibleMetricKeys: [
+            'matchesWithEvents',
+            'shotsPerMatch',
+            'shotsOnTargetPerMatch',
+            'shotAccuracyPercentage',
+            'crossesPerMatch',
+            'turnoversPerMatch',
+            'stealsPerMatch',
+            'foulsCommittedPerMatch',
+            'foulsReceivedPerMatch',
+          ],
+        },
         metrics: rows(report.liveSeason.metricGroups).flatMap((group) => rows(group.metrics).map((metric) => ({
           key: clean(metric.key),
           value: metric.value ?? null,
