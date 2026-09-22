@@ -57,8 +57,9 @@ assert.equal(filtered.actions[0].scorer, 'Jairo Cárcaba', 'la asistencia conser
 assert.equal(filtered.actions[0].assistZoneLabel, 'F. Creación derecha', 'la asistencia conserva su zona canónica');
 assert.deepEqual(filtered.history[0].goalLinks, ['https://video.example/goal?t=72']);
 assert.deepEqual(filtered.history[0].assistLinks, [], 'el historial sólo conserva enlaces reales y seguros');
-assert.equal(filtered.productionActions.length, 1, 'Acciones en vídeo sólo contiene acciones con URL canónica');
 assert.equal(filtered.videoActions.length, 1, 'la videoteca lógica sólo contiene URL canónica real');
+assert.equal('productionActions' in filtered, false, 'el modelo no crea tarjetas independientes de vídeo');
+assert.equal('actionOverflow' in filtered, false, 'el modelo no reserva continuaciones de vídeo');
 assert.deepEqual(filtered.pagePlan, ['summary', 'production'], 'el volumen normal genera exactamente dos A4');
 assert.deepEqual(filtered.influenceMaps.map((map) => map.zones[0].count), [3, 1, 2], 'Todos, Goles y Asistencias conservan datasets independientes');
 assert.deepEqual(filtered.influenceMapLayout.maps.map((map) => map.key), ['all', 'goals', 'assists']);
@@ -102,7 +103,6 @@ const noProduction = buildPlayerProfilePrintReport({
     { key: 'assists', label: 'Asistencias', zones: [] },
   ],
 });
-assert.equal(noProduction.productionActions.length, 0, 'una acción oficial sin vídeo no recibe una ficha de vídeo falsa');
 assert.equal(noProduction.videoActions.length, 0, 'sin vídeos reales no se generan CTA falsos');
 assert.deepEqual(noProduction.pagePlan, ['summary'], 'la ausencia de producción no crea páginas vacías');
 
@@ -112,8 +112,8 @@ const dense = buildPlayerProfilePrintReport({
 });
 assert.equal(dense.summaryHistory.length, 18);
 assert.deepEqual(dense.historyOverflow.map((page) => page.length), [30, 5], 'el historial largo se pagina sin recortar filas');
-assert.deepEqual(dense.actionOverflow.map((page) => page.length), [10, 10, 1], 'la videoteca larga se pagina sin recortar acciones');
-assert.equal(dense.pagePlan.length, 7, 'sólo se añaden páginas cuando el volumen excede dos A4');
+assert.equal('actionOverflow' in dense, false, 'muchas URLs no crean páginas independientes de vídeo');
+assert.deepEqual(dense.pagePlan, ['summary', 'history', 'history'], 'el plan sólo pagina el historial real');
 
 const borjaConnections = buildPlayerOffensiveConnections({
   playerName: 'Borja Rodríguez',
@@ -218,7 +218,6 @@ assert.deepEqual(consecutiveSections.map(({ key, number }) => [key, number]), [
   ['zones', '04'],
   ['production', '05'],
   ['connections', '06'],
-  ['videos', '07'],
 ], 'al integrar posiciones en cabecera, Historial ocupa 03 y los bloques siguientes mantienen numeración consecutiva');
 
 const componentSource = fs.readFileSync(new URL('../components/print/PlayerProfilePdfReport.jsx', import.meta.url), 'utf8');
@@ -230,19 +229,19 @@ assert.match(componentSource, /data-player-pdf-page="summary"/);
 assert.match(componentSource, /data-player-pdf-page="production"/);
 assert.match(componentSource, /HistoryContinuationPage/);
 assert.match(componentSource, /ConnectionsContinuationPage/);
-assert.match(componentSource, /VideoContinuationPage/);
+assert.doesNotMatch(componentSource, /VideoContinuationPage|ActionsLibrary/);
 assert.match(componentSource, /Rendimiento · Temporada/);
 assert.match(componentSource, /Rendimiento por competición/);
 assert.match(componentSource, /Historial partido a partido/);
 assert.match(componentSource, /Todas las acciones/);
 assert.match(componentSource, /Producción ofensiva/);
 assert.match(componentSource, /Conexiones ofensivas/);
-assert.match(componentSource, /Acciones en vídeo/);
+assert.doesNotMatch(componentSource, /Acciones en vídeo/);
 assert.match(componentSource, /Análisis objetivo de finalización/);
 assert.match(componentSource, /Cómo marca/);
 assert.match(componentSource, /Destino en portería/);
 assert.match(componentSource, /data-player-video-link="history"/, 'el historial conserva enlaces PDF identificables');
-assert.match(componentSource, /data-player-video-link="library"/, 'todo el CTA de videoteca conserva su enlace PDF');
+assert.doesNotMatch(componentSource, /data-player-video-link="library"/, 'no queda CTA de videoteca independiente');
 assert.doesNotMatch(componentSource, /Impacto en el tiempo|player-pdf-timeline/, 'se elimina por completo el timeline subjetivo');
 assert.doesNotMatch(componentSource, /Evolución de temporada|seasonStages|rating/, 'se eliminan evolución y notas del dossier');
 assert.doesNotMatch(componentSource, /window\.open|onClick=/, 'el PDF no simula enlaces mediante JavaScript');

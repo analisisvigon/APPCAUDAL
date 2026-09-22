@@ -793,6 +793,21 @@ const drawGoalTarget = (pdf, target, x, y, width) => {
   text(pdf, `${number(target?.known)} con zona${number(target?.missing) ? ` · ${number(target.missing)} sin registrar` : ''}`, x, y + 35, { size: 4.7, color: COLORS.muted });
 };
 
+export const getObjectiveMetricRowLayout = ({ x = 0, width = 0, valueTextWidth = 0 } = {}) => {
+  const padding = 3;
+  const gap = 1.8;
+  const contentWidth = Math.max(0, Number(width) - padding * 2);
+  const labelWidth = Math.max(14, Math.min(22, contentWidth * 0.4));
+  const valueWidthLimit = Math.max(0, contentWidth - labelWidth - gap * 2 - 4);
+  const valueWidth = Math.min(valueWidthLimit, Math.max(13, Number(valueTextWidth) + 1.5));
+  const labelX = Number(x) + padding;
+  const barX = labelX + labelWidth + gap;
+  const valueX = Number(x) + Number(width) - padding;
+  const valueLeft = valueX - valueWidth;
+  const barWidth = Math.max(0, valueLeft - gap - barX);
+  return { labelX, labelWidth, barX, barWidth, valueLeft, valueWidth, valueX, gap };
+};
+
 const drawObjectiveAnalysis = (pdf, analysis, y, sectionNumber) => {
   const body = rows(analysis?.bodyParts?.values).filter((row) => number(row.count) > 0);
   const types = rows(analysis?.types?.phases).filter((row) => number(row.count) > 0);
@@ -818,14 +833,16 @@ const drawObjectiveAnalysis = (pdf, analysis, y, sectionNumber) => {
       const max = Math.max(1, ...module.rows.map((row) => number(row.count)));
       module.rows.slice(0, 5).forEach((row, rowIndex) => {
         const rowY = y + 11 + rowIndex * 6;
-        text(pdf, row.label, x + 3, rowY, { size: 5.2, color: COLORS.ink, maxWidth: width - 22 });
-        const barX = x + width - 20;
-        pdf.setFillColor(228, 235, 242);
-        pdf.rect(barX, rowY - 3, 13, 2.3, 'F');
-        pdf.setFillColor(...COLORS.blue);
-        pdf.rect(barX, rowY - 3, 13 * (number(row.count) / max), 2.3, 'F');
         const percentage = module.total > 0 ? ` · ${Math.round((number(row.count) / module.total) * 100)}%` : '';
-        text(pdf, `${row.count}${percentage}`, x + width - 3, rowY, { size: 5.1, style: 'bold', color: COLORS.ink, align: 'right' });
+        const value = `${row.count}${percentage}`;
+        setText(pdf, { size: 5.1, style: 'bold', color: COLORS.ink });
+        const layout = getObjectiveMetricRowLayout({ x, width, valueTextWidth: pdf.getTextWidth(value) });
+        singleLineText(pdf, row.label, layout.labelX, rowY, { size: 5.2, minSize: 4.2, color: COLORS.ink, maxWidth: layout.labelWidth });
+        pdf.setFillColor(228, 235, 242);
+        pdf.rect(layout.barX, rowY - 3, layout.barWidth, 2.3, 'F');
+        pdf.setFillColor(...COLORS.blue);
+        pdf.rect(layout.barX, rowY - 3, layout.barWidth * Math.min(1, number(row.count) / max), 2.3, 'F');
+        singleLineText(pdf, value, layout.valueLeft, rowY, { size: 5.1, minSize: 4.3, style: 'bold', color: COLORS.ink, maxWidth: layout.valueWidth });
       });
     }
   });
@@ -837,73 +854,6 @@ const drawObjectiveAnalysis = (pdf, analysis, y, sectionNumber) => {
   if (number(target.known)) drawGoalTarget(pdf, target, targetX + 3, y + 8, width - 6);
   else text(pdf, 'Sin zona de portería registrada', targetX + 3, y + 15, { size: 5.5, style: 'bold', color: COLORS.muted, maxWidth: width - 6 });
   return y + 52;
-};
-
-const compactActionZoneLabel = (value) => clean(value)
-  .replace(/^F\.?\s*/i, '')
-  .replace(/^Finalizaci[oó]n\s*/i, '')
-  .replace(/^Creaci[oó]n\s*/i, '')
-  .trim();
-
-const actionDetailLines = (action) => action.type === 'Gol'
-  ? [
-    action.phase ? `Tipo de jugada: ${action.phase}` : '',
-    action.shotZoneLabel ? `Finalización: ${compactActionZoneLabel(action.shotZoneLabel)}` : '',
-    action.contact ? `Golpeo: ${action.contact}` : '',
-    action.goalZoneLabel ? `Portería: ${action.goalZoneLabel}` : '',
-    action.assistant ? `Asistencia: ${action.assistant}` : '',
-  ].filter(Boolean)
-  : [
-    action.assistZoneLabel ? `Origen: ${compactActionZoneLabel(action.assistZoneLabel)}` : '',
-    action.phase ? `Tipo de jugada: ${action.phase}` : '',
-    action.scorer ? `Asiste a: ${action.scorer}` : '',
-  ].filter(Boolean);
-
-const wrappedActionDetailLines = (pdf, action) => {
-  setText(pdf, { size: 5.5, color: COLORS.ink });
-  return actionDetailLines(action).flatMap((line) => pdf.splitTextToSize(line, 61));
-};
-
-const drawVideoAction = (pdf, action, y, compact = false) => {
-  const url = cleanUrl(action.url);
-  if (compact) {
-    pdf.setDrawColor(...COLORS.line);
-    pdf.line(PAGE_MARGIN, y + 8.5, A4_WIDTH_MM - PAGE_MARGIN, y + 8.5);
-    text(pdf, `${action.minute || '—'}'`, PAGE_MARGIN + 1, y + 5.5, { size: 7, style: 'bold', color: COLORS.blue });
-    text(pdf, action.type, PAGE_MARGIN + 18, y + 5.5, { size: 6.2, style: 'bold', color: COLORS.ink });
-    text(pdf, action.opponent || 'Rival', PAGE_MARGIN + 51, y + 5.5, { size: 6.2, color: COLORS.ink, maxWidth: 70 });
-    text(pdf, action.competition, PAGE_MARGIN + 125, y + 5.5, { size: 5.5, color: COLORS.muted, maxWidth: 37 });
-    if (url) {
-      const iconX = A4_WIDTH_MM - PAGE_MARGIN - 19;
-      pdf.setFillColor(...COLORS.blue);
-      pdf.triangle(iconX, y + 2.7, iconX, y + 5.7, iconX + 2.2, y + 4.2, 'F');
-      text(pdf, 'ABRIR', A4_WIDTH_MM - PAGE_MARGIN, y + 5.5, { size: 5.7, style: 'bold', color: COLORS.blue, align: 'right' });
-      pdf.link(A4_WIDTH_MM - PAGE_MARGIN - 22, y + 1, 22, 7, { url });
-    }
-    return y + 9;
-  }
-  const details = wrappedActionDetailLines(pdf, action);
-  const height = Math.max(22, 15 + details.length * 4.2);
-  pdf.setFillColor(...COLORS.panel);
-  pdf.setDrawColor(...COLORS.line);
-  pdf.roundedRect(PAGE_MARGIN, y, CONTENT_WIDTH, height, 1.2, 1.2, 'FD');
-  pdf.setFillColor(...COLORS.blue);
-  pdf.circle(PAGE_MARGIN + 4.5, y + 5.5, 1.5, 'F');
-  text(pdf, `${action.type.toUpperCase()} · ${action.minute || '—'}'`, PAGE_MARGIN + 9, y + 6.9, { size: 8.8, style: 'bold', color: COLORS.navy });
-  singleLineText(pdf, `vs ${action.opponent || 'Rival'}${action.result ? ` · ${action.result}` : ''}`, PAGE_MARGIN + 9, y + 12, { size: 6.2, minSize: 5.1, style: 'bold', color: COLORS.ink, maxWidth: 74 });
-  singleLineText(pdf, [action.competition, action.date].filter(Boolean).join(' · '), PAGE_MARGIN + 9, y + 16.5, { size: 5.3, minSize: 4.5, color: COLORS.muted, maxWidth: 74 });
-  details.forEach((line, index) => text(pdf, line, PAGE_MARGIN + 88, y + 6.5 + index * 4.2, { size: 5.5, color: COLORS.ink, maxWidth: 61 }));
-  if (url) {
-    const buttonX = A4_WIDTH_MM - PAGE_MARGIN - 31;
-    const buttonY = y + height / 2 - 4;
-    pdf.setFillColor(...COLORS.blue);
-    pdf.roundedRect(buttonX, buttonY, 29, 8, 1.2, 1.2, 'F');
-    pdf.setFillColor(...COLORS.paper);
-    pdf.triangle(buttonX + 3.4, buttonY + 2.4, buttonX + 3.4, buttonY + 5.6, buttonX + 5.8, buttonY + 4, 'F');
-    text(pdf, 'ABRIR VÍDEO', buttonX + 17, buttonY + 5.2, { size: 5.2, style: 'bold', color: COLORS.paper, align: 'center' });
-    pdf.link(buttonX, buttonY, 29, 8, { url });
-  }
-  return y + height + 3;
 };
 
 export const createPlayerProfilePdf = async ({
@@ -975,8 +925,8 @@ export const createPlayerProfilePdf = async ({
     text(pdf, 'Sin partidos registrados en el ámbito seleccionado.', PAGE_MARGIN, y + 3, { size: 6.5, color: COLORS.muted });
   }
 
-  if (sectionPlan.some((section) => ['zones', 'production', 'connections', 'goalAnalysis', 'videos'].includes(section.key))) {
-    y = addPage('PRODUCCIÓN, ZONAS Y VÍDEO');
+  if (sectionPlan.some((section) => ['zones', 'production', 'connections', 'goalAnalysis'].includes(section.key))) {
+    y = addPage('PRODUCCIÓN Y ZONAS');
     if (sectionNumbers.zones) y = drawProductionMaps(pdf, influenceMapLayout, y, sectionNumbers.zones);
     if (sectionNumbers.production) y = drawProductionMetrics(pdf, report.production, y, sectionNumbers.production);
     const sortedOffensiveConnections = sortConnections(report.offensiveConnections);
@@ -993,19 +943,6 @@ export const createPlayerProfilePdf = async ({
       y = drawObjectiveAnalysis(pdf, report.goalAnalysis, y, sectionNumbers.goalAnalysis);
     }
 
-    const videoActions = rows(report.videoActions);
-    if (videoActions.length) {
-      if (y + 31 > CONTENT_BOTTOM) y = addPage('ACCIONES EN VÍDEO');
-      y = sectionTitle(pdf, 'Acciones en vídeo', y, sectionNumbers.videos);
-      videoActions.forEach((action) => {
-        const estimated = Math.max(25, 18 + wrappedActionDetailLines(pdf, action).length * 4.2);
-        if (y + estimated > CONTENT_BOTTOM) {
-          y = addPage('ACCIONES EN VÍDEO · CONTINUACIÓN');
-          y = sectionTitle(pdf, 'Acciones en vídeo · continuación', y, sectionNumbers.videos);
-        }
-        y = drawVideoAction(pdf, action, y);
-      });
-    }
   }
 
   pageSections.forEach((_, index) => {
@@ -1013,10 +950,9 @@ export const createPlayerProfilePdf = async ({
     drawFooter(pdf, report, index + 1, pageSections.length);
   });
 
-  const expectedVideoUrls = [
-    ...rows(report.videoActions).map((action) => cleanUrl(action.url)),
-    ...rows(report.history).flatMap((row) => [...rows(row.goalLinks), ...rows(row.assistLinks)].map(cleanUrl)),
-  ].filter(Boolean);
+  const expectedVideoUrls = rows(report.history)
+    .flatMap((row) => [...rows(row.goalLinks), ...rows(row.assistLinks)].map(cleanUrl))
+    .filter(Boolean);
   const arrayBuffer = pdf.output('arraybuffer');
   const audit = auditPlayerPdfLinkAnnotations(arrayBuffer, expectedVideoUrls);
   if (!audit.valid) throw new Error(`El PDF generado no conserva todos los enlaces de vídeo (${audit.linkAnnotations} anotaciones; ${audit.missingUrls.length} URL ausentes).`);

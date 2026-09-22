@@ -57,9 +57,6 @@ export const formatPlayerReportAge = (value) => {
 };
 
 const PRODUCTION_CONNECTION_LIMIT = 5;
-const PRODUCTION_ACTION_LIMIT = 6;
-const ACTIONS_PER_CONTINUATION_PAGE = 10;
-
 const totalZones = (maps) => rows(maps)
   .flatMap((map) => rows(map.zones))
   .reduce((sum, zone) => sum + Number(zone.count || 0), 0);
@@ -116,7 +113,6 @@ export const buildPlayerDossierSectionPlan = (report = {}) => {
     { key: 'production', label: 'Producción ofensiva', visible: offensiveOutput },
     { key: 'connections', label: 'Conexiones ofensivas', visible: rows(report.offensiveConnections).length > 0 },
     { key: 'goalAnalysis', label: 'Análisis objetivo de finalización', visible: goalAnalysisTotal(report.goalAnalysis) > 0 },
-    { key: 'videos', label: 'Acciones en vídeo', visible: rows(report.videoActions).length > 0 },
   ];
   return sections
     .filter((section) => section.visible)
@@ -166,9 +162,6 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
   const summaryHistory = history.slice(0, summaryHistoryLimit);
   const historyOverflow = [];
   for (let index = summaryHistory.length; index < history.length; index += 30) historyOverflow.push(history.slice(index, index + 30));
-  const productionActions = videoActions.slice(0, PRODUCTION_ACTION_LIMIT);
-  const actionOverflow = [];
-  for (let index = productionActions.length; index < videoActions.length; index += ACTIONS_PER_CONTINUATION_PAGE) actionOverflow.push(videoActions.slice(index, index + ACTIONS_PER_CONTINUATION_PAGE));
   const offensiveConnections = buildPlayerOffensiveConnections({ society: source.society, playerName: source.identity?.name, playerImage: source.identity?.image });
   const productionConnections = offensiveConnections.slice(0, PRODUCTION_CONNECTION_LIMIT);
   const connectionOverflow = [];
@@ -177,13 +170,11 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
   const hasProduction = influenceZoneTotal > 0
     || offensiveConnections.length > 0
     || goalAnalysisCount > 0
-    || videoActions.length > 0
     || Number(source.production?.goalContributions || 0) > 0;
   const pagePlan = [
     'summary',
     ...(hasProduction ? ['production'] : []),
     ...historyOverflow.map(() => 'history'),
-    ...actionOverflow.map(() => 'video'),
   ];
 
   const report = {
@@ -211,8 +202,6 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
     history,
     summaryHistory,
     historyOverflow,
-    productionActions,
-    actionOverflow,
     pagePlan,
   };
   report.sectionPlan = buildPlayerDossierSectionPlan(report);

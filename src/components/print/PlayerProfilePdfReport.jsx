@@ -208,28 +208,6 @@ function ObjectiveProductionAnalysis({ analysis }) {
   );
 }
 
-function ActionsLibrary({ actions, eyebrow = '07' }) {
-  return (
-    <section className="player-pdf-section player-pdf-actions">
-      <SectionTitle eyebrow={eyebrow}>Acciones en vídeo</SectionTitle>
-      {safeRows(actions).length ? <div className="player-pdf-action-grid">{actions.map((action) => (
-        <article key={action.id || `${action.type}-${action.minute}-${action.opponent}`}>
-          <span className={`player-pdf-video-icon${action.url ? '' : ' is-static'}`}>{action.url ? '▶' : '•'}</span>
-          <div>
-            <strong>{action.type} <em>· {action.minute || 's/m'}{action.minute ? "'" : ''}</em></strong>
-            <span>vs {action.opponent || 'Rival no registrado'}{action.result ? ` · ${action.result}` : ''}</span>
-            <small>{action.competition || 'Competición no registrada'}{action.date ? ` · ${action.date}` : ''}</small>
-            <p className="player-pdf-action-detail">{action.type === 'Gol'
-              ? [action.phase, action.subphase, action.shotZoneLabel, action.contact, action.goalZoneLabel, action.assistant ? `Asist. ${action.assistant}` : ''].filter(Boolean).join(' · ')
-              : [action.scorer ? `A ${action.scorer}` : '', action.assistZoneLabel, action.phase, action.subphase].filter(Boolean).join(' · ') || 'Sin detalle técnico registrado'}</p>
-          </div>
-          {action.url ? <a href={action.url} data-player-video-link="library" target="_blank" rel="noreferrer">Abrir vídeo ↗</a> : <span className="player-pdf-no-video">Sin vídeo</span>}
-        </article>
-      ))}</div> : <p className="player-pdf-empty-line">Sin goles ni asistencias en el ámbito seleccionado.</p>}
-    </section>
-  );
-}
-
 function SummaryPage({ report }) {
   return (
     <article className="player-pdf-page player-pdf-summary-page" data-player-pdf-page="summary">
@@ -246,11 +224,10 @@ function SummaryPage({ report }) {
 function ProductionPage({ report }) {
   return (
     <article className="player-pdf-page player-pdf-production-page" data-player-pdf-page="production">
-      <ReportHeader report={report} section="Producción, zonas y vídeo" />
+      <ReportHeader report={report} section="Producción y zonas" />
       <InfluenceMaps maps={report.influenceMaps} />
       <div className="player-pdf-production-row"><ProductionSummary production={report.production} /><OffensiveConnections connections={report.productionConnections} /></div>
       <ObjectiveProductionAnalysis analysis={report.goalAnalysis} />
-      <ActionsLibrary actions={report.productionActions} eyebrow="08" />
       <ReportFooter report={report} page={2} />
     </article>
   );
@@ -276,28 +253,17 @@ function HistoryContinuationPage({ report, rows, page }) {
   );
 }
 
-function VideoContinuationPage({ report, actions, page }) {
-  return (
-    <article className="player-pdf-page player-pdf-overflow-page" data-player-pdf-page={`video-${page}`}>
-      <ReportHeader report={report} section="Acciones en vídeo · continuación" />
-      <ActionsLibrary actions={actions} eyebrow="08" />
-      <ReportFooter report={report} page={page} />
-    </article>
-  );
-}
-
 export default function PlayerProfilePdfReport({ report }) {
   if (!report) return null;
   const connectionPageCount = report.connectionOverflow.length;
-  const historyPageCount = report.historyOverflow.length;
+  const firstContinuationPage = report.hasProduction ? 3 : 2;
   return (
     <section className="player-profile-print-portal print-dossier-portal" aria-label={`Dossier PDF de ${report.identity.name}`}>
       <div className="player-profile-pdf-report" data-player-pdf-report="true" data-page-count={report.pagePlan.length}>
         <SummaryPage report={report} />
         {report.hasProduction ? <ProductionPage report={report} /> : null}
-        {report.connectionOverflow.map((connections, index) => <ConnectionsContinuationPage key={`connections-${index}`} report={report} connections={connections} page={index + 3} />)}
-        {report.historyOverflow.map((rows, index) => <HistoryContinuationPage key={`history-${index}`} report={report} rows={rows} page={index + connectionPageCount + 3} />)}
-        {report.actionOverflow.map((actions, index) => <VideoContinuationPage key={`video-${index}`} report={report} actions={actions} page={index + connectionPageCount + historyPageCount + 3} />)}
+        {report.connectionOverflow.map((connections, index) => <ConnectionsContinuationPage key={`connections-${index}`} report={report} connections={connections} page={index + firstContinuationPage} />)}
+        {report.historyOverflow.map((rows, index) => <HistoryContinuationPage key={`history-${index}`} report={report} rows={rows} page={index + connectionPageCount + firstContinuationPage} />)}
       </div>
     </section>
   );

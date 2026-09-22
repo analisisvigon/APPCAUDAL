@@ -1,0 +1,190 @@
+{
+  "generatedAt": "2026-09-22T09:40:15.507Z",
+  "fixtureBasis": "Caso visual solicitado: Isma Cerro, 2 goles con pie derecho, 2 goles ABP y enlaces de gol/asistencia en la fila de Ceares.",
+  "isma": {
+    "pdfPath": "C:\\Users\\mvigo\\OneDrive\\Escritorio\\APPCAUDAL\\artifacts\\player-profile-pdf-finalization-qa\\isma-cerro-finalizacion.pdf",
+    "pages": 2,
+    "pageSections": [
+      "PERFIL Y RENDIMIENTO COMPETITIVO",
+      "PRODUCCIÓN Y ZONAS"
+    ],
+    "sectionPlan": [
+      {
+        "key": "performance",
+        "label": "Rendimiento",
+        "number": "01"
+      },
+      {
+        "key": "competitions",
+        "label": "Rendimiento por competición",
+        "number": "02"
+      },
+      {
+        "key": "history",
+        "label": "Historial partido a partido",
+        "number": "03"
+      },
+      {
+        "key": "zones",
+        "label": "Zonas de producción",
+        "number": "04"
+      },
+      {
+        "key": "production",
+        "label": "Producción ofensiva",
+        "number": "05"
+      },
+      {
+        "key": "connections",
+        "label": "Conexiones ofensivas",
+        "number": "06"
+      },
+      {
+        "key": "goalAnalysis",
+        "label": "Análisis objetivo de finalización",
+        "number": "07"
+      }
+    ],
+    "linkAudit": {
+      "bytes": 15178,
+      "linkAnnotations": 3,
+      "uriAnnotations": 3,
+      "urls": [
+        "https://video.example/isma-goal?t=3240",
+        "https://video.example/isma-ceares-goal?t=4680",
+        "https://video.example/isma-ceares-assist?t=4860"
+      ],
+      "expectedUrls": [
+        "https://video.example/isma-goal?t=3240",
+        "https://video.example/isma-ceares-goal?t=4680",
+        "https://video.example/isma-ceares-assist?t=4860"
+      ],
+      "missingUrls": [],
+      "valid": true
+    },
+    "bodyParts": {
+      "values": [
+        {
+          "label": "Pie derecho",
+          "count": 2
+        }
+      ],
+      "known": 2,
+      "missing": 0,
+      "total": 2
+    },
+    "goalTypes": {
+      "phases": [
+        {
+          "label": "ABP",
+          "count": 2
+        }
+      ],
+      "known": 2,
+      "missing": 0,
+      "total": 2
+    },
+    "hasStandaloneVideoSection": false
+  },
+  "multipleCategories": {
+    "pdfPath": "C:\\Users\\mvigo\\OneDrive\\Escritorio\\APPCAUDAL\\artifacts\\player-profile-pdf-finalization-qa\\finalizacion-varias-categorias.pdf",
+    "pages": 2,
+    "pageSections": [
+      "PERFIL Y RENDIMIENTO COMPETITIVO",
+      "PRODUCCIÓN Y ZONAS"
+    ],
+    "sectionPlan": [
+      {
+        "key": "performance",
+        "label": "Rendimiento",
+        "number": "01"
+      },
+      {
+        "key": "competitions",
+        "label": "Rendimiento por competición",
+        "number": "02"
+      },
+      {
+        "key": "history",
+        "label": "Historial partido a partido",
+        "number": "03"
+      },
+      {
+        "key": "zones",
+        "label": "Zonas de producción",
+        "number": "04"
+      },
+      {
+        "key": "production",
+        "label": "Producción ofensiva",
+        "number": "05"
+      },
+      {
+        "key": "connections",
+        "label": "Conexiones ofensivas",
+        "number": "06"
+      },
+      {
+        "key": "goalAnalysis",
+        "label": "Análisis objetivo de finalización",
+        "number": "07"
+      }
+    ],
+    "linkAudit": {
+      "bytes": 15460,
+      "linkAnnotations": 3,
+      "uriAnnotations": 3,
+      "urls": [
+        "https://video.example/isma-goal?t=3240",
+        "https://video.example/isma-ceares-goal?t=4680",
+        "https://video.example/isma-ceares-assist?t=4860"
+      ],
+      "expectedUrls": [
+        "https://video.example/isma-goal?t=3240",
+        "https://video.example/isma-ceares-goal?t=4680",
+        "https://video.example/isma-ceares-assist?t=4860"
+      ],
+      "missingUrls": [],
+      "valid": true
+    },
+    "bodyParts": {
+      "values": [
+        {
+          "label": "Pie derecho",
+          "count": 12
+        },
+        {
+          "label": "Cabeza en acción prolongada",
+          "count": 2
+        },
+        {
+          "label": "Pie izquierdo",
+          "count": 1
+        }
+      ],
+      "known": 15,
+      "missing": 0,
+      "total": 15
+    },
+    "goalTypes": {
+      "phases": [
+        {
+          "label": "ABP",
+          "count": 9
+        },
+        {
+          "label": "Juego combinativo",
+          "count": 5
+        },
+        {
+          "label": "Transición ofensiva",
+          "count": 1
+        }
+      ],
+      "known": 15,
+      "missing": 0,
+      "total": 15
+    },
+    "hasStandaloneVideoSection": false
+  }
+}

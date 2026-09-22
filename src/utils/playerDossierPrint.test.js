@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { jsPDF } from 'jspdf';
 import { inspectPlayerDossier, printPlayerDossier } from './playerDossierPrint.js';
-import { auditPlayerPdfLinkAnnotations, createPlayerProfilePdf, loadPlayerPdfImage } from './playerProfilePdfExport.js';
+import { auditPlayerPdfLinkAnnotations, createPlayerProfilePdf, getObjectiveMetricRowLayout, loadPlayerPdfImage } from './playerProfilePdfExport.js';
 
 const createReportNode = ({ width = 900, height = 2400, text = 'Borja Rodríguez Minutos Partidos Titularidades Goles Asistencias', blocks = 8 } = {}) => ({
   childElementCount: blocks,
@@ -81,7 +81,7 @@ assert.deepEqual(failedAudit.missingUrls, [videoUrl]);
 const componentSource = fs.readFileSync(new URL('../components/print/PlayerProfilePdfReport.jsx', import.meta.url), 'utf8');
 const exporterSource = fs.readFileSync(new URL('./playerProfilePdfExport.js', import.meta.url), 'utf8');
 assert.match(componentSource, /data-player-video-link="history"/, 'los enlaces inequívocos del historial se identifican para la auditoría');
-assert.match(componentSource, /data-player-video-link="library"/, 'el botón de videoteca se identifica para la auditoría');
+assert.doesNotMatch(componentSource, /data-player-video-link="library"/, 'el PDF no mantiene una videoteca independiente duplicada');
 assert.doesNotMatch(componentSource, /data-player-video-link="timeline"/, 'el dossier profesional ya no incluye el gráfico de impacto temporal');
 assert.doesNotMatch(exporterSource, /html2canvas|toDataURL\(['"]image\/png/, 'el generador no captura ni rasteriza el DOM');
 assert.match(exporterSource, /pdf\.link\([\s\S]*?\{ url \}\)/, 'el generador vectorial crea anotaciones PDF estándar');
@@ -110,8 +110,8 @@ const jairoReport = {
 };
 const vectorResult = await createPlayerProfilePdf({ report: jairoReport, fetchImpl: null });
 assert.equal(vectorResult.vector, true, 'el dossier final se declara vectorial');
-assert.deepEqual(vectorResult.pageSections, ['PERFIL Y RENDIMIENTO COMPETITIVO', 'PRODUCCIÓN, ZONAS Y VÍDEO']);
-assert.ok(vectorResult.audit.linkAnnotations >= 2, 'historial y videoteca contienen enlaces PDF reales');
+assert.deepEqual(vectorResult.pageSections, ['PERFIL Y RENDIMIENTO COMPETITIVO', 'PRODUCCIÓN Y ZONAS']);
+assert.equal(vectorResult.audit.linkAnnotations, 1, 'el enlace PDF permanece exclusivamente en el historial contextual');
 assert.deepEqual(vectorResult.audit.missingUrls, []);
 assert.ok(vectorResult.audit.urls.includes(jairoVideoUrl));
 assert.deepEqual(vectorResult.presentationAudit.competitionProfile, {
@@ -128,8 +128,20 @@ assert.deepEqual(vectorResult.presentationAudit.footer, { contact: 'analisisvigo
 assert.deepEqual(vectorResult.presentationAudit.minutesPlayed, { minutes: 180, possibleMinutes: 180, percentage: 100 }, 'el KPI usa minutos disputados sobre minutos posibles y no titularidades');
 assert.deepEqual(vectorResult.presentationAudit.sectionPlan.map(({ key, number }) => [key, number]), [
   ['performance', '01'], ['competitions', '02'], ['history', '03'],
-  ['zones', '04'], ['production', '05'], ['connections', '06'], ['goalAnalysis', '07'], ['videos', '08'],
+  ['zones', '04'], ['production', '05'], ['connections', '06'], ['goalAnalysis', '07'],
 ], 'un dossier completo conserva numeración consecutiva en todos sus bloques visibles');
+
+const objectiveLayoutCases = [
+  ['2 · 100%', 16.5],
+  ['12 · 75%', 17.5],
+  ['123 · 8%', 18.5],
+];
+objectiveLayoutCases.forEach(([value, valueTextWidth]) => {
+  const layout = getObjectiveMetricRowLayout({ x: 20, width: 58.67, valueTextWidth });
+  assert.ok(layout.barWidth > 0, `${value}: la barra conserva un área visible`);
+  assert.ok(layout.barX + layout.barWidth <= layout.valueLeft - layout.gap, `${value}: barra y valor tienen zonas disjuntas`);
+  assert.ok(layout.labelX + layout.labelWidth < layout.barX, `${value}: la etiqueta no invade la barra`);
+});
 
 const transparentPng = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lSxWAAAAAElFTkSuQmCC', 'base64'));
 const loadedRemoteImage = await loadPlayerPdfImage('https://images.example/crest.png', {
@@ -306,8 +318,9 @@ assert.deepEqual(goalWithoutZone.presentationAudit.productionMaps.visibleKeys, [
 assert.deepEqual(goalWithoutZone.presentationAudit.productionMaps.maps.map(({ zoneActions }) => zoneActions), [0, 0], 'F: ausencia de zona no se falsea como ausencia de acción');
 assert.deepEqual(zeroProduction.pageSections, ['PERFIL Y RENDIMIENTO COMPETITIVO'], 'E: 0 G/A no reserva una página ofensiva vacía');
 const multiVideo = await createPlayerProfilePdf({ report: makeScenarioReport({ goals: 1, targetCounts: [1], videos: 18 }), fetchImpl: null });
-assert.equal(multiVideo.audit.linkAnnotations, 18, 'J: cada uno de los vídeos múltiples conserva una anotación Link/URI');
-assert.ok(multiVideo.pages > 2, 'J: una videoteca extensa pagina en vez de comprimirse');
+assert.equal(multiVideo.audit.linkAnnotations, 0, 'J: las acciones no se duplican fuera del historial');
+assert.equal(multiVideo.pages, 2, 'J: eliminar la videoteca evita páginas fantasma aunque existan muchas acciones con URL');
+assert.ok(multiVideo.pageSections.every((section) => !/VÍDEO/u.test(section)), 'J: no queda ninguna sección o continuación de vídeo');
 const fullSeason = await createPlayerProfilePdf({ report: makeScenarioReport({ matches: 48, goals: 8, assists: 4, targetCounts: [1, 2, 1, 1, 1, 1, 0, 1] }), fetchImpl: null });
 assert.ok(fullSeason.pages > 2, 'N: una temporada completa pagina sin comprimir el historial');
 
@@ -342,7 +355,7 @@ assert.deepEqual(crestResult.presentationAudit.clubIdentity, {
   crestLoaded: true,
   season: '2026/2027',
 }, 'el PDF carga el escudo recibido desde el modelo del club sin hardcodear otra URL');
-assert.equal(crestResult.audit.linkAnnotations, 2, 'la prueba completa con escudo conserva un enlace PDF real por tarjeta de vídeo');
+assert.equal(crestResult.audit.linkAnnotations, 0, 'las URL de acciones no crean tarjetas de vídeo fuera del historial');
 assert.deepEqual(crestResult.audit.missingUrls, []);
 if (process.env.PLAYER_DOSSIER_QA_PDF) fs.writeFileSync(process.env.PLAYER_DOSSIER_QA_PDF, Buffer.from(crestResult.arrayBuffer));
 
@@ -426,14 +439,19 @@ borjaProfessionalReport.videoActions = [{
   competition: 'Copa RFEF', date: '16/08/2026', phase: 'Juego directo', assistZoneLabel: 'F. Creación izquierda',
   scorer: 'Jairo Cárcaba', url: 'https://video.example/borja-assist?t=600',
 }];
+borjaProfessionalReport.history[0] = {
+  ...borjaProfessionalReport.history[0],
+  assists: 1,
+  assistLinks: ['https://video.example/borja-assist?t=600'],
+};
 const borjaProfessional = await createPlayerProfilePdf({ report: borjaProfessionalReport, fetchImpl: null });
 assert.equal(borjaProfessional.pages, 2, 'Borja conserva una primera página competitiva y una segunda página ofensiva compacta');
-assert.equal(borjaProfessional.audit.linkAnnotations, 1, 'el vídeo de asistencia de Borja conserva una anotación PDF real');
+assert.equal(borjaProfessional.audit.linkAnnotations, 1, 'el vídeo de asistencia de Borja se conserva en el historial');
 assert.equal(borjaProfessional.presentationAudit.connectionLayout.cardHeight, 24, 'una conexión mantiene una tarjeta visual compacta dentro de dos páginas');
 assert.deepEqual(borjaProfessional.presentationAudit.sectionPlan.map(({ key, number }) => [key, number]), [
   ['performance', '01'], ['competitions', '02'], ['history', '03'],
-  ['zones', '04'], ['production', '05'], ['connections', '06'], ['videos', '07'],
-], 'sin análisis de gol, la videoteca de Borja queda en 07 sin saltos');
+  ['zones', '04'], ['production', '05'], ['connections', '06'],
+], 'sin análisis de gol, el plan termina en conexiones y no reserva una sección de vídeo');
 if (process.env.PLAYER_BORJA_DOSSIER_QA_PDF) fs.writeFileSync(process.env.PLAYER_BORJA_DOSSIER_QA_PDF, Buffer.from(borjaProfessional.arrayBuffer));
 
 const noPositionMinutes = await createPlayerProfilePdf({
@@ -463,6 +481,6 @@ assert.deepEqual({
   rows: connectionLimit.presentationAudit.connectionLayout.rowsCount,
   cardHeight: connectionLimit.presentationAudit.connectionLayout.cardHeight,
 }, { columns: 2, rows: 3, cardHeight: 32 }, 'cinco conexiones se distribuyen en una cuadrícula 2×3 sin overflow');
-assert.match(exporterSource, /drawVideoAction\(pdf, action, y\);/, 'todas las acciones conservan su ficha profesional completa también en páginas de continuación');
+assert.doesNotMatch(exporterSource, /drawVideoAction|Acciones en vídeo|ABRIR VÍDEO/u, 'el exportador elimina completamente el bloque independiente de vídeo');
 
 console.log('playerDossierPrint tests passed');
