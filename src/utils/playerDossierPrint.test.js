@@ -85,7 +85,7 @@ assert.match(componentSource, /data-player-video-link="history"/, 'los enlaces i
 assert.doesNotMatch(componentSource, /data-player-video-link="library"/, 'el PDF no mantiene una videoteca independiente duplicada');
 assert.doesNotMatch(componentSource, /data-player-video-link="timeline"/, 'el dossier profesional ya no incluye el gráfico de impacto temporal');
 assert.doesNotMatch(exporterSource, /html2canvas|pdf\.html\(/, 'el generador no captura ni rasteriza el DOM completo');
-assert.match(exporterSource, /rasterizePlayerPdfImage/, 'la conversión puntual de formatos de imagen no compatibles queda aislada del render vectorial');
+assert.doesNotMatch(exporterSource, /html2canvas|toDataURL|rasterizePlayerPdfImage/, 'el generador no introduce una segunda ruta rasterizada para escudos');
 assert.match(exporterSource, /pdf\.link\([\s\S]*?\{ url \}\)/, 'el generador vectorial crea anotaciones PDF estándar');
 assert.match(exporterSource, /auditPlayerPdfLinkAnnotations\(arrayBuffer, expectedVideoUrls\)/, 'el binario final se audita antes de iniciar la descarga');
 
@@ -159,26 +159,6 @@ const unsupportedRemoteImage = await loadPlayerPdfImage('https://images.example/
   fetchImpl: async () => ({ ok: true, blob: async () => new Blob(['<svg/>'], { type: 'image/svg+xml' }) }),
 });
 assert.equal(unsupportedRemoteImage.error, 'unsupported_mime:image/svg+xml');
-const rasterizedSvg = await loadPlayerPdfImage('https://images.example/crest.svg', {
-  fetchImpl: async () => ({ ok: true, blob: async () => new Blob(['<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>'], { type: 'image/svg+xml' }) }),
-  documentRef: {
-    createElement: (tag) => {
-      if (tag === 'img') return {
-        naturalWidth: 10,
-        naturalHeight: 10,
-        set src(value) { this.source = value; this.onload(); },
-      };
-      return {
-        width: 0,
-        height: 0,
-        getContext: () => ({ clearRect() {}, drawImage() {} }),
-        toDataURL: () => `data:image/png;base64,${Buffer.from(transparentPng).toString('base64')}`,
-      };
-    },
-  },
-});
-assert.equal(rasterizedSvg.format, 'PNG');
-assert.equal(rasterizedSvg.convertedFrom, 'image/svg+xml', 'un escudo SVG se rasteriza en el navegador antes de insertarlo en jsPDF');
 const competitionLogoResult = await createPlayerProfilePdf({
   report: jairoReport,
   fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
@@ -352,6 +332,7 @@ assert.ok(multiVideo.pageSections.every((section) => !/VÍDEO/u.test(section)), 
 const seasonAnalysis = buildPlayerAnalysisSeasonReport({
   liveStats: {
     matchesWithEvents: 6,
+    registryScope: 'all_records',
     goalsPerMatch: 0,
     shotsPerMatch: 0.67,
     shotsOnTargetPerMatch: 0.33,
@@ -376,8 +357,10 @@ const fullSeason = await createPlayerProfilePdf({
   fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
 });
 assert.ok(fullSeason.pages > 2, 'N: una temporada completa pagina sin comprimir el historial');
-assert.ok(fullSeason.pageSections.includes('REGISTRO EN VIVO · TEMPORADA'), 'el bloque de temporada queda después del historial y antes de la analítica');
+assert.ok(fullSeason.pageSections.includes('REGISTRO EN VIVO · TEMPORADA COMPLETA'), 'el bloque de temporada queda después del historial y antes de la analítica');
 assert.equal(fullSeason.presentationAudit.liveSeason.window, 'full_scope');
+assert.equal(fullSeason.presentationAudit.liveSeason.registryScope, 'all_records');
+assert.deepEqual(fullSeason.presentationAudit.liveSeason.layout, { columns: 5, rows: 2, cards: 10 });
 assert.equal(fullSeason.presentationAudit.liveSeason.matchesWithEvents, 6, 'el PDF conserva exactamente el denominador del presenter');
 assert.deepEqual(fullSeason.presentationAudit.liveSeason.metrics.map(({ key, value }) => [key, value]), [
   ['goalsPerMatch', 0], ['shotsPerMatch', 0.67], ['shotsOnTargetPerMatch', 0.33], ['shotAccuracyPercentage', 50],

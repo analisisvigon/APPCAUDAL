@@ -7,6 +7,7 @@ const positionSelector = fs.readFileSync(new URL('../src/utils/playerPositionUsa
 const positionMap = fs.readFileSync(new URL('../src/utils/playerPositionMap.js', import.meta.url), 'utf8');
 const pdfReport = fs.readFileSync(new URL('../src/utils/playerProfilePrintReport.js', import.meta.url), 'utf8');
 const pdfExporter = fs.readFileSync(new URL('../src/utils/playerProfilePdfExport.js', import.meta.url), 'utf8');
+const delegatedLiveSelector = fs.readFileSync(new URL('../src/utils/playerDelegatedLiveReport.js', import.meta.url), 'utf8');
 const start = source.indexOf('{selectedPlayerProfile ? (() => {');
 const end = source.indexOf('})() : (', start);
 
@@ -84,7 +85,7 @@ assert.match(profile, /\['Fecha', 'Rival', 'Resultado', 'Competición', 'L\/V', 
 assert.match(profile, /score\.hasScore \? `\$\{resultLabel\} · \$\{score\.caudalGoals\}-\$\{score\.rivalGoals\}` : 'Sin resultado'/);
 assert.match(profile, /overflow-x-auto player-history-table/);
 
-assert.match(profile, /hasUsefulQuickData = quick\.events\.length >= 2/);
+assert.match(profile, /hasUsefulQuickData = quick\.matchesWithEvents > 0/);
 assert.match(profile, /Últimos 3 partidos/);
 assert.match(profile, /Solo validados/);
 
@@ -92,12 +93,14 @@ const liveStart = profile.indexOf('<AccordionSection title="Registro en vivo"');
 const liveEnd = profile.indexOf('<AccordionSection title="Producción', liveStart);
 assert.ok(liveStart >= 0 && liveEnd > liveStart, 'localiza exclusivamente el bloque Registro en vivo');
 const liveSection = profile.slice(liveStart, liveEnd);
-assert.match(source, /const scopedReviewedEvents = \(playerProfileData\?\.quickEvents \|\| \[\]\)/);
+assert.match(source, /buildPlayerDelegatedLiveSummary\(\{/);
 assert.match(source, /delegatedScope = playerDelegatedScope/);
-assert.match(source, /delegatedScope === 'Todos los registros' \|\| isDelegatedDataValidated\(event\.match\)/);
-assert.match(source, /const quickScopeLimit = quickScope === 'Últimos 3 partidos' \? 3 : quickScope === 'Últimos 5 partidos' \? 5 : null/);
-assert.match(source, /const matchCount = new Set\(quickEvents\.map\(\(event\) => event\.partidoId\)\)\.size;/);
-assert.match(source, /calculateDelegatedPerMatch\(summary, matchCount, PLAYER_LIVE_PER_MATCH_FIELDS\)/);
+assert.match(delegatedLiveSelector, /delegatedScope === 'Todos los registros' \|\| isDelegatedDataValidated\(event\.match\)/);
+assert.match(delegatedLiveSelector, /if \(quickScope === 'Últimos 3 partidos'\) return 3/);
+assert.match(delegatedLiveSelector, /if \(quickScope === 'Últimos 5 partidos'\) return 5/);
+assert.match(delegatedLiveSelector, /const matchesWithEvents = new Set\(visibleEvents\.map\(getMatchId\)\.filter\(Boolean\)\)\.size/);
+assert.match(delegatedLiveSelector, /calculateDelegatedPerMatch\(summary, matchesWithEvents, PLAYER_DELEGATED_LIVE_FIELDS\)/);
+assert.match(delegatedLiveSelector, /quickScope: 'Temporada completa'[\s\S]*delegatedScope: 'Todos los registros'/, 'el selector PDF fija su universo independientemente de la pantalla');
 for (const metric of [
   'Partidos con eventos',
   'Goles / partido',

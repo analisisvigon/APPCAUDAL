@@ -109,7 +109,7 @@ export const buildPlayerDossierSectionPlan = (report = {}) => {
     { key: 'performance', label: 'Rendimiento', visible: true },
     { key: 'competitions', label: 'Rendimiento por competición', visible: rows(report.competitionBreakdown).length > 0 },
     { key: 'history', label: 'Historial partido a partido', visible: true },
-    { key: 'liveSeason', label: 'Registro en vivo · Temporada', visible: Boolean(report.liveSeason) },
+    { key: 'liveSeason', label: 'Registro en vivo · Temporada completa', visible: Boolean(report.liveSeason) },
     { key: 'seasonMaximums', label: 'Máximos de la temporada', visible: Array.isArray(report.seasonMaximums) },
     { key: 'zones', label: 'Zonas de producción', visible: influenceMapLayout.maps.length > 0 },
     { key: 'production', label: 'Producción ofensiva', visible: offensiveOutput },

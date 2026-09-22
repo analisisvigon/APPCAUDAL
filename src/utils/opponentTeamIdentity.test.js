@@ -17,24 +17,11 @@ const sameNameWrongId = resolveOpponentTeamIdentity({
   match: { equipoRivalId: 'missing-id', opponent: 'Unión Club Ceares' },
   teams,
 });
-assert.equal(sameNameWrongId.crest, 'https://assets.example/ceares.png', 'un ID obsoleto admite fallback nominal único y seguro');
-assert.equal(sameNameWrongId.source, 'team_name');
+assert.equal(sameNameWrongId.crest, '', 'un ID explícito no se sustituye por una conjetura nominal');
+assert.equal(sameNameWrongId.source, 'missing');
 
 const historical = resolveOpponentTeamIdentity({ match: { opponent: 'Union Club Ceares' }, teams });
 assert.equal(historical.crest, 'https://assets.example/ceares.png', 'un partido histórico sin ID admite coincidencia normalizada inequívoca');
-
-const normalizedHistorical = resolveOpponentTeamIdentity({ match: { opponent: 'Salamanca CF UDS' }, teams });
-assert.equal(normalizedHistorical.crest, 'https://assets.example/salamanca.png', 'las siglas societarias intermedias no rompen una coincidencia nominal única');
-assert.equal(normalizedHistorical.source, 'team_name_normalized');
-
-const ambiguous = resolveOpponentTeamIdentity({
-  match: { opponent: 'Racing Club' },
-  teams: [
-    { id: 'racing-cf', name: 'Racing CF', crest: 'https://assets.example/one.png' },
-    { id: 'racing-cd', name: 'Racing CD', crest: 'https://assets.example/two.png' },
-  ],
-});
-assert.equal(ambiguous.crest, '', 'el fallback flexible nunca elige entre candidatos ambiguos');
 
 const snapshotFallback = resolveOpponentTeamIdentity({
   match: { opponent: 'Rival no catalogado', opponent_crest: '/legacy-crest.png' },

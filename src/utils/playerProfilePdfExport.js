@@ -130,31 +130,6 @@ const blobToDataUrl = async (blob) => {
   return `data:${blob.type || 'image/png'};base64,${globalThis.btoa(binary)}`;
 };
 
-const rasterizePlayerPdfImage = async (blob, documentRef) => {
-  if (typeof documentRef?.createElement !== 'function') return { data: '', format: '', error: 'rasterizer_unavailable' };
-  try {
-    const source = await blobToDataUrl(blob);
-    const image = documentRef.createElement('img');
-    await new Promise((resolve, reject) => {
-      image.onload = resolve;
-      image.onerror = () => reject(new Error('decode_failed'));
-      image.src = source;
-    });
-    const width = Math.max(1, Math.min(1024, Number(image.naturalWidth || image.width) || 512));
-    const height = Math.max(1, Math.min(1024, Number(image.naturalHeight || image.height) || 512));
-    const canvas = documentRef.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext?.('2d');
-    if (!context || typeof canvas.toDataURL !== 'function') return { data: '', format: '', error: 'rasterizer_unavailable' };
-    context.clearRect(0, 0, width, height);
-    context.drawImage(image, 0, 0, width, height);
-    return { data: canvas.toDataURL('image/png'), format: 'PNG', error: '' };
-  } catch (error) {
-    return { data: '', format: '', error: `rasterize_failed:${clean(error?.message) || 'unknown'}` };
-  }
-};
-
 export const loadPlayerPdfImage = async (url, { fetchImpl = globalThis.fetch, documentRef } = {}) => {
   const source = clean(url);
   if (!source) return { source: '', data: '', format: '', error: 'missing_source' };
@@ -166,11 +141,6 @@ export const loadPlayerPdfImage = async (url, { fetchImpl = globalThis.fetch, do
     const blob = await response.blob();
     const mimeType = String(blob.type || '').toLowerCase();
     if (!['image/png', 'image/jpeg', 'image/jpg', 'image/webp'].includes(mimeType)) {
-      if (mimeType.startsWith('image/')) {
-        const rasterized = await rasterizePlayerPdfImage(blob, documentRef);
-        if (rasterized.data) return { source, ...rasterized, convertedFrom: mimeType };
-        if (rasterized.error !== 'rasterizer_unavailable') return { source, ...rasterized };
-      }
       return { source, data: '', format: '', error: mimeType ? `unsupported_mime:${mimeType}` : 'missing_mime' };
     }
     const data = await blobToDataUrl(blob);
@@ -498,31 +468,49 @@ const formatPdfMatchDate = (value) => {
 };
 
 const drawLiveSeason = (pdf, liveSeason, y, sectionNumber) => {
-  y = sectionTitle(pdf, 'Registro en vivo · Temporada', y, sectionNumber);
+  y = sectionTitle(pdf, 'Registro en vivo · Temporada completa', y, sectionNumber);
   if (!liveSeason?.hasData || number(liveSeason.matchesWithEvents) <= 0) {
     text(pdf, 'Sin información suficiente', PAGE_MARGIN + 2, y + 5.2, { size: 6.4, style: 'bold', color: COLORS.muted });
     return y + 12;
   }
-  const matchCount = number(liveSeason.matchesWithEvents);
-  text(pdf, `${matchCount} ${matchCount === 1 ? 'partido analizado' : 'partidos analizados'} · ventana completa de temporada`, PAGE_MARGIN, y + 3.8, { size: 5.5, style: 'bold', color: COLORS.muted });
-  y += 7;
-  const groups = rows(liveSeason.metricGroups);
+  text(pdf, 'Eventos del Modo Delegado · Todos los registros', PAGE_MARGIN, y + 3.8, { size: 5.7, style: 'bold', color: COLORS.blue });
+  text(pdf, 'No forman parte de la estadística oficial salvo partidos validados.', PAGE_MARGIN, y + 8, { size: 5.1, color: COLORS.muted });
+  y += 12;
+  const metricValues = new Map(rows(liveSeason.metricGroups)
+    .flatMap((group) => rows(group.metrics))
+    .map((metric) => [metric.key, metric]));
+  const cards = [
+    { label: 'Partidos con eventos', value: number(liveSeason.matchesWithEvents), format: 'count' },
+    { ...metricValues.get('goalsPerMatch'), label: 'Goles / partido' },
+    { ...metricValues.get('shotsPerMatch'), label: 'Tiros / partido' },
+    { ...metricValues.get('shotsOnTargetPerMatch'), label: 'Tiros a puerta / partido' },
+    { ...metricValues.get('shotAccuracyPercentage'), label: '% tiros a puerta' },
+    { ...metricValues.get('crossesPerMatch'), label: 'Centros / partido' },
+    { ...metricValues.get('turnoversPerMatch'), label: 'Pérdidas / partido' },
+    { ...metricValues.get('stealsPerMatch'), label: 'Robos / partido' },
+    { ...metricValues.get('foulsCommittedPerMatch'), label: 'Faltas realizadas / partido' },
+    { ...metricValues.get('foulsReceivedPerMatch'), label: 'Faltas recibidas / partido' },
+  ];
+  const columns = 5;
   const gap = 3;
-  const width = (CONTENT_WIDTH - gap * 2) / 3;
-  const height = 39;
-  groups.slice(0, 3).forEach((group, groupIndex) => {
-    const x = PAGE_MARGIN + groupIndex * (width + gap);
+  const width = (CONTENT_WIDTH - gap * (columns - 1)) / columns;
+  const height = 25;
+  const rowGap = 3;
+  cards.forEach((card, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const x = PAGE_MARGIN + column * (width + gap);
+    const cardY = y + row * (height + rowGap);
     pdf.setFillColor(...COLORS.panel);
     pdf.setDrawColor(...COLORS.line);
-    pdf.roundedRect(x, y, width, height, 1.2, 1.2, 'FD');
-    text(pdf, clean(group.title).toUpperCase(), x + 3, y + 5.5, { size: 5.6, style: 'bold', color: COLORS.blue });
-    rows(group.metrics).forEach((metric, metricIndex) => {
-      const rowY = y + 12 + metricIndex * 6.2;
-      singleLineText(pdf, metric.label, x + 3, rowY, { size: 5.3, minSize: 4.3, color: COLORS.muted, maxWidth: width - 21 });
-      singleLineText(pdf, formatSeasonMetric(metric.value, metric.format), x + width - 3, rowY, { size: 6.2, minSize: 5.2, style: 'bold', color: COLORS.ink, align: 'right', maxWidth: 16 });
-    });
+    pdf.roundedRect(x, cardY, width, height, 1.2, 1.2, 'FD');
+    text(pdf, clean(card.label).toUpperCase(), x + 3, cardY + 5.2, { size: 4.7, style: 'bold', color: COLORS.muted, maxWidth: width - 6 });
+    const displayValue = card.format === 'count'
+      ? number(card.value).toLocaleString('es-ES')
+      : formatSeasonMetric(card.value, card.format);
+    singleLineText(pdf, displayValue, x + 3, cardY + 20.5, { size: 12.5, minSize: 10, style: 'bold', color: COLORS.navy, maxWidth: width - 6 });
   });
-  return y + height + 6;
+  return y + height * 2 + rowGap + 7;
 };
 
 const drawSeasonMaximums = (pdf, maximums, y, sectionNumber, imageMap, addPage) => {
@@ -538,7 +526,7 @@ const drawSeasonMaximums = (pdf, maximums, y, sectionNumber, imageMap, addPage) 
     text(pdf, 'Sin registros superiores a cero en esta temporada.', PAGE_MARGIN + 2, y + 5.2, { size: 6.4, color: COLORS.muted });
     return { y: y + 12, layout: { columns, cardHeight, cards: 0, cardSplit: false } };
   }
-  text(pdf, 'Registros más altos dentro de la temporada completa.', PAGE_MARGIN, y + 3.8, { size: 5.5, color: COLORS.muted });
+  text(pdf, 'Temporada completa · Todos los registros.', PAGE_MARGIN, y + 3.8, { size: 5.5, color: COLORS.muted });
   y += 7;
   for (let index = 0; index < items.length; index += columns) {
     if (y + cardHeight > CONTENT_BOTTOM) {
@@ -1045,7 +1033,7 @@ export const createPlayerProfilePdf = async ({
 
   let maximumsLayout = { columns: 3, cardHeight: 31, cards: 0, cardSplit: false };
   if (report.liveSeason || Array.isArray(report.seasonMaximums)) {
-    y = addPage('REGISTRO EN VIVO · TEMPORADA');
+    y = addPage('REGISTRO EN VIVO · TEMPORADA COMPLETA');
     if (report.liveSeason) y = drawLiveSeason(pdf, report.liveSeason, y, sectionNumbers.liveSeason);
     if (Array.isArray(report.seasonMaximums)) {
       const maximumsResult = drawSeasonMaximums(pdf, report.seasonMaximums, y, sectionNumbers.seasonMaximums, imageMap, addPage);
@@ -1116,14 +1104,15 @@ export const createPlayerProfilePdf = async ({
           source,
           loaded: Boolean(loaded?.data),
           error: source ? clean(loaded?.error) : 'missing_source',
-          convertedFrom: clean(loaded?.convertedFrom),
           placeholder: false,
         };
       }),
       liveSeason: report.liveSeason ? {
         window: clean(report.liveSeason.window) || 'full_scope',
+        registryScope: clean(report.liveSeason.registryScope) || 'validated',
         matchesWithEvents: number(report.liveSeason.matchesWithEvents),
         hasData: Boolean(report.liveSeason.hasData),
+        layout: { columns: 5, rows: 2, cards: 10 },
         metrics: rows(report.liveSeason.metricGroups).flatMap((group) => rows(group.metrics).map((metric) => ({
           key: clean(metric.key),
           value: metric.value ?? null,
@@ -1141,7 +1130,6 @@ export const createPlayerProfilePdf = async ({
           crestSource: source,
           crestLoaded: Boolean(loaded?.data),
           crestError: source ? clean(loaded?.error) : 'missing_source',
-          crestConvertedFrom: clean(loaded?.convertedFrom),
         };
       }),
       maximumsLayout,
@@ -1177,7 +1165,6 @@ export const createPlayerProfilePdf = async ({
           resolutionSource: clean(row.opponentCrestSource),
           loaded: Boolean(loaded?.data),
           error: source ? clean(loaded?.error) : 'missing_source',
-          convertedFrom: clean(loaded?.convertedFrom),
           placeholder: !loaded?.data,
         };
       }),

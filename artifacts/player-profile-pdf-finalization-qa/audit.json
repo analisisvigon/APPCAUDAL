@@ -1,12 +1,13 @@
 {
-  "generatedAt": "2026-09-22T13:15:40.677Z",
-  "fixtureBasis": "Caso visual solicitado: Isma Cerro, 2 goles con pie derecho, 2 goles ABP y enlaces de gol/asistencia en la fila de Ceares.",
+  "generatedAt": "2026-09-22T14:06:43.554Z",
+  "dataClassification": "Fixture sintético exclusivo para QA visual; no representa los valores reales de la APP.",
+  "fixtureBasis": "Escenario de maquetación con historial, Registro en vivo, máximos, finalización y enlaces contextuales.",
   "isma": {
     "pdfPath": "C:\\Users\\mvigo\\OneDrive\\Escritorio\\APPCAUDAL\\artifacts\\player-profile-pdf-finalization-qa\\isma-cerro-finalizacion.pdf",
     "pages": 3,
     "pageSections": [
       "PERFIL Y RENDIMIENTO COMPETITIVO",
-      "REGISTRO EN VIVO · TEMPORADA",
+      "REGISTRO EN VIVO · TEMPORADA COMPLETA",
       "PRODUCCIÓN Y ZONAS"
     ],
     "sectionPlan": [
@@ -27,7 +28,7 @@
       },
       {
         "key": "liveSeason",
-        "label": "Registro en vivo · Temporada",
+        "label": "Registro en vivo · Temporada completa",
         "number": "04"
       },
       {
@@ -57,7 +58,7 @@
       }
     ],
     "linkAudit": {
-      "bytes": 37845,
+      "bytes": 38901,
       "linkAnnotations": 3,
       "uriAnnotations": 3,
       "urls": [
@@ -75,8 +76,14 @@
     },
     "liveSeason": {
       "window": "full_scope",
+      "registryScope": "all_records",
       "matchesWithEvents": 6,
       "hasData": true,
+      "layout": {
+        "columns": 5,
+        "rows": 2,
+        "cards": 10
+      },
       "metrics": [
         {
           "key": "goalsPerMatch",
@@ -125,8 +132,7 @@
         "matchDate": "2026-09-13",
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
-        "crestError": "",
-        "crestConvertedFrom": ""
+        "crestError": ""
       },
       {
         "metric": "shotsOnTarget",
@@ -136,8 +142,7 @@
         "matchDate": "2026-09-13",
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
-        "crestError": "",
-        "crestConvertedFrom": ""
+        "crestError": ""
       },
       {
         "metric": "crosses",
@@ -147,8 +152,7 @@
         "matchDate": "2026-09-13",
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
-        "crestError": "",
-        "crestConvertedFrom": ""
+        "crestError": ""
       },
       {
         "metric": "steals",
@@ -158,8 +162,7 @@
         "matchDate": "2026-08-30",
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
-        "crestError": "",
-        "crestConvertedFrom": ""
+        "crestError": ""
       },
       {
         "metric": "foulsReceived",
@@ -169,8 +172,7 @@
         "matchDate": "2026-09-13",
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
-        "crestError": "",
-        "crestConvertedFrom": ""
+        "crestError": ""
       },
       {
         "metric": "turnovers",
@@ -180,8 +182,7 @@
         "matchDate": "2026-08-30",
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
-        "crestError": "",
-        "crestConvertedFrom": ""
+        "crestError": ""
       }
     ],
     "maximumsLayout": {
@@ -197,7 +198,6 @@
         "source": "[embedded-qa-image]",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -206,7 +206,6 @@
         "source": "[embedded-qa-image]",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       }
     ],
@@ -219,7 +218,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -230,7 +228,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -241,7 +238,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -252,7 +248,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -263,19 +258,17 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
         "matchId": "isma-6",
         "opponent": "Salamanca CF UDS",
         "teamId": "",
-        "source": "[embedded-qa-image]",
-        "resolutionSource": "team_name_normalized",
-        "loaded": true,
-        "error": "",
-        "convertedFrom": "",
-        "placeholder": false
+        "source": "",
+        "resolutionSource": "missing",
+        "loaded": false,
+        "error": "missing_source",
+        "placeholder": true
       },
       {
         "matchId": "isma-7",
@@ -285,7 +278,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -296,7 +288,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       }
     ],
@@ -330,7 +321,7 @@
     "pageSections": [
       "PERFIL Y RENDIMIENTO COMPETITIVO",
       "HISTORIAL · CONTINUACIÓN",
-      "REGISTRO EN VIVO · TEMPORADA",
+      "REGISTRO EN VIVO · TEMPORADA COMPLETA",
       "PRODUCCIÓN Y ZONAS"
     ],
     "sectionPlan": [
@@ -351,7 +342,7 @@
       },
       {
         "key": "liveSeason",
-        "label": "Registro en vivo · Temporada",
+        "label": "Registro en vivo · Temporada completa",
         "number": "04"
       },
       {
@@ -381,7 +372,7 @@
       }
     ],
     "linkAudit": {
-      "bytes": 45713,
+      "bytes": 47167,
       "linkAnnotations": 12,
       "uriAnnotations": 12,
       "urls": [
@@ -417,8 +408,14 @@
     },
     "liveSeason": {
       "window": "full_scope",
+      "registryScope": "all_records",
       "matchesWithEvents": 6,
       "hasData": true,
+      "layout": {
+        "columns": 5,
+        "rows": 2,
+        "cards": 10
+      },
       "metrics": [
         {
           "key": "goalsPerMatch",
@@ -467,8 +464,7 @@
         "matchDate": "2026-09-13",
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
-        "crestError": "",
-        "crestConvertedFrom": ""
+        "crestError": ""
       },
       {
         "metric": "shotsOnTarget",
@@ -478,8 +474,7 @@
         "matchDate": "2026-09-13",
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
-        "crestError": "",
-        "crestConvertedFrom": ""
+        "crestError": ""
       },
       {
         "metric": "crosses",
@@ -489,8 +484,7 @@
         "matchDate": "2026-09-13",
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
-        "crestError": "",
-        "crestConvertedFrom": ""
+        "crestError": ""
       },
       {
         "metric": "steals",
@@ -500,8 +494,7 @@
         "matchDate": "2026-08-30",
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
-        "crestError": "",
-        "crestConvertedFrom": ""
+        "crestError": ""
       },
       {
         "metric": "foulsReceived",
@@ -511,8 +504,7 @@
         "matchDate": "2026-09-13",
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
-        "crestError": "",
-        "crestConvertedFrom": ""
+        "crestError": ""
       },
       {
         "metric": "turnovers",
@@ -522,8 +514,7 @@
         "matchDate": "2026-08-30",
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
-        "crestError": "",
-        "crestConvertedFrom": ""
+        "crestError": ""
       }
     ],
     "maximumsLayout": {
@@ -539,7 +530,6 @@
         "source": "[embedded-qa-image]",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -548,7 +538,6 @@
         "source": "[embedded-qa-image]",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       }
     ],
@@ -561,7 +550,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -572,7 +560,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -583,7 +570,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -594,7 +580,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -605,19 +590,17 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
         "matchId": "long-6",
         "opponent": "Salamanca CF UDS",
         "teamId": "",
-        "source": "[embedded-qa-image]",
-        "resolutionSource": "team_name_normalized",
-        "loaded": true,
-        "error": "",
-        "convertedFrom": "",
-        "placeholder": false
+        "source": "",
+        "resolutionSource": "missing",
+        "loaded": false,
+        "error": "missing_source",
+        "placeholder": true
       },
       {
         "matchId": "long-7",
@@ -627,7 +610,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -638,7 +620,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -649,7 +630,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -660,7 +640,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -671,7 +650,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -682,7 +660,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -693,19 +670,17 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
         "matchId": "long-14",
         "opponent": "Salamanca CF UDS",
         "teamId": "",
-        "source": "[embedded-qa-image]",
-        "resolutionSource": "team_name_normalized",
-        "loaded": true,
-        "error": "",
-        "convertedFrom": "",
-        "placeholder": false
+        "source": "",
+        "resolutionSource": "missing",
+        "loaded": false,
+        "error": "missing_source",
+        "placeholder": true
       },
       {
         "matchId": "long-15",
@@ -715,7 +690,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -726,7 +700,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -737,7 +710,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -748,7 +720,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -759,7 +730,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -770,7 +740,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -781,19 +750,17 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
         "matchId": "long-22",
         "opponent": "Salamanca CF UDS",
         "teamId": "",
-        "source": "[embedded-qa-image]",
-        "resolutionSource": "team_name_normalized",
-        "loaded": true,
-        "error": "",
-        "convertedFrom": "",
-        "placeholder": false
+        "source": "",
+        "resolutionSource": "missing",
+        "loaded": false,
+        "error": "missing_source",
+        "placeholder": true
       },
       {
         "matchId": "long-23",
@@ -803,7 +770,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -814,7 +780,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -825,7 +790,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -836,7 +800,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -847,7 +810,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -858,7 +820,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -869,19 +830,17 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
         "matchId": "long-30",
         "opponent": "Salamanca CF UDS",
         "teamId": "",
-        "source": "[embedded-qa-image]",
-        "resolutionSource": "team_name_normalized",
-        "loaded": true,
-        "error": "",
-        "convertedFrom": "",
-        "placeholder": false
+        "source": "",
+        "resolutionSource": "missing",
+        "loaded": false,
+        "error": "missing_source",
+        "placeholder": true
       },
       {
         "matchId": "long-31",
@@ -891,7 +850,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -902,7 +860,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -913,7 +870,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -924,7 +880,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -935,7 +890,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -946,7 +900,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       }
     ],
@@ -979,7 +932,7 @@
     "pages": 3,
     "pageSections": [
       "PERFIL Y RENDIMIENTO COMPETITIVO",
-      "REGISTRO EN VIVO · TEMPORADA",
+      "REGISTRO EN VIVO · TEMPORADA COMPLETA",
       "PRODUCCIÓN Y ZONAS"
     ],
     "sectionPlan": [
@@ -1000,7 +953,7 @@
       },
       {
         "key": "liveSeason",
-        "label": "Registro en vivo · Temporada",
+        "label": "Registro en vivo · Temporada completa",
         "number": "04"
       },
       {
@@ -1030,7 +983,7 @@
       }
     ],
     "linkAudit": {
-      "bytes": 38131,
+      "bytes": 39188,
       "linkAnnotations": 3,
       "uriAnnotations": 3,
       "urls": [
@@ -1048,8 +1001,14 @@
     },
     "liveSeason": {
       "window": "full_scope",
+      "registryScope": "all_records",
       "matchesWithEvents": 6,
       "hasData": true,
+      "layout": {
+        "columns": 5,
+        "rows": 2,
+        "cards": 10
+      },
       "metrics": [
         {
           "key": "goalsPerMatch",
@@ -1098,8 +1057,7 @@
         "matchDate": "2026-09-13",
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
-        "crestError": "",
-        "crestConvertedFrom": ""
+        "crestError": ""
       },
       {
         "metric": "shotsOnTarget",
@@ -1109,8 +1067,7 @@
         "matchDate": "2026-09-13",
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
-        "crestError": "",
-        "crestConvertedFrom": ""
+        "crestError": ""
       },
       {
         "metric": "crosses",
@@ -1120,8 +1077,7 @@
         "matchDate": "2026-09-13",
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
-        "crestError": "",
-        "crestConvertedFrom": ""
+        "crestError": ""
       },
       {
         "metric": "steals",
@@ -1131,8 +1087,7 @@
         "matchDate": "2026-08-30",
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
-        "crestError": "",
-        "crestConvertedFrom": ""
+        "crestError": ""
       },
       {
         "metric": "foulsReceived",
@@ -1142,8 +1097,7 @@
         "matchDate": "2026-09-13",
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
-        "crestError": "",
-        "crestConvertedFrom": ""
+        "crestError": ""
       },
       {
         "metric": "turnovers",
@@ -1153,8 +1107,7 @@
         "matchDate": "2026-08-30",
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
-        "crestError": "",
-        "crestConvertedFrom": ""
+        "crestError": ""
       }
     ],
     "maximumsLayout": {
@@ -1170,7 +1123,6 @@
         "source": "[embedded-qa-image]",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -1179,7 +1131,6 @@
         "source": "[embedded-qa-image]",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       }
     ],
@@ -1192,7 +1143,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -1203,7 +1153,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -1214,7 +1163,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -1225,7 +1173,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -1236,19 +1183,17 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
         "matchId": "isma-6",
         "opponent": "Salamanca CF UDS",
         "teamId": "",
-        "source": "[embedded-qa-image]",
-        "resolutionSource": "team_name_normalized",
-        "loaded": true,
-        "error": "",
-        "convertedFrom": "",
-        "placeholder": false
+        "source": "",
+        "resolutionSource": "missing",
+        "loaded": false,
+        "error": "missing_source",
+        "placeholder": true
       },
       {
         "matchId": "isma-7",
@@ -1258,7 +1203,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       },
       {
@@ -1269,7 +1213,6 @@
         "resolutionSource": "team_id",
         "loaded": true,
         "error": "",
-        "convertedFrom": "",
         "placeholder": false
       }
     ],

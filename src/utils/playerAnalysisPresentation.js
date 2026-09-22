@@ -218,6 +218,7 @@ export function buildPlayerAnalysisLivePresentation(liveStats = {}) {
     : 0;
   return {
     window: clean(liveStats.window) || 'full_scope',
+    registryScope: clean(liveStats.registryScope) || 'validated',
     matchesWithEvents,
     hasData: matchesWithEvents > 0,
     metricGroups: PLAYER_ANALYSIS_LIVE_METRIC_GROUPS.map((group) => ({

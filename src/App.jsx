@@ -56,6 +56,11 @@ import { buildSetPieceCaptureResponsibilities } from './utils/setPieceCaptureRes
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
 import { buildPlayerProfilePrintReport, formatPlayerReportAge } from './utils/playerProfilePrintReport';
 import { buildPlayerAnalysisSeasonReport } from './utils/playerAnalysisPresentation';
+import {
+  buildPlayerDelegatedLivePresentationInput,
+  buildPlayerDelegatedLiveSummary,
+  buildPlayerDelegatedSeasonExportSummary,
+} from './utils/playerDelegatedLiveReport';
 import { getPlayerPositionUsage } from './utils/playerPositionUsage';
 import { resolveOpponentTeamIdentity } from './utils/opponentTeamIdentity';
 import { createMatchPlayerIdentityIndex, resolveMatchPlayerCandidate } from './utils/matchPlayerIdentity';
@@ -94,7 +99,7 @@ import {
   normalizeMatchScoreForStorage,
   parseLocalMatchDate,
 } from './utils/matchStatus';
-import { calculateDelegatedPerMatch, formatDelegatedNumber } from './utils/delegatedStats';
+import { formatDelegatedNumber } from './utils/delegatedStats';
 import {
   formatMatchCalendarRound,
   getMatchCalendarEventPriority,
@@ -211,7 +216,6 @@ import {
 import {
   buildDelegatedPlayerOptions,
   buildDelegatedQuickEventDbPayload,
-  delegatedEventMatchesPlayer,
   getCanonicalPlayerId,
   getDelegatedEventPlayerId,
   normalizeDelegatedQuickEvent,
@@ -2233,17 +2237,6 @@ const EVENT_STAT_FIELDS = [
   { key: 'foulsCommitted', label: 'Faltas realizadas', group: 'Disciplina y duelos' },
   { key: 'foulsReceived', label: 'Faltas recibidas', group: 'Disciplina y duelos' },
 ];
-
-const PLAYER_LIVE_PER_MATCH_FIELDS = EVENT_STAT_FIELDS.filter((field) => [
-  'goals',
-  'shots',
-  'shotsOnTarget',
-  'crosses',
-  'turnovers',
-  'steals',
-  'foulsCommitted',
-  'foulsReceived',
-].includes(field.key));
 
 const createEmptyEventStats = () => EVENT_STAT_FIELDS.reduce((acc, field) => ({ ...acc, [field.key]: 0 }), {});
 const getDelegatedStatusTone = (status) => ({
@@ -20966,64 +20959,19 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const getPlayerQuickSummary = (player, {
     quickScope = playerQuickScope,
     delegatedScope = playerDelegatedScope,
-  } = {}) => {
-    if (!player?.id) {
-      const emptyStats = aggregateQuickEventStats([], { scope: 'player' });
-      return {
-        ...emptyStats,
-        losses: 0,
-        fouls: 0,
-        shotAccuracy: 'No disponible',
-        perMatch: null,
-        events: [],
-        matchesWithEvents: 0,
-        readings: [],
-        alerts: [],
-        per90: {},
-      };
-    }
-    const scopedReviewedEvents = (playerProfileData?.quickEvents || [])
-      .map((event) => ({ ...event, match: playerProfileData?.partidosById?.[event.partidoId] }))
-      .filter((event) => event.match)
-      .filter((event) => delegatedScope === 'Todos los registros' || isDelegatedDataValidated(event.match))
-      .filter((event) => delegatedEventMatchesPlayer(event, player, players) && getQuickEventSide(event) === 'caudal')
-      .filter((event) => filterMatchesByCompetitionCatalog([event.match], getCompetitionFilterKey(playerCompetitionFilter)).length)
-      .filter((event) => playerVenueFilter === 'Todos' || (playerVenueFilter === 'Local' ? event.match.isHome : !event.match.isHome));
-    const orderedMatchIds = [...new Map(
-      scopedReviewedEvents
-        .slice()
-        .sort((a, b) => String(b.match.date || '').localeCompare(String(a.match.date || '')))
-        .map((event) => [event.partidoId, event.match])
-    ).keys()];
-    const quickScopeLimit = quickScope === 'Últimos 3 partidos' ? 3 : quickScope === 'Últimos 5 partidos' ? 5 : null;
-    const visibleMatchIds = quickScopeLimit ? new Set(orderedMatchIds.slice(0, quickScopeLimit)) : null;
-    const quickEvents = visibleMatchIds
-      ? scopedReviewedEvents.filter((event) => visibleMatchIds.has(event.partidoId))
-      : scopedReviewedEvents;
-    const summary = aggregateQuickEventStats(quickEvents, { side: 'caudal', playerId: player.id, scope: 'player' });
-    const matchCount = new Set(quickEvents.map((event) => event.partidoId)).size;
-    const perMatch = calculateDelegatedPerMatch(summary, matchCount, PLAYER_LIVE_PER_MATCH_FIELDS);
-    const shotAccuracy = getStatRate(summary.shotsOnTarget, summary.shots);
-    const shotAccuracyValue = Number(String(shotAccuracy).replace('%', '')) || 0;
-    const readings = [
-      summary.recoveries >= 5 ? 'Alto volumen de recuperaciones' : null,
-      summary.turnovers > summary.recoveries && summary.turnovers >= 3 ? 'Muchas pérdidas respecto a recuperaciones' : null,
-      summary.shots >= 3 ? 'Participa en finalización' : null,
-      summary.shots >= 3 && shotAccuracyValue >= 50 ? 'Buena precisión de tiro' : null,
-      quickScopeLimit && quickEvents.length <= 2 ? 'Poca participación reciente' : null,
-    ].filter(Boolean);
-    return {
-      ...summary,
-      losses: summary.turnovers,
-      fouls: summary.foulsCommitted,
-      shotAccuracy,
-      perMatch,
-      events: quickEvents,
-      matchesWithEvents: matchCount,
-      readings,
-      alerts: readings,
-    };
-  };
+  } = {}) => buildPlayerDelegatedLiveSummary({
+    events: playerProfileData?.quickEvents || [],
+    matchesById: playerProfileData?.partidosById || {},
+    player,
+    players,
+    quickScope,
+    delegatedScope,
+    venue: playerVenueFilter,
+    matchAllowed: (match) => filterMatchesByCompetitionCatalog(
+      [match],
+      getCompetitionFilterKey(playerCompetitionFilter),
+    ).length > 0,
+  });
 
   const getPlayerAggregate = (player) => {
     const rows = getPlayerMatchRows(player);
@@ -30058,7 +30006,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
               const hasGoalZoneData = allGoalActions.some((event) => event.goalZone);
               const hasGoalPhaseData = playerGoalPhaseCounts.some((row) => row.count > 0);
               const hasGoalBodyPartData = goalBodyPartSummary.known > 0;
-              const hasUsefulQuickData = quick.events.length >= 2;
+              const hasUsefulQuickData = quick.matchesWithEvents > 0;
               const dominantGoalPhase = hasGoalPhaseData ? [...playerGoalPhaseCounts].sort((a, b) => b.count - a.count)[0] : null;
               const pdfCompetitionOrder = ['league', 'copa_rfef', 'playoff', 'friendly'];
               const pdfCompetitionRows = Object.values(aggregate.rows.reduce((acc, row) => {
@@ -30146,23 +30094,23 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 url: event.videoUrl || '',
                 matchId: event.match.id,
               }));
-              const pdfSeasonQuick = getPlayerQuickSummary(selectedPlayerProfile, {
-                quickScope: 'Temporada',
-                delegatedScope: 'Solo validados',
+              const pdfSeasonQuick = buildPlayerDelegatedSeasonExportSummary({
+                events: playerProfileData?.quickEvents || [],
+                matchesById: playerProfileData?.partidosById || {},
+                player: selectedPlayerProfile,
+                players,
+                venue: playerVenueFilter,
+                matchAllowed: (match) => filterMatchesByCompetitionCatalog(
+                  [match],
+                  getCompetitionFilterKey(playerCompetitionFilter),
+                ).length > 0,
               });
-              const pdfSeasonEventsByMatch = pdfSeasonQuick.events.reduce((byMatch, event) => {
-                const matchId = event.match?.id || event.partidoId;
-                if (!matchId) return byMatch;
-                if (!byMatch.has(matchId)) byMatch.set(matchId, { match: event.match, events: [] });
-                byMatch.get(matchId).events.push(event);
-                return byMatch;
-              }, new Map());
-              const pdfSeasonMatchStats = [...pdfSeasonEventsByMatch.values()]
-                .map(({ match, events }) => {
-                  const stats = aggregateQuickEventStats(events, { side: 'caudal', playerId: selectedPlayerProfile.id, scope: 'player' });
+              const pdfSeasonMatchStats = pdfSeasonQuick.matchStats
+                .map(({ match, ...stats }) => {
                   const opponentIdentity = resolveOpponentTeamIdentity({ match, teams });
                   return {
-                    matchId: match.id,
+                    ...stats,
+                    matchId: stats.matchId || match.id,
                     matchDate: match.date || '',
                     opponent: match.opponent || opponentIdentity.opponent,
                     opponentCrest: opponentIdentity.crest,
@@ -30171,34 +30119,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                     competitionKey: getCompetitionFromCatalog(match).key,
                     competitionName: getCompetitionFromCatalog(match).label,
                     isHome: Boolean(match.isHome),
-                    eventCount: events.length,
-                    goals: stats.goals,
-                    shots: stats.shots,
-                    shotsOnTarget: stats.shotsOnTarget,
-                    shotAccuracyPercentage: stats.shots > 0 ? Math.round((stats.shotsOnTarget / stats.shots) * 1000) / 10 : null,
-                    crosses: stats.crosses,
-                    turnovers: stats.turnovers,
-                    steals: stats.steals,
-                    foulsCommitted: stats.foulsCommitted,
-                    foulsReceived: stats.foulsReceived,
                   };
                 })
                 .sort((left, right) => `${left.matchDate}:${left.matchId}`.localeCompare(`${right.matchDate}:${right.matchId}`));
               const pdfSeasonAnalysis = buildPlayerAnalysisSeasonReport({
-                liveStats: {
-                  matchesWithEvents: pdfSeasonQuick.matchesWithEvents,
-                  goalsPerMatch: pdfSeasonQuick.perMatch?.goals ?? null,
-                  shotsPerMatch: pdfSeasonQuick.perMatch?.shots ?? null,
-                  shotsOnTargetPerMatch: pdfSeasonQuick.perMatch?.shotsOnTarget ?? null,
-                  shotAccuracyPercentage: pdfSeasonQuick.shots > 0
-                    ? Math.round((pdfSeasonQuick.shotsOnTarget / pdfSeasonQuick.shots) * 1000) / 10
-                    : null,
-                  crossesPerMatch: pdfSeasonQuick.perMatch?.crosses ?? null,
-                  turnoversPerMatch: pdfSeasonQuick.perMatch?.turnovers ?? null,
-                  stealsPerMatch: pdfSeasonQuick.perMatch?.steals ?? null,
-                  foulsCommittedPerMatch: pdfSeasonQuick.perMatch?.foulsCommitted ?? null,
-                  foulsReceivedPerMatch: pdfSeasonQuick.perMatch?.foulsReceived ?? null,
-                },
+                liveStats: buildPlayerDelegatedLivePresentationInput(pdfSeasonQuick),
                 matches: pdfSeasonMatchStats,
               });
               const playerPdfModel = buildPlayerProfilePrintReport({

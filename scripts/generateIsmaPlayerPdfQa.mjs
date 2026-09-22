@@ -54,8 +54,8 @@ const history = opponents.map(([opponent, date, competition], index) => ({
   id: `isma-${index + 1}`,
   date,
   opponent,
-  opponentCrest: qaImage,
-  opponentCrestSource: index === 5 ? 'team_name_normalized' : 'team_id',
+  opponentCrest: index === 5 ? '' : qaImage,
+  opponentCrestSource: index === 5 ? 'missing' : 'team_id',
   result: index === 6 ? '1-0' : '1-1',
   outcome: index === 6 ? 'V' : 'E',
   competition,
@@ -98,6 +98,7 @@ const perMatch = (value) => Math.round((Number(value || 0) / matchCount) * 100) 
 const seasonAnalysis = buildPlayerAnalysisSeasonReport({
   liveStats: {
     window: 'full_scope',
+    registryScope: 'all_records',
     matchesWithEvents: matchCount,
     goalsPerMatch: perMatch(seasonTotals.goals),
     shotsPerMatch: perMatch(seasonTotals.shots),
@@ -234,7 +235,8 @@ const summarize = ({ pdfPath, report, result }) => ({
 
 const audit = {
   generatedAt: new Date().toISOString(),
-  fixtureBasis: 'Caso visual solicitado: Isma Cerro, 2 goles con pie derecho, 2 goles ABP y enlaces de gol/asistencia en la fila de Ceares.',
+  dataClassification: 'Fixture sintético exclusivo para QA visual; no representa los valores reales de la APP.',
+  fixtureBasis: 'Escenario de maquetación con historial, Registro en vivo, máximos, finalización y enlaces contextuales.',
   isma: summarize(isma),
   longSeason: summarize(longSeason),
   multipleCategories: summarize(multipleCategories),

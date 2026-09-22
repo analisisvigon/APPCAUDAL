@@ -78,7 +78,7 @@ assert.equal(maximums.find((maximum) => maximum.metric.key === 'shots').match.ma
 assert.equal(maximums.find((maximum) => maximum.metric.key === 'steals').match.matchId, 'match-c', 'Empate en tres partidos: gana el más reciente y luego match_id.');
 assert.equal(buildPlayerAnalysisSeasonMaximums(matchStats.map((match) => ({ ...match, goals: 0 }))).some((maximum) => maximum.metric.key === 'goals'), false, 'Un máximo cero se omite.');
 
-const ismaLiveStats = {
+const sampleLiveStats = {
   matchesWithEvents: 6,
   goalsPerMatch: 0,
   shotsPerMatch: 0.67,
@@ -90,14 +90,15 @@ const ismaLiveStats = {
   foulsCommittedPerMatch: 0,
   foulsReceivedPerMatch: 0.17,
 };
-const livePresentation = buildPlayerAnalysisLivePresentation(ismaLiveStats);
+const livePresentation = buildPlayerAnalysisLivePresentation(sampleLiveStats);
 assert.equal(livePresentation.window, 'full_scope');
+assert.equal(livePresentation.registryScope, 'validated');
 assert.equal(livePresentation.matchesWithEvents, 6);
 assert.equal(livePresentation.hasData, true);
 assert.deepEqual(livePresentation.metricGroups.map((group) => group.title), ['Finalización', 'Con balón', 'Defensivo']);
 assert.equal(livePresentation.metricGroups[0].metrics.find((metric) => metric.key === 'goalsPerMatch').value, 0, 'el cero real no se convierte en ausencia');
 assert.equal(buildPlayerAnalysisLivePresentation({}).metricGroups[0].metrics[0].value, null, 'la ausencia conserva semántica nula');
-const seasonReport = buildPlayerAnalysisSeasonReport({ liveStats: ismaLiveStats, matches: matchStats });
+const seasonReport = buildPlayerAnalysisSeasonReport({ liveStats: sampleLiveStats, matches: matchStats });
 assert.equal(seasonReport.window, 'full_scope');
 assert.deepEqual(seasonReport.live, livePresentation, 'APP y PDF consumen la misma presentación de Registro en vivo');
 assert.deepEqual(seasonReport.maximums, maximums, 'APP y PDF consumen el mismo presenter de máximos');
