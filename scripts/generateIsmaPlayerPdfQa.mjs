@@ -75,13 +75,13 @@ const seasonMatchStats = [
   { matchId: 'isma-2', matchDate: '2026-08-30', opponent: 'CD Praviano', shots: 1, shotsOnTarget: 0, crosses: 3, turnovers: 4, steals: 5, foulsReceived: 0 },
   { matchId: 'isma-3', matchDate: '2026-09-02', opponent: 'Marino de Luanco', shots: 0, shotsOnTarget: 0, crosses: 2, turnovers: 1, steals: 3, foulsReceived: 0 },
   { matchId: 'isma-4', matchDate: '2026-09-06', opponent: 'CD Lealtad', shots: 1, shotsOnTarget: 1, crosses: 2, turnovers: 1, steals: 2, foulsReceived: 0 },
-  { matchId: 'isma-6', matchDate: '2026-09-09', opponent: 'Salamanca CF UDS', shots: 0, shotsOnTarget: 0, crosses: 2, turnovers: 1, steals: 2, foulsReceived: 0 },
+  { matchId: 'isma-6', matchDate: '2026-09-09', opponent: 'Salamanca CF UDS', shots: 0, shotsOnTarget: 0, crosses: 2, turnovers: 1, steals: 2, foulsCommitted: 2, foulsReceived: 0 },
   { matchId: 'isma-7', matchDate: '2026-09-13', opponent: 'Unión Club Ceares', shots: 2, shotsOnTarget: 1, crosses: 8, turnovers: 2, steals: 3, foulsReceived: 1 },
 ].map((match) => ({
   ...match,
-  opponentCrest: qaImage,
+  opponentCrest: match.matchId === 'isma-6' ? '' : qaImage,
   goals: 0,
-  foulsCommitted: 0,
+  foulsCommitted: Number(match.foulsCommitted || 0),
 }));
 const seasonTotals = seasonMatchStats.reduce((total, match) => ({
   goals: total.goals + match.goals,

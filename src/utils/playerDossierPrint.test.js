@@ -385,7 +385,24 @@ assert.deepEqual(fullSeason.presentationAudit.liveSeason.metrics.map(({ key, val
 ]);
 assert.equal(fullSeason.presentationAudit.seasonMaximums.find((maximum) => maximum.metric === 'shots').value, 2);
 assert.equal(fullSeason.presentationAudit.seasonMaximums.every((maximum) => maximum.crestLoaded), true, 'los máximos reutilizan los escudos precargados del exportador');
-assert.deepEqual(fullSeason.presentationAudit.maximumsLayout, { columns: 3, cardHeight: 31, cards: 7, cardSplit: false }, 'las tarjetas largas se paginan en una cuadrícula de tres sin dividirse');
+assert.deepEqual(fullSeason.presentationAudit.maximumsLayout, {
+  columns: 4,
+  rowColumns: [4, 3],
+  cardHeight: 31,
+  cards: 7,
+  cardSplit: false,
+}, 'Máximos distribuye siete tarjetas como 4 + 3 y cada fila ocupa todo el ancho');
+assert.deepEqual(
+  fullSeason.presentationAudit.seasonMaximums.map(({ metric, value, matchId, opponent, matchDate }) => ({ metric, value, matchId, opponent, matchDate })),
+  seasonAnalysis.maximums.map((maximum) => ({
+    metric: maximum.metric.key,
+    value: maximum.value,
+    matchId: maximum.match.matchId,
+    opponent: maximum.match.opponent,
+    matchDate: maximum.match.matchDate,
+  })),
+  'el cambio 4 + 3 no altera métricas, valores, rivales ni fechas',
+);
 
 const noLiveDataReport = makeScenarioReport();
 const noLiveData = buildPlayerAnalysisSeasonReport();

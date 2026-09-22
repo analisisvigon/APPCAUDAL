@@ -514,25 +514,26 @@ const drawLiveSeason = (pdf, liveSeason, y, sectionNumber) => {
 
 const drawSeasonMaximums = (pdf, maximums, y, sectionNumber, imageMap, addPage) => {
   const items = rows(maximums);
-  const columns = 3;
   const gap = 3;
-  const cardWidth = (CONTENT_WIDTH - gap * (columns - 1)) / columns;
   const cardHeight = 31;
   const rowGap = 3;
   if (y + 7 + cardHeight > CONTENT_BOTTOM) y = addPage('MÁXIMOS DE LA TEMPORADA');
   y = sectionTitle(pdf, 'Máximos de la temporada', y, sectionNumber);
   if (!items.length) {
     text(pdf, 'Sin registros superiores a cero en esta temporada.', PAGE_MARGIN + 2, y + 5.2, { size: 6.4, color: COLORS.muted });
-    return { y: y + 12, layout: { columns, cardHeight, cards: 0, cardSplit: false } };
+    return { y: y + 12, layout: { columns: 0, rowColumns: [], cardHeight, cards: 0, cardSplit: false } };
   }
   text(pdf, 'Temporada completa · Todos los registros.', PAGE_MARGIN, y + 3.8, { size: 5.5, color: COLORS.muted });
   y += 7;
-  for (let index = 0; index < items.length; index += columns) {
+  const cardRows = items.length > 4 ? [items.slice(0, 4), items.slice(4)] : [items];
+  cardRows.forEach((rowItems) => {
     if (y + cardHeight > CONTENT_BOTTOM) {
       y = addPage('MÁXIMOS DE LA TEMPORADA · CONTINUACIÓN');
       y = sectionTitle(pdf, 'Máximos de la temporada · continuación', y, sectionNumber);
     }
-    items.slice(index, index + columns).forEach((item, columnIndex) => {
+    const columns = rowItems.length;
+    const cardWidth = (CONTENT_WIDTH - gap * (columns - 1)) / columns;
+    rowItems.forEach((item, columnIndex) => {
       const x = PAGE_MARGIN + columnIndex * (cardWidth + gap);
       const match = item.match || {};
       const crestSource = clean(match.opponentCrest);
@@ -550,8 +551,18 @@ const drawSeasonMaximums = (pdf, maximums, y, sectionNumber, imageMap, addPage) 
       singleLineText(pdf, [match.sequenceLabel, formatPdfMatchDate(match.matchDate)].filter(Boolean).join(' · '), opponentX, y + 27.4, { size: 4.8, minSize: 4.1, color: COLORS.muted, maxWidth: cardWidth - (opponentX - x) - 3 });
     });
     y += cardHeight + rowGap;
-  }
-  return { y: y + 2, layout: { columns, cardHeight, cards: items.length, cardSplit: false } };
+  });
+  const rowColumns = cardRows.map((rowItems) => rowItems.length);
+  return {
+    y: y + 2,
+    layout: {
+      columns: Math.max(...rowColumns),
+      rowColumns,
+      cardHeight,
+      cards: items.length,
+      cardSplit: false,
+    },
+  };
 };
 
 const drawPositionPitch = (pdf, model, x, y, width, height) => {
@@ -1030,7 +1041,7 @@ export const createPlayerProfilePdf = async ({
     text(pdf, 'Sin partidos registrados en el ámbito seleccionado.', PAGE_MARGIN, y + 3, { size: 6.5, color: COLORS.muted });
   }
 
-  let maximumsLayout = { columns: 3, cardHeight: 31, cards: 0, cardSplit: false };
+  let maximumsLayout = { columns: 0, rowColumns: [], cardHeight: 31, cards: 0, cardSplit: false };
   if (report.liveSeason || Array.isArray(report.seasonMaximums)) {
     y = addPage('REGISTRO EN VIVO · TEMPORADA COMPLETA');
     if (report.liveSeason) y = drawLiveSeason(pdf, report.liveSeason, y, sectionNumbers.liveSeason);

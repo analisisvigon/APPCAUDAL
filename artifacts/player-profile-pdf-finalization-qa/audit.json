@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-22T14:21:49.799Z",
+  "generatedAt": "2026-09-22T16:49:15.609Z",
   "dataClassification": "Fixture sintético exclusivo para QA visual; no representa los valores reales de la APP.",
   "fixtureBasis": "Escenario de maquetación con historial, Registro en vivo, máximos, finalización y enlaces contextuales.",
   "isma": {
@@ -58,7 +58,7 @@
       }
     ],
     "linkAudit": {
-      "bytes": 38551,
+      "bytes": 39007,
       "linkAnnotations": 3,
       "uriAnnotations": 3,
       "urls": [
@@ -126,7 +126,7 @@
         },
         {
           "key": "foulsCommittedPerMatch",
-          "value": 0
+          "value": 0.33
         },
         {
           "key": "foulsReceivedPerMatch",
@@ -194,12 +194,26 @@
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
         "crestError": ""
+      },
+      {
+        "metric": "foulsCommitted",
+        "value": 2,
+        "matchId": "isma-6",
+        "opponent": "Salamanca CF UDS",
+        "matchDate": "2026-09-09",
+        "crestSource": "",
+        "crestLoaded": false,
+        "crestError": "missing_source"
       }
     ],
     "maximumsLayout": {
-      "columns": 3,
+      "columns": 4,
+      "rowColumns": [
+        4,
+        3
+      ],
       "cardHeight": 31,
-      "cards": 6,
+      "cards": 7,
       "cardSplit": false
     },
     "competitionLogos": [
@@ -383,7 +397,7 @@
       }
     ],
     "linkAudit": {
-      "bytes": 46818,
+      "bytes": 47274,
       "linkAnnotations": 12,
       "uriAnnotations": 12,
       "urls": [
@@ -469,7 +483,7 @@
         },
         {
           "key": "foulsCommittedPerMatch",
-          "value": 0
+          "value": 0.33
         },
         {
           "key": "foulsReceivedPerMatch",
@@ -537,12 +551,26 @@
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
         "crestError": ""
+      },
+      {
+        "metric": "foulsCommitted",
+        "value": 2,
+        "matchId": "isma-6",
+        "opponent": "Salamanca CF UDS",
+        "matchDate": "2026-09-09",
+        "crestSource": "",
+        "crestLoaded": false,
+        "crestError": "missing_source"
       }
     ],
     "maximumsLayout": {
-      "columns": 3,
+      "columns": 4,
+      "rowColumns": [
+        4,
+        3
+      ],
       "cardHeight": 31,
-      "cards": 6,
+      "cards": 7,
       "cardSplit": false
     },
     "competitionLogos": [
@@ -1005,7 +1033,7 @@
       }
     ],
     "linkAudit": {
-      "bytes": 38836,
+      "bytes": 39290,
       "linkAnnotations": 3,
       "uriAnnotations": 3,
       "urls": [
@@ -1073,7 +1101,7 @@
         },
         {
           "key": "foulsCommittedPerMatch",
-          "value": 0
+          "value": 0.33
         },
         {
           "key": "foulsReceivedPerMatch",
@@ -1141,12 +1169,26 @@
         "crestSource": "[embedded-qa-image]",
         "crestLoaded": true,
         "crestError": ""
+      },
+      {
+        "metric": "foulsCommitted",
+        "value": 2,
+        "matchId": "isma-6",
+        "opponent": "Salamanca CF UDS",
+        "matchDate": "2026-09-09",
+        "crestSource": "",
+        "crestLoaded": false,
+        "crestError": "missing_source"
       }
     ],
     "maximumsLayout": {
-      "columns": 3,
+      "columns": 4,
+      "rowColumns": [
+        4,
+        3
+      ],
       "cardHeight": 31,
-      "cards": 6,
+      "cards": 7,
       "cardSplit": false
     },
     "competitionLogos": [
