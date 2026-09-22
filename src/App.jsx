@@ -409,6 +409,17 @@ import {
   serializeSemanticPlayerPositions,
   serializeTemplateArrows,
 } from './utils/tacticalTemplates';
+import {
+  addOffensivePlayToWorkspace,
+  cloneOffensivePlay,
+  deleteOffensivePlayFromWorkspace,
+  getOffensivePlayContextKey,
+  navigateOffensivePlayStyle,
+  normalizeOffensivePlayStyle,
+  offensivePlayMatchesContext,
+  resolveOffensiveActivePlayId,
+  selectOffensivePlayInWorkspace,
+} from './utils/offensivePlayWorkspace';
 import { orientFormationSlotsForTacticalBoard } from './utils/tacticalOrientation';
 import { buildTacticalPlayContext } from './utils/tacticalPlayContext';
 import {
@@ -1225,10 +1236,6 @@ const createEmptyOffensiveWorkspace = () => ({
   activePlayIdBySituation: {},
   plays: [],
 });
-const normalizeOffensivePlayStyle = (value) => (
-  offensivePlayStyleOptions.some((option) => option.value === value) ? value : 'combinative'
-);
-const getOffensivePlayContextKey = (situation, playStyle) => `${situation}:${normalizeOffensivePlayStyle(playStyle)}`;
 const normalizeOffensiveWorkspace = (value) => {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const validSituations = new Set(offensiveSituationOptions.map((option) => option.value));
@@ -1252,10 +1259,12 @@ const normalizeOffensiveWorkspace = (value) => {
       createdAt: String(play.createdAt || new Date().toISOString()),
       updatedAt: String(play.updatedAt || play.createdAt || new Date().toISOString()),
     }));
-  const playIds = new Set(plays.map((play) => play.id));
   const activePlayStyleBySituation = Object.fromEntries(
     offensiveSituationOptions.map((option) => {
-      const legacyActivePlay = plays.find((play) => play.id === source.activePlayIdBySituation?.[option.value]);
+      const legacyActivePlay = plays.find((play) => (
+        play.id === source.activePlayIdBySituation?.[option.value]
+        && play.offensiveSituation === option.value
+      ));
       return [
         option.value,
         normalizeOffensivePlayStyle(source.activePlayStyleBySituation?.[option.value] || legacyActivePlay?.playStyle),
@@ -1266,18 +1275,13 @@ const normalizeOffensiveWorkspace = (value) => {
     offensiveSituationOptions.flatMap((situationOption) => (
       offensivePlayStyleOptions.map((styleOption) => {
         const contextKey = getOffensivePlayContextKey(situationOption.value, styleOption.value);
-        const savedId = source.activePlayIdByContext?.[contextKey];
-        const legacySavedId = source.activePlayIdBySituation?.[situationOption.value];
-        const fallbackId = plays.find((play) => (
-          play.offensiveSituation === situationOption.value
-          && play.playStyle === styleOption.value
-        ))?.id || '';
-        const legacyPlayMatchesContext = plays.some((play) => (
-          play.id === legacySavedId
-          && play.offensiveSituation === situationOption.value
-          && play.playStyle === styleOption.value
-        ));
-        return [contextKey, playIds.has(savedId) ? savedId : legacyPlayMatchesContext ? legacySavedId : fallbackId];
+        return [contextKey, resolveOffensiveActivePlayId({
+          plays,
+          activePlayIdByContext: source.activePlayIdByContext,
+          activePlayIdBySituation: source.activePlayIdBySituation,
+          situation: situationOption.value,
+          playStyle: styleOption.value,
+        })];
       })
     ))
   );
@@ -1285,7 +1289,10 @@ const normalizeOffensiveWorkspace = (value) => {
     offensiveSituationOptions.map((option) => {
       const savedId = source.activePlayIdBySituation?.[option.value];
       const fallbackId = plays.find((play) => play.offensiveSituation === option.value)?.id || '';
-      return [option.value, playIds.has(savedId) ? savedId : fallbackId];
+      const savedPlayMatchesSituation = plays.some((play) => (
+        play.id === savedId && play.offensiveSituation === option.value
+      ));
+      return [option.value, savedPlayMatchesSituation ? savedId : fallbackId];
     })
   );
   return {
@@ -10502,12 +10509,16 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const defensivePlaysForSituation = defensiveWorkspace.plays.filter((play) => play.defensiveSituation === defensiveSituation);
   const selectedDefensivePlayId = defensiveWorkspace.activePlayIdBySituation[defensiveSituation] || defensivePlaysForSituation[0]?.id || '';
   const selectedDefensivePhasePlay = defensiveWorkspace.plays.find((play) => play.id === selectedDefensivePlayId) || null;
-  const offensivePlayContextKey = getOffensivePlayContextKey(offensiveSituation, offensivePlayStyle);
   const offensivePlaysForSituation = offensiveWorkspace.plays.filter((play) => (
-    play.offensiveSituation === offensiveSituation
-    && normalizeOffensivePlayStyle(play.playStyle) === offensivePlayStyle
+    offensivePlayMatchesContext(play, offensiveSituation, offensivePlayStyle)
   ));
-  const selectedOffensivePlayId = offensiveWorkspace.activePlayIdByContext?.[offensivePlayContextKey] || offensivePlaysForSituation[0]?.id || '';
+  const selectedOffensivePlayId = resolveOffensiveActivePlayId({
+    plays: offensiveWorkspace.plays,
+    activePlayIdByContext: offensiveWorkspace.activePlayIdByContext,
+    activePlayIdBySituation: offensiveWorkspace.activePlayIdBySituation,
+    situation: offensiveSituation,
+    playStyle: offensivePlayStyle,
+  });
   const selectedOffensivePlay = offensiveWorkspace.plays.find((play) => play.id === selectedOffensivePlayId) || null;
   const transitionPlayContextKey = getTransitionPlayContextKey(
     transitionType,
@@ -11432,75 +11443,21 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const selectOffensivePlayStyle = (playStyle) => {
     if (!offensivePlayStyleOptions.some((option) => option.value === playStyle)) return;
     if (playStyle === offensivePlayStyle) return;
-    if (selectedOffensivePlay) {
-      const playAlreadyPersisted = normalizeOffensiveWorkspace(
-        selectedPreAiAnalysis?.offensivePhaseV1
-      ).plays.some((play) => play.id === selectedOffensivePlay.id);
-      if (
-        playAlreadyPersisted
-        && !window.confirm(`¿Cambiar "${selectedOffensivePlay.name}" a ${offensivePlayStyleOptions.find((option) => option.value === playStyle)?.label}? No se moverán jugadores ni se borrarán flechas o texto.`)
-      ) return;
-      const previousContextKey = getOffensivePlayContextKey(offensiveSituation, offensivePlayStyle);
-      const nextContextKey = getOffensivePlayContextKey(offensiveSituation, playStyle);
-      markOffensiveUnsaved();
-      setOffensiveWorkspace((current) => {
-        const nextPreviousPlay = current.plays.find((play) => (
-          play.id !== selectedOffensivePlay.id
-          && play.offensiveSituation === offensiveSituation
-          && normalizeOffensivePlayStyle(play.playStyle) === offensivePlayStyle
-        ));
-        return {
-          ...current,
-          activePlayStyleBySituation: {
-            ...current.activePlayStyleBySituation,
-            [offensiveSituation]: playStyle,
-          },
-          activePlayIdByContext: {
-            ...current.activePlayIdByContext,
-            [previousContextKey]: nextPreviousPlay?.id || '',
-            [nextContextKey]: selectedOffensivePlay.id,
-          },
-          plays: current.plays.map((play) => (
-            play.id === selectedOffensivePlay.id
-              ? { ...play, playStyle, updatedAt: new Date().toISOString() }
-              : play
-          )),
-        };
-      });
-      setOffensivePlayStyle(playStyle);
-      return;
-    }
     setOffensivePlayStyle(playStyle);
     markOffensiveUnsaved();
-    setOffensiveWorkspace((current) => ({
-      ...current,
-      activePlayStyleBySituation: {
-        ...current.activePlayStyleBySituation,
-        [offensiveSituation]: playStyle,
-      },
-    }));
+    setOffensiveWorkspace((current) => (
+      navigateOffensivePlayStyle(current, offensiveSituation, playStyle)
+    ));
   };
   const selectOffensivePlay = (playId) => {
     if (!offensiveWorkspace.plays.some((play) => (
-      play.id === playId
-      && play.offensiveSituation === offensiveSituation
-      && normalizeOffensivePlayStyle(play.playStyle) === offensivePlayStyle
+      play.id === playId && offensivePlayMatchesContext(play, offensiveSituation, offensivePlayStyle)
     ))) return;
     markOffensiveUnsaved();
-    setOffensiveWorkspace((current) => ({
-      ...current,
-      activePlayStyleBySituation: {
-        ...current.activePlayStyleBySituation,
-        [offensiveSituation]: offensivePlayStyle,
-      },
-      activePlayIdByContext: {
-        ...current.activePlayIdByContext,
-        [offensivePlayContextKey]: playId,
-      },
-      activePlayIdBySituation: {
-        ...current.activePlayIdBySituation,
-        [offensiveSituation]: playId,
-      },
+    setOffensiveWorkspace((current) => selectOffensivePlayInWorkspace(current, {
+      situation: offensiveSituation,
+      playStyle: offensivePlayStyle,
+      playId,
     }));
   };
   const selectTransitionType = (nextTransitionType) => {
@@ -12033,72 +11990,27 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       updatedAt: timestamp,
     };
     markOffensiveUnsaved();
-    setOffensiveWorkspace((current) => ({
-      ...current,
-      activePlayStyleBySituation: {
-        ...current.activePlayStyleBySituation,
-        [offensiveSituation]: offensivePlayStyle,
-      },
-      activePlayIdByContext: {
-        ...current.activePlayIdByContext,
-        [offensivePlayContextKey]: play.id,
-      },
-      activePlayIdBySituation: {
-        ...current.activePlayIdBySituation,
-        [offensiveSituation]: play.id,
-      },
-      plays: [...current.plays, play],
-    }));
+    setOffensiveWorkspace((current) => addOffensivePlayToWorkspace(current, play));
     return play;
   };
   const duplicateOffensivePlay = () => {
     if (!selectedOffensivePlay) return;
     const timestamp = new Date().toISOString();
-    const duplicate = {
-      ...selectedOffensivePlay,
-      id: createOffensivePlayId(),
-      phase: 'offensive',
-      playStyle: normalizeOffensivePlayStyle(selectedOffensivePlay.playStyle),
-      name: `${selectedOffensivePlay.name} · copia`,
-      playerPositions: { ...selectedOffensivePlay.playerPositions },
-      arrows: selectedOffensivePlay.arrows.map((arrow) => cloneTacticalBoardArrow(arrow, createOffensivePlayId())),
-      ballStartPosition: selectedOffensivePlay.ballStartPosition ? { ...selectedOffensivePlay.ballStartPosition } : null,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    };
+    const duplicate = cloneOffensivePlay(selectedOffensivePlay, {
+      playId: createOffensivePlayId(),
+      createArrowId: createOffensivePlayId,
+      timestamp,
+    });
     markOffensiveUnsaved();
-    setOffensiveWorkspace((current) => ({
-      ...current,
-      activePlayIdByContext: {
-        ...current.activePlayIdByContext,
-        [offensivePlayContextKey]: duplicate.id,
-      },
-      activePlayIdBySituation: {
-        ...current.activePlayIdBySituation,
-        [offensiveSituation]: duplicate.id,
-      },
-      plays: [...current.plays, duplicate],
-    }));
+    setOffensiveWorkspace((current) => addOffensivePlayToWorkspace(current, duplicate));
   };
   const deleteOffensivePlay = () => {
     if (!selectedOffensivePlay || !window.confirm(`¿Eliminar "${selectedOffensivePlay.name}"?`)) return;
-    const remainingPlays = offensiveWorkspace.plays.filter((play) => play.id !== selectedOffensivePlay.id);
-    const nextPlay = remainingPlays.find((play) => (
-      play.offensiveSituation === offensiveSituation
-      && normalizeOffensivePlayStyle(play.playStyle) === offensivePlayStyle
-    ));
     markOffensiveUnsaved();
-    setOffensiveWorkspace((current) => ({
-      ...current,
-      activePlayIdByContext: {
-        ...current.activePlayIdByContext,
-        [offensivePlayContextKey]: nextPlay?.id || '',
-      },
-      activePlayIdBySituation: {
-        ...current.activePlayIdBySituation,
-        [offensiveSituation]: nextPlay?.id || '',
-      },
-      plays: remainingPlays,
+    setOffensiveWorkspace((current) => deleteOffensivePlayFromWorkspace(current, {
+      situation: offensiveSituation,
+      playStyle: offensivePlayStyle,
+      playId: selectedOffensivePlay.id,
     }));
   };
   const buildDefensiveInitialPlayerPositions = (situation, rivalSystem, caudalSystem) => (

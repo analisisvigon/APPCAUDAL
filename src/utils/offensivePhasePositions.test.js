@@ -9,6 +9,10 @@ import {
   getOffensiveInitialPositions,
 } from './offensivePhasePositions.js';
 import { hasInitialPositionOverlap } from './defensiveBlockPositions.js';
+import {
+  navigateOffensivePlayStyle,
+  resolveOffensiveActivePlayId,
+} from './offensivePlayWorkspace.js';
 
 const buildFormationSlots = (system) => {
   const lines = system.split('-').map(Number);
@@ -276,14 +280,24 @@ const directCreation = {
 assert.notEqual(combinativeCreation.id, directCreation.id, 'Creación guarda jugadas independientes por tipo');
 assert.deepEqual(combinativeCreation.playerPositions, directCreation.playerPositions, 'las dos clasificaciones pueden partir del mismo preset');
 
-const manuallyReclassified = {
-  ...combinativeCreation,
-  playStyle: 'direct',
+const styleNavigationWorkspace = {
+  activePlayStyleBySituation: { creation: 'combinative' },
+  activePlayIdByContext: {
+    'creation:combinative': combinativeCreation.id,
+    'creation:direct': directCreation.id,
+  },
+  activePlayIdBySituation: { creation: combinativeCreation.id },
+  plays: [combinativeCreation, directCreation],
 };
-assert.deepEqual(manuallyReclassified.playerPositions, combinativeCreation.playerPositions, 'cambiar tipo no mueve jugadores');
-assert.deepEqual(manuallyReclassified.arrows, combinativeCreation.arrows, 'cambiar tipo no borra flechas');
-assert.equal(manuallyReclassified.description, combinativeCreation.description, 'cambiar tipo no borra la descripción');
-assert.equal(manuallyReclassified.name, combinativeCreation.name, 'cambiar tipo no cambia el nombre');
+const navigatedToDirect = navigateOffensivePlayStyle(styleNavigationWorkspace, 'creation', 'direct');
+assert.deepEqual(navigatedToDirect.plays, styleNavigationWorkspace.plays, 'cambiar tipo no reclasifica ni modifica jugadas');
+assert.equal(combinativeCreation.playStyle, 'combinative', 'la jugada combinativa conserva su contexto');
+assert.equal(directCreation.playStyle, 'direct', 'la jugada directa conserva su contexto');
+assert.equal(resolveOffensiveActivePlayId({
+  ...navigatedToDirect,
+  situation: 'creation',
+  playStyle: 'direct',
+}), directCreation.id, 'cambiar tipo navega a la jugada activa del contexto directo');
 
 const appSource = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 assert.ok(appSource.includes("phaseField: 'offensivePhaseV1'"), 'la ofensiva se guarda en su propio espacio JSON');
