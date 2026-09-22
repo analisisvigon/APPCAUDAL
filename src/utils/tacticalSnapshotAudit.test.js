@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { getPlayerPositionUsage } from './playerPositionUsage.js';
 import {
   auditTacticalMatchSnapshots,
+  auditTacticalSeasonSnapshots,
   buildTacticalMatchHistory,
   getHistoricalSubstitutionMinutes,
 } from './tacticalSnapshots.js';
@@ -83,6 +84,19 @@ assert.equal(simultaneous.repairedSnapshots, 1);
 assert.equal(simultaneous.snapshots[0].slots.some((row) => row.playerId === 'dani-current'), true);
 assert.equal(simultaneous.snapshots[0].slots.some((row) => row.playerId === 'sub8'), true);
 
+// Si una sustitución simultánea ya estaba bien y otra quedó obsoleta, solo se repara la obsoleta.
+const partiallyUpdated = initialSlots.map((row) => row.playerId === 'p8'
+  ? { ...row, playerId: 'sub8', playerName: 'Entrante 8' }
+  : row);
+const partialSimultaneous = auditTacticalMatchSnapshots({
+  matchId: 'partial-two-subs', initialSystem: '4-4-2', initialSlots,
+  snapshots: [snapshot('partial-two-78', 78, partiallyUpdated)],
+  substitutionMinutes: [78], playerStats: simultaneousStats,
+});
+assert.equal(partialSimultaneous.repairedSnapshots, 1);
+assert.equal(partialSimultaneous.snapshots[0].slots.some((row) => row.playerId === 'dani-current'), true);
+assert.equal(partialSimultaneous.snapshots[0].slots.some((row) => row.playerId === 'sub8'), true);
+
 // Tres sustituciones en minutos distintos producen tres estados temporalmente coherentes.
 const threeStats = {
   ...Object.fromEntries(initialSlots.map((row) => [row.playerName, { jugadorId: row.playerId, role: 'Titular', minutes: 90, replacementName: '' }])),
@@ -113,6 +127,11 @@ const sameMinuteChange = baseAudit([snapshot('same-minute', 78, at65)], {
 });
 assert.equal(sameMinuteChange.repairedSnapshots, 0);
 assert.equal(sameMinuteChange.snapshots[0].isComplete, false);
+const explicitSameMinuteChange = baseAudit([snapshot('same-minute-explicit', 78, correctAt78, '4-3-3')], {
+  initialSystem: '4-4-2', systemEvents: [{ minute: 78, toSystem: '4-3-3' }],
+});
+assert.equal(explicitSameMinuteChange.repairedSnapshots, 0);
+assert.equal(explicitSameMinuteChange.snapshots[0].isComplete, true, 'la disposición explícita correcta del nuevo sistema tiene prioridad');
 
 // La completitud estructural exige once slots distintos y once jugadores distintos.
 const duplicateSlotRows = initialSlots.map((row) => ({ ...row }));
@@ -141,5 +160,29 @@ assert.equal(wrongXiAudit.details[0].temporallyConsistent, false);
 assert.equal(wrongXiAudit.repairedSnapshots, 0);
 assert.equal(wrongXiAudit.missingExpectedPlayers.length, 1);
 assert.equal(wrongXiAudit.unexpectedPlayers.length, 1);
+
+// La utilidad de temporada agrega diagnósticos conservando el partido de origen.
+const seasonAudit = auditTacticalSeasonSnapshots([
+  {
+    matchId: 'correct-match', initialSystem: '4-4-2', initialSlots,
+    snapshots: [snapshot('correct-season', 0, initialSlots)], playerStats: {},
+  },
+  {
+    matchId: 'wrong-match', initialSystem: '4-4-2', initialSlots,
+    tacticalSnapshots: [snapshot('wrong-season', 30, wrongXi)], statsPlayerData: {},
+  },
+]);
+assert.equal(seasonAudit.totalMatches, 2);
+assert.equal(seasonAudit.totalSnapshots, 2);
+assert.equal(seasonAudit.temporallyConsistentSnapshots, 1);
+assert.equal(seasonAudit.temporallyInconsistentSnapshots, 1);
+assert.equal(seasonAudit.missingExpectedPlayers[0].matchId, 'wrong-match');
+
+// La foto inicial tampoco puede declararse completa con once filas y solo diez slots únicos.
+const historyWithDuplicateInitialSlot = buildTacticalMatchHistory({
+  matchId: 'invalid-initial', duration: 90, initialSystem: '4-4-2', initialSlots: duplicateSlotRows,
+});
+assert.equal(historyWithDuplicateInitialSlot.initialSnapshot.isComplete, false);
+assert.equal(historyWithDuplicateInitialSlot.intervals[0].isComplete, false);
 
 console.log('tactical snapshot audit tests passed');

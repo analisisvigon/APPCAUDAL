@@ -56,7 +56,7 @@ import { buildSetPieceCaptureResponsibilities } from './utils/setPieceCaptureRes
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
 import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
 import { getPlayerPositionUsage } from './utils/playerPositionUsage';
-import { resolveMatchPlayerCandidate } from './utils/matchPlayerIdentity';
+import { createMatchPlayerIdentityIndex, resolveMatchPlayerCandidate } from './utils/matchPlayerIdentity';
 import { getSportsSeason, resolveSportsSeasonFromMatches } from './utils/sportsSeason';
 import {
   buildPlayerBodyPartSummary,
@@ -18525,6 +18525,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       initialSlots: getMatchInitialTacticalSlots(match),
       playerStats: safeObject(match.statsPlayerData),
       systemSlotCount: hasFormationSlotsForSavedLineup(system) ? getTacticalSnapshotFormationSlots(system).length : 0,
+      identityIndex: createMatchPlayerIdentityIndex(players),
     });
     setSelectedSystemMoment({
       intervalId: targetInterval?.id || '',
@@ -18561,6 +18562,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         minute: plan.minute,
         system: plan.system,
         slots: plan.slots,
+        identityIndex: createMatchPlayerIdentityIndex(players),
       })) throw new Error('La relectura no confirmó el snapshot automático de 11 jugadores.');
       setStatsSaveStatus('Sustitución y disposición guardadas ✓');
       window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Sustitución y disposición guardadas ✓' ? '' : current)), 2600);
@@ -18573,19 +18575,25 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     }
   };
 
+  const tacticalPlayerIdentityIndex = createMatchPlayerIdentityIndex(players);
+
   const enrichTacticalParticipant = (row = {}) => {
     const participant = normalizeTacticalParticipant(row);
-    const rosterPlayer = resolveMatchPlayerCandidate({ reference: participant, candidates: players }).candidate;
+    const rosterPlayer = resolveMatchPlayerCandidate({
+      reference: participant,
+      candidates: players,
+      identityIndex: tacticalPlayerIdentityIndex,
+    }).candidate;
     return normalizeTacticalParticipant({
-      playerId: participant.playerId || rosterPlayer?.id || '',
+      playerId: rosterPlayer?.id || participant.playerId || '',
       playerName: participant.playerName || rosterPlayer?.name || '',
     });
   };
 
   const getTacticalEditorPendingPlayers = (editor = tacticalDispositionEditor) => {
     if (!editor) return [];
-    const placed = new Set(safeArray(editor.lineup).filter(Boolean).map(getTacticalParticipantKey));
-    return safeArray(editor.knownPlayers).filter((player) => !placed.has(getTacticalParticipantKey(player)));
+    const placed = new Set(safeArray(editor.lineup).filter(Boolean).map((player) => getTacticalParticipantKey(player, tacticalPlayerIdentityIndex)));
+    return safeArray(editor.knownPlayers).filter((player) => !placed.has(getTacticalParticipantKey(player, tacticalPlayerIdentityIndex)));
   };
 
   const openTacticalDispositionEditor = ({ interval, history, match = selectedMatch }) => {
@@ -18594,11 +18602,12 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       initialSlots: getMatchInitialTacticalSlots(match),
       playerStats: safeObject(match.statsPlayerData),
       atMinute: interval.fromMinute,
+      identityIndex: tacticalPlayerIdentityIndex,
     });
     const persistedPlayers = safeArray(interval.slots)
       .map(enrichTacticalParticipant)
-      .filter((player) => getTacticalParticipantKey(player));
-    const persistedKeys = persistedPlayers.map(getTacticalParticipantKey);
+      .filter((player) => getTacticalParticipantKey(player, tacticalPlayerIdentityIndex));
+    const persistedKeys = persistedPlayers.map((player) => getTacticalParticipantKey(player, tacticalPlayerIdentityIndex));
     const calledPlayerNames = getActiveStatsCalledPlayerNames({
       calledPlayerNames: safeArray(match.statsCalledPlayers),
       lineupNames: safeArray(match.statsLineup),
@@ -18608,8 +18617,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       playerName,
     }));
     const uniqueCalledPlayers = Array.from(new Map(calledPlayers
-      .filter((player) => getTacticalParticipantKey(player))
-      .map((player) => [getTacticalParticipantKey(player), player])).values());
+      .filter((player) => getTacticalParticipantKey(player, tacticalPlayerIdentityIndex))
+      .map((player) => [getTacticalParticipantKey(player, tacticalPlayerIdentityIndex), player])).values());
     const allowsCalledPlayerSelection = Number(interval.fromMinute) === 0;
     const knownPlayers = allowsCalledPlayerSelection
       ? uniqueCalledPlayers
@@ -18618,7 +18627,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         : reconstructed.players.map(enrichTacticalParticipant);
     const validKnownPlayers = allowsCalledPlayerSelection
       ? knownPlayers.length >= 11
-      : reconstructed.valid && knownPlayers.length === 11 && new Set(knownPlayers.map(getTacticalParticipantKey)).size === 11;
+      : reconstructed.valid && knownPlayers.length === 11 && new Set(knownPlayers.map((player) => getTacticalParticipantKey(player, tacticalPlayerIdentityIndex))).size === 11;
     if (!validKnownPlayers) {
       const detail = allowsCalledPlayerSelection
         ? `Se necesitan al menos 11 convocados y ahora hay ${knownPlayers.length}.`
@@ -18634,6 +18643,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       previousInterval,
       knownPlayers,
       substitutions: reconstructed.substitutions.filter((substitution) => Number(substitution.minute) === Number(interval.fromMinute)),
+      identityIndex: tacticalPlayerIdentityIndex,
     });
     setTacticalDispositionEditor({
       matchId: match.id,
@@ -18659,7 +18669,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const moveTacticalEditorPlayer = (player, targetSlot) => {
     setTacticalDispositionEditor((current) => current ? {
       ...current,
-      lineup: moveTacticalDispositionPlayer({ lineup: current.lineup, player, targetSlot }),
+      lineup: moveTacticalDispositionPlayer({ lineup: current.lineup, player, targetSlot, identityIndex: tacticalPlayerIdentityIndex }),
       error: '',
     } : current);
     setDraggedPlayer(null);
@@ -18668,7 +18678,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const sendTacticalEditorPlayerToBench = (player) => {
     setTacticalDispositionEditor((current) => current ? {
       ...current,
-      lineup: removeTacticalDispositionPlayer({ lineup: current.lineup, player }),
+      lineup: removeTacticalDispositionPlayer({ lineup: current.lineup, player, identityIndex: tacticalPlayerIdentityIndex }),
       error: '',
     } : current);
     setDraggedPlayer(null);
@@ -18691,6 +18701,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       lineup: editor.lineup,
       knownPlayers: editor.knownPlayers,
       allowKnownPlayerSubset: editor.allowKnownPlayerSubset,
+      identityIndex: tacticalPlayerIdentityIndex,
     });
     if (!hasFormationSlotsForSavedLineup(editor.system) || systemSlots.length !== 11) {
       setTacticalDispositionEditor((current) => current ? { ...current, error: 'El sistema no dispone de 11 slots tácticos compatibles.' } : current);
@@ -18752,6 +18763,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         minute: editor.minute,
         system: editor.system,
         slots: persistedSlots,
+        identityIndex: tacticalPlayerIdentityIndex,
       })) {
         throw new Error('Supabase respondió, pero la relectura no confirmó los 11 jugadores en sus slots exactos.');
       }
@@ -18820,13 +18832,14 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
           lineup: tacticalDispositionEditor.lineup,
           knownPlayers: tacticalDispositionEditor.knownPlayers,
           allowKnownPlayerSubset: tacticalDispositionEditor.allowKnownPlayerSubset,
+          identityIndex: tacticalPlayerIdentityIndex,
         })
       : null;
     const statsReadonlyMode = !editingDisposition && !hasLocalProposal;
     const statsMobileSelection = mobileTacticalSelection?.scope === 'stats' ? mobileTacticalSelection : null;
     const activateTacticalEditorSlot = ({ participant, slotIndex, playerName }) => {
       if (!editingDisposition || tacticalDispositionEditor.saving) return;
-      const participantKey = getTacticalParticipantKey(participant);
+      const participantKey = getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex);
       if (statsMobileSelection?.participant) {
         if (statsMobileSelection.key === participantKey) {
           setMobileTacticalSelection(null);
@@ -18846,10 +18859,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     const mobileStatsSlots = dispositionAvailable ? tacticalFormationSlots.map((slot, slotIndex) => {
       const participant = normalizeTacticalParticipant(visibleParticipants[slotIndex] || {});
       const playerName = participant.playerName || '';
-      const player = players.find((item) => (
-        (participant.playerId && String(item.id) === String(participant.playerId))
-        || normalizePlayerIdentityName(item.name) === normalizePlayerIdentityName(playerName)
-      ));
+      const player = resolveMatchPlayerCandidate({
+        reference: participant,
+        candidates: players,
+        identityIndex: tacticalPlayerIdentityIndex,
+      }).candidate;
       const stats = playerName ? getStatsPlayerData(playerName) : null;
       const isCaptain = Boolean(player?.id && selectedMatchCaptainResolution.playerId === player.id);
       const indicators = playerName ? getPlayerMatchIndicators({
@@ -18865,7 +18879,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         y: slot.y,
         role: slot.label || `Posición ${slotIndex + 1}`,
         name: player ? displayPlayerName(player) : getStoredPlayerDisplayName(playerName, slot.label),
-        playerKey: getTacticalParticipantKey(participant),
+        playerKey: getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex),
         participant,
         number: player?.number || '',
         image: player?.image || player?.photoUrl || '',
@@ -18944,17 +18958,21 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
               <div className="desktop-mobile-edit-fallback mt-2 flex flex-wrap items-center gap-1.5">
                 <span className="mr-1 text-[8px] font-black uppercase tracking-[0.12em] text-amber-200">Pendientes de colocar</span>
                 {pendingTacticalPlayers.map((participant) => {
-                  const player = players.find((item) => participant.playerId && String(item.id) === String(participant.playerId));
+                  const player = resolveMatchPlayerCandidate({
+                    reference: participant,
+                    candidates: players,
+                    identityIndex: tacticalPlayerIdentityIndex,
+                  }).candidate;
                   const label = player ? displayPlayerName(player) : participant.playerName;
                   return (
                     <button
-                      key={getTacticalParticipantKey(participant)}
+                      key={getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex)}
                       type="button"
                       draggable
                       onDragStart={() => setDraggedPlayer(participant)}
-                      aria-pressed={statsMobileSelection?.key === getTacticalParticipantKey(participant)}
+                      aria-pressed={statsMobileSelection?.key === getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex)}
                       onClick={() => {
-                        const key = getTacticalParticipantKey(participant);
+                        const key = getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex);
                         const selected = statsMobileSelection?.key === key;
                         setMobileTacticalSelection(selected ? null : { scope: 'stats', key, name: label, participant, source: 'pending' });
                         setMobileTacticalFeedback({ scope: '', message: '' });
@@ -19030,8 +19048,12 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 <div className="mobile-edit-player-group">
                   <div>
                     {pendingTacticalPlayers.map((participant) => {
-                      const key = getTacticalParticipantKey(participant);
-                      const player = players.find((item) => participant.playerId && String(item.id) === String(participant.playerId));
+                      const key = getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex);
+                      const player = resolveMatchPlayerCandidate({
+                        reference: participant,
+                        candidates: players,
+                        identityIndex: tacticalPlayerIdentityIndex,
+                      }).candidate;
                       const label = player ? displayPlayerName(player) : participant.playerName;
                       const selected = statsMobileSelection?.key === key;
                       return (
@@ -19082,10 +19104,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         ) : coordinates.map((slot, slotIndex) => {
           const participant = normalizeTacticalParticipant(visibleParticipants[slotIndex] || {});
           const playerName = participant.playerName || '';
-          const player = players.find((item) => (
-            (participant.playerId && String(item.id) === String(participant.playerId))
-            || normalizePlayerIdentityName(item.name) === normalizePlayerIdentityName(playerName)
-          ));
+          const player = resolveMatchPlayerCandidate({
+            reference: participant,
+            candidates: players,
+            identityIndex: tacticalPlayerIdentityIndex,
+          }).candidate;
           const shortName = player ? displayPlayerName(player) : playerName.split(' ').slice(-1)[0] || '';
           const stats = playerName ? getStatsPlayerData(playerName) : null;
           const isCaptain = player?.id && selectedMatchCaptainResolution.playerId === player.id;
@@ -19117,8 +19140,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
               role={editingDisposition ? 'button' : undefined}
               tabIndex={editingDisposition ? 0 : undefined}
               aria-label={editingDisposition ? (playerName ? `Seleccionar o intercambiar ${playerIdentityTitle}` : `Colocar jugador en ${playerIdentityLabel}`) : undefined}
-              draggable={Boolean(getTacticalParticipantKey(participant)) && !historyBrowsing && !statsSquadSaving}
-              onDragStart={() => getTacticalParticipantKey(participant) && setDraggedPlayer(participant)}
+              draggable={Boolean(getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex)) && !historyBrowsing && !statsSquadSaving}
+              onDragStart={() => getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex) && setDraggedPlayer(participant)}
               onClick={() => activateTacticalEditorSlot({ participant, slotIndex, playerName: playerIdentityTitle })}
               onKeyDown={(event) => {
                 if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -19131,7 +19154,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 if (editingDisposition && draggedPlayer) moveTacticalEditorPlayer(draggedPlayer, slotIndex);
                 else if (!historyBrowsing) handleDropOnStatsLineupSlot(slotIndex);
               }}
-              className={`stats-player-slot absolute z-20 h-16 -translate-x-1/2 -translate-y-1/2 text-center ${getTacticalParticipantKey(participant) ? 'cursor-grab' : ''}`}
+              className={`stats-player-slot absolute z-20 h-16 -translate-x-1/2 -translate-y-1/2 text-center ${getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex) ? 'cursor-grab' : ''}`}
               style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
             >
               {incidentIndicators.length ? (
@@ -21681,10 +21704,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       const matchEvidence = buildTacticalSlotEvidenceFromIntervals({
         intervals: matchIntervals,
         resolveSlot,
-        resolvePlayer: (slotRow) => players.find((item) => (
-          (slotRow.playerId && String(item.id) === String(slotRow.playerId))
-          || normalizePlayerIdentityName(item.name) === normalizePlayerIdentityName(slotRow.playerName)
-        )) || { id: slotRow.playerId || '', name: slotRow.playerName },
+        resolvePlayer: (slotRow) => resolveMatchPlayerCandidate({
+          reference: slotRow,
+          candidates: players,
+          identityIndex: tacticalPlayerIdentityIndex,
+        }).candidate || { id: slotRow.playerId || '', name: slotRow.playerName },
       });
       evidence.push(...matchEvidence);
       matchEvidence.forEach((presence) => {

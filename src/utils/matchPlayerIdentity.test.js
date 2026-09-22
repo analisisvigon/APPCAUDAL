@@ -30,6 +30,13 @@ const contradictoryId = resolveMatchPlayerCandidate({
 });
 assert.equal(contradictoryId.status, 'identity_conflict', 'el mismo nombre no anula dos IDs explícitos contradictorios');
 
+const contradictoryReference = resolveMatchPlayerCandidate({
+  reference: { playerId: 'otro-id', playerName: 'Daniel Palacio' },
+  candidates: [dani],
+  identityIndex,
+});
+assert.equal(contradictoryReference.status, 'identity_conflict', 'un ID desconocido que contradice una identidad nominal conocida también se audita como conflicto');
+
 const uniqueName = resolveMatchPlayerCandidate({
   reference: { playerId: 'dani-current', playerName: 'Daniel Palacio' },
   candidates: [{ playerName: '  DÁNIEL   PALACIO ', slot: 5 }],

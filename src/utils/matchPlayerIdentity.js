@@ -71,13 +71,18 @@ export const inspectMatchPlayerIdentity = (row = {}, index = null) => {
   const idMatches = identitiesForIds(index, rawIds);
   const nameMatches = identitiesForName(index, name);
   const identity = idMatches.length === 1 ? idMatches[0] : null;
+  const namedIdentity = nameMatches.length === 1 ? nameMatches[0] : null;
   const ids = identity ? Array.from(new Set([...rawIds, ...identity.ids])) : rawIds;
-  const nameConflict = Boolean(identity && nameMatches.length === 1 && nameMatches[0] !== identity);
+  const nameConflict = Boolean(
+    (identity && namedIdentity && namedIdentity !== identity)
+    || (!identity && rawIds.length && namedIdentity && !intersects(rawIds, namedIdentity.ids))
+  );
   return {
     rawIds,
     ids,
     name,
     identity,
+    namedIdentity,
     canonicalId: identity?.canonicalId || rawIds[0] || '',
     ambiguousIds: idMatches.length > 1,
     nameConflict,

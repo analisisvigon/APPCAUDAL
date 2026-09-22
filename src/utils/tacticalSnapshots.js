@@ -49,13 +49,14 @@ export const normalizeTacticalSnapshot = (snapshot = {}) => ({
 export const buildInitialTacticalSnapshot = ({ matchId = '', system = '', slots = [] } = {}) => {
   const normalizedSlots = normalizeTacticalSnapshot({ slots }).slots;
   const uniquePlayers = new Set(normalizedSlots.map(playerKey));
+  const uniqueSlots = new Set(normalizedSlots.map((slot) => slot.slot));
   return normalizeTacticalSnapshot({
     id: `virtual-initial-${matchId}`,
     matchId,
     minute: 0,
     system,
     reason: 'Alineación inicial real',
-    isComplete: normalizedSlots.length === 11 && uniquePlayers.size === 11,
+    isComplete: normalizedSlots.length === 11 && uniquePlayers.size === 11 && uniqueSlots.size === 11,
     source: 'virtual_initial',
     slots: normalizedSlots,
   });
@@ -94,9 +95,11 @@ const auditNormalizedSnapshot = ({ snapshot, system, expectedPlayers, expectedVa
   const duplicateSlots = duplicateValues(validSlotIndexes);
   const duplicatePlayers = duplicateValues(playerKeys);
   const identityConflicts = snapshot.slots.map((slot) => getIdentityConflict(slot, identityIndex)).filter(Boolean);
+  const systemMismatch = Boolean(snapshot.system && system && clean(snapshot.system) !== clean(system));
   const structuralComplete = Boolean(
     snapshot.isComplete
     && hasFormationSlotsForSavedLineup(system)
+    && !systemMismatch
     && snapshot.slots.length === 11
     && validSlotIndexes.length === 11
     && new Set(validSlotIndexes).size === 11
@@ -117,7 +120,9 @@ const auditNormalizedSnapshot = ({ snapshot, system, expectedPlayers, expectedVa
       }
       missingExpectedPlayers.push(expectedPlayer);
       if (resolution.status === 'identity_conflict' || resolution.status === 'ambiguous') {
-        comparisonConflicts.push({ expectedPlayer, status: resolution.status, candidates: resolution.conflicts });
+        const alreadyReportedBySlot = resolution.status === 'identity_conflict'
+          && resolution.conflicts.some((candidate) => identityConflicts.some((conflict) => Number(conflict.slot) === Number(candidate?.slot)));
+        if (!alreadyReportedBySlot) comparisonConflicts.push({ expectedPlayer, status: resolution.status, candidates: resolution.conflicts });
       }
     });
   }
@@ -133,6 +138,7 @@ const auditNormalizedSnapshot = ({ snapshot, system, expectedPlayers, expectedVa
     minute: snapshot.minute,
     system,
     source: snapshot.source,
+    systemMismatch,
     structuralComplete,
     temporalAuditAvailable: expectedValid,
     temporallyConsistent,
@@ -162,8 +168,11 @@ const tryRepairHistoricalSubstitutionSnapshot = ({
   for (const substitution of substitutions) {
     const outgoing = resolveMatchPlayerCandidate({ reference: substitution.outPlayer, candidates: nextSlots, identityIndex });
     const incoming = resolveMatchPlayerCandidate({ reference: substitution.inPlayer, candidates: nextSlots, identityIndex });
+    if (incoming.status === 'resolved') {
+      if (outgoing.status === 'missing') continue;
+      return null;
+    }
     if (outgoing.status !== 'resolved' || incoming.status === 'ambiguous' || incoming.status === 'identity_conflict') return null;
-    if (incoming.status === 'resolved') continue;
     const slotIndex = nextSlots.indexOf(outgoing.candidate);
     if (slotIndex < 0) return null;
     nextSlots[slotIndex] = {
@@ -262,6 +271,39 @@ export const auditTacticalMatchSnapshots = ({
     snapshots: auditedSnapshots,
     details,
     identityIndex,
+  };
+};
+
+export const auditTacticalSeasonSnapshots = (matches = []) => {
+  const matchAudits = rows(matches).map((entry) => {
+    const playerStats = entry?.playerStats || entry?.statsPlayerData || {};
+    return auditTacticalMatchSnapshots({
+      ...entry,
+      matchId: entry?.matchId || entry?.id || '',
+      initialSystem: entry?.initialSystem || entry?.system || '',
+      initialSlots: entry?.initialSlots || entry?.lineupSlots || [],
+      snapshots: entry?.snapshots || entry?.tacticalSnapshots || [],
+      systemEvents: entry?.systemEvents || entry?.tacticalSystemEvents || [],
+      substitutionMinutes: entry?.substitutionMinutes || getHistoricalSubstitutionMinutes(playerStats),
+      playerStats,
+      playerIdentities: entry?.playerIdentities || entry?.rosterPlayers || [],
+    });
+  });
+  const tag = (audit, field) => rows(audit[field]).map((row) => ({ matchId: audit.matchId, ...row }));
+  return {
+    matches: matchAudits,
+    totalMatches: matchAudits.length,
+    totalSnapshots: matchAudits.reduce((sum, audit) => sum + audit.totalSnapshots, 0),
+    structurallyCompleteSnapshots: matchAudits.reduce((sum, audit) => sum + audit.structurallyCompleteSnapshots, 0),
+    temporallyConsistentSnapshots: matchAudits.reduce((sum, audit) => sum + audit.temporallyConsistentSnapshots, 0),
+    temporallyInconsistentSnapshots: matchAudits.reduce((sum, audit) => sum + audit.temporallyInconsistentSnapshots, 0),
+    temporallyUnauditableSnapshots: matchAudits.reduce((sum, audit) => sum + audit.temporallyUnauditableSnapshots, 0),
+    repairedSnapshots: matchAudits.reduce((sum, audit) => sum + audit.repairedSnapshots, 0),
+    missingExpectedPlayers: matchAudits.flatMap((audit) => tag(audit, 'missingExpectedPlayers')),
+    unexpectedPlayers: matchAudits.flatMap((audit) => tag(audit, 'unexpectedPlayers')),
+    identityConflicts: matchAudits.flatMap((audit) => tag(audit, 'identityConflicts')),
+    duplicateSlots: matchAudits.flatMap((audit) => tag(audit, 'duplicateSlots')),
+    duplicatePlayers: matchAudits.flatMap((audit) => tag(audit, 'duplicatePlayers')),
   };
 };
 
@@ -486,7 +528,7 @@ export const buildTacticalMatchHistory = ({
   playerStats = {},
   playerIdentities = [],
 } = {}) => {
-  const initialSnapshot = buildInitialTacticalSnapshot({ matchId, system: initialSystem, slots: initialSlots });
+  let initialSnapshot = buildInitialTacticalSnapshot({ matchId, system: initialSystem, slots: initialSlots });
   let resolvedSnapshots = [...rows(snapshots)];
   const identityIndex = createMatchPlayerIdentityIndex([
     ...rows(playerIdentities),
@@ -541,6 +583,18 @@ export const buildTacticalMatchHistory = ({
     playerIdentities,
   });
   resolvedSnapshots = snapshotAudit.snapshots;
+  const initialSnapshotAudit = auditTacticalMatchSnapshots({
+    matchId,
+    initialSystem,
+    initialSlots,
+    snapshots: [initialSnapshot],
+    systemEvents,
+    substitutionMinutes,
+    playerStats,
+    playerIdentities,
+    repairHistoricalSubstitutions: false,
+  });
+  initialSnapshot = initialSnapshotAudit.snapshots[0] || initialSnapshot;
   const intervals = buildTacticalSnapshotIntervals({
     duration,
     initialSnapshot,
@@ -555,6 +609,7 @@ export const buildTacticalMatchHistory = ({
     systemSegments: buildTacticalSystemSegments(intervals),
     invariant: getTacticalTimelineInvariantReport({ intervals, duration }),
     snapshotAudit,
+    initialSnapshotAudit,
   };
 };
 
@@ -573,9 +628,9 @@ export const buildTacticalSlotEvidenceFromIntervals = ({ intervals = [], resolve
       system: interval.system,
       slot: tacticalSlot,
       player,
-      playerId: slotRow.playerId || player?.id || '',
+      playerId: player?.id || slotRow.playerId || '',
       playerName: slotRow.playerName || player?.name || '',
-      playerKey: playerKey({ ...slotRow, playerId: slotRow.playerId || player?.id }),
+      playerKey: playerKey({ ...slotRow, playerId: player?.id || slotRow.playerId }),
       minutes: interval.minutes,
       minutesKnown: true,
       starts: interval.fromMinute === 0 ? 1 : 0,

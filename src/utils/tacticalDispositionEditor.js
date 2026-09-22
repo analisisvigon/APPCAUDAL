@@ -94,8 +94,8 @@ export const buildKnownOnFieldPlayers = ({ initialSlots = [], playerStats = {}, 
   return { valid: errors.length === 0, players, substitutions, errors };
 };
 
-export const buildTacticalDispositionDraft = ({ interval = null, previousInterval = null, knownPlayers = [], substitutions = [] } = {}) => {
-  const knownByKey = new Map(knownPlayers.map((player) => [getTacticalParticipantKey(player), normalizeTacticalParticipant(player)]));
+export const buildTacticalDispositionDraft = ({ interval = null, previousInterval = null, knownPlayers = [], substitutions = [], identityIndex = null } = {}) => {
+  const knownByKey = new Map(knownPlayers.map((player) => [getTacticalParticipantKey(player, identityIndex), normalizeTacticalParticipant(player)]));
   const sourceSlots = Array.isArray(interval?.slots) && interval.slots.length
     ? interval.slots
     : previousInterval?.isComplete && previousInterval.system === interval?.system
@@ -104,18 +104,18 @@ export const buildTacticalDispositionDraft = ({ interval = null, previousInterva
   const lineup = Array.from({ length: 11 }, () => null);
   sourceSlots.forEach((slotRow) => {
     const slot = Number(slotRow.slot);
-    const key = getTacticalParticipantKey(slotRow);
+    const key = getTacticalParticipantKey(slotRow, identityIndex);
     if (!Number.isInteger(slot) || slot < 0 || slot > 10) return;
     if (knownByKey.has(key)) {
       lineup[slot] = knownByKey.get(key);
       return;
     }
-    const directReplacement = substitutions.find((substitution) => getTacticalParticipantKey(substitution.outPlayer) === key)?.inPlayer;
-    const replacementKey = getTacticalParticipantKey(directReplacement);
+    const directReplacement = substitutions.find((substitution) => getTacticalParticipantKey(substitution.outPlayer, identityIndex) === key)?.inPlayer;
+    const replacementKey = getTacticalParticipantKey(directReplacement, identityIndex);
     if (replacementKey && knownByKey.has(replacementKey)) lineup[slot] = knownByKey.get(replacementKey);
   });
-  const placed = new Set(lineup.filter(Boolean).map(getTacticalParticipantKey));
-  const pendingPlayers = knownPlayers.map(normalizeTacticalParticipant).filter((player) => !placed.has(getTacticalParticipantKey(player)));
+  const placed = new Set(lineup.filter(Boolean).map((player) => getTacticalParticipantKey(player, identityIndex)));
+  const pendingPlayers = knownPlayers.map(normalizeTacticalParticipant).filter((player) => !placed.has(getTacticalParticipantKey(player, identityIndex)));
   return { lineup, pendingPlayers };
 };
 
@@ -206,24 +206,24 @@ export const buildAutomaticSubstitutionSnapshot = ({
   };
 };
 
-export const moveTacticalDispositionPlayer = ({ lineup = [], player, targetSlot } = {}) => {
+export const moveTacticalDispositionPlayer = ({ lineup = [], player, targetSlot, identityIndex = null } = {}) => {
   const next = Array.from({ length: 11 }, (_, slot) => lineup[slot] ? normalizeTacticalParticipant(lineup[slot]) : null);
   const participant = normalizeTacticalParticipant(player);
-  const key = getTacticalParticipantKey(participant);
+  const key = getTacticalParticipantKey(participant, identityIndex);
   const target = Number(targetSlot);
   if (!key || !Number.isInteger(target) || target < 0 || target > 10) return next;
-  const source = next.findIndex((row) => getTacticalParticipantKey(row) === key);
+  const source = next.findIndex((row) => getTacticalParticipantKey(row, identityIndex) === key);
   const displaced = next[target];
   next[target] = participant;
   if (source >= 0 && source !== target) next[source] = displaced;
   return next;
 };
 
-export const removeTacticalDispositionPlayer = ({ lineup = [], player } = {}) => {
-  const playerKey = getTacticalParticipantKey(player);
+export const removeTacticalDispositionPlayer = ({ lineup = [], player, identityIndex = null } = {}) => {
+  const playerKey = getTacticalParticipantKey(player, identityIndex);
   return Array.from({ length: 11 }, (_, slot) => {
     const participant = lineup[slot] ? normalizeTacticalParticipant(lineup[slot]) : null;
-    return participant && getTacticalParticipantKey(participant) === playerKey ? null : participant;
+    return participant && getTacticalParticipantKey(participant, identityIndex) === playerKey ? null : participant;
   });
 };
 
@@ -251,15 +251,15 @@ export const validateTacticalDisposition = ({ lineup = [], knownPlayers = [], al
   };
 };
 
-export const tacticalSnapshotMatchesDisposition = ({ snapshot = {}, matchId = '', minute = 0, system = '', slots = [] } = {}) => {
+export const tacticalSnapshotMatchesDisposition = ({ snapshot = {}, matchId = '', minute = 0, system = '', slots = [], identityIndex = null } = {}) => {
   const snapshotMatchId = clean(snapshot.partido_id || snapshot.partidoId || snapshot.matchId);
   const snapshotMinute = Number(snapshot.minute);
   const snapshotSystem = clean(snapshot.system);
   const expected = slots
-    .map((row) => ({ slot: Number(row.slot), key: getTacticalParticipantKey(row) }))
+    .map((row) => ({ slot: Number(row.slot), key: getTacticalParticipantKey(row, identityIndex) }))
     .sort((left, right) => left.slot - right.slot);
   const stored = (Array.isArray(snapshot.slots) ? snapshot.slots : [])
-    .map((row) => ({ slot: Number(row.slot), key: getTacticalParticipantKey(row) }))
+    .map((row) => ({ slot: Number(row.slot), key: getTacticalParticipantKey(row, identityIndex) }))
     .sort((left, right) => left.slot - right.slot);
   return snapshotMatchId === clean(matchId)
     && snapshotMinute === Number(minute)

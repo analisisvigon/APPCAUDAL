@@ -77,6 +77,32 @@ assert.equal(partialPolyvalent.unknownMinutes, 15);
 const codedExplicitPosition = buildPlayerPositionUsage({ ...identity, matchRows: [match({ intervals: [interval(0, 90, '4-2-3-1', 10, { position: 'DC' })] })] });
 assert.equal(codedExplicitPosition.positions[0].position, 'Delantero centro', 'los códigos posicionales estructurados se traducen al catálogo específico');
 
+const legacyIdentity = { id: 'p1', name: 'Jugador Uno', aliasIds: ['p1-legacy'] };
+const legacyPosition = buildPlayerPositionUsage({
+  ...identity,
+  playerIdentity: legacyIdentity,
+  playerIdentities: [legacyIdentity],
+  matchRows: [match({ intervals: [interval(0, 90, '4-4-2', 5, { playerId: 'p1-legacy' })] })],
+});
+assert.deepEqual(legacyPosition.positions.map((row) => [row.position, row.minutes]), [['Extremo derecho', 90]], 'un alias histórico explícito conserva el slot y la posición');
+
+const strictUniqueNamePosition = buildPlayerPositionUsage({
+  ...identity,
+  playerIdentity: legacyIdentity,
+  playerIdentities: [legacyIdentity],
+  matchRows: [match({ intervals: [interval(0, 90, '4-4-2', 5, { playerId: '' })] })],
+});
+assert.equal(strictUniqueNamePosition.positions[0].position, 'Extremo derecho', 'el nombre exacto y único puede resolver un slot que carece de ID');
+
+const conflictingIdentityPosition = buildPlayerPositionUsage({
+  ...identity,
+  playerIdentity: legacyIdentity,
+  playerIdentities: [legacyIdentity],
+  matchRows: [match({ intervals: [interval(0, 90, '4-4-2', 5, { playerId: 'different-player' })] })],
+});
+assert.equal(conflictingIdentityPosition.unknownMinutes, 90, 'un nombre correcto con ID contradictorio permanece desconocido');
+assert.equal(conflictingIdentityPosition.matches[0].segments[0].snapshot.playerResolution, 'identity_conflict');
+
 assert.equal(getPlayerPositionUsage, buildPlayerPositionUsage, 'APP y PDF comparten exactamente el mismo selector canónico');
 
 console.log('playerPositionUsage tests passed');
