@@ -268,3 +268,30 @@ export const tacticalSnapshotMatchesDisposition = ({ snapshot = {}, matchId = ''
     && stored.length === expected.length
     && expected.every((row, index) => row.slot === stored[index].slot && row.key === stored[index].key);
 };
+
+export const saveTacticalDispositionWithReload = async ({
+  save,
+  reload,
+  matchId = '',
+  minute = 0,
+  system = '',
+  slots = [],
+  identityIndex = null,
+  validateReloadedSnapshot = null,
+} = {}) => {
+  if (typeof save !== 'function' || typeof reload !== 'function') {
+    throw new Error('El guardado táctico necesita operaciones de persistencia y relectura.');
+  }
+  const saveResult = await save();
+  const reloaded = await reload();
+  const snapshots = Array.isArray(reloaded) ? reloaded : reloaded?.tacticalSnapshots;
+  const snapshot = (Array.isArray(snapshots) ? snapshots : [])
+    .find((candidate) => Number(candidate.minute) === Number(minute));
+  if (!tacticalSnapshotMatchesDisposition({ snapshot, matchId, minute, system, slots, identityIndex })) {
+    throw new Error('Supabase respondió, pero la relectura no confirmó los 11 jugadores en sus slots exactos.');
+  }
+  if (typeof validateReloadedSnapshot === 'function' && !validateReloadedSnapshot({ snapshot, reloaded })) {
+    throw new Error('La disposición se releyó, pero no coincide con el XI vigente en ese minuto.');
+  }
+  return { saveResult, reloaded, snapshot };
+};

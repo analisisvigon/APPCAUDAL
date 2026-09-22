@@ -169,3 +169,5 @@ const unconfirmedSystemChange = buildAutomaticSubstitutionSnapshot({ minute: 60,
 assert.equal(unconfirmedSystemChange.reason, 'system_change_requires_confirmation', 'H) un cambio de sistema sin disposición del nuevo sistema exige confirmación');
 
 console.log('tactical disposition editor tests passed');
+
+await import('./tacticalDispositionPersistence.test.js');

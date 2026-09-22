@@ -42,8 +42,8 @@ assert.match(appSource, />\s*Cancelar\s*</, 'el modal permite cancelar sin persi
 assert.match(appSource, /gameSystems\.map\(\(system\)/, 'el selector reutiliza el catálogo de sistemas existente');
 assert.match(appSource, /if \(!isEditing \|\| systemChanged\) openTacticalDispositionEditor/, 'un cambio de formación conduce a revisar la disposición');
 assert.match(appSource, /save_match_tactical_snapshot/, 'el guardado utiliza la RPC atómica de snapshots');
-assert.match(appSource, /const refreshed = await loadMatchStatsData\(editor\.matchId\)/, 'después de guardar se relee el partido');
-assert.match(appSource, /tacticalSnapshotMatchesDisposition/, 'la relectura verifica partido, minuto, sistema y slots');
+assert.match(appSource, /reload: \(\) => loadMatchStatsData\(editor\.matchId\)/, 'después de guardar se relee el partido');
+assert.match(appSource, /saveTacticalDispositionWithReload/, 'la relectura verifica partido, minuto, sistema, slots y coherencia temporal');
 assert.doesNotMatch(appSource, /from\(["']partido_snapshots_tacticos["']\)\.(insert|update|upsert|delete)/, 'la UI no hace escrituras parciales de snapshots');
 assert.doesNotMatch(editorSource, /specificPosition|\.position\b|auto.?place/i, 'la reconstrucción no usa posiciones de plantilla ni autocolocación');
 assert.match(appSource, /tacticalHistory\.invariant\.overlap/, 'la UI consume el informe de intervalos sin solapamiento');

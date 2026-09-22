@@ -14,6 +14,8 @@ assert.match(sql, /references public\.jugadores\(id\) on delete set null/i);
 assert.match(sql, /security invoker/gi);
 assert.doesNotMatch(sql, /security definer/i);
 assert.match(sql, /save_match_tactical_snapshot/i);
+assert.match(sql, /on conflict \(partido_id, minute\) do update/i, 'un snapshot incompleto existente se reutiliza por partido y minuto');
+assert.match(sql, /returning id into v_snapshot_id[\s\S]*?delete from public\.partido_snapshot_tactico_slots where snapshot_id = v_snapshot_id[\s\S]*?insert into public\.partido_snapshot_tactico_slots/i, 'la misma transacción reemplaza los slots del snapshot reutilizado');
 assert.match(sql, /save_match_system_change_with_snapshot/i);
 assert.match(sql, /delete_match_system_change_with_snapshot/i);
 assert.match(editMigration, /update public\.partido_eventos_sistema[\s\S]*?where id = p_event_id and partido_id = p_partido_id/i, 'editar hace UPDATE sobre el evento identificado');

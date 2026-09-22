@@ -138,7 +138,7 @@ import {
   moveTacticalDispositionPlayer,
   normalizeTacticalParticipant,
   removeTacticalDispositionPlayer,
-  tacticalSnapshotMatchesDisposition,
+  saveTacticalDispositionWithReload,
   validateTacticalDisposition,
 } from './utils/tacticalDispositionEditor';
 import {
@@ -6760,10 +6760,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       .eq("partido_id", partidoId)
       .order("minute", { ascending: true });
     if (tacticalSnapshotsResponse.error) {
-      console.warn('Historial táctico aún no disponible para este partido; se utilizará únicamente la alineación inicial inequívoca:', {
-        partidoId,
-        error: tacticalSnapshotsResponse.error,
-      });
+      const tacticalLoadError = new Error(`No se pudo cargar el historial táctico: ${tacticalSnapshotsResponse.error.message || 'error desconocido'}`);
+      console.error('Error cargando el historial táctico del partido:', { partidoId, error: tacticalSnapshotsResponse.error });
+      setStatsError(tacticalLoadError.message);
+      setStatsRefreshing(false);
+      throw tacticalLoadError;
     } else {
       const snapshotRows = tacticalSnapshotsResponse.data || [];
       let slotsBySnapshot = {};
@@ -6774,10 +6775,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
           .in("snapshot_id", snapshotRows.map((snapshot) => snapshot.id))
           .order("slot", { ascending: true });
         if (tacticalSlotsResponse.error) {
-          console.warn('No se pudieron cargar los slots del historial táctico; sus tramos se mostrarán sin disposición:', {
-            partidoId,
-            error: tacticalSlotsResponse.error,
-          });
+          const tacticalLoadError = new Error(`No se pudieron cargar los slots del historial táctico: ${tacticalSlotsResponse.error.message || 'error desconocido'}`);
+          console.error('Error cargando los slots del historial táctico:', { partidoId, error: tacticalSlotsResponse.error });
+          setStatsError(tacticalLoadError.message);
+          setStatsRefreshing(false);
+          throw tacticalLoadError;
         } else {
           slotsBySnapshot = (tacticalSlotsResponse.data || []).reduce((acc, slot) => {
             acc[slot.snapshot_id] = [...(acc[slot.snapshot_id] || []), slot];
@@ -18513,6 +18515,15 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     });
   };
 
+  const isReloadedTacticalDispositionReliable = ({ match, minute, system }) => {
+    const history = getMatchTacticalHistory(match);
+    return history.intervals.some((interval) => (
+      Number(interval.fromMinute) === Number(minute)
+      && interval.system === system
+      && interval.isComplete
+    ));
+  };
+
   const persistAutomaticSubstitutionSnapshot = async ({ match, minute }) => {
     if (!match?.id) return null;
     const history = getMatchTacticalHistory(match);
@@ -18539,31 +18550,37 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     }
     setStatsSaveStatus('Guardando snapshot de la sustitución…');
     try {
-      const { error: rpcError } = await supabase.rpc('save_match_tactical_snapshot', {
-        p_partido_id: match.id,
-        p_minute: plan.minute,
-        p_period: targetInterval?.period || (plan.minute <= 45 ? '1ª parte' : '2ª parte'),
-        p_system: plan.system,
-        p_reason: `Sustitución automática · ${plan.minute}'`,
-        p_is_complete: true,
-        p_slots: plan.slots.map((slot) => ({
-          slot: slot.slot,
-          jugador_id: isUuid(slot.playerId) ? slot.playerId : null,
-          player_name_snapshot: slot.playerName || null,
-        })),
-        p_source_system_event_id: plan.sourceSystemEventId || null,
-      });
-      if (rpcError) throw rpcError;
-      const verifiedMatch = await loadMatchStatsData(match.id);
-      const storedSnapshot = safeArray(verifiedMatch?.tacticalSnapshots).find((snapshot) => Number(snapshot.minute) === Number(plan.minute));
-      if (!tacticalSnapshotMatchesDisposition({
-        snapshot: storedSnapshot,
+      await saveTacticalDispositionWithReload({
         matchId: match.id,
         minute: plan.minute,
         system: plan.system,
         slots: plan.slots,
         identityIndex: createMatchPlayerIdentityIndex(players),
-      })) throw new Error('La relectura no confirmó el snapshot automático de 11 jugadores.');
+        save: async () => {
+          const response = await supabase.rpc('save_match_tactical_snapshot', {
+            p_partido_id: match.id,
+            p_minute: plan.minute,
+            p_period: targetInterval?.period || (plan.minute <= 45 ? '1ª parte' : '2ª parte'),
+            p_system: plan.system,
+            p_reason: `Sustitución automática · ${plan.minute}'`,
+            p_is_complete: true,
+            p_slots: plan.slots.map((slot) => ({
+              slot: slot.slot,
+              jugador_id: isUuid(slot.playerId) ? slot.playerId : null,
+              player_name_snapshot: slot.playerName || null,
+            })),
+            p_source_system_event_id: plan.sourceSystemEventId || null,
+          });
+          if (response.error) throw response.error;
+          return response.data;
+        },
+        reload: () => loadMatchStatsData(match.id),
+        validateReloadedSnapshot: ({ reloaded }) => isReloadedTacticalDispositionReliable({
+          match: reloaded,
+          minute: plan.minute,
+          system: plan.system,
+        }),
+      });
       setStatsSaveStatus('Sustitución y disposición guardadas ✓');
       window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Sustitución y disposición guardadas ✓' ? '' : current)), 2600);
       return plan;
@@ -18622,7 +18639,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     const allowsCalledPlayerSelection = Number(interval.fromMinute) === 0;
     const knownPlayers = allowsCalledPlayerSelection
       ? uniqueCalledPlayers
-      : persistedPlayers.length === 11 && new Set(persistedKeys).size === 11
+      : interval.isComplete && persistedPlayers.length === 11 && new Set(persistedKeys).size === 11
         ? persistedPlayers
         : reconstructed.players.map(enrichTacticalParticipant);
     const validKnownPlayers = allowsCalledPlayerSelection
@@ -18740,33 +18757,37 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         const { error: squadError } = await supabase.rpc('save_match_squad_lineup_atomic', squadSnapshot);
         if (squadError) throw squadError;
       }
-      const { error: rpcError } = await supabase.rpc('save_match_tactical_snapshot', {
-        p_partido_id: editor.matchId,
-        p_minute: editor.minute,
-        p_period: editor.period,
-        p_system: editor.system,
-        p_reason: `Disposición registrada manualmente · ${editor.minute}'–${editor.toMinute}'`,
-        p_is_complete: true,
-        p_slots: persistedSlots.map((slot) => ({
-          slot: slot.slot,
-          jugador_id: slot.playerId || null,
-          player_name_snapshot: slot.playerName || null,
-        })),
-        p_source_system_event_id: editor.sourceSystemEventId || null,
-      });
-      if (rpcError) throw rpcError;
-      const refreshed = await loadMatchStatsData(editor.matchId);
-      const storedSnapshot = safeArray(refreshed?.tacticalSnapshots).find((snapshot) => Number(snapshot.minute) === Number(editor.minute));
-      if (!tacticalSnapshotMatchesDisposition({
-        snapshot: storedSnapshot,
+      await saveTacticalDispositionWithReload({
         matchId: editor.matchId,
         minute: editor.minute,
         system: editor.system,
         slots: persistedSlots,
         identityIndex: tacticalPlayerIdentityIndex,
-      })) {
-        throw new Error('Supabase respondió, pero la relectura no confirmó los 11 jugadores en sus slots exactos.');
-      }
+        save: async () => {
+          const response = await supabase.rpc('save_match_tactical_snapshot', {
+            p_partido_id: editor.matchId,
+            p_minute: editor.minute,
+            p_period: editor.period,
+            p_system: editor.system,
+            p_reason: `Disposición registrada manualmente · ${editor.minute}'–${editor.toMinute}'`,
+            p_is_complete: true,
+            p_slots: persistedSlots.map((slot) => ({
+              slot: slot.slot,
+              jugador_id: slot.playerId || null,
+              player_name_snapshot: slot.playerName || null,
+            })),
+            p_source_system_event_id: editor.sourceSystemEventId || null,
+          });
+          if (response.error) throw response.error;
+          return response.data;
+        },
+        reload: () => loadMatchStatsData(editor.matchId),
+        validateReloadedSnapshot: ({ reloaded }) => isReloadedTacticalDispositionReliable({
+          match: reloaded,
+          minute: editor.minute,
+          system: editor.system,
+        }),
+      });
       setTacticalDispositionEditor(null);
       setMobileTacticalSelection(null);
       setMobileTacticalFeedback({ scope: '', message: '' });
