@@ -1,3 +1,5 @@
+import { buildMatchPositionSystemLines } from './playerPositionTimelinePresentation.js';
+
 const rows = (value) => Array.isArray(value) ? value : [];
 const clean = (value) => String(value ?? '').trim();
 
@@ -37,11 +39,22 @@ const normalizeAction = (action = {}) => ({
   url: getPlayerReportActionUrl(action.url || action.videoUrl),
 });
 
-const normalizeHistoryRow = (row = {}) => ({
-  ...row,
-  goalLinks: rows(row.goalLinks).map(getPlayerReportActionUrl).filter(Boolean),
-  assistLinks: rows(row.assistLinks).map(getPlayerReportActionUrl).filter(Boolean),
-});
+const normalizeHistoryRow = (row = {}, matchUsage = null) => {
+  const positionSystem = buildMatchPositionSystemLines(matchUsage || {});
+  return {
+    ...row,
+    positionSystemLines: positionSystem.lines.map((line) => line.label),
+    goalLinks: rows(row.goalLinks).map(getPlayerReportActionUrl).filter(Boolean),
+    assistLinks: rows(row.assistLinks).map(getPlayerReportActionUrl).filter(Boolean),
+  };
+};
+
+export const formatPlayerReportAge = (value) => {
+  const source = clean(value);
+  const match = source.match(/^(\d{1,3})(?:\s*años?)?$/i);
+  const age = match ? Number(match[1]) : Number.NaN;
+  return Number.isFinite(age) && age >= 0 && age <= 120 ? `${age} años` : '';
+};
 
 const PRODUCTION_CONNECTION_LIMIT = 5;
 const PRODUCTION_ACTION_LIMIT = 6;
@@ -132,7 +145,8 @@ export const buildPlayerOffensiveConnections = ({ society, playerName, playerIma
 
 export const buildPlayerProfilePrintReport = (source = {}) => {
   const actions = rows(source.actions).map(normalizeAction).filter((action) => action.type || action.description);
-  const history = rows(source.history).map(normalizeHistoryRow);
+  const positionUsageByMatchId = new Map(rows(source.positionUsage?.matches).map((match) => [clean(match.matchId), match]));
+  const history = rows(source.history).map((row) => normalizeHistoryRow(row, positionUsageByMatchId.get(clean(row.id || row.matchId))));
   const influenceMaps = rows(source.influenceMaps).length
     ? rows(source.influenceMaps).map((map) => ({ ...map, zones: rows(map.zones) }))
     : [{ key: 'all', label: 'Todos', zones: rows(source.influenceZones) }];
@@ -173,7 +187,10 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
   ];
 
   const report = {
-    identity: source.identity || {},
+    identity: {
+      ...(source.identity || {}),
+      age: formatPlayerReportAge(source.identity?.age),
+    },
     filters: source.filters || {},
     validation: source.validation || {},
     seasonSummary: source.seasonSummary || {},

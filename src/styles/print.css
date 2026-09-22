@@ -4115,20 +4115,33 @@
 .player-pdf-history td:nth-child(8),
 .player-pdf-history td:nth-child(9),
 .player-pdf-history td:nth-child(10),
-.player-pdf-history td:nth-child(11) {
+.player-pdf-history td:nth-child(11),
+.player-pdf-history td:nth-child(12) {
   white-space: nowrap;
 }
 
-.player-pdf-history col.date { width: 16mm; }
-.player-pdf-history col.opponent { width: 39mm; }
+.player-pdf-history col.date { width: 14mm; }
+.player-pdf-history col.opponent { width: 30mm; }
 .player-pdf-history col.score { width: 14mm; }
-.player-pdf-history col.competition { width: 32mm; }
-.player-pdf-history col.venue { width: 7mm; }
-.player-pdf-history col.role { width: 17mm; }
-.player-pdf-history col.minutes { width: 9mm; }
-.player-pdf-history col.action { width: 11mm; }
+.player-pdf-history col.competition { width: 24mm; }
+.player-pdf-history col.venue { width: 6mm; }
+.player-pdf-history col.role { width: 12mm; }
+.player-pdf-history col.position-system { width: 28mm; }
+.player-pdf-history col.minutes { width: 8mm; }
+.player-pdf-history col.action { width: 7mm; }
 .player-pdf-history col.cards { width: 16mm; }
-.player-pdf-history col.injury { width: 8mm; }
+.player-pdf-history col.injury { width: 9mm; }
+
+.player-pdf-position-system {
+  display: grid;
+  gap: 0.6mm;
+  white-space: normal;
+}
+
+.player-pdf-position-system b {
+  display: block;
+  line-height: 1.08;
+}
 
 .player-pdf-rival {
   display: flex;

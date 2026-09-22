@@ -6,12 +6,17 @@ import {
   buildPlayerOffensiveConnections,
   buildPlayerProductionMapLayout,
   buildPlayerProfilePrintReport,
+  formatPlayerReportAge,
   getPlayerReportActionUrl,
 } from './playerProfilePrintReport.js';
 
 assert.equal(getPlayerReportActionUrl('https://video.example/goal?t=72'), 'https://video.example/goal?t=72');
 assert.equal(getPlayerReportActionUrl('javascript:alert(1)'), '', 'el PDF no admite enlaces no navegables o inseguros');
 assert.equal(getPlayerReportActionUrl('/partidos/inventado'), '', 'no se inventan rutas internas sin URL absoluta real');
+assert.equal(formatPlayerReportAge(24), '24 años');
+assert.equal(formatPlayerReportAge('34 años'), '34 años');
+assert.equal(formatPlayerReportAge(Number.NaN), '', 'una edad inexistente nunca produce NaN años');
+assert.equal(formatPlayerReportAge(undefined), '');
 
 const filtered = buildPlayerProfilePrintReport({
   identity: { name: 'Borja Rodríguez', team: 'C.D. Caudal de Mieres', season: '2026/27' },
@@ -159,6 +164,24 @@ assert.deepEqual(defensiveOnly.pagePlan, ['summary']);
 const positionUsage = { positions: [{ position: 'Delantero', minutes: 90, percentage: 100 }], totalMinutes: 90, determinedMinutes: 90, unknownMinutes: 0, valid: true };
 assert.deepEqual(buildPlayerProfilePrintReport({ identity: { name: 'Jugador posicional' }, positionUsage }).positionUsage, positionUsage, 'el modelo conserva el cálculo táctico sin reinterpretarlo');
 
+const historyPositionUsage = {
+  ...positionUsage,
+  matches: [{
+    matchId: 'match-position-system',
+    segments: [
+      { matchId: 'match-position-system', playerId: 'p1', fromMinute: 0, toMinute: 45, position: 'Extremo derecho', system: '4-3-3', identified: true },
+      { matchId: 'match-position-system', playerId: 'p1', fromMinute: 45, toMinute: 60, position: 'Extremo derecho', system: '4-2-3-1', identified: true },
+    ],
+  }],
+};
+const positionSystemReport = buildPlayerProfilePrintReport({
+  identity: { name: 'Jugador', age: Number.NaN },
+  positionUsage: historyPositionUsage,
+  history: [{ id: 'match-position-system' }],
+});
+assert.deepEqual(positionSystemReport.history[0].positionSystemLines, ['ED · 4-3-3', 'ED · 4-2-3-1'], 'el PDF consume el mismo presenter canónico que la ficha');
+assert.equal(positionSystemReport.identity.age, '', 'el modelo impide NaN años aunque el consumidor no haya normalizado la edad');
+
 const longName = 'Compañero Con Un Nombre Extraordinariamente Largo y Compuesto';
 const oneConnection = buildPlayerProfilePrintReport({
   identity: { name: 'Borja Rodríguez' },
@@ -233,14 +256,16 @@ assert.match(appSource, /minutesPlayedPercentage:\s*aggregate\.participation/, '
 assert.match(appSource, /possibleMinutes:\s*aggregate\.rows\.length \* 90/, 'los minutos posibles usan la misma base objetiva ya mostrada en la App');
 assert.match(appSource, /const pdfSocietyRows = societyRows\.map[\s\S]*?candidates\.length === 1[\s\S]*?getPlayerAvatarSource/, 'las fotos de conexiones sólo se incorporan tras una resolución exacta e inequívoca');
 assert.match(appSource, /goalContributionsPer90/, 'G+A\/90 se calcula desde minutos y eventos oficiales');
-assert.match(appSource, /opponentCrest:\s*row\.match\.opponentCrest/, 'el historial recibe el escudo rival cuando existe');
+assert.match(appSource, /opponentCrest:\s*opponentIdentity\.crest/, 'el historial recibe el escudo desde el adaptador canónico por ID');
+assert.match(appSource, /resolveOpponentTeamIdentity\(\{ match: row\.match, teams \}\)/, 'PDF y APP comparten la resolución de identidad rival');
 assert.match(appSource, /date:\s*matchDisplayDate\(match\.date\)/, 'la ficha de acción recibe la fecha real');
 assert.match(appSource, /result:\s*score\.hasScore \? [`]?[\s\S]*?: 'Sin datos'/, 'un partido sin resultado no se convierte artificialmente en 0-0');
 assert.match(appSource, /report:\s*playerPdfModel/, 'el modelo normalizado llega directamente al renderizador PDF');
 assert.match(footballMapSource, /<circle cx="34" cy="52\.5"[\s\S]*<rect x="14" y="2"[\s\S]*<rect x="24" y="2"[\s\S]*className="pitch-goal"/, 'los tres mapas reutilizan un campo con círculo, áreas, áreas pequeñas y porterías');
 assert.match(printCss, /Dossier profesional individual 2026\/27/);
 assert.match(printCss, /\.player-pdf-primary-stats\s*\{[\s\S]*grid-template-columns:\s*repeat\(5/, 'las métricas principales tienen jerarquía numérica propia');
-assert.match(printCss, /\.player-pdf-history col\.opponent \{ width:\s*39mm;/, 'el rival recibe anchura suficiente y evita truncados administrativos');
+assert.match(printCss, /\.player-pdf-history col\.opponent \{ width:\s*30mm;/, 'el rival conserva anchura prioritaria junto a POS.\/SIST.');
+assert.match(printCss, /\.player-pdf-history col\.position-system \{ width:\s*28mm;/, 'POS./SIST. recibe una columna compacta propia');
 assert.match(printCss, /\.football-zone-map\.is-print\s*\{[\s\S]*width:\s*45mm/, 'los tres campos conservan proporción legible en A4');
 const finalDossierCssStart = printCss.indexOf('Dossier profesional individual 2026/27');
 const connectionCssStart = printCss.indexOf('.player-pdf-connections {', finalDossierCssStart);
@@ -252,3 +277,6 @@ assert.doesNotMatch(connectionCss, /overflow:\s*hidden|text-overflow:\s*ellipsis
 assert.doesNotMatch(printCss.slice(printCss.indexOf('Dossier profesional individual 2026/27')), /transform:\s*scale\(/, 'el dossier no se resuelve escalando globalmente una pantalla web');
 
 console.log('playerProfilePrintReport tests passed');
+
+await import('./playerPositionTimelinePresentation.test.js');
+await import('./opponentTeamIdentity.test.js');

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { jsPDF } from 'jspdf';
 import { inspectPlayerDossier, printPlayerDossier } from './playerDossierPrint.js';
-import { auditPlayerPdfLinkAnnotations, createPlayerProfilePdf } from './playerProfilePdfExport.js';
+import { auditPlayerPdfLinkAnnotations, createPlayerProfilePdf, loadPlayerPdfImage } from './playerProfilePdfExport.js';
 
 const createReportNode = ({ width = 900, height = 2400, text = 'Borja Rodríguez Minutos Partidos Titularidades Goles Asistencias', blocks = 8 } = {}) => ({
   childElementCount: blocks,
@@ -132,6 +132,19 @@ assert.deepEqual(vectorResult.presentationAudit.sectionPlan.map(({ key, number }
 ], 'un dossier completo conserva numeración consecutiva en todos sus bloques visibles');
 
 const transparentPng = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lSxWAAAAAElFTkSuQmCC', 'base64'));
+const loadedRemoteImage = await loadPlayerPdfImage('https://images.example/crest.png', {
+  fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
+});
+assert.equal(loadedRemoteImage.format, 'PNG');
+assert.equal(Boolean(loadedRemoteImage.data), true, 'un escudo remoto compatible se convierte para el PDF');
+const failedRemoteImage = await loadPlayerPdfImage('https://images.example/missing.png', {
+  fetchImpl: async () => ({ ok: false, status: 404 }),
+});
+assert.equal(failedRemoteImage.error, 'http_404', 'el fallo remoto queda auditable y permite usar placeholder');
+const unsupportedRemoteImage = await loadPlayerPdfImage('https://images.example/crest.svg', {
+  fetchImpl: async () => ({ ok: true, blob: async () => new Blob(['<svg/>'], { type: 'image/svg+xml' }) }),
+});
+assert.equal(unsupportedRemoteImage.error, 'unsupported_mime:image/svg+xml');
 const competitionLogoResult = await createPlayerProfilePdf({
   report: jairoReport,
   fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
@@ -142,6 +155,36 @@ const normalPhotoResult = await createPlayerProfilePdf({
   fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
 });
 assert.equal(normalPhotoResult.presentationAudit.playerPhoto.imageLoaded, true, 'una foto convencional se incorpora al PDF vectorial');
+const repeatedCrestReport = {
+  ...jairoReport,
+  history: [1, 2].map((index) => ({
+    ...jairoReport.history[0],
+    id: `same-rival-${index}`,
+    opponent: 'Rival relacionado',
+    opponentTeamId: 'rival-id',
+    opponentCrest: 'https://images.example/shared-crest.png',
+    opponentCrestSource: 'team_id',
+  })),
+};
+const repeatedCrestResult = await createPlayerProfilePdf({
+  report: repeatedCrestReport,
+  fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
+});
+assert.deepEqual(repeatedCrestResult.presentationAudit.opponentCrests.map(({ loaded, source }) => [loaded, source]), [
+  [true, 'https://images.example/shared-crest.png'],
+  [true, 'https://images.example/shared-crest.png'],
+], 'dos partidos del mismo rival reutilizan exactamente el mismo escudo canónico');
+const missingCrestResult = await createPlayerProfilePdf({
+  report: { ...jairoReport, history: [{ ...jairoReport.history[0], opponentCrest: '' }] },
+  fetchImpl: null,
+});
+assert.deepEqual(missingCrestResult.presentationAudit.opponentCrests.map(({ placeholder, error }) => [placeholder, error]), [[true, 'missing_source']], 'un rival sin escudo usa placeholder sin romper el PDF');
+const failedCrestResult = await createPlayerProfilePdf({
+  report: { ...jairoReport, history: [{ ...jairoReport.history[0], opponentCrest: 'https://images.example/broken.png' }] },
+  fetchImpl: async () => { throw new Error('CORS'); },
+});
+assert.equal(failedCrestResult.presentationAudit.opponentCrests[0].placeholder, true);
+assert.match(failedCrestResult.presentationAudit.opponentCrests[0].error, /^fetch_failed:CORS$/, 'un error de imagen queda identificado y el PDF continúa');
 const transparentPhotoResult = await createPlayerProfilePdf({
   report: { ...jairoReport, identity: { ...jairoReport.identity, name: 'Borja Rodríguez', image: 'https://images.example/borja-transparent.png' } },
   fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
@@ -149,6 +192,8 @@ const transparentPhotoResult = await createPlayerProfilePdf({
 assert.deepEqual(transparentPhotoResult.presentationAudit.playerPhoto, { background: 'white', fit: 'contain', centered: true, imageLoaded: true, source: 'https://images.example/borja-transparent.png' }, 'un PNG con transparencia se inserta centrado sobre blanco en el PDF final');
 assert.doesNotMatch(exporterSource, /drawPositionUsageMap\(pdf, report\.positionUsage, y/, 'el PDF ya no renderiza una sección posicional independiente');
 assert.match(exporterSource, /drawCompactPositionProfile\(pdf, positionMapModel/, 'el mismo modelo posicional se integra en la cabecera compacta');
+assert.match(exporterSource, /'POS\.\/SIST\.'/u, 'el historial vectorial incorpora la columna canónica de posición y sistema');
+assert.match(exporterSource, /getHistoryRowHeight\(row\)/, 'la paginación del historial considera las filas multilínea');
 assert.doesNotMatch(exporterSource, /ÁMBITO DEL DOSSIER/, 'la cabecera elimina el rótulo redundante de ámbito');
 assert.doesNotMatch(exporterSource, /teamCopyX, y \+ 33\.5/, 'la temporada no se repite debajo del club');
 assert.match(exporterSource, /'Minutos disputados'/, 'el quinto KPI identifica explícitamente la métrica objetiva');

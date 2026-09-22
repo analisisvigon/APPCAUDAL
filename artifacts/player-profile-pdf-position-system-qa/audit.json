@@ -1,0 +1,396 @@
+{
+  "generatedAt": "2026-09-22T09:12:47.294Z",
+  "daniel": {
+    "pdf": "C:\\Users\\mvigo\\OneDrive\\Escritorio\\APPCAUDAL\\artifacts\\player-profile-pdf-position-system-qa\\daniel-palacio-8-partidos.pdf",
+    "pages": 1,
+    "age": "",
+    "positionUsage": [
+      {
+        "position": "Extremo derecho",
+        "minutes": 179,
+        "percentage": 80
+      },
+      {
+        "position": "Carrilero derecho",
+        "minutes": 36,
+        "percentage": 16
+      },
+      {
+        "position": "Extremo izquierdo",
+        "minutes": 8,
+        "percentage": 4
+      }
+    ],
+    "historyPositionSystem": [
+      {
+        "opponent": "L'Entregu CF",
+        "lines": [
+          "ED · 4-2-3-1"
+        ]
+      },
+      {
+        "opponent": "CD Praviano",
+        "lines": [
+          "ED · 4-2-3-1"
+        ]
+      },
+      {
+        "opponent": "Marino de Luanco",
+        "lines": [
+          "ED · 4-3-3"
+        ]
+      },
+      {
+        "opponent": "CD Lealtad",
+        "lines": [
+          "EI · 4-3-3"
+        ]
+      },
+      {
+        "opponent": "Astur CF",
+        "lines": [
+          "ED · 4-2-3-1"
+        ]
+      },
+      {
+        "opponent": "Salamanca CF UDS",
+        "lines": [
+          "ED · 4-3-3",
+          "ED · 4-2-3-1"
+        ]
+      },
+      {
+        "opponent": "Unión Club Ceares",
+        "lines": [
+          "ED · 4-4-2"
+        ]
+      },
+      {
+        "opponent": "CD Covadonga",
+        "lines": [
+          "CAD · 5-2-3"
+        ]
+      }
+    ],
+    "opponentCrests": [
+      {
+        "opponent": "L'Entregu CF",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "CD Praviano",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Marino de Luanco",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "CD Lealtad",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Astur CF",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Salamanca CF UDS",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Unión Club Ceares",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "CD Covadonga",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      }
+    ]
+  },
+  "long": {
+    "pdf": "C:\\Users\\mvigo\\OneDrive\\Escritorio\\APPCAUDAL\\artifacts\\player-profile-pdf-position-system-qa\\temporada-larga-36-partidos.pdf",
+    "pages": 2,
+    "pageSections": [
+      "PERFIL Y RENDIMIENTO COMPETITIVO",
+      "HISTORIAL · CONTINUACIÓN"
+    ],
+    "opponentCrests": [
+      {
+        "opponent": "Rival de temporada 1",
+        "resolutionSource": "missing",
+        "loaded": false,
+        "placeholder": true,
+        "error": "missing_source"
+      },
+      {
+        "opponent": "Rival de temporada 2",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 3",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 4",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 5",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 6",
+        "resolutionSource": "missing",
+        "loaded": false,
+        "placeholder": true,
+        "error": "missing_source"
+      },
+      {
+        "opponent": "Rival de temporada 7",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Club Deportivo Rival con Nombre Administrativo Extraordinariamente Largo",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 9",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 10",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 11",
+        "resolutionSource": "missing",
+        "loaded": false,
+        "placeholder": true,
+        "error": "missing_source"
+      },
+      {
+        "opponent": "Rival de temporada 12",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 13",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 14",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 15",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 16",
+        "resolutionSource": "missing",
+        "loaded": false,
+        "placeholder": true,
+        "error": "missing_source"
+      },
+      {
+        "opponent": "Rival de temporada 17",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 18",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 19",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 20",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 21",
+        "resolutionSource": "missing",
+        "loaded": false,
+        "placeholder": true,
+        "error": "missing_source"
+      },
+      {
+        "opponent": "Rival de temporada 22",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 23",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 24",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 25",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 26",
+        "resolutionSource": "missing",
+        "loaded": false,
+        "placeholder": true,
+        "error": "missing_source"
+      },
+      {
+        "opponent": "Rival de temporada 27",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 28",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 29",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 30",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 31",
+        "resolutionSource": "missing",
+        "loaded": false,
+        "placeholder": true,
+        "error": "missing_source"
+      },
+      {
+        "opponent": "Rival de temporada 32",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 33",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 34",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 35",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "placeholder": false,
+        "error": ""
+      },
+      {
+        "opponent": "Rival de temporada 36",
+        "resolutionSource": "missing",
+        "loaded": false,
+        "placeholder": true,
+        "error": "missing_source"
+      }
+    ]
+  }
+}

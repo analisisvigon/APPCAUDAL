@@ -54,8 +54,9 @@ import {
 import { getSetPieceBadgePlacement, getSetPieceCaptureMarkerAnchor } from './utils/setPieceBadgePlacement';
 import { buildSetPieceCaptureResponsibilities } from './utils/setPieceCaptureResponsibilities';
 import { exportPlayerProfilePdf } from './utils/playerProfilePdfExport';
-import { buildPlayerProfilePrintReport } from './utils/playerProfilePrintReport';
+import { buildPlayerProfilePrintReport, formatPlayerReportAge } from './utils/playerProfilePrintReport';
 import { getPlayerPositionUsage } from './utils/playerPositionUsage';
+import { resolveOpponentTeamIdentity } from './utils/opponentTeamIdentity';
 import { createMatchPlayerIdentityIndex, resolveMatchPlayerCandidate } from './utils/matchPlayerIdentity';
 import { getSportsSeason, resolveSportsSeasonFromMatches } from './utils/sportsSeason';
 import {
@@ -10046,13 +10047,14 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   useEffect(() => {
     setMatches((current) =>
       current.map((match) => {
-        const rivalTeam = findTeamByDisplayName(teams, match.opponent);
-        if (!rivalTeam) return match;
+        const rivalIdentity = resolveOpponentTeamIdentity({ match, teams });
+        const rivalTeam = rivalIdentity.team;
+        if (!rivalTeam && !rivalIdentity.crest) return match;
         const nextMatch = {
           ...match,
-          opponent: cleanTeamDisplayName(rivalTeam.name),
-          opponentCrest: rivalTeam.crest || match.opponentCrest,
-          preRivalSystem: match.preRivalSystem || rivalTeam.system,
+          opponent: cleanTeamDisplayName(rivalIdentity.opponent),
+          opponentCrest: rivalIdentity.crest,
+          preRivalSystem: match.preRivalSystem || rivalTeam?.system,
         };
         return nextMatch.opponent === match.opponent &&
           nextMatch.opponentCrest === match.opponentCrest &&
@@ -30146,7 +30148,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                   image: getPlayerAvatarSource(selectedPlayerProfile),
                   number: displayDorsal(selectedPlayerProfile.number),
                   position: selectedPlayerProfile.position || 'Sin demarcación',
-                  age: `${calculateAge(selectedPlayerProfile.dob)} años`,
+                  age: formatPlayerReportAge(calculateAge(selectedPlayerProfile.dob)),
                   foot: pdfPlayerFoot,
                   team: getOwnClubDisplayName(pdfOwnTeam?.name),
                   teamCrest: pdfOwnTeam?.crest || clubCrest,
@@ -30205,11 +30207,14 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 history: aggregate.rows.map((row) => {
                   const score = getMatchScoreData(row.match);
                   const linkedActions = playerPdfActions.filter((action) => action.matchId === row.match.id);
+                  const opponentIdentity = resolveOpponentTeamIdentity({ match: row.match, teams });
                   return {
                     id: row.match.id,
                     date: matchDisplayDate(row.match.date),
                     opponent: row.match.opponent,
-                    opponentCrest: row.match.opponentCrest || '',
+                    opponentCrest: opponentIdentity.crest,
+                    opponentTeamId: opponentIdentity.teamId,
+                    opponentCrestSource: opponentIdentity.source,
                     result: score.hasScore ? `${score.caudalGoals}-${score.rivalGoals}` : 'Sin datos',
                     outcome: score.hasScore ? (score.caudalGoals > score.rivalGoals ? 'V' : score.caudalGoals < score.rivalGoals ? 'D' : 'E') : '',
                     competition: getCompetitionFromCatalog(row.match).label,
@@ -30236,6 +30241,13 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                     filename: `informe-${String(selectedPlayerProfile.name || 'jugador').trim().toLowerCase().replace(/[^a-z0-9áéíóúüñ]+/gi, '-')}.pdf`,
                   });
                   console.info('PDF individual vectorial generado con enlaces verificados.', result.audit);
+                  if (import.meta.env.DEV) {
+                    const unresolvedOpponentCrests = (result.presentationAudit?.opponentCrests || [])
+                      .filter((crest) => !crest.loaded);
+                    if (unresolvedOpponentCrests.length) {
+                      console.warn('[PLAYER_PDF:OPPONENT_CREST_FALLBACK]', unresolvedOpponentCrests);
+                    }
+                  }
                 } catch (error) {
                   console.error('No se pudo generar el PDF individual con enlaces.', error);
                   const recovery = await recoverFromStaleChunkOnce(error);
@@ -30308,7 +30320,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                           <div className="mt-3 flex flex-wrap items-center gap-2">
                             <span className="rounded-2xl border border-caudal-electric/30 bg-caudal-electric/90 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-950">{selectedPlayerProfile.position || 'Sin demarcación'}</span>
                             <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">#{displayDorsal(selectedPlayerProfile.number)}</span>
-                            <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">{calculateAge(selectedPlayerProfile.dob)} años</span>
+                            <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">{formatPlayerReportAge(calculateAge(selectedPlayerProfile.dob)) || 'Edad no indicada'}</span>
                             <span className="rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-xs font-bold text-slate-400">Pie {selectedPlayerProfile.foot || 'no indicado'}</span>
                           </div>
                         </div>

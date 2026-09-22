@@ -130,20 +130,24 @@ const blobToDataUrl = async (blob) => {
   return `data:${blob.type || 'image/png'};base64,${globalThis.btoa(binary)}`;
 };
 
-const loadPdfImage = async (url, { fetchImpl = globalThis.fetch, documentRef } = {}) => {
+export const loadPlayerPdfImage = async (url, { fetchImpl = globalThis.fetch, documentRef } = {}) => {
   const source = clean(url);
-  if (!source || typeof fetchImpl !== 'function') return null;
+  if (!source) return { source: '', data: '', format: '', error: 'missing_source' };
+  if (typeof fetchImpl !== 'function') return { source, data: '', format: '', error: 'fetch_unavailable' };
   try {
     const absolute = source.startsWith('/') && documentRef?.location?.origin ? new URL(source, documentRef.location.origin).href : source;
     const response = await fetchImpl(absolute, { mode: 'cors', credentials: 'omit' });
-    if (!response.ok) return null;
+    if (!response.ok) return { source, data: '', format: '', error: `http_${response.status || 'error'}` };
     const blob = await response.blob();
-    if (!String(blob.type || '').startsWith('image/')) return null;
+    const mimeType = String(blob.type || '').toLowerCase();
+    if (!['image/png', 'image/jpeg', 'image/jpg', 'image/webp'].includes(mimeType)) {
+      return { source, data: '', format: '', error: mimeType ? `unsupported_mime:${mimeType}` : 'missing_mime' };
+    }
     const data = await blobToDataUrl(blob);
-    const format = /jpe?g/i.test(blob.type) ? 'JPEG' : /webp/i.test(blob.type) ? 'WEBP' : 'PNG';
-    return { data, format };
-  } catch {
-    return null;
+    const format = /jpe?g/i.test(mimeType) ? 'JPEG' : /webp/i.test(mimeType) ? 'WEBP' : 'PNG';
+    return { source, data, format, error: '' };
+  } catch (error) {
+    return { source, data: '', format: '', error: `fetch_failed:${clean(error?.message) || 'unknown'}` };
   }
 };
 
@@ -526,13 +530,13 @@ const drawPositionUsageMap = (pdf, usage, y, sectionNumber) => {
 };
 
 const drawHistoryHeader = (pdf, y) => {
-  const widths = [16, 46, 16, 28, 7, 14, 9, 8, 8, 18, 16];
-  const headers = ['Fecha', 'Rival', 'Resultado', 'Competición', 'L/V', 'Rol', 'Min', 'G', 'A', 'Tarjetas', 'Lesión'];
+  const widths = [14, 36, 14, 23, 6, 11, 28, 8, 6, 6, 18, 16];
+  const headers = ['Fecha', 'Rival', 'Resultado', 'Competición', 'L/V', 'Rol', 'POS./SIST.', 'Min', 'G', 'A', 'Tarjetas', 'Lesión'];
   pdf.setFillColor(...COLORS.navy);
   pdf.rect(PAGE_MARGIN, y, CONTENT_WIDTH, 7.6, 'F');
   let x = PAGE_MARGIN;
   headers.forEach((header, index) => {
-    text(pdf, header, x + (index === 1 || index === 3 ? 1.5 : widths[index] / 2), y + 5, { size: 4.9, style: 'bold', color: COLORS.paper, align: index === 1 || index === 3 ? 'left' : 'center' });
+    text(pdf, header, x + ([1, 3, 6].includes(index) ? 1.5 : widths[index] / 2), y + 5, { size: 4.9, style: 'bold', color: COLORS.paper, align: [1, 3, 6].includes(index) ? 'left' : 'center' });
     x += widths[index];
   });
   return { y: y + 7.6, widths };
@@ -563,27 +567,45 @@ const compactPitchZoneLabel = (zone = {}, index = 0) => {
   return [band, side].filter(Boolean).join(' ');
 };
 
+const getHistoryPositionSystemLines = (row = {}) => {
+  const lines = rows(row.positionSystemLines).map(clean).filter(Boolean);
+  return lines.length ? lines : ['—'];
+};
+
+const getHistoryRowHeight = (row = {}) => Math.max(8.4, 4.8 + getHistoryPositionSystemLines(row).length * 3.6);
+
 const drawHistoryRow = (pdf, row, y, widths, rivalImage, rowIndex) => {
-  const height = 9.2;
+  const height = getHistoryRowHeight(row);
   if (rowIndex % 2 === 0) {
     pdf.setFillColor(...COLORS.panel);
     pdf.rect(PAGE_MARGIN, y, CONTENT_WIDTH, height, 'F');
   }
   let x = PAGE_MARGIN;
-  const center = (value, index, options = {}) => text(pdf, value, x + widths[index] / 2, y + 5.8, { size: 5.6, color: COLORS.ink, align: 'center', ...options });
+  const baseline = y + height / 2 + 1.8;
+  const center = (value, index, options = {}) => text(pdf, value, x + widths[index] / 2, baseline, { size: 5.6, color: COLORS.ink, align: 'center', ...options });
   center(row.date, 0);
   x += widths[0];
-  if (rivalImage) fitImage(pdf, rivalImage, x + 1, y + 1.3, 6.5, 6.5);
-  singleLineText(pdf, row.opponent || 'Rival', x + (rivalImage ? 8.5 : 1.5), y + 5.7, { size: 5.8, minSize: 4.8, style: 'bold', color: COLORS.ink, maxWidth: widths[1] - (rivalImage ? 9.5 : 3) });
+  const rivalImageDrawn = fitImage(pdf, rivalImage, x + 1, y + (height - 6.5) / 2, 6.5, 6.5);
+  if (!rivalImageDrawn) {
+    const initials = clean(row.opponent).split(/\s+/).filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'R';
+    pdf.setFillColor(226, 232, 240);
+    pdf.circle(x + 4.25, y + height / 2, 3.1, 'F');
+    text(pdf, initials, x + 4.25, y + height / 2 + 1.2, { size: 4, style: 'bold', color: COLORS.muted, align: 'center' });
+  }
+  singleLineText(pdf, row.opponent || 'Rival', x + 8.5, baseline, { size: 5.8, minSize: 4.5, style: 'bold', color: COLORS.ink, maxWidth: widths[1] - 9.5 });
   x += widths[1];
   const outcomeColor = row.outcome === 'V' ? COLORS.win : row.outcome === 'D' ? COLORS.loss : row.outcome === 'E' ? COLORS.draw : COLORS.muted;
   center([row.outcome, row.result].filter(Boolean).join(' · '), 2, { style: 'bold', color: outcomeColor });
   x += widths[2];
-  singleLineText(pdf, row.competition, x + 1.5, y + 5.7, { size: 5.5, minSize: 4.6, color: COLORS.ink, maxWidth: widths[3] - 3 });
-  x += widths[3]; center(row.venue, 4); x += widths[4]; center(row.role, 5); x += widths[5]; center(row.minutes, 6, { style: 'bold' }); x += widths[6];
-  drawHistoryLinks(pdf, row.goalLinks, row.goals, x, y + 5.9, widths[7]); x += widths[7];
-  drawHistoryLinks(pdf, row.assistLinks, row.assists, x, y + 5.9, widths[8]); x += widths[8];
-  center(row.cards, 9); x += widths[9]; center(row.injury, 10);
+  singleLineText(pdf, row.competition, x + 1.5, baseline, { size: 5.5, minSize: 4.5, color: COLORS.ink, maxWidth: widths[3] - 3 });
+  x += widths[3]; center(row.venue, 4); x += widths[4]; center(row.role, 5); x += widths[5];
+  const positionSystemLines = getHistoryPositionSystemLines(row);
+  const firstLineY = y + height / 2 - ((positionSystemLines.length - 1) * 3.8) / 2 + 1.3;
+  positionSystemLines.forEach((line, index) => singleLineText(pdf, line, x + 1.5, firstLineY + index * 3.8, { size: 5.1, minSize: 4.3, style: 'bold', color: COLORS.ink, maxWidth: widths[6] - 3 }));
+  x += widths[6]; center(row.minutes, 7, { style: 'bold' }); x += widths[7];
+  drawHistoryLinks(pdf, row.goalLinks, row.goals, x, baseline + 0.1, widths[8]); x += widths[8];
+  drawHistoryLinks(pdf, row.assistLinks, row.assists, x, baseline + 0.1, widths[9]); x += widths[9];
+  center(row.cards, 10); x += widths[10]; center(row.injury, 11);
   return y + height;
 };
 
@@ -910,7 +932,7 @@ export const createPlayerProfilePdf = async ({
     ...rows(report.offensiveConnections).flatMap((connection) => [connection.fromImage, connection.toImage]),
     ...rows(report.history).map((row) => row.opponentCrest),
   ].map(clean).filter(Boolean));
-  const imageEntries = await Promise.all([...imageUrls].map(async (url) => [url, await loadPdfImage(url, { fetchImpl, documentRef })]));
+  const imageEntries = await Promise.all([...imageUrls].map(async (url) => [url, await loadPlayerPdfImage(url, { fetchImpl, documentRef })]));
   const imageMap = new Map(imageEntries);
   const images = {
     player: imageMap.get(clean(report.identity?.image)),
@@ -940,7 +962,7 @@ export const createPlayerProfilePdf = async ({
     let header = drawHistoryHeader(pdf, y);
     y = header.y;
     history.forEach((row, index) => {
-      if (y + 9 > CONTENT_BOTTOM) {
+      if (y + getHistoryRowHeight(row) > CONTENT_BOTTOM) {
         y = addPage('HISTORIAL · CONTINUACIÓN');
         y = sectionTitle(pdf, 'Historial partido a partido · continuación', y, sectionNumbers.history);
         header = drawHistoryHeader(pdf, y);
@@ -1041,6 +1063,20 @@ export const createPlayerProfilePdf = async ({
         minutes: position.minutes,
         percentage: position.percentage,
       })),
+      opponentCrests: rows(report.history).map((row) => {
+        const source = clean(row.opponentCrest);
+        const loaded = source ? imageMap.get(source) : null;
+        return {
+          matchId: clean(row.id || row.matchId),
+          opponent: clean(row.opponent),
+          teamId: clean(row.opponentTeamId),
+          source,
+          resolutionSource: clean(row.opponentCrestSource),
+          loaded: Boolean(loaded?.data),
+          error: source ? clean(loaded?.error) : 'missing_source',
+          placeholder: !loaded?.data,
+        };
+      }),
       positionMap: {
         vector: true,
         location: 'header',

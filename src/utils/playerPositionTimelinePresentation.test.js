@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import {
   UNKNOWN_POSITION_KEY,
+  buildMatchPositionSystemLines,
   buildMatchPositionSummary,
   buildPositionTimelineEntries,
   formatPositionSegmentRange,
@@ -101,6 +102,14 @@ assert.equal(internalBoundaries.label, 'ED');
 assert.equal(internalBoundaries.systemLabel, '4-2-3-1');
 assert.equal(internalBoundaries.hasDetails, false, 'un único tramo visual no ofrece detalle redundante');
 assert.equal(internalBoundaries.canonicalSegments.length, 3);
+
+assert.deepEqual(buildMatchPositionSystemLines({ segments: contiguous }).lines.map((line) => line.label), ['ED · 4-2-3-1'], 'misma posición y sistema contiguos producen una sola línea PDF');
+assert.deepEqual(buildMatchPositionSystemLines({ segments: onePositionTwoSystems.canonicalSegments }).lines.map((line) => line.label), ['ED · 4-3-3', 'ED · 4-2-3-1'], 'un cambio de sistema conserva dos líneas compactas');
+assert.deepEqual(buildMatchPositionSystemLines({ segments: twoPositionsTwoSystems.canonicalSegments }).lines.map((line) => line.label), ['MP · 4-2-3-1', 'MC · 4-4-2'], 'un cambio de posición conserva ambas líneas');
+assert.deepEqual(buildMatchPositionSystemLines({ segments: [segment(0, 20, 'Extremo derecho', '')] }).lines.map((line) => line.label), ['ED · —']);
+assert.deepEqual(buildMatchPositionSystemLines({ segments: [segment(0, 20, '', '4-2-3-1')] }).lines.map((line) => line.label), ['— · 4-2-3-1']);
+assert.deepEqual(buildMatchPositionSystemLines({ segments: [segment(0, 20, '', '')] }).lines.map((line) => line.label), ['—']);
+assert.deepEqual(buildMatchPositionSystemLines({}).lines.map((line) => line.label), ['—'], 'sin evidencia no se inventa posición ni sistema');
 
 assert.equal(formatPositionSegmentRange(usage.matches[0].segments[0]), "0'–30'");
 assert.equal(buildMatchPositionSummary({}).hasDetails, false);

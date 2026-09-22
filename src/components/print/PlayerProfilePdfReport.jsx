@@ -112,15 +112,20 @@ function RivalIdentity({ row }) {
   return <span className="player-pdf-rival">{row.opponentCrest ? <img src={row.opponentCrest} alt="" /> : <i>{initials || 'R'}</i>}<b>{row.opponent}</b></span>;
 }
 
+function PositionSystemCell({ row }) {
+  const lines = safeRows(row.positionSystemLines).length ? row.positionSystemLines : ['—'];
+  return <span className="player-pdf-position-system">{lines.map((line, index) => <b key={`${line}-${index}`}>{line}</b>)}</span>;
+}
+
 function HistoryTable({ rows }) {
   if (!safeRows(rows).length) return <p className="player-pdf-empty-line">Sin partidos registrados en el ámbito seleccionado.</p>;
   return (
     <table>
-      <colgroup><col className="date" /><col className="opponent" /><col className="score" /><col className="competition" /><col className="venue" /><col className="role" /><col className="minutes" /><col className="action" /><col className="action" /><col className="cards" /><col className="injury" /></colgroup>
-      <thead><tr><th>Fecha</th><th>Rival</th><th>Resultado</th><th>Competición</th><th>L/V</th><th>Rol</th><th>Min</th><th>Goles</th><th>Asist.</th><th>Tarjetas</th><th>Lesión</th></tr></thead>
+      <colgroup><col className="date" /><col className="opponent" /><col className="score" /><col className="competition" /><col className="venue" /><col className="role" /><col className="position-system" /><col className="minutes" /><col className="action" /><col className="action" /><col className="cards" /><col className="injury" /></colgroup>
+      <thead><tr><th>Fecha</th><th>Rival</th><th>Resultado</th><th>Competición</th><th>L/V</th><th>Rol</th><th>POS./SIST.</th><th>Min</th><th>Goles</th><th>Asist.</th><th>Tarjetas</th><th>Lesión</th></tr></thead>
       <tbody>{rows.map((row) => (
         <tr key={row.id}>
-          <td>{row.date}</td><td><RivalIdentity row={row} /></td><td><b className="player-pdf-score">{row.result}</b></td><td>{row.competition}</td><td>{row.venue}</td><td>{row.role}</td><td>{row.minutes}</td>
+          <td>{row.date}</td><td><RivalIdentity row={row} /></td><td><b className="player-pdf-score">{row.result}</b></td><td>{row.competition}</td><td>{row.venue}</td><td>{row.role}</td><td><PositionSystemCell row={row} /></td><td>{row.minutes}</td>
           <td><HistoryActionLinks count={row.goals} links={row.goalLinks} type="Gol" /></td>
           <td><HistoryActionLinks count={row.assists} links={row.assistLinks} type="Asistencia" /></td>
           <td>{row.cards}</td><td>{row.injury}</td>

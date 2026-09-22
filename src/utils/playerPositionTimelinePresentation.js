@@ -78,10 +78,32 @@ export const getPositionTimelineMatches = (usage = {}, positionKey = '') => rows
   }];
 });
 
+export const buildMatchPositionSystemLines = (matchUsage = {}) => {
+  const segments = mergeContiguousPositionSegments(rows(matchUsage?.segments));
+  const lines = segments.map((segment) => {
+    const position = segment.identified && clean(segment.position)
+      ? getTacticalPositionAbbreviation(segment.position)
+      : '—';
+    const system = clean(segment.system) || '—';
+    return {
+      position,
+      system,
+      label: position === '—' && system === '—' ? '—' : `${position} · ${system}`,
+      segment,
+    };
+  });
+  return {
+    lines: lines.length ? lines : [{ position: '—', system: '—', label: '—', segment: null }],
+    segments,
+    canonicalSegments: rows(matchUsage?.segments),
+  };
+};
+
 export const buildMatchPositionSummary = (matchUsage = {}) => {
   const canonicalSegments = rows(matchUsage?.segments);
   const segments = mergeContiguousPositionSegments(canonicalSegments);
-  if (!segments.length) return { label: '—', systemLabel: 'Sin datos tácticos', segments: [], canonicalSegments: [], hasDetails: false, positionCount: 0, systemCount: 0, visualSegmentCount: 0 };
+  const positionSystem = buildMatchPositionSystemLines(matchUsage);
+  if (!segments.length) return { label: '—', systemLabel: 'Sin datos tácticos', segments: [], canonicalSegments: [], positionSystemLines: positionSystem.lines, hasDetails: false, positionCount: 0, systemCount: 0, visualSegmentCount: 0 };
   const positions = [...new Set(segments.filter((segment) => segment.identified && clean(segment.position)).map((segment) => clean(segment.position)))];
   const systems = [...new Set(segments.map((segment) => clean(segment.system)).filter(Boolean))];
   const hasUnknownPosition = segments.some((segment) => !segment.identified);
@@ -92,6 +114,7 @@ export const buildMatchPositionSummary = (matchUsage = {}) => {
       systemLabel: clean(segment.system) || 'Sistema —',
       segments,
       canonicalSegments,
+      positionSystemLines: positionSystem.lines,
       hasDetails: false,
       positionCount: positions.length,
       systemCount: systems.length,
@@ -108,6 +131,7 @@ export const buildMatchPositionSummary = (matchUsage = {}) => {
     systemLabel: systems.length === 1 ? systems[0] : systems.length > 1 ? `${systems.length} sistemas` : 'Sistema —',
     segments,
     canonicalSegments,
+    positionSystemLines: positionSystem.lines,
     hasDetails: true,
     positionCount: positions.length,
     systemCount: systems.length,
