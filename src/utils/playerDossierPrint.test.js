@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { jsPDF } from 'jspdf';
 import { inspectPlayerDossier, printPlayerDossier } from './playerDossierPrint.js';
 import { auditPlayerPdfLinkAnnotations, createPlayerProfilePdf, getObjectiveMetricRowLayout, loadPlayerPdfImage } from './playerProfilePdfExport.js';
+import { buildPlayerAnalysisSeasonReport } from './playerAnalysisPresentation.js';
 
 const createReportNode = ({ width = 900, height = 2400, text = 'Borja Rodríguez Minutos Partidos Titularidades Goles Asistencias', blocks = 8 } = {}) => ({
   childElementCount: blocks,
@@ -83,7 +84,8 @@ const exporterSource = fs.readFileSync(new URL('./playerProfilePdfExport.js', im
 assert.match(componentSource, /data-player-video-link="history"/, 'los enlaces inequívocos del historial se identifican para la auditoría');
 assert.doesNotMatch(componentSource, /data-player-video-link="library"/, 'el PDF no mantiene una videoteca independiente duplicada');
 assert.doesNotMatch(componentSource, /data-player-video-link="timeline"/, 'el dossier profesional ya no incluye el gráfico de impacto temporal');
-assert.doesNotMatch(exporterSource, /html2canvas|toDataURL\(['"]image\/png/, 'el generador no captura ni rasteriza el DOM');
+assert.doesNotMatch(exporterSource, /html2canvas|pdf\.html\(/, 'el generador no captura ni rasteriza el DOM completo');
+assert.match(exporterSource, /rasterizePlayerPdfImage/, 'la conversión puntual de formatos de imagen no compatibles queda aislada del render vectorial');
 assert.match(exporterSource, /pdf\.link\([\s\S]*?\{ url \}\)/, 'el generador vectorial crea anotaciones PDF estándar');
 assert.match(exporterSource, /auditPlayerPdfLinkAnnotations\(arrayBuffer, expectedVideoUrls\)/, 'el binario final se audita antes de iniciar la descarga');
 
@@ -157,11 +159,37 @@ const unsupportedRemoteImage = await loadPlayerPdfImage('https://images.example/
   fetchImpl: async () => ({ ok: true, blob: async () => new Blob(['<svg/>'], { type: 'image/svg+xml' }) }),
 });
 assert.equal(unsupportedRemoteImage.error, 'unsupported_mime:image/svg+xml');
+const rasterizedSvg = await loadPlayerPdfImage('https://images.example/crest.svg', {
+  fetchImpl: async () => ({ ok: true, blob: async () => new Blob(['<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>'], { type: 'image/svg+xml' }) }),
+  documentRef: {
+    createElement: (tag) => {
+      if (tag === 'img') return {
+        naturalWidth: 10,
+        naturalHeight: 10,
+        set src(value) { this.source = value; this.onload(); },
+      };
+      return {
+        width: 0,
+        height: 0,
+        getContext: () => ({ clearRect() {}, drawImage() {} }),
+        toDataURL: () => `data:image/png;base64,${Buffer.from(transparentPng).toString('base64')}`,
+      };
+    },
+  },
+});
+assert.equal(rasterizedSvg.format, 'PNG');
+assert.equal(rasterizedSvg.convertedFrom, 'image/svg+xml', 'un escudo SVG se rasteriza en el navegador antes de insertarlo en jsPDF');
 const competitionLogoResult = await createPlayerProfilePdf({
   report: jairoReport,
   fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
 });
 assert.equal(competitionLogoResult.presentationAudit.competitionProfile.logoLoaded, true, 'el logo real de la competición se carga en la cabecera');
+assert.deepEqual(competitionLogoResult.presentationAudit.competitionLogos.map(({ key, loaded }) => [key, loaded]), [['copa_rfef', true]], 'el mismo logo canónico se dibuja también en la fila de competición');
+const competitionWithoutLogo = await createPlayerProfilePdf({
+  report: { ...jairoReport, competitionBreakdown: [{ ...jairoReport.competitionBreakdown[0], logoUrl: '' }] },
+  fetchImpl: null,
+});
+assert.deepEqual(competitionWithoutLogo.presentationAudit.competitionLogos.map(({ loaded, error, placeholder }) => [loaded, error, placeholder]), [[false, 'missing_source', false]], 'una competición sin logo conserva sólo el nombre y nunca muestra icono roto');
 const normalPhotoResult = await createPlayerProfilePdf({
   report: { ...jairoReport, identity: { ...jairoReport.identity, image: 'https://images.example/jairo-original.png' } },
   fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
@@ -321,8 +349,52 @@ const multiVideo = await createPlayerProfilePdf({ report: makeScenarioReport({ g
 assert.equal(multiVideo.audit.linkAnnotations, 0, 'J: las acciones no se duplican fuera del historial');
 assert.equal(multiVideo.pages, 2, 'J: eliminar la videoteca evita páginas fantasma aunque existan muchas acciones con URL');
 assert.ok(multiVideo.pageSections.every((section) => !/VÍDEO/u.test(section)), 'J: no queda ninguna sección o continuación de vídeo');
-const fullSeason = await createPlayerProfilePdf({ report: makeScenarioReport({ matches: 48, goals: 8, assists: 4, targetCounts: [1, 2, 1, 1, 1, 1, 0, 1] }), fetchImpl: null });
+const seasonAnalysis = buildPlayerAnalysisSeasonReport({
+  liveStats: {
+    matchesWithEvents: 6,
+    goalsPerMatch: 0,
+    shotsPerMatch: 0.67,
+    shotsOnTargetPerMatch: 0.33,
+    shotAccuracyPercentage: 50,
+    crossesPerMatch: 3.17,
+    turnoversPerMatch: 1.67,
+    stealsPerMatch: 2.83,
+    foulsCommittedPerMatch: 0,
+    foulsReceivedPerMatch: 0.17,
+  },
+  matches: [{
+    matchId: 'season-match-1', matchDate: '2026-09-13', opponent: 'Unión Club con un nombre extraordinariamente largo',
+    opponentCrest: 'https://images.example/season-rival.png', goals: 0, shots: 2, shotsOnTarget: 1,
+    crosses: 8, turnovers: 4, steals: 5, foulsCommitted: 2, foulsReceived: 1,
+  }],
+});
+const fullSeasonReport = makeScenarioReport({ matches: 36, goals: 8, assists: 4, targetCounts: [1, 2, 1, 1, 1, 1, 0, 1] });
+fullSeasonReport.liveSeason = seasonAnalysis.live;
+fullSeasonReport.seasonMaximums = seasonAnalysis.maximums;
+const fullSeason = await createPlayerProfilePdf({
+  report: fullSeasonReport,
+  fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
+});
 assert.ok(fullSeason.pages > 2, 'N: una temporada completa pagina sin comprimir el historial');
+assert.ok(fullSeason.pageSections.includes('REGISTRO EN VIVO · TEMPORADA'), 'el bloque de temporada queda después del historial y antes de la analítica');
+assert.equal(fullSeason.presentationAudit.liveSeason.window, 'full_scope');
+assert.equal(fullSeason.presentationAudit.liveSeason.matchesWithEvents, 6, 'el PDF conserva exactamente el denominador del presenter');
+assert.deepEqual(fullSeason.presentationAudit.liveSeason.metrics.map(({ key, value }) => [key, value]), [
+  ['goalsPerMatch', 0], ['shotsPerMatch', 0.67], ['shotsOnTargetPerMatch', 0.33], ['shotAccuracyPercentage', 50],
+  ['crossesPerMatch', 3.17], ['turnoversPerMatch', 1.67], ['stealsPerMatch', 2.83],
+  ['foulsCommittedPerMatch', 0], ['foulsReceivedPerMatch', 0.17],
+]);
+assert.equal(fullSeason.presentationAudit.seasonMaximums.find((maximum) => maximum.metric === 'shots').value, 2);
+assert.equal(fullSeason.presentationAudit.seasonMaximums.every((maximum) => maximum.crestLoaded), true, 'los máximos reutilizan los escudos precargados del exportador');
+assert.deepEqual(fullSeason.presentationAudit.maximumsLayout, { columns: 3, cardHeight: 31, cards: 7, cardSplit: false }, 'las tarjetas largas se paginan en una cuadrícula de tres sin dividirse');
+
+const noLiveDataReport = makeScenarioReport();
+const noLiveData = buildPlayerAnalysisSeasonReport();
+noLiveDataReport.liveSeason = noLiveData.live;
+noLiveDataReport.seasonMaximums = noLiveData.maximums;
+const noLiveDataPdf = await createPlayerProfilePdf({ report: noLiveDataReport, fetchImpl: null });
+assert.equal(noLiveDataPdf.presentationAudit.liveSeason.hasData, false);
+assert.deepEqual(noLiveDataPdf.presentationAudit.seasonMaximums, [], 'la ausencia real no crea máximos cero ficticios');
 
 const globalScope = await createPlayerProfilePdf({ report: makeScenarioReport({ filters: { season: '2026/2027', competition: 'Temporada', venue: 'Todos' }, goals: 1, targetCounts: [1] }), fetchImpl: null });
 assert.deepEqual(globalScope.presentationAudit.scope, { season: '2026/2027', competition: 'Todas las competiciones', venue: 'Local + visitante' }, 'el ámbito global representa temporada, todas las competiciones y ambas localías');

@@ -17,6 +17,7 @@ import {
   PLAYER_ANALYSIS_VENUE_OPTIONS,
   PLAYER_ANALYSIS_WINDOW_OPTIONS,
   buildCompetitionMinutesRows,
+  buildPlayerAnalysisLivePresentation,
   buildPlayerAnalysisOverviewPresentation,
   shouldShowPlayerCompetitionMinutes,
 } from '../../utils/playerAnalysisPresentation';
@@ -376,23 +377,7 @@ function LiveSection({ state, liveWindow, onWindowChange, onRetry }) {
   if (state.status === 'empty') return <PlayerAnalysisEmpty title="Sin Registro en vivo" copy="No hay agregados validados para este ámbito." />;
 
   const live = state.data;
-  const metricGroups = [
-    { title: 'Finalización', metrics: [
-      { label: 'Goles / partido', value: live.goalsPerMatch, format: 'ratio' },
-      { label: 'Tiros / partido', value: live.shotsPerMatch, format: 'ratio' },
-      { label: 'A puerta / partido', value: live.shotsOnTargetPerMatch, format: 'ratio' },
-      { label: '% tiros a puerta', value: live.shotAccuracyPercentage, format: 'percent' },
-    ] },
-    { title: 'Con balón', metrics: [
-      { label: 'Centros / partido', value: live.crossesPerMatch, format: 'ratio' },
-      { label: 'Pérdidas / partido', value: live.turnoversPerMatch, format: 'ratio' },
-    ] },
-    { title: 'Defensivo', metrics: [
-      { label: 'Robos / partido', value: live.stealsPerMatch, format: 'ratio' },
-      { label: 'Faltas realizadas', value: live.foulsCommittedPerMatch, format: 'ratio' },
-      { label: 'Faltas recibidas', value: live.foulsReceivedPerMatch, format: 'ratio' },
-    ] },
-  ];
+  const livePresentation = buildPlayerAnalysisLivePresentation(live);
 
   return (
     <AccordionSection title="Registro en vivo" subtitle="Indicadores validados" defaultOpen>
@@ -406,7 +391,7 @@ function LiveSection({ state, liveWindow, onWindowChange, onRetry }) {
           </p>
         ) : null}
         <div className="mt-3 grid min-w-0 gap-3 lg:grid-cols-3">
-          {metricGroups.map((group) => (
+          {livePresentation.metricGroups.map((group) => (
             <LiveMetricGroup key={group.title} title={group.title} metrics={group.metrics} />
           ))}
         </div>

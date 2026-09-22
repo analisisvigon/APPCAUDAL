@@ -7,7 +7,9 @@ import {
   buildPlayerAnalysisConnections,
   buildPlayerAnalysisMatchComparison,
   buildPlayerAnalysisMatchSequence,
+  buildPlayerAnalysisLivePresentation,
   buildPlayerAnalysisOverviewPresentation,
+  buildPlayerAnalysisSeasonReport,
   buildPlayerAnalysisSeasonMaximums,
   buildPlayerProductionCategories,
   buildPlayerProductionZones,
@@ -75,6 +77,30 @@ assert.equal(maximums.some((maximum) => maximum.metric.key === 'turnovers'), tru
 assert.equal(maximums.find((maximum) => maximum.metric.key === 'shots').match.matchId, 'match-c', 'Empate: fecha más reciente y match_id estable.');
 assert.equal(maximums.find((maximum) => maximum.metric.key === 'steals').match.matchId, 'match-c', 'Empate en tres partidos: gana el más reciente y luego match_id.');
 assert.equal(buildPlayerAnalysisSeasonMaximums(matchStats.map((match) => ({ ...match, goals: 0 }))).some((maximum) => maximum.metric.key === 'goals'), false, 'Un máximo cero se omite.');
+
+const ismaLiveStats = {
+  matchesWithEvents: 6,
+  goalsPerMatch: 0,
+  shotsPerMatch: 0.67,
+  shotsOnTargetPerMatch: 0.33,
+  shotAccuracyPercentage: 50,
+  crossesPerMatch: 3.17,
+  turnoversPerMatch: 1.67,
+  stealsPerMatch: 2.83,
+  foulsCommittedPerMatch: 0,
+  foulsReceivedPerMatch: 0.17,
+};
+const livePresentation = buildPlayerAnalysisLivePresentation(ismaLiveStats);
+assert.equal(livePresentation.window, 'full_scope');
+assert.equal(livePresentation.matchesWithEvents, 6);
+assert.equal(livePresentation.hasData, true);
+assert.deepEqual(livePresentation.metricGroups.map((group) => group.title), ['Finalización', 'Con balón', 'Defensivo']);
+assert.equal(livePresentation.metricGroups[0].metrics.find((metric) => metric.key === 'goalsPerMatch').value, 0, 'el cero real no se convierte en ausencia');
+assert.equal(buildPlayerAnalysisLivePresentation({}).metricGroups[0].metrics[0].value, null, 'la ausencia conserva semántica nula');
+const seasonReport = buildPlayerAnalysisSeasonReport({ liveStats: ismaLiveStats, matches: matchStats });
+assert.equal(seasonReport.window, 'full_scope');
+assert.deepEqual(seasonReport.live, livePresentation, 'APP y PDF consumen la misma presentación de Registro en vivo');
+assert.deepEqual(seasonReport.maximums, maximums, 'APP y PDF consumen el mismo presenter de máximos');
 
 const comparison = buildPlayerAnalysisMatchComparison(matchStats, 'match-a', 'match-c');
 assert.equal(comparison.matchA.sequenceLabel, 'P1');

@@ -2,9 +2,12 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { buildPlayerProfilePrintReport } from '../src/utils/playerProfilePrintReport.js';
 import { createPlayerProfilePdf } from '../src/utils/playerProfilePdfExport.js';
+import { buildPlayerAnalysisSeasonReport } from '../src/utils/playerAnalysisPresentation.js';
 
 const outputDirectory = path.resolve('artifacts/player-profile-pdf-finalization-qa');
 await fs.mkdir(outputDirectory, { recursive: true });
+const qaImageBytes = await fs.readFile(path.resolve('public/pwa-192x192.png'));
+const qaImage = `data:image/png;base64,${qaImageBytes.toString('base64')}`;
 
 const goalZones = [
   'Alta izquierda', 'Alta centro', 'Alta derecha',
@@ -51,6 +54,8 @@ const history = opponents.map(([opponent, date, competition], index) => ({
   id: `isma-${index + 1}`,
   date,
   opponent,
+  opponentCrest: qaImage,
+  opponentCrestSource: index === 5 ? 'team_name_normalized' : 'team_id',
   result: index === 6 ? '1-0' : '1-1',
   outcome: index === 6 ? 'V' : 'E',
   competition,
@@ -64,6 +69,48 @@ const history = opponents.map(([opponent, date, competition], index) => ({
   goalLinks: index === 6 ? [goalUrl] : index === 4 ? [secondGoalUrl] : [],
   assistLinks: index === 6 ? [assistUrl] : [],
 }));
+
+const seasonMatchStats = [
+  { matchId: 'isma-1', matchDate: '2026-08-23', opponent: "L'Entregu CF", shots: 0, shotsOnTarget: 0, crosses: 2, turnovers: 1, steals: 2, foulsReceived: 0 },
+  { matchId: 'isma-2', matchDate: '2026-08-30', opponent: 'CD Praviano', shots: 1, shotsOnTarget: 0, crosses: 3, turnovers: 4, steals: 5, foulsReceived: 0 },
+  { matchId: 'isma-3', matchDate: '2026-09-02', opponent: 'Marino de Luanco', shots: 0, shotsOnTarget: 0, crosses: 2, turnovers: 1, steals: 3, foulsReceived: 0 },
+  { matchId: 'isma-4', matchDate: '2026-09-06', opponent: 'CD Lealtad', shots: 1, shotsOnTarget: 1, crosses: 2, turnovers: 1, steals: 2, foulsReceived: 0 },
+  { matchId: 'isma-6', matchDate: '2026-09-09', opponent: 'Salamanca CF UDS', shots: 0, shotsOnTarget: 0, crosses: 2, turnovers: 1, steals: 2, foulsReceived: 0 },
+  { matchId: 'isma-7', matchDate: '2026-09-13', opponent: 'Unión Club Ceares', shots: 2, shotsOnTarget: 1, crosses: 8, turnovers: 2, steals: 3, foulsReceived: 1 },
+].map((match) => ({
+  ...match,
+  opponentCrest: qaImage,
+  goals: 0,
+  foulsCommitted: 0,
+}));
+const seasonTotals = seasonMatchStats.reduce((total, match) => ({
+  goals: total.goals + match.goals,
+  shots: total.shots + match.shots,
+  shotsOnTarget: total.shotsOnTarget + match.shotsOnTarget,
+  crosses: total.crosses + match.crosses,
+  turnovers: total.turnovers + match.turnovers,
+  steals: total.steals + match.steals,
+  foulsCommitted: total.foulsCommitted + match.foulsCommitted,
+  foulsReceived: total.foulsReceived + match.foulsReceived,
+}), { goals: 0, shots: 0, shotsOnTarget: 0, crosses: 0, turnovers: 0, steals: 0, foulsCommitted: 0, foulsReceived: 0 });
+const matchCount = seasonMatchStats.length;
+const perMatch = (value) => Math.round((Number(value || 0) / matchCount) * 100) / 100;
+const seasonAnalysis = buildPlayerAnalysisSeasonReport({
+  liveStats: {
+    window: 'full_scope',
+    matchesWithEvents: matchCount,
+    goalsPerMatch: perMatch(seasonTotals.goals),
+    shotsPerMatch: perMatch(seasonTotals.shots),
+    shotsOnTargetPerMatch: perMatch(seasonTotals.shotsOnTarget),
+    shotAccuracyPercentage: seasonTotals.shots ? (seasonTotals.shotsOnTarget / seasonTotals.shots) * 100 : null,
+    crossesPerMatch: perMatch(seasonTotals.crosses),
+    turnoversPerMatch: perMatch(seasonTotals.turnovers),
+    stealsPerMatch: perMatch(seasonTotals.steals),
+    foulsCommittedPerMatch: perMatch(seasonTotals.foulsCommitted),
+    foulsReceivedPerMatch: perMatch(seasonTotals.foulsReceived),
+  },
+  matches: seasonMatchStats,
+});
 
 const baseSource = {
   identity: {
@@ -82,9 +129,11 @@ const baseSource = {
     goals: 2, assists: 1, goalContributions: 3, yellow: 0, red: 0, injuries: 0, benchEntries: 0,
   },
   competitionBreakdown: [
-    { key: 'copa_rfef', label: 'Copa RFEF', played: 6, starts: 6, minutes: 540, goals: 1, assists: 0 },
-    { key: 'league', label: 'Liga', played: 2, starts: 2, minutes: 180, goals: 1, assists: 1 },
+    { key: 'copa_rfef', label: 'Copa RFEF', logoUrl: qaImage, played: 6, starts: 6, minutes: 540, goals: 1, assists: 0 },
+    { key: 'league', label: 'Liga', logoUrl: qaImage, played: 2, starts: 2, minutes: 180, goals: 1, assists: 1 },
   ],
+  liveSeason: seasonAnalysis.live,
+  seasonMaximums: seasonAnalysis.maximums,
   positionUsage: {
     positions: [{ position: 'Extremo izquierdo', minutes: 720, percentage: 100 }],
     totalMinutes: 720, determinedMinutes: 720, identifiedMinutes: 720,
@@ -112,13 +161,23 @@ const baseSource = {
 
 const writeQa = async (filename, source) => {
   const report = buildPlayerProfilePrintReport(source);
-  const result = await createPlayerProfilePdf({ report, fetchImpl: null });
+  const result = await createPlayerProfilePdf({ report });
   const pdfPath = path.join(outputDirectory, filename);
   await fs.writeFile(pdfPath, Buffer.from(result.arrayBuffer));
   return { pdfPath, report, result };
 };
 
 const isma = await writeQa('isma-cerro-finalizacion.pdf', baseSource);
+const longSeason = await writeQa('isma-cerro-temporada-larga-36-partidos.pdf', {
+  ...baseSource,
+  identity: { ...baseSource.identity, name: 'Isma Cerro · QA 36 partidos' },
+  seasonSummary: { ...baseSource.seasonSummary, played: 36, starts: 30, minutes: 2860, possibleMinutes: 3240 },
+  history: Array.from({ length: 36 }, (_, index) => ({
+    ...history[index % history.length],
+    id: `long-${index + 1}`,
+    date: `${String((index % 28) + 1).padStart(2, '0')}/${index < 28 ? '08' : '09'}/2026`,
+  })),
+});
 const multipleCategories = await writeQa('finalizacion-varias-categorias.pdf', {
   ...baseSource,
   identity: { ...baseSource.identity, name: 'QA varias categorías' },
@@ -146,12 +205,27 @@ const multipleCategories = await writeQa('finalizacion-varias-categorias.pdf', {
   },
 });
 
+const summarizeAssetSource = (value) => String(value || '').startsWith('data:') ? '[embedded-qa-image]' : value;
 const summarize = ({ pdfPath, report, result }) => ({
   pdfPath,
   pages: result.pages,
   pageSections: result.pageSections,
   sectionPlan: result.presentationAudit.sectionPlan,
   linkAudit: result.audit,
+  liveSeason: result.presentationAudit.liveSeason,
+  seasonMaximums: result.presentationAudit.seasonMaximums.map((maximum) => ({
+    ...maximum,
+    crestSource: summarizeAssetSource(maximum.crestSource),
+  })),
+  maximumsLayout: result.presentationAudit.maximumsLayout,
+  competitionLogos: result.presentationAudit.competitionLogos.map((competition) => ({
+    ...competition,
+    source: summarizeAssetSource(competition.source),
+  })),
+  opponentCrests: result.presentationAudit.opponentCrests.map((opponent) => ({
+    ...opponent,
+    source: summarizeAssetSource(opponent.source),
+  })),
   bodyParts: report.goalAnalysis.bodyParts,
   goalTypes: report.goalAnalysis.types,
   hasStandaloneVideoSection: result.pageSections.some((section) => /vídeo/i.test(section))
@@ -162,6 +236,7 @@ const audit = {
   generatedAt: new Date().toISOString(),
   fixtureBasis: 'Caso visual solicitado: Isma Cerro, 2 goles con pie derecho, 2 goles ABP y enlaces de gol/asistencia en la fila de Ceares.',
   isma: summarize(isma),
+  longSeason: summarize(longSeason),
   multipleCategories: summarize(multipleCategories),
 };
 await fs.writeFile(path.join(outputDirectory, 'audit.json'), `${JSON.stringify(audit, null, 2)}\n`);

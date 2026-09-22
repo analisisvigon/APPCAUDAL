@@ -78,6 +78,7 @@ assert.match(panel, /getMyPlayerAnalysisMatchStats\(client, \{ competitionScope,
 assert.match(panel, /<PlayerAnalysisMatchEvolution state=\{matchStatsState\} liveWindow=\{liveWindow\} onRetry=\{retryMatchStats\} \/>/);
 assert.match(panel, /usePlayerAnalysisHistory\(client, competitionScope, venue\)/);
 
+const livePresentationSources = `${panel}\n${presentation}`;
 for (const label of [
   'Principales', 'Minutos', 'Partidos', 'Titularidades', 'Participación',
   'Producción', 'Goles', 'Asistencias', 'G+A', 'Disciplina', 'Amarillas', 'Rojas',
@@ -122,7 +123,7 @@ for (const label of [
   'Registro en vivo', 'Finalización', 'Con balón', 'Defensivo', 'Goles / partido', 'Tiros / partido',
   'A puerta / partido', '% tiros a puerta', 'Centros / partido', 'Pérdidas / partido',
   'Robos / partido', 'Faltas realizadas', 'Faltas recibidas',
-]) assert.ok(panel.includes(label), `Live sin ${label}.`);
+]) assert.ok(livePresentationSources.includes(label), `Live sin ${label}.`);
 assert.match(panel, /partido analizado/);
 assert.match(panel, /partidos analizados/);
 assert.equal((panel.match(/<LiveMetricGroup /g) || []).length, 1, 'Los tres grupos se generan desde una única estructura compacta.');

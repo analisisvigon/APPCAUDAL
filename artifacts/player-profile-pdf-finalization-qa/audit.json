@@ -1,11 +1,12 @@
 {
-  "generatedAt": "2026-09-22T09:40:15.507Z",
+  "generatedAt": "2026-09-22T13:15:40.677Z",
   "fixtureBasis": "Caso visual solicitado: Isma Cerro, 2 goles con pie derecho, 2 goles ABP y enlaces de gol/asistencia en la fila de Ceares.",
   "isma": {
     "pdfPath": "C:\\Users\\mvigo\\OneDrive\\Escritorio\\APPCAUDAL\\artifacts\\player-profile-pdf-finalization-qa\\isma-cerro-finalizacion.pdf",
-    "pages": 2,
+    "pages": 3,
     "pageSections": [
       "PERFIL Y RENDIMIENTO COMPETITIVO",
+      "REGISTRO EN VIVO · TEMPORADA",
       "PRODUCCIÓN Y ZONAS"
     ],
     "sectionPlan": [
@@ -25,28 +26,38 @@
         "number": "03"
       },
       {
+        "key": "liveSeason",
+        "label": "Registro en vivo · Temporada",
+        "number": "04"
+      },
+      {
+        "key": "seasonMaximums",
+        "label": "Máximos de la temporada",
+        "number": "05"
+      },
+      {
         "key": "zones",
         "label": "Zonas de producción",
-        "number": "04"
+        "number": "06"
       },
       {
         "key": "production",
         "label": "Producción ofensiva",
-        "number": "05"
+        "number": "07"
       },
       {
         "key": "connections",
         "label": "Conexiones ofensivas",
-        "number": "06"
+        "number": "08"
       },
       {
         "key": "goalAnalysis",
         "label": "Análisis objetivo de finalización",
-        "number": "07"
+        "number": "09"
       }
     ],
     "linkAudit": {
-      "bytes": 15178,
+      "bytes": 37845,
       "linkAnnotations": 3,
       "uriAnnotations": 3,
       "urls": [
@@ -62,6 +73,883 @@
       "missingUrls": [],
       "valid": true
     },
+    "liveSeason": {
+      "window": "full_scope",
+      "matchesWithEvents": 6,
+      "hasData": true,
+      "metrics": [
+        {
+          "key": "goalsPerMatch",
+          "value": 0
+        },
+        {
+          "key": "shotsPerMatch",
+          "value": 0.67
+        },
+        {
+          "key": "shotsOnTargetPerMatch",
+          "value": 0.33
+        },
+        {
+          "key": "shotAccuracyPercentage",
+          "value": 50
+        },
+        {
+          "key": "crossesPerMatch",
+          "value": 3.17
+        },
+        {
+          "key": "turnoversPerMatch",
+          "value": 1.67
+        },
+        {
+          "key": "stealsPerMatch",
+          "value": 2.83
+        },
+        {
+          "key": "foulsCommittedPerMatch",
+          "value": 0
+        },
+        {
+          "key": "foulsReceivedPerMatch",
+          "value": 0.17
+        }
+      ]
+    },
+    "seasonMaximums": [
+      {
+        "metric": "shots",
+        "value": 2,
+        "matchId": "isma-7",
+        "opponent": "Unión Club Ceares",
+        "matchDate": "2026-09-13",
+        "crestSource": "[embedded-qa-image]",
+        "crestLoaded": true,
+        "crestError": "",
+        "crestConvertedFrom": ""
+      },
+      {
+        "metric": "shotsOnTarget",
+        "value": 1,
+        "matchId": "isma-7",
+        "opponent": "Unión Club Ceares",
+        "matchDate": "2026-09-13",
+        "crestSource": "[embedded-qa-image]",
+        "crestLoaded": true,
+        "crestError": "",
+        "crestConvertedFrom": ""
+      },
+      {
+        "metric": "crosses",
+        "value": 8,
+        "matchId": "isma-7",
+        "opponent": "Unión Club Ceares",
+        "matchDate": "2026-09-13",
+        "crestSource": "[embedded-qa-image]",
+        "crestLoaded": true,
+        "crestError": "",
+        "crestConvertedFrom": ""
+      },
+      {
+        "metric": "steals",
+        "value": 5,
+        "matchId": "isma-2",
+        "opponent": "CD Praviano",
+        "matchDate": "2026-08-30",
+        "crestSource": "[embedded-qa-image]",
+        "crestLoaded": true,
+        "crestError": "",
+        "crestConvertedFrom": ""
+      },
+      {
+        "metric": "foulsReceived",
+        "value": 1,
+        "matchId": "isma-7",
+        "opponent": "Unión Club Ceares",
+        "matchDate": "2026-09-13",
+        "crestSource": "[embedded-qa-image]",
+        "crestLoaded": true,
+        "crestError": "",
+        "crestConvertedFrom": ""
+      },
+      {
+        "metric": "turnovers",
+        "value": 4,
+        "matchId": "isma-2",
+        "opponent": "CD Praviano",
+        "matchDate": "2026-08-30",
+        "crestSource": "[embedded-qa-image]",
+        "crestLoaded": true,
+        "crestError": "",
+        "crestConvertedFrom": ""
+      }
+    ],
+    "maximumsLayout": {
+      "columns": 3,
+      "cardHeight": 31,
+      "cards": 6,
+      "cardSplit": false
+    },
+    "competitionLogos": [
+      {
+        "key": "copa_rfef",
+        "label": "Copa RFEF",
+        "source": "[embedded-qa-image]",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "key": "league",
+        "label": "Liga",
+        "source": "[embedded-qa-image]",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      }
+    ],
+    "opponentCrests": [
+      {
+        "matchId": "isma-1",
+        "opponent": "L'Entregu CF",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "isma-2",
+        "opponent": "CD Praviano",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "isma-3",
+        "opponent": "Marino de Luanco",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "isma-4",
+        "opponent": "CD Lealtad",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "isma-5",
+        "opponent": "Astur CF",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "isma-6",
+        "opponent": "Salamanca CF UDS",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_name_normalized",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "isma-7",
+        "opponent": "Unión Club Ceares",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "isma-8",
+        "opponent": "CD Covadonga",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      }
+    ],
+    "bodyParts": {
+      "values": [
+        {
+          "label": "Pie derecho",
+          "count": 2
+        }
+      ],
+      "known": 2,
+      "missing": 0,
+      "total": 2
+    },
+    "goalTypes": {
+      "phases": [
+        {
+          "label": "ABP",
+          "count": 2
+        }
+      ],
+      "known": 2,
+      "missing": 0,
+      "total": 2
+    },
+    "hasStandaloneVideoSection": false
+  },
+  "longSeason": {
+    "pdfPath": "C:\\Users\\mvigo\\OneDrive\\Escritorio\\APPCAUDAL\\artifacts\\player-profile-pdf-finalization-qa\\isma-cerro-temporada-larga-36-partidos.pdf",
+    "pages": 4,
+    "pageSections": [
+      "PERFIL Y RENDIMIENTO COMPETITIVO",
+      "HISTORIAL · CONTINUACIÓN",
+      "REGISTRO EN VIVO · TEMPORADA",
+      "PRODUCCIÓN Y ZONAS"
+    ],
+    "sectionPlan": [
+      {
+        "key": "performance",
+        "label": "Rendimiento",
+        "number": "01"
+      },
+      {
+        "key": "competitions",
+        "label": "Rendimiento por competición",
+        "number": "02"
+      },
+      {
+        "key": "history",
+        "label": "Historial partido a partido",
+        "number": "03"
+      },
+      {
+        "key": "liveSeason",
+        "label": "Registro en vivo · Temporada",
+        "number": "04"
+      },
+      {
+        "key": "seasonMaximums",
+        "label": "Máximos de la temporada",
+        "number": "05"
+      },
+      {
+        "key": "zones",
+        "label": "Zonas de producción",
+        "number": "06"
+      },
+      {
+        "key": "production",
+        "label": "Producción ofensiva",
+        "number": "07"
+      },
+      {
+        "key": "connections",
+        "label": "Conexiones ofensivas",
+        "number": "08"
+      },
+      {
+        "key": "goalAnalysis",
+        "label": "Análisis objetivo de finalización",
+        "number": "09"
+      }
+    ],
+    "linkAudit": {
+      "bytes": 45713,
+      "linkAnnotations": 12,
+      "uriAnnotations": 12,
+      "urls": [
+        "https://video.example/isma-goal?t=3240",
+        "https://video.example/isma-ceares-goal?t=4680",
+        "https://video.example/isma-ceares-assist?t=4860",
+        "https://video.example/isma-goal?t=3240",
+        "https://video.example/isma-ceares-goal?t=4680",
+        "https://video.example/isma-ceares-assist?t=4860",
+        "https://video.example/isma-goal?t=3240",
+        "https://video.example/isma-ceares-goal?t=4680",
+        "https://video.example/isma-ceares-assist?t=4860",
+        "https://video.example/isma-goal?t=3240",
+        "https://video.example/isma-ceares-goal?t=4680",
+        "https://video.example/isma-ceares-assist?t=4860"
+      ],
+      "expectedUrls": [
+        "https://video.example/isma-goal?t=3240",
+        "https://video.example/isma-ceares-goal?t=4680",
+        "https://video.example/isma-ceares-assist?t=4860",
+        "https://video.example/isma-goal?t=3240",
+        "https://video.example/isma-ceares-goal?t=4680",
+        "https://video.example/isma-ceares-assist?t=4860",
+        "https://video.example/isma-goal?t=3240",
+        "https://video.example/isma-ceares-goal?t=4680",
+        "https://video.example/isma-ceares-assist?t=4860",
+        "https://video.example/isma-goal?t=3240",
+        "https://video.example/isma-ceares-goal?t=4680",
+        "https://video.example/isma-ceares-assist?t=4860"
+      ],
+      "missingUrls": [],
+      "valid": true
+    },
+    "liveSeason": {
+      "window": "full_scope",
+      "matchesWithEvents": 6,
+      "hasData": true,
+      "metrics": [
+        {
+          "key": "goalsPerMatch",
+          "value": 0
+        },
+        {
+          "key": "shotsPerMatch",
+          "value": 0.67
+        },
+        {
+          "key": "shotsOnTargetPerMatch",
+          "value": 0.33
+        },
+        {
+          "key": "shotAccuracyPercentage",
+          "value": 50
+        },
+        {
+          "key": "crossesPerMatch",
+          "value": 3.17
+        },
+        {
+          "key": "turnoversPerMatch",
+          "value": 1.67
+        },
+        {
+          "key": "stealsPerMatch",
+          "value": 2.83
+        },
+        {
+          "key": "foulsCommittedPerMatch",
+          "value": 0
+        },
+        {
+          "key": "foulsReceivedPerMatch",
+          "value": 0.17
+        }
+      ]
+    },
+    "seasonMaximums": [
+      {
+        "metric": "shots",
+        "value": 2,
+        "matchId": "isma-7",
+        "opponent": "Unión Club Ceares",
+        "matchDate": "2026-09-13",
+        "crestSource": "[embedded-qa-image]",
+        "crestLoaded": true,
+        "crestError": "",
+        "crestConvertedFrom": ""
+      },
+      {
+        "metric": "shotsOnTarget",
+        "value": 1,
+        "matchId": "isma-7",
+        "opponent": "Unión Club Ceares",
+        "matchDate": "2026-09-13",
+        "crestSource": "[embedded-qa-image]",
+        "crestLoaded": true,
+        "crestError": "",
+        "crestConvertedFrom": ""
+      },
+      {
+        "metric": "crosses",
+        "value": 8,
+        "matchId": "isma-7",
+        "opponent": "Unión Club Ceares",
+        "matchDate": "2026-09-13",
+        "crestSource": "[embedded-qa-image]",
+        "crestLoaded": true,
+        "crestError": "",
+        "crestConvertedFrom": ""
+      },
+      {
+        "metric": "steals",
+        "value": 5,
+        "matchId": "isma-2",
+        "opponent": "CD Praviano",
+        "matchDate": "2026-08-30",
+        "crestSource": "[embedded-qa-image]",
+        "crestLoaded": true,
+        "crestError": "",
+        "crestConvertedFrom": ""
+      },
+      {
+        "metric": "foulsReceived",
+        "value": 1,
+        "matchId": "isma-7",
+        "opponent": "Unión Club Ceares",
+        "matchDate": "2026-09-13",
+        "crestSource": "[embedded-qa-image]",
+        "crestLoaded": true,
+        "crestError": "",
+        "crestConvertedFrom": ""
+      },
+      {
+        "metric": "turnovers",
+        "value": 4,
+        "matchId": "isma-2",
+        "opponent": "CD Praviano",
+        "matchDate": "2026-08-30",
+        "crestSource": "[embedded-qa-image]",
+        "crestLoaded": true,
+        "crestError": "",
+        "crestConvertedFrom": ""
+      }
+    ],
+    "maximumsLayout": {
+      "columns": 3,
+      "cardHeight": 31,
+      "cards": 6,
+      "cardSplit": false
+    },
+    "competitionLogos": [
+      {
+        "key": "copa_rfef",
+        "label": "Copa RFEF",
+        "source": "[embedded-qa-image]",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "key": "league",
+        "label": "Liga",
+        "source": "[embedded-qa-image]",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      }
+    ],
+    "opponentCrests": [
+      {
+        "matchId": "long-1",
+        "opponent": "L'Entregu CF",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-2",
+        "opponent": "CD Praviano",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-3",
+        "opponent": "Marino de Luanco",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-4",
+        "opponent": "CD Lealtad",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-5",
+        "opponent": "Astur CF",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-6",
+        "opponent": "Salamanca CF UDS",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_name_normalized",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-7",
+        "opponent": "Unión Club Ceares",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-8",
+        "opponent": "CD Covadonga",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-9",
+        "opponent": "L'Entregu CF",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-10",
+        "opponent": "CD Praviano",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-11",
+        "opponent": "Marino de Luanco",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-12",
+        "opponent": "CD Lealtad",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-13",
+        "opponent": "Astur CF",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-14",
+        "opponent": "Salamanca CF UDS",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_name_normalized",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-15",
+        "opponent": "Unión Club Ceares",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-16",
+        "opponent": "CD Covadonga",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-17",
+        "opponent": "L'Entregu CF",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-18",
+        "opponent": "CD Praviano",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-19",
+        "opponent": "Marino de Luanco",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-20",
+        "opponent": "CD Lealtad",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-21",
+        "opponent": "Astur CF",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-22",
+        "opponent": "Salamanca CF UDS",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_name_normalized",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-23",
+        "opponent": "Unión Club Ceares",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-24",
+        "opponent": "CD Covadonga",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-25",
+        "opponent": "L'Entregu CF",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-26",
+        "opponent": "CD Praviano",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-27",
+        "opponent": "Marino de Luanco",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-28",
+        "opponent": "CD Lealtad",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-29",
+        "opponent": "Astur CF",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-30",
+        "opponent": "Salamanca CF UDS",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_name_normalized",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-31",
+        "opponent": "Unión Club Ceares",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-32",
+        "opponent": "CD Covadonga",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-33",
+        "opponent": "L'Entregu CF",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-34",
+        "opponent": "CD Praviano",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-35",
+        "opponent": "Marino de Luanco",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "long-36",
+        "opponent": "CD Lealtad",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      }
+    ],
     "bodyParts": {
       "values": [
         {
@@ -88,9 +976,10 @@
   },
   "multipleCategories": {
     "pdfPath": "C:\\Users\\mvigo\\OneDrive\\Escritorio\\APPCAUDAL\\artifacts\\player-profile-pdf-finalization-qa\\finalizacion-varias-categorias.pdf",
-    "pages": 2,
+    "pages": 3,
     "pageSections": [
       "PERFIL Y RENDIMIENTO COMPETITIVO",
+      "REGISTRO EN VIVO · TEMPORADA",
       "PRODUCCIÓN Y ZONAS"
     ],
     "sectionPlan": [
@@ -110,28 +999,38 @@
         "number": "03"
       },
       {
+        "key": "liveSeason",
+        "label": "Registro en vivo · Temporada",
+        "number": "04"
+      },
+      {
+        "key": "seasonMaximums",
+        "label": "Máximos de la temporada",
+        "number": "05"
+      },
+      {
         "key": "zones",
         "label": "Zonas de producción",
-        "number": "04"
+        "number": "06"
       },
       {
         "key": "production",
         "label": "Producción ofensiva",
-        "number": "05"
+        "number": "07"
       },
       {
         "key": "connections",
         "label": "Conexiones ofensivas",
-        "number": "06"
+        "number": "08"
       },
       {
         "key": "goalAnalysis",
         "label": "Análisis objetivo de finalización",
-        "number": "07"
+        "number": "09"
       }
     ],
     "linkAudit": {
-      "bytes": 15460,
+      "bytes": 38131,
       "linkAnnotations": 3,
       "uriAnnotations": 3,
       "urls": [
@@ -147,6 +1046,233 @@
       "missingUrls": [],
       "valid": true
     },
+    "liveSeason": {
+      "window": "full_scope",
+      "matchesWithEvents": 6,
+      "hasData": true,
+      "metrics": [
+        {
+          "key": "goalsPerMatch",
+          "value": 0
+        },
+        {
+          "key": "shotsPerMatch",
+          "value": 0.67
+        },
+        {
+          "key": "shotsOnTargetPerMatch",
+          "value": 0.33
+        },
+        {
+          "key": "shotAccuracyPercentage",
+          "value": 50
+        },
+        {
+          "key": "crossesPerMatch",
+          "value": 3.17
+        },
+        {
+          "key": "turnoversPerMatch",
+          "value": 1.67
+        },
+        {
+          "key": "stealsPerMatch",
+          "value": 2.83
+        },
+        {
+          "key": "foulsCommittedPerMatch",
+          "value": 0
+        },
+        {
+          "key": "foulsReceivedPerMatch",
+          "value": 0.17
+        }
+      ]
+    },
+    "seasonMaximums": [
+      {
+        "metric": "shots",
+        "value": 2,
+        "matchId": "isma-7",
+        "opponent": "Unión Club Ceares",
+        "matchDate": "2026-09-13",
+        "crestSource": "[embedded-qa-image]",
+        "crestLoaded": true,
+        "crestError": "",
+        "crestConvertedFrom": ""
+      },
+      {
+        "metric": "shotsOnTarget",
+        "value": 1,
+        "matchId": "isma-7",
+        "opponent": "Unión Club Ceares",
+        "matchDate": "2026-09-13",
+        "crestSource": "[embedded-qa-image]",
+        "crestLoaded": true,
+        "crestError": "",
+        "crestConvertedFrom": ""
+      },
+      {
+        "metric": "crosses",
+        "value": 8,
+        "matchId": "isma-7",
+        "opponent": "Unión Club Ceares",
+        "matchDate": "2026-09-13",
+        "crestSource": "[embedded-qa-image]",
+        "crestLoaded": true,
+        "crestError": "",
+        "crestConvertedFrom": ""
+      },
+      {
+        "metric": "steals",
+        "value": 5,
+        "matchId": "isma-2",
+        "opponent": "CD Praviano",
+        "matchDate": "2026-08-30",
+        "crestSource": "[embedded-qa-image]",
+        "crestLoaded": true,
+        "crestError": "",
+        "crestConvertedFrom": ""
+      },
+      {
+        "metric": "foulsReceived",
+        "value": 1,
+        "matchId": "isma-7",
+        "opponent": "Unión Club Ceares",
+        "matchDate": "2026-09-13",
+        "crestSource": "[embedded-qa-image]",
+        "crestLoaded": true,
+        "crestError": "",
+        "crestConvertedFrom": ""
+      },
+      {
+        "metric": "turnovers",
+        "value": 4,
+        "matchId": "isma-2",
+        "opponent": "CD Praviano",
+        "matchDate": "2026-08-30",
+        "crestSource": "[embedded-qa-image]",
+        "crestLoaded": true,
+        "crestError": "",
+        "crestConvertedFrom": ""
+      }
+    ],
+    "maximumsLayout": {
+      "columns": 3,
+      "cardHeight": 31,
+      "cards": 6,
+      "cardSplit": false
+    },
+    "competitionLogos": [
+      {
+        "key": "copa_rfef",
+        "label": "Copa RFEF",
+        "source": "[embedded-qa-image]",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "key": "league",
+        "label": "Liga",
+        "source": "[embedded-qa-image]",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      }
+    ],
+    "opponentCrests": [
+      {
+        "matchId": "isma-1",
+        "opponent": "L'Entregu CF",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "isma-2",
+        "opponent": "CD Praviano",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "isma-3",
+        "opponent": "Marino de Luanco",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "isma-4",
+        "opponent": "CD Lealtad",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "isma-5",
+        "opponent": "Astur CF",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "isma-6",
+        "opponent": "Salamanca CF UDS",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_name_normalized",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "isma-7",
+        "opponent": "Unión Club Ceares",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      },
+      {
+        "matchId": "isma-8",
+        "opponent": "CD Covadonga",
+        "teamId": "",
+        "source": "[embedded-qa-image]",
+        "resolutionSource": "team_id",
+        "loaded": true,
+        "error": "",
+        "convertedFrom": "",
+        "placeholder": false
+      }
+    ],
     "bodyParts": {
       "values": [
         {

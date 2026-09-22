@@ -250,6 +250,9 @@ assert.match(appSource, /teamCrest:\s*pdfOwnTeam\?\.crest \|\| clubCrest/, 'el P
 assert.match(appSource, /image:\s*getPlayerAvatarSource\(selectedPlayerProfile\)/, 'el PDF reutiliza la fuente de foto de mayor resolución disponible en el perfil');
 assert.match(appSource, /competitionBreakdown:\s*pdfCompetitionRows/, 'el desglose se construye desde partidos filtrados reales');
 assert.match(appSource, /logoUrl:\s*competition\.logoUrl \|\| ''/, 'el modelo PDF conserva el logo real del catálogo de competiciones');
+assert.match(appSource, /quickScope:\s*'Temporada'[\s\S]*?delegatedScope:\s*'Solo validados'/, 'el PDF fuerza temporada completa sobre la misma muestra validada de Registro en vivo');
+assert.match(appSource, /buildPlayerAnalysisSeasonReport\(\{[\s\S]*?liveStats:[\s\S]*?matches:\s*pdfSeasonMatchStats/, 'APP y PDF comparten el presenter de temporada y máximos');
+assert.match(appSource, /liveSeason:\s*pdfSeasonAnalysis\.live[\s\S]*?seasonMaximums:\s*pdfSeasonAnalysis\.maximums/, 'el modelo normalizado recibe ambos bloques sin recalcularlos en el exportador');
 assert.match(appSource, /<PlayerPositionUsageSummary usage=\{playerPositionUsage\}/, 'la ficha App mantiene íntegro su bloque posicional completo');
 assert.match(appSource, /minutesPlayedPercentage:\s*aggregate\.participation/, 'el PDF reutiliza el porcentaje canónico de participación de la ficha');
 assert.match(appSource, /possibleMinutes:\s*aggregate\.rows\.length \* 90/, 'los minutos posibles usan la misma base objetiva ya mostrada en la App');

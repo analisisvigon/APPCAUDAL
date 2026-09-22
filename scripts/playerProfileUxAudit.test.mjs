@@ -93,8 +93,9 @@ const liveEnd = profile.indexOf('<AccordionSection title="Producción', liveStar
 assert.ok(liveStart >= 0 && liveEnd > liveStart, 'localiza exclusivamente el bloque Registro en vivo');
 const liveSection = profile.slice(liveStart, liveEnd);
 assert.match(source, /const scopedReviewedEvents = \(playerProfileData\?\.quickEvents \|\| \[\]\)/);
-assert.match(source, /playerDelegatedScope === 'Todos los registros' \|\| isDelegatedDataValidated\(event\.match\)/);
-assert.match(source, /const quickScopeLimit = playerQuickScope === 'Últimos 3 partidos' \? 3 : playerQuickScope === 'Últimos 5 partidos' \? 5 : null/);
+assert.match(source, /delegatedScope = playerDelegatedScope/);
+assert.match(source, /delegatedScope === 'Todos los registros' \|\| isDelegatedDataValidated\(event\.match\)/);
+assert.match(source, /const quickScopeLimit = quickScope === 'Últimos 3 partidos' \? 3 : quickScope === 'Últimos 5 partidos' \? 5 : null/);
 assert.match(source, /const matchCount = new Set\(quickEvents\.map\(\(event\) => event\.partidoId\)\)\.size;/);
 assert.match(source, /calculateDelegatedPerMatch\(summary, matchCount, PLAYER_LIVE_PER_MATCH_FIELDS\)/);
 for (const metric of [

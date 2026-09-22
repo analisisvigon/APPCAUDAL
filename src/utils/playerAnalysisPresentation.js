@@ -23,6 +23,36 @@ export const PLAYER_ANALYSIS_WINDOW_OPTIONS = Object.freeze([
   { value: 'full_scope', label: 'Temporada' },
 ]);
 
+export const PLAYER_ANALYSIS_LIVE_METRIC_GROUPS = Object.freeze([
+  Object.freeze({
+    key: 'finishing',
+    title: 'Finalización',
+    metrics: Object.freeze([
+      Object.freeze({ key: 'goalsPerMatch', label: 'Goles / partido', format: 'ratio' }),
+      Object.freeze({ key: 'shotsPerMatch', label: 'Tiros / partido', format: 'ratio' }),
+      Object.freeze({ key: 'shotsOnTargetPerMatch', label: 'A puerta / partido', format: 'ratio' }),
+      Object.freeze({ key: 'shotAccuracyPercentage', label: '% tiros a puerta', format: 'percent' }),
+    ]),
+  }),
+  Object.freeze({
+    key: 'on_ball',
+    title: 'Con balón',
+    metrics: Object.freeze([
+      Object.freeze({ key: 'crossesPerMatch', label: 'Centros / partido', format: 'ratio' }),
+      Object.freeze({ key: 'turnoversPerMatch', label: 'Pérdidas / partido', format: 'ratio' }),
+    ]),
+  }),
+  Object.freeze({
+    key: 'defending',
+    title: 'Defensivo',
+    metrics: Object.freeze([
+      Object.freeze({ key: 'stealsPerMatch', label: 'Robos / partido', format: 'ratio' }),
+      Object.freeze({ key: 'foulsCommittedPerMatch', label: 'Faltas realizadas', format: 'ratio' }),
+      Object.freeze({ key: 'foulsReceivedPerMatch', label: 'Faltas recibidas', format: 'ratio' }),
+    ]),
+  }),
+]);
+
 export const PLAYER_ANALYSIS_MATCH_METRICS = Object.freeze([
   { key: 'goals', label: 'Goles', detailLabel: 'Goles', maximumLabel: 'Más goles', format: 'number' },
   { key: 'shots', label: 'Tiros', detailLabel: 'Tiros', maximumLabel: 'Más tiros', format: 'number' },
@@ -180,6 +210,34 @@ export function buildPlayerAnalysisSeasonMaximums(matches = []) {
     }, null);
     return maximum ? [maximum] : [];
   });
+}
+
+export function buildPlayerAnalysisLivePresentation(liveStats = {}) {
+  const matchesWithEvents = Number.isFinite(Number(liveStats.matchesWithEvents))
+    ? Math.max(0, Math.trunc(Number(liveStats.matchesWithEvents)))
+    : 0;
+  return {
+    window: clean(liveStats.window) || 'full_scope',
+    matchesWithEvents,
+    hasData: matchesWithEvents > 0,
+    metricGroups: PLAYER_ANALYSIS_LIVE_METRIC_GROUPS.map((group) => ({
+      ...group,
+      metrics: group.metrics.map((metric) => ({
+        ...metric,
+        value: liveStats[metric.key] === '' || liveStats[metric.key] === undefined
+          ? null
+          : liveStats[metric.key],
+      })),
+    })),
+  };
+}
+
+export function buildPlayerAnalysisSeasonReport({ liveStats = {}, matches = [] } = {}) {
+  return {
+    window: 'full_scope',
+    live: buildPlayerAnalysisLivePresentation(liveStats),
+    maximums: buildPlayerAnalysisSeasonMaximums(matches),
+  };
 }
 
 export function buildPlayerAnalysisMatchComparison(matches = [], matchAId = '', matchBId = '') {
