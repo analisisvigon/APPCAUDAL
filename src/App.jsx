@@ -413,13 +413,23 @@ import {
   addOffensivePlayToWorkspace,
   cloneOffensivePlay,
   deleteOffensivePlayFromWorkspace,
-  getOffensivePlayContextKey,
   navigateOffensivePlayStyle,
   normalizeOffensivePlayStyle,
   offensivePlayMatchesContext,
   resolveOffensiveActivePlayId,
   selectOffensivePlayInWorkspace,
 } from './utils/offensivePlayWorkspace';
+import {
+  addTacticalPlayToContext,
+  deleteTacticalPlayFromContext,
+  hasCompleteSystemPair,
+  isLegacyUnclassifiedTacticalPlay,
+  normalizeIdentitySystem,
+  resolveTacticalActivePlayId,
+  selectTacticalPlayInContext,
+  tacticalPlayMatchesWorkspaceContext,
+  withExplicitTacticalSystemContext,
+} from './utils/tacticalWorkspaceContext';
 import { orientFormationSlotsForTacticalBoard } from './utils/tacticalOrientation';
 import { buildTacticalPlayContext } from './utils/tacticalPlayContext';
 import {
@@ -1182,9 +1192,16 @@ const normalizeTacticalPlayBall = (play, { fallback = null, visibleByDefault = f
     ),
   };
 };
+const normalizeTacticalPlaySystemFields = (play) => ({
+  ...(typeof play?.rivalSystem === 'string' ? { rivalSystem: play.rivalSystem } : {}),
+  ...(typeof play?.caudalSystem === 'string' ? { caudalSystem: play.caudalSystem } : {}),
+  ...(play?.systemContextVersion != null ? { systemContextVersion: play.systemContextVersion } : {}),
+  ...(play?.systemContextSource != null ? { systemContextSource: play.systemContextSource } : {}),
+});
 const createEmptyDefensiveWorkspace = () => ({
   version: 1,
   activeSituation: 'mid_block',
+  activePlayIdByContext: {},
   activePlayIdBySituation: {},
   plays: [],
 });
@@ -1197,8 +1214,7 @@ const normalizeDefensiveWorkspace = (value) => {
       id: String(play.id),
       name: String(play.name || 'Jugada'),
       defensiveSituation: play.defensiveSituation,
-      rivalSystem: String(play.rivalSystem || '4-4-2'),
-      caudalSystem: String(play.caudalSystem || '4-4-2'),
+      ...normalizeTacticalPlaySystemFields(play),
       playerPositions: play.playerPositions && typeof play.playerPositions === 'object' && !Array.isArray(play.playerPositions) ? play.playerPositions : {},
       arrows: normalizeTacticalBoardArrows(play.arrows),
       ...normalizeTacticalPlayBall(play),
@@ -1220,6 +1236,9 @@ const normalizeDefensiveWorkspace = (value) => {
   return {
     version: 1,
     activeSituation: validSituations.has(source.activeSituation) ? source.activeSituation : 'mid_block',
+    activePlayIdByContext: source.activePlayIdByContext && typeof source.activePlayIdByContext === 'object'
+      ? { ...source.activePlayIdByContext }
+      : {},
     activePlayIdBySituation,
     plays,
   };
@@ -1247,8 +1266,7 @@ const normalizeOffensiveWorkspace = (value) => {
       name: String(play.name || 'Jugada'),
       offensiveSituation: play.offensiveSituation,
       playStyle: normalizeOffensivePlayStyle(play.playStyle),
-      rivalSystem: String(play.rivalSystem || '4-4-2'),
-      caudalSystem: String(play.caudalSystem || '4-4-2'),
+      ...normalizeTacticalPlaySystemFields(play),
       playerPositions: play.playerPositions && typeof play.playerPositions === 'object' && !Array.isArray(play.playerPositions) ? play.playerPositions : {},
       arrows: normalizeTacticalBoardArrows(play.arrows),
       ...normalizeTacticalPlayBall(play),
@@ -1271,20 +1289,9 @@ const normalizeOffensiveWorkspace = (value) => {
       ];
     })
   );
-  const activePlayIdByContext = Object.fromEntries(
-    offensiveSituationOptions.flatMap((situationOption) => (
-      offensivePlayStyleOptions.map((styleOption) => {
-        const contextKey = getOffensivePlayContextKey(situationOption.value, styleOption.value);
-        return [contextKey, resolveOffensiveActivePlayId({
-          plays,
-          activePlayIdByContext: source.activePlayIdByContext,
-          activePlayIdBySituation: source.activePlayIdBySituation,
-          situation: situationOption.value,
-          playStyle: styleOption.value,
-        })];
-      })
-    ))
-  );
+  const activePlayIdByContext = source.activePlayIdByContext && typeof source.activePlayIdByContext === 'object'
+    ? { ...source.activePlayIdByContext }
+    : {};
   const activePlayIdBySituation = Object.fromEntries(
     offensiveSituationOptions.map((option) => {
       const savedId = source.activePlayIdBySituation?.[option.value];
@@ -1313,7 +1320,6 @@ const normalizeTransitionBehaviour = (transitionType, value) => (
     : getDefaultTransitionBehaviour(transitionType)
 );
 const getTransitionBehaviourContextKey = (transitionType, fieldZone) => `${transitionType}:${fieldZone}`;
-const getTransitionPlayContextKey = (transitionType, fieldZone, behaviour) => `${transitionType}:${fieldZone}:${behaviour}`;
 const createEmptyTransitionWorkspace = () => ({
   version: 1,
   activeTransitionType: 'offensive_transition',
@@ -1338,8 +1344,7 @@ const normalizeTransitionWorkspace = (value) => {
       transitionType: play.transitionType,
       fieldZone: validZones.has(play.fieldZone) ? play.fieldZone : 'defensive_half',
       behaviour: normalizeTransitionBehaviour(play.transitionType, play.behaviour),
-      rivalSystem: String(play.rivalSystem || '4-4-2'),
-      caudalSystem: String(play.caudalSystem || '4-4-2'),
+      ...normalizeTacticalPlaySystemFields(play),
       playerPositions: play.playerPositions && typeof play.playerPositions === 'object' && !Array.isArray(play.playerPositions) ? play.playerPositions : {},
       arrows: normalizeTacticalBoardArrows(play.arrows),
       ...normalizeTacticalPlayBall(play),
@@ -1350,7 +1355,6 @@ const normalizeTransitionWorkspace = (value) => {
       createdAt: String(play.createdAt || new Date().toISOString()),
       updatedAt: String(play.updatedAt || play.createdAt || new Date().toISOString()),
     }));
-  const playIds = new Set(plays.map((play) => play.id));
   const activeFieldZoneByType = Object.fromEntries(
     transitionTypeOptions.map((typeOption) => [
       typeOption.value,
@@ -1368,22 +1372,9 @@ const normalizeTransitionWorkspace = (value) => {
       })
     ))
   );
-  const activePlayIdByContext = Object.fromEntries(
-    transitionTypeOptions.flatMap((typeOption) => (
-      transitionFieldZoneOptions.flatMap((zoneOption) => (
-        transitionBehaviourOptions[typeOption.value].map((behaviourOption) => {
-          const contextKey = getTransitionPlayContextKey(typeOption.value, zoneOption.value, behaviourOption.value);
-          const savedId = source.activePlayIdByContext?.[contextKey];
-          const fallbackId = plays.find((play) => (
-            play.transitionType === typeOption.value
-            && play.fieldZone === zoneOption.value
-            && play.behaviour === behaviourOption.value
-          ))?.id || '';
-          return [contextKey, playIds.has(savedId) ? savedId : fallbackId];
-        })
-      ))
-    ))
-  );
+  const activePlayIdByContext = source.activePlayIdByContext && typeof source.activePlayIdByContext === 'object'
+    ? { ...source.activePlayIdByContext }
+    : {};
   return {
     ...createEmptyTransitionWorkspace(),
     ...source,
@@ -5828,6 +5819,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const [defensiveWorkspace, setDefensiveWorkspace] = useState(createEmptyDefensiveWorkspace);
   const [offensiveWorkspace, setOffensiveWorkspace] = useState(createEmptyOffensiveWorkspace);
   const [transitionWorkspace, setTransitionWorkspace] = useState(createEmptyTransitionWorkspace);
+  const [legacyTacticalPlayId, setLegacyTacticalPlayId] = useState('');
   const [tacticalEvidenceReport, setTacticalEvidenceReport] = useState(createEmptyTacticalEvidenceReport);
   const tacticalEvidenceMatchIdRef = useRef(null);
   const [transitionType, setTransitionType] = useState('offensive_transition');
@@ -7722,6 +7714,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     setTacticalCaptureMode(false);
     setTacticalBoardViewState(createTacticalBoardViewState());
     setSelectedFacingSystemsPlayer(null);
+    setLegacyTacticalPlayId('');
     setSetPieceResponsibilityFeedback(null);
     if (defensiveAutosaveTimerRef.current) {
       window.clearTimeout(defensiveAutosaveTimerRef.current);
@@ -10352,6 +10345,12 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   };
 
   const getCurrentRivalSystem = () => selectedMatchRivalTeam?.system || selectedMatch?.preRivalSystem || selectedMatch?.rivalLineupSystem || '4-4-2';
+  const getCurrentExplicitTacticalSystemPair = () => ({
+    caudalSystem: normalizeIdentitySystem(selectedMatch?.preCaudalSystem),
+    rivalSystem: normalizeIdentitySystem(
+      selectedMatchRivalTeam?.system || selectedMatch?.preRivalSystem || selectedMatch?.rivalLineupSystem
+    ),
+  });
 
   const getSystemStructure = (system) => {
     const parts = String(system || '4-4-2').match(/\d+/g)?.map(Number) || [4, 4, 2];
@@ -10506,11 +10505,30 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     });
   };
 
-  const defensivePlaysForSituation = defensiveWorkspace.plays.filter((play) => play.defensiveSituation === defensiveSituation);
-  const selectedDefensivePlayId = defensiveWorkspace.activePlayIdBySituation[defensiveSituation] || defensivePlaysForSituation[0]?.id || '';
+  const currentTacticalSystemPair = getCurrentExplicitTacticalSystemPair();
+  const defensivePlayContext = {
+    ...currentTacticalSystemPair,
+    macroPhase: 'defensive',
+    situation: defensiveSituation,
+    variantParts: [],
+  };
+  const transitionPlayContext = {
+    ...currentTacticalSystemPair,
+    macroPhase: 'transition',
+    situation: transitionType,
+    variantParts: [transitionFieldZone, transitionBehaviour],
+  };
+  const defensivePlaysForSituation = defensiveWorkspace.plays.filter((play) => (
+    tacticalPlayMatchesWorkspaceContext(play, defensivePlayContext)
+  ));
+  const selectedDefensivePlayId = resolveTacticalActivePlayId({
+    plays: defensiveWorkspace.plays,
+    activePlayIdByContext: defensiveWorkspace.activePlayIdByContext,
+    context: defensivePlayContext,
+  });
   const selectedDefensivePhasePlay = defensiveWorkspace.plays.find((play) => play.id === selectedDefensivePlayId) || null;
   const offensivePlaysForSituation = offensiveWorkspace.plays.filter((play) => (
-    offensivePlayMatchesContext(play, offensiveSituation, offensivePlayStyle)
+    offensivePlayMatchesContext(play, offensiveSituation, offensivePlayStyle, currentTacticalSystemPair)
   ));
   const selectedOffensivePlayId = resolveOffensiveActivePlayId({
     plays: offensiveWorkspace.plays,
@@ -10518,21 +10536,17 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     activePlayIdBySituation: offensiveWorkspace.activePlayIdBySituation,
     situation: offensiveSituation,
     playStyle: offensivePlayStyle,
+    ...currentTacticalSystemPair,
   });
   const selectedOffensivePlay = offensiveWorkspace.plays.find((play) => play.id === selectedOffensivePlayId) || null;
-  const transitionPlayContextKey = getTransitionPlayContextKey(
-    transitionType,
-    transitionFieldZone,
-    transitionBehaviour
-  );
   const transitionPlaysForContext = transitionWorkspace.plays.filter((play) => (
-    play.transitionType === transitionType
-    && play.fieldZone === transitionFieldZone
-    && play.behaviour === transitionBehaviour
+    tacticalPlayMatchesWorkspaceContext(play, transitionPlayContext)
   ));
-  const selectedTransitionPlayId = transitionWorkspace.activePlayIdByContext?.[transitionPlayContextKey]
-    || transitionPlaysForContext[0]?.id
-    || '';
+  const selectedTransitionPlayId = resolveTacticalActivePlayId({
+    plays: transitionWorkspace.plays,
+    activePlayIdByContext: transitionWorkspace.activePlayIdByContext,
+    context: transitionPlayContext,
+  });
   const selectedTransitionPlay = transitionWorkspace.plays.find((play) => play.id === selectedTransitionPlayId) || null;
   const setPiecePlayContextKey = getSetPieceContextKey(
     setPieceType,
@@ -10572,24 +10586,46 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     setPieceResponsibilityPhase
   );
   const setPieceZonePoints = getSetPieceZonePoints(setPieceType, setPieceAction);
-  const selectedTacticalPlay = tacticalGamePhase === 'defensive'
+  const contextLegacyTacticalPlays = tacticalGamePhase === 'defensive'
+    ? defensiveWorkspace.plays.filter((play) => (
+      play.defensiveSituation === defensiveSituation && isLegacyUnclassifiedTacticalPlay(play)
+    ))
+    : tacticalGamePhase === 'offensive'
+      ? offensiveWorkspace.plays.filter((play) => (
+        play.offensiveSituation === offensiveSituation
+        && normalizeOffensivePlayStyle(play.playStyle) === offensivePlayStyle
+        && isLegacyUnclassifiedTacticalPlay(play)
+      ))
+      : tacticalGamePhase === 'transition'
+        ? transitionWorkspace.plays.filter((play) => (
+          play.transitionType === transitionType
+          && play.fieldZone === transitionFieldZone
+          && play.behaviour === transitionBehaviour
+          && isLegacyUnclassifiedTacticalPlay(play)
+        ))
+        : [];
+  const selectedLegacyTacticalPlay = contextLegacyTacticalPlays.find((play) => play.id === legacyTacticalPlayId) || null;
+  const selectedContextTacticalPlay = tacticalGamePhase === 'defensive'
     ? selectedDefensivePhasePlay
     : tacticalGamePhase === 'offensive'
       ? selectedOffensivePlay
       : tacticalGamePhase === 'transition'
         ? selectedTransitionPlay
         : selectedSetPiecePlay;
+  const selectedTacticalPlay = selectedLegacyTacticalPlay || selectedContextTacticalPlay;
+  const isViewingLegacyTacticalPlay = Boolean(selectedLegacyTacticalPlay);
   const selectedDefensivePlay = selectedTacticalPlay;
   const selectedTacticalArrow = selectedDefensivePlay?.arrows?.find((arrow) => arrow.id === selectedDefensiveArrowId) || null;
   const tacticalBallPosition = normalizeTacticalBoardPoint(selectedDefensivePlay?.ballStartPosition);
   const tacticalBallVisible = Boolean(tacticalBallPosition) && selectedDefensivePlay?.ballVisible === true;
-  const selectedTacticalPlayId = tacticalGamePhase === 'defensive'
+  const selectedContextTacticalPlayId = tacticalGamePhase === 'defensive'
     ? selectedDefensivePlayId
     : tacticalGamePhase === 'offensive'
       ? selectedOffensivePlayId
       : tacticalGamePhase === 'transition'
         ? selectedTransitionPlayId
         : selectedSetPiecePlayId;
+  const selectedTacticalPlayId = selectedLegacyTacticalPlay?.id || selectedContextTacticalPlayId;
   const tacticalPlaysForSituation = tacticalGamePhase === 'defensive'
     ? defensivePlaysForSituation
     : tacticalGamePhase === 'offensive'
@@ -10597,6 +10633,19 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       : tacticalGamePhase === 'transition'
         ? transitionPlaysForContext
         : setPiecePlaysForContext;
+  useEffect(() => {
+    setLegacyTacticalPlayId('');
+  }, [
+    tacticalGamePhase,
+    defensiveSituation,
+    offensiveSituation,
+    offensivePlayStyle,
+    transitionType,
+    transitionFieldZone,
+    transitionBehaviour,
+    currentTacticalSystemPair.caudalSystem,
+    currentTacticalSystemPair.rivalSystem,
+  ]);
   const tacticalSaveStatus = tacticalGamePhase === 'defensive'
     ? defensiveSaveStatus
     : tacticalGamePhase === 'offensive'
@@ -10832,11 +10881,17 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     const setPieceContextWarning = targetPhase === 'set_piece' && tacticalGamePhase !== 'set_piece'
       ? `Aviso: la plantilla pertenece a ${setPieceTypeOptions.find((option) => option.value === targetSetPieceType)?.label || targetSetPieceType} · ${setPieceActionOptions.find((option) => option.value === targetSetPieceAction)?.label || targetSetPieceAction}. `
       : '';
+    if (targetPhase !== 'set_piece' && !hasCompleteSystemPair(currentTacticalSystemPair)) {
+      setTacticalTemplateNotice('Selecciona y guarda ambos sistemas antes de cargar una plantilla. El sistema visual por defecto no se usara como identidad.');
+      return;
+    }
     const defaultName = template.name || 'Jugada desde plantilla';
     const requestedName = window.prompt('Nombre de la jugada', defaultName);
     if (requestedName === null) return;
-    const rivalSystem = getCurrentRivalSystem();
-    const caudalSystem = selectedMatch.preCaudalSystem || '4-4-2';
+    const rivalSystem = targetPhase === 'set_piece' ? getCurrentRivalSystem() : currentTacticalSystemPair.rivalSystem;
+    const caudalSystem = targetPhase === 'set_piece'
+      ? selectedMatch.preCaudalSystem || '4-4-2'
+      : currentTacticalSystemPair.caudalSystem;
     const { playerPositions, warnings } = adaptSemanticPlayerPositions({
       semanticPositions: template.playerPositions,
       rivalSystem,
@@ -10852,7 +10907,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
           ? createTransitionPlayId
           : createSetPiecePlayId;
     const timestamp = new Date().toISOString();
-    const play = {
+    const playDraft = {
       id: createPlayId(),
       ...(targetPhase === 'offensive'
         ? { phase: 'offensive', offensiveSituation: targetSituation, playStyle: targetPlayStyle }
@@ -10886,53 +10941,37 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       createdAt: timestamp,
       updatedAt: timestamp,
     };
+    const play = targetPhase === 'set_piece'
+      ? playDraft
+      : withExplicitTacticalSystemContext(playDraft, currentTacticalSystemPair);
 
     setTacticalGamePhase(targetPhase);
     if (targetPhase === 'defensive') {
       setDefensiveSituation(targetSituation);
       markDefensiveUnsaved();
-      setDefensiveWorkspace((current) => ({
+      setDefensiveWorkspace((current) => addTacticalPlayToContext({
         ...current,
         activeSituation: targetSituation,
-        activePlayIdBySituation: {
-          ...current.activePlayIdBySituation,
-          [targetSituation]: play.id,
-        },
-        plays: [...current.plays, play],
-      }));
+      }, play));
     } else if (targetPhase === 'offensive') {
       setOffensiveSituation(targetSituation);
       setOffensivePlayStyle(targetPlayStyle);
       markOffensiveUnsaved();
-      setOffensiveWorkspace((current) => ({
+      setOffensiveWorkspace((current) => addOffensivePlayToWorkspace({
         ...current,
         activeSituation: targetSituation,
         activePlayStyleBySituation: {
           ...current.activePlayStyleBySituation,
           [targetSituation]: targetPlayStyle,
         },
-        activePlayIdByContext: {
-          ...current.activePlayIdByContext,
-          [getOffensivePlayContextKey(targetSituation, targetPlayStyle)]: play.id,
-        },
-        activePlayIdBySituation: {
-          ...current.activePlayIdBySituation,
-          [targetSituation]: play.id,
-        },
-        plays: [...current.plays, play],
-      }));
+      }, play));
     } else if (targetPhase === 'transition') {
       const behaviourContextKey = getTransitionBehaviourContextKey(targetTransitionType, targetFieldZone);
-      const playContextKey = getTransitionPlayContextKey(
-        targetTransitionType,
-        targetFieldZone,
-        targetBehaviour
-      );
       setTransitionType(targetTransitionType);
       setTransitionFieldZone(targetFieldZone);
       setTransitionBehaviour(targetBehaviour);
       markTransitionUnsaved();
-      setTransitionWorkspace((current) => ({
+      setTransitionWorkspace((current) => addTacticalPlayToContext({
         ...current,
         activeTransitionType: targetTransitionType,
         activeFieldZoneByType: {
@@ -10943,12 +10982,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
           ...current.activeBehaviourByContext,
           [behaviourContextKey]: targetBehaviour,
         },
-        activePlayIdByContext: {
-          ...current.activePlayIdByContext,
-          [playContextKey]: play.id,
-        },
-        plays: [...current.plays, play],
-      }));
+      }, play));
     } else {
       const actionContextKey = getSetPieceActionContextKey(targetSetPieceType, targetSetPieceAction);
       const playContextKey = getSetPieceContextKey(
@@ -11364,15 +11398,12 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     setDefensiveWorkspace((current) => ({ ...current, activeSituation: situation }));
   };
   const selectDefensivePlay = (playId) => {
-    if (!defensiveWorkspace.plays.some((play) => play.id === playId && play.defensiveSituation === defensiveSituation)) return;
+    if (!defensiveWorkspace.plays.some((play) => (
+      play.id === playId && tacticalPlayMatchesWorkspaceContext(play, defensivePlayContext)
+    ))) return;
+    setLegacyTacticalPlayId('');
     markDefensiveUnsaved();
-    setDefensiveWorkspace((current) => ({
-      ...current,
-      activePlayIdBySituation: {
-        ...current.activePlayIdBySituation,
-        [defensiveSituation]: playId,
-      },
-    }));
+    setDefensiveWorkspace((current) => selectTacticalPlayInContext(current, playId, defensivePlayContext));
   };
   const markOffensiveUnsaved = () => {
     offensiveSaveCoordinatorRef.current.markDirty();
@@ -11451,13 +11482,16 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   };
   const selectOffensivePlay = (playId) => {
     if (!offensiveWorkspace.plays.some((play) => (
-      play.id === playId && offensivePlayMatchesContext(play, offensiveSituation, offensivePlayStyle)
+      play.id === playId
+      && offensivePlayMatchesContext(play, offensiveSituation, offensivePlayStyle, currentTacticalSystemPair)
     ))) return;
+    setLegacyTacticalPlayId('');
     markOffensiveUnsaved();
     setOffensiveWorkspace((current) => selectOffensivePlayInWorkspace(current, {
       situation: offensiveSituation,
       playStyle: offensivePlayStyle,
       playId,
+      ...currentTacticalSystemPair,
     }));
   };
   const selectTransitionType = (nextTransitionType) => {
@@ -11524,28 +11558,23 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   };
   const selectTransitionPlay = (playId) => {
     if (!transitionWorkspace.plays.some((play) => (
-      play.id === playId
-      && play.transitionType === transitionType
-      && play.fieldZone === transitionFieldZone
-      && play.behaviour === transitionBehaviour
+      play.id === playId && tacticalPlayMatchesWorkspaceContext(play, transitionPlayContext)
     ))) return;
+    setLegacyTacticalPlayId('');
     markTransitionUnsaved();
-    setTransitionWorkspace((current) => ({
-      ...current,
-      activePlayIdByContext: {
-        ...current.activePlayIdByContext,
-        [transitionPlayContextKey]: playId,
-      },
-    }));
+    setTransitionWorkspace((current) => selectTacticalPlayInContext(current, playId, transitionPlayContext));
   };
   const createTransitionPlay = ({ promptForName = true } = {}) => {
+    if (!hasCompleteSystemPair(currentTacticalSystemPair)) {
+      setTacticalTemplateNotice('Selecciona y guarda ambos sistemas antes de crear una jugada. El sistema visual por defecto no se usara como identidad.');
+      return null;
+    }
     const defaultName = `Jugada ${transitionPlaysForContext.length + 1}`;
     const requestedName = promptForName ? window.prompt('Nombre de la jugada', defaultName) : defaultName;
     if (requestedName === null) return;
     const timestamp = new Date().toISOString();
-    const rivalSystem = getCurrentRivalSystem();
-    const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
-    const play = {
+    const { rivalSystem, caudalSystem } = currentTacticalSystemPair;
+    const play = withExplicitTacticalSystemContext({
       id: createTransitionPlayId(),
       phase: 'transition',
       name: String(requestedName || '').trim() || defaultName,
@@ -11566,9 +11595,9 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       description: '',
       createdAt: timestamp,
       updatedAt: timestamp,
-    };
+    }, currentTacticalSystemPair);
     markTransitionUnsaved();
-    setTransitionWorkspace((current) => ({
+    setTransitionWorkspace((current) => addTacticalPlayToContext({
       ...current,
       activeTransitionType: transitionType,
       activeFieldZoneByType: {
@@ -11579,16 +11608,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         ...current.activeBehaviourByContext,
         [getTransitionBehaviourContextKey(transitionType, transitionFieldZone)]: transitionBehaviour,
       },
-      activePlayIdByContext: {
-        ...current.activePlayIdByContext,
-        [transitionPlayContextKey]: play.id,
-      },
-      plays: [...current.plays, play],
-    }));
+    }, play));
     return play;
   };
   const duplicateTransitionPlay = () => {
-    if (!selectedTransitionPlay) return;
+    if (!selectedTransitionPlay || isViewingLegacyTacticalPlay) return;
     const timestamp = new Date().toISOString();
     const duplicate = {
       ...selectedTransitionPlay,
@@ -11603,32 +11627,16 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       updatedAt: timestamp,
     };
     markTransitionUnsaved();
-    setTransitionWorkspace((current) => ({
-      ...current,
-      activePlayIdByContext: {
-        ...current.activePlayIdByContext,
-        [transitionPlayContextKey]: duplicate.id,
-      },
-      plays: [...current.plays, duplicate],
-    }));
+    setTransitionWorkspace((current) => addTacticalPlayToContext(current, duplicate));
   };
   const deleteTransitionPlay = () => {
-    if (!selectedTransitionPlay || !window.confirm(`¿Eliminar "${selectedTransitionPlay.name}"?`)) return;
-    const remainingPlays = transitionWorkspace.plays.filter((play) => play.id !== selectedTransitionPlay.id);
-    const nextPlay = remainingPlays.find((play) => (
-      play.transitionType === transitionType
-      && play.fieldZone === transitionFieldZone
-      && play.behaviour === transitionBehaviour
-    ));
+    if (!selectedTransitionPlay || isViewingLegacyTacticalPlay || !window.confirm(`¿Eliminar "${selectedTransitionPlay.name}"?`)) return;
     markTransitionUnsaved();
-    setTransitionWorkspace((current) => ({
-      ...current,
-      activePlayIdByContext: {
-        ...current.activePlayIdByContext,
-        [transitionPlayContextKey]: nextPlay?.id || '',
-      },
-      plays: remainingPlays,
-    }));
+    setTransitionWorkspace((current) => deleteTacticalPlayFromContext(
+      current,
+      selectedTransitionPlay.id,
+      transitionPlayContext
+    ));
   };
   const selectSetPieceType = (nextSetPieceType) => {
     if (!setPieceTypeOptions.some((option) => option.value === nextSetPieceType)) return;
@@ -11966,14 +11974,17 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     })
   );
   const createOffensivePlay = ({ promptForName = true } = {}) => {
+    if (!hasCompleteSystemPair(currentTacticalSystemPair)) {
+      setTacticalTemplateNotice('Selecciona y guarda ambos sistemas antes de crear una jugada. El sistema visual por defecto no se usara como identidad.');
+      return null;
+    }
     const defaultName = `Jugada ${offensivePlaysForSituation.length + 1}`;
     const requestedName = promptForName ? window.prompt('Nombre de la jugada', defaultName) : defaultName;
     if (requestedName === null) return;
     const name = String(requestedName || '').trim() || defaultName;
     const timestamp = new Date().toISOString();
-    const rivalSystem = getCurrentRivalSystem();
-    const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
-    const play = {
+    const { rivalSystem, caudalSystem } = currentTacticalSystemPair;
+    const play = withExplicitTacticalSystemContext({
       id: createOffensivePlayId(),
       phase: 'offensive',
       name,
@@ -11988,13 +11999,13 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       description: '',
       createdAt: timestamp,
       updatedAt: timestamp,
-    };
+    }, currentTacticalSystemPair);
     markOffensiveUnsaved();
     setOffensiveWorkspace((current) => addOffensivePlayToWorkspace(current, play));
     return play;
   };
   const duplicateOffensivePlay = () => {
-    if (!selectedOffensivePlay) return;
+    if (!selectedOffensivePlay || isViewingLegacyTacticalPlay) return;
     const timestamp = new Date().toISOString();
     const duplicate = cloneOffensivePlay(selectedOffensivePlay, {
       playId: createOffensivePlayId(),
@@ -12005,12 +12016,13 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     setOffensiveWorkspace((current) => addOffensivePlayToWorkspace(current, duplicate));
   };
   const deleteOffensivePlay = () => {
-    if (!selectedOffensivePlay || !window.confirm(`¿Eliminar "${selectedOffensivePlay.name}"?`)) return;
+    if (!selectedOffensivePlay || isViewingLegacyTacticalPlay || !window.confirm(`¿Eliminar "${selectedOffensivePlay.name}"?`)) return;
     markOffensiveUnsaved();
     setOffensiveWorkspace((current) => deleteOffensivePlayFromWorkspace(current, {
       situation: offensiveSituation,
       playStyle: offensivePlayStyle,
       playId: selectedOffensivePlay.id,
+      ...currentTacticalSystemPair,
     }));
   };
   const buildDefensiveInitialPlayerPositions = (situation, rivalSystem, caudalSystem) => (
@@ -12024,14 +12036,17 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     })
   );
   const createDefensivePlay = ({ promptForName = true } = {}) => {
+    if (!hasCompleteSystemPair(currentTacticalSystemPair)) {
+      setTacticalTemplateNotice('Selecciona y guarda ambos sistemas antes de crear una jugada. El sistema visual por defecto no se usara como identidad.');
+      return null;
+    }
     const defaultName = `Jugada ${defensivePlaysForSituation.length + 1}`;
     const requestedName = promptForName ? window.prompt('Nombre de la jugada', defaultName) : defaultName;
     if (requestedName === null) return;
     const name = String(requestedName || '').trim() || defaultName;
     const timestamp = new Date().toISOString();
-    const rivalSystem = getCurrentRivalSystem();
-    const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
-    const play = {
+    const { rivalSystem, caudalSystem } = currentTacticalSystemPair;
+    const play = withExplicitTacticalSystemContext({
       id: createDefensivePlayId(),
       name,
       defensiveSituation,
@@ -12044,16 +12059,9 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       description: '',
       createdAt: timestamp,
       updatedAt: timestamp,
-    };
+    }, currentTacticalSystemPair);
     markDefensiveUnsaved();
-    setDefensiveWorkspace((current) => ({
-      ...current,
-      activePlayIdBySituation: {
-        ...current.activePlayIdBySituation,
-        [defensiveSituation]: play.id,
-      },
-      plays: [...current.plays, play],
-    }));
+    setDefensiveWorkspace((current) => addTacticalPlayToContext(current, play));
     return play;
   };
   const createTacticalPlayForEditing = () => {
@@ -12063,7 +12071,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     return createSetPiecePlay({ promptForName: false });
   };
   const duplicateDefensivePlay = () => {
-    if (!selectedDefensivePlay) return;
+    if (!selectedDefensivePlay || isViewingLegacyTacticalPlay) return;
     const timestamp = new Date().toISOString();
     const duplicate = {
       ...selectedDefensivePlay,
@@ -12076,28 +12084,16 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       updatedAt: timestamp,
     };
     markDefensiveUnsaved();
-    setDefensiveWorkspace((current) => ({
-      ...current,
-      activePlayIdBySituation: {
-        ...current.activePlayIdBySituation,
-        [defensiveSituation]: duplicate.id,
-      },
-      plays: [...current.plays, duplicate],
-    }));
+    setDefensiveWorkspace((current) => addTacticalPlayToContext(current, duplicate));
   };
   const deleteDefensivePlay = () => {
-    if (!selectedDefensivePlay || !window.confirm(`¿Eliminar "${selectedDefensivePlay.name}"?`)) return;
-    const remainingPlays = defensiveWorkspace.plays.filter((play) => play.id !== selectedDefensivePlay.id);
-    const nextPlay = remainingPlays.find((play) => play.defensiveSituation === defensiveSituation);
+    if (!selectedDefensivePlay || isViewingLegacyTacticalPlay || !window.confirm(`¿Eliminar "${selectedDefensivePlay.name}"?`)) return;
     markDefensiveUnsaved();
-    setDefensiveWorkspace((current) => ({
-      ...current,
-      activePlayIdBySituation: {
-        ...current.activePlayIdBySituation,
-        [defensiveSituation]: nextPlay?.id || '',
-      },
-      plays: remainingPlays,
-    }));
+    setDefensiveWorkspace((current) => deleteTacticalPlayFromContext(
+      current,
+      selectedDefensivePlay.id,
+      defensivePlayContext
+    ));
   };
   tacticalSnapshotReadersRef.current = {
     defensive: () => ({
@@ -12319,41 +12315,44 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const resetDefensiveFormation = () => {
     if (!selectedDefensivePlay) return;
     if (!window.confirm('¿Restablecer las posiciones iniciales de ambos equipos para este bloque? La descripción, los pases y los movimientos se conservarán.')) return;
-    const rivalSystem = getCurrentRivalSystem();
-    const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
+    if (tacticalGamePhase === 'set_piece') {
+      const rivalSystem = getCurrentRivalSystem();
+      const caudalSystem = selectedMatch?.preCaudalSystem || '4-4-2';
+      const playerPositions = buildSetPieceInitialPlayerPositions(
+        selectedDefensivePlay.setPieceType || setPieceType,
+        selectedDefensivePlay.setPieceAction || setPieceAction,
+        selectedDefensivePlay.ballStartPosition || setPieceBallStartPosition,
+        rivalSystem,
+        caudalSystem
+      );
+      pushDefensiveUndoSnapshot();
+      updateTacticalPlay(selectedDefensivePlay.id, { rivalSystem, caudalSystem, playerPositions });
+      return;
+    }
+    if (isViewingLegacyTacticalPlay) return;
+    const rivalSystem = selectedDefensivePlay.rivalSystem;
+    const caudalSystem = selectedDefensivePlay.caudalSystem;
     const playerPositions = tacticalGamePhase === 'defensive'
       ? buildDefensiveInitialPlayerPositions(
-          selectedDefensivePlay.defensiveSituation || defensiveSituation,
+        selectedDefensivePlay.defensiveSituation || defensiveSituation,
+        rivalSystem,
+        caudalSystem
+      )
+      : tacticalGamePhase === 'offensive'
+        ? buildOffensiveInitialPlayerPositions(
+          selectedDefensivePlay.offensiveSituation || offensiveSituation,
+          rivalSystem,
+          caudalSystem,
+          normalizeOffensivePlayStyle(selectedDefensivePlay.playStyle)
+        )
+        : buildTransitionInitialPlayerPositions(
+          selectedDefensivePlay.transitionType || transitionType,
+          selectedDefensivePlay.fieldZone || transitionFieldZone,
           rivalSystem,
           caudalSystem
-        )
-        : tacticalGamePhase === 'offensive'
-          ? buildOffensiveInitialPlayerPositions(
-            selectedDefensivePlay.offensiveSituation || offensiveSituation,
-            rivalSystem,
-            caudalSystem,
-            normalizeOffensivePlayStyle(selectedDefensivePlay.playStyle)
-          )
-          : tacticalGamePhase === 'transition'
-            ? buildTransitionInitialPlayerPositions(
-              selectedDefensivePlay.transitionType || transitionType,
-              selectedDefensivePlay.fieldZone || transitionFieldZone,
-              rivalSystem,
-              caudalSystem
-            )
-            : buildSetPieceInitialPlayerPositions(
-              selectedDefensivePlay.setPieceType || setPieceType,
-              selectedDefensivePlay.setPieceAction || setPieceAction,
-              selectedDefensivePlay.ballStartPosition || setPieceBallStartPosition,
-              rivalSystem,
-              caudalSystem
-            );
+        );
     pushDefensiveUndoSnapshot();
-    updateTacticalPlay(selectedDefensivePlay.id, {
-      rivalSystem,
-      caudalSystem,
-      playerPositions,
-    });
+    updateTacticalPlay(selectedDefensivePlay.id, { playerPositions });
   };
 
   const updateCaudalPreSystem = (system) => {
@@ -13989,29 +13988,44 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                   <span>Jugada</span>
                   <select
                     value={selectedTacticalPlayId}
-                    onChange={(event) => (
-                      tacticalGamePhase === 'defensive'
-                        ? selectDefensivePlay(event.target.value)
-                        : tacticalGamePhase === 'offensive'
-                          ? selectOffensivePlay(event.target.value)
-                          : tacticalGamePhase === 'transition'
-                            ? selectTransitionPlay(event.target.value)
-                            : selectSetPiecePlay(event.target.value)
-                    )}
+                    onChange={(event) => {
+                      const playId = event.target.value;
+                      if (contextLegacyTacticalPlays.some((play) => play.id === playId)) {
+                        setLegacyTacticalPlayId(playId);
+                        return;
+                      }
+                      setLegacyTacticalPlayId('');
+                      if (tacticalGamePhase === 'defensive') selectDefensivePlay(playId);
+                      else if (tacticalGamePhase === 'offensive') selectOffensivePlay(playId);
+                      else if (tacticalGamePhase === 'transition') selectTransitionPlay(playId);
+                      else selectSetPiecePlay(playId);
+                    }}
                     className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none"
                   >
                     <option value="">Sin jugadas</option>
                     {tacticalPlaysForSituation.map((play) => <option key={play.id} value={play.id}>{play.name}</option>)}
+                    {contextLegacyTacticalPlays.length ? (
+                      <optgroup label={`Jugadas anteriores sin clasificar (${contextLegacyTacticalPlays.length})`}>
+                        {contextLegacyTacticalPlays.map((play) => (
+                          <option key={play.id} value={play.id}>{play.name}</option>
+                        ))}
+                      </optgroup>
+                    ) : null}
                   </select>
                 </label>
               </div>
+              {isViewingLegacyTacticalPlay ? (
+                <p className="mt-2 border border-amber-300/20 bg-amber-400/[0.06] px-3 py-2 text-[9px] font-bold text-amber-100">
+                  Jugada anterior sin pareja de sistemas verificable · visualización de solo lectura.
+                </p>
+              ) : null}
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <button type="button" onClick={openNewTacticalPlayDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric">Nueva jugada</button>
                 <button type="button" disabled={tacticalSaveStatus === 'Guardando'} onClick={saveActiveTacticalWorkspace} className="border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-[9px] font-black uppercase text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40">{tacticalSaveStatus === 'Error al guardar' ? 'Reintentar' : 'Guardar'}</button>
-                <button type="button" disabled={!selectedTacticalPlay} onClick={openSaveTacticalTemplateDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">Guardar como plantilla</button>
+                <button type="button" disabled={!selectedTacticalPlay || isViewingLegacyTacticalPlay} onClick={openSaveTacticalTemplateDialog} className="border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-2 text-[9px] font-black uppercase text-caudal-electric disabled:cursor-not-allowed disabled:opacity-40">Guardar como plantilla</button>
                 <button type="button" onClick={() => loadTacticalTemplateLibrary('library')} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300">Plantillas</button>
-                <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? duplicateDefensivePlay : tacticalGamePhase === 'offensive' ? duplicateOffensivePlay : tacticalGamePhase === 'transition' ? duplicateTransitionPlay : duplicateSetPiecePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
-                <button type="button" disabled={!selectedTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? deleteDefensivePlay : tacticalGamePhase === 'offensive' ? deleteOffensivePlay : tacticalGamePhase === 'transition' ? deleteTransitionPlay : deleteSetPiecePlay} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Eliminar</button>
+                <button type="button" disabled={!selectedTacticalPlay || isViewingLegacyTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? duplicateDefensivePlay : tacticalGamePhase === 'offensive' ? duplicateOffensivePlay : tacticalGamePhase === 'transition' ? duplicateTransitionPlay : duplicateSetPiecePlay} className="border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Duplicar</button>
+                <button type="button" disabled={!selectedTacticalPlay || isViewingLegacyTacticalPlay} onClick={tacticalGamePhase === 'defensive' ? deleteDefensivePlay : tacticalGamePhase === 'offensive' ? deleteOffensivePlay : tacticalGamePhase === 'transition' ? deleteTransitionPlay : deleteSetPiecePlay} className="border border-red-300/20 bg-red-500/10 px-3 py-2 text-[9px] font-black uppercase text-red-100 disabled:cursor-not-allowed disabled:opacity-40">Eliminar</button>
                 {tacticalSaveStatus ? <span className={`self-center text-[9px] font-black uppercase tracking-[0.12em] ${tacticalSaveStatus === 'Error al guardar' ? 'text-red-200' : tacticalSaveStatus === 'Cambios sin guardar' ? 'text-amber-200' : 'text-slate-400'}`}>{tacticalSaveStatus}</span> : null}
               </div>
               {tacticalGamePhase === 'set_piece' && isRivalOffensiveCornerPlay(selectedSetPiecePlay) ? (
@@ -14066,7 +14080,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                   rows={5}
                   value={selectedTacticalPlay?.description || ''}
                   onChange={(event) => {
-                    if (!selectedTacticalPlay) return;
+                    if (!selectedTacticalPlay || isViewingLegacyTacticalPlay) return;
                     if (tacticalGamePhase === 'defensive') updateDefensivePlay(selectedTacticalPlay.id, { description: event.target.value });
                     else if (tacticalGamePhase === 'offensive') updateOffensivePlay(selectedTacticalPlay.id, { description: event.target.value });
                     else if (tacticalGamePhase === 'transition') updateTransitionPlay(selectedTacticalPlay.id, { description: event.target.value });
@@ -14081,7 +14095,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                           ? 'Describe el momento de recuperación o pérdida, la primera acción, los apoyos, la ocupación de espacios, la reacción inmediata y la continuidad de la transición...'
                           : 'Describe el objetivo de la ABP, los movimientos, bloqueos, zonas de remate, rechace y vigilancia...'
                     : 'Crea una jugada para añadir su descripción.'}
-                  disabled={!selectedTacticalPlay}
+                  disabled={!selectedTacticalPlay || isViewingLegacyTacticalPlay}
                   className="min-h-[120px] w-full resize-y border border-white/10 bg-black/20 px-3 py-3 text-sm font-semibold normal-case leading-6 tracking-normal text-white outline-none placeholder:text-slate-500"
                 />
               </label>
@@ -14191,7 +14205,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                         type="button"
                         title={tooltip}
                         aria-pressed={defensiveTool === tool}
-                        disabled={!selectedDefensivePlay && tool !== 'move'}
+                        disabled={isViewingLegacyTacticalPlay || (!selectedDefensivePlay && tool !== 'move')}
                         onClick={() => activateTacticalBoardTool(tool)}
                         className={`border px-2.5 py-1.5 text-[9px] font-black uppercase ${defensiveTool === tool ? 'border-caudal-electric/30 bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300'} disabled:cursor-not-allowed disabled:opacity-40`}
                       >
@@ -14211,7 +14225,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                         type="button"
                         title={tooltip}
                         aria-pressed={defensiveTool === tool}
-                        disabled={!selectedDefensivePlay}
+                        disabled={!selectedDefensivePlay || isViewingLegacyTacticalPlay}
                         onClick={() => activateTacticalBoardTool(tool)}
                         className={`border px-2.5 py-1.5 text-[9px] font-black uppercase ${defensiveTool === tool ? 'border-caudal-electric/30 bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/[0.04] text-slate-300'} disabled:cursor-not-allowed disabled:opacity-40`}
                       >
@@ -14225,7 +14239,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                       type="button"
                       title={selectedDefensivePlay ? 'Haz clic en el campo para colocar el único balón de la jugada' : 'Crea una jugada para colocar el balón'}
                       aria-pressed={defensiveTool === 'ball'}
-                      disabled={!selectedDefensivePlay}
+                      disabled={!selectedDefensivePlay || isViewingLegacyTacticalPlay}
                       onClick={() => activateTacticalBoardTool('ball')}
                       className={`border px-2.5 py-1.5 text-[9px] font-black uppercase ${defensiveTool === 'ball' ? 'border-caudal-electric/30 bg-caudal-electric text-slate-950' : 'border-amber-300/25 bg-amber-400/10 text-amber-100'} disabled:cursor-not-allowed disabled:opacity-40`}
                     >
@@ -14235,7 +14249,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="mr-1 text-[8px] font-black uppercase tracking-[0.16em] text-slate-500">Historial</span>
                     <button type="button" title="Deshacer la última edición de la jugada" disabled={!defensiveUndoStack.length} onClick={undoDefensiveAction} className="border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Deshacer</button>
-                    <button type="button" title="Recuperar el preset de la fase y situación actuales" disabled={!selectedDefensivePlay} onClick={resetDefensiveFormation} className="border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Restablecer</button>
+                    <button type="button" title="Recuperar el preset de la fase y situación actuales" disabled={!selectedDefensivePlay || isViewingLegacyTacticalPlay} onClick={resetDefensiveFormation} className="border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-[9px] font-black uppercase text-slate-300 disabled:cursor-not-allowed disabled:opacity-40">Restablecer</button>
                   </div>
                 </div>
                 {!selectedDefensivePlay ? (
@@ -14283,7 +14297,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 tabIndex={0}
                 aria-label="Pizarra táctica desplazable en pantallas pequeñas"
               >
-                {renderFacingSystemsOverview(true)}
+                {renderFacingSystemsOverview(!isViewingLegacyTacticalPlay)}
               </div>
             </section>
             <div className="order-4 border border-white/10 bg-[#091428]/82 p-3 xl:col-span-2 xl:col-start-1 xl:row-start-4">

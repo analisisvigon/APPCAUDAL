@@ -1,17 +1,36 @@
+import {
+  buildTacticalWorkspaceKey,
+  hasCompleteSystemPair,
+  hasExplicitTacticalSystemContext,
+  tacticalPlayMatchesWorkspaceContext,
+} from './tacticalWorkspaceContext.js';
+
 const safePlays = (workspace) => (Array.isArray(workspace?.plays) ? workspace.plays : []);
 
 export const normalizeOffensivePlayStyle = (value) => (
   value === 'direct' ? 'direct' : 'combinative'
 );
 
-export const getOffensivePlayContextKey = (situation, playStyle) => (
-  `${String(situation || '')}:${normalizeOffensivePlayStyle(playStyle)}`
+const getOffensiveSystemContext = (situation, playStyle, { caudalSystem, rivalSystem } = {}) => ({
+  caudalSystem,
+  rivalSystem,
+  macroPhase: 'offensive',
+  situation,
+  variantParts: [normalizeOffensivePlayStyle(playStyle)],
+});
+
+export const getOffensivePlayContextKey = (situation, playStyle, systems = {}) => (
+  hasCompleteSystemPair(systems)
+    ? buildTacticalWorkspaceKey(getOffensiveSystemContext(situation, playStyle, systems))
+    : `${String(situation || '')}:${normalizeOffensivePlayStyle(playStyle)}`
 );
 
-export const offensivePlayMatchesContext = (play, situation, playStyle) => (
-  Boolean(play)
-  && play.offensiveSituation === situation
-  && normalizeOffensivePlayStyle(play.playStyle) === normalizeOffensivePlayStyle(playStyle)
+export const offensivePlayMatchesContext = (play, situation, playStyle, systems = {}) => (
+  hasCompleteSystemPair(systems)
+    ? tacticalPlayMatchesWorkspaceContext(play, getOffensiveSystemContext(situation, playStyle, systems))
+    : Boolean(play)
+      && play.offensiveSituation === situation
+      && normalizeOffensivePlayStyle(play.playStyle) === normalizeOffensivePlayStyle(playStyle)
 );
 
 export const resolveOffensiveActivePlayId = ({
@@ -20,17 +39,20 @@ export const resolveOffensiveActivePlayId = ({
   activePlayIdBySituation = {},
   situation,
   playStyle,
+  caudalSystem,
+  rivalSystem,
 } = {}) => {
-  const contextKey = getOffensivePlayContextKey(situation, playStyle);
-  const candidates = [
-    activePlayIdByContext?.[contextKey],
-    activePlayIdBySituation?.[situation],
-  ];
+  const systems = { caudalSystem, rivalSystem };
+  const systemAware = hasCompleteSystemPair(systems);
+  const contextKey = getOffensivePlayContextKey(situation, playStyle, systems);
+  const candidates = systemAware
+    ? [activePlayIdByContext?.[contextKey]]
+    : [activePlayIdByContext?.[contextKey], activePlayIdBySituation?.[situation]];
   const matchingPlay = candidates
     .map((playId) => plays.find((play) => play.id === playId))
-    .find((play) => offensivePlayMatchesContext(play, situation, playStyle));
+    .find((play) => offensivePlayMatchesContext(play, situation, playStyle, systems));
   return matchingPlay?.id
-    || plays.find((play) => offensivePlayMatchesContext(play, situation, playStyle))?.id
+    || plays.find((play) => offensivePlayMatchesContext(play, situation, playStyle, systems))?.id
     || '';
 };
 
@@ -46,9 +68,12 @@ export const selectOffensivePlayInWorkspace = (workspace, {
   situation,
   playStyle,
   playId,
+  caudalSystem,
+  rivalSystem,
 } = {}) => {
   const plays = safePlays(workspace);
-  if (!plays.some((play) => play.id === playId && offensivePlayMatchesContext(play, situation, playStyle))) {
+  const systems = { caudalSystem, rivalSystem };
+  if (!plays.some((play) => play.id === playId && offensivePlayMatchesContext(play, situation, playStyle, systems))) {
     return workspace;
   }
   const normalizedStyle = normalizeOffensivePlayStyle(playStyle);
@@ -60,7 +85,7 @@ export const selectOffensivePlayInWorkspace = (workspace, {
     },
     activePlayIdByContext: {
       ...(workspace?.activePlayIdByContext || {}),
-      [getOffensivePlayContextKey(situation, normalizedStyle)]: playId,
+      [getOffensivePlayContextKey(situation, normalizedStyle, systems)]: playId,
     },
     activePlayIdBySituation: {
       ...(workspace?.activePlayIdBySituation || {}),
@@ -73,6 +98,12 @@ export const addOffensivePlayToWorkspace = (workspace, play) => {
   if (!play?.id || !play.offensiveSituation) return workspace;
   const playStyle = normalizeOffensivePlayStyle(play.playStyle);
   const normalizedPlay = { ...play, phase: 'offensive', playStyle };
+  const systems = { caudalSystem: normalizedPlay.caudalSystem, rivalSystem: normalizedPlay.rivalSystem };
+  const contextKey = getOffensivePlayContextKey(
+    normalizedPlay.offensiveSituation,
+    playStyle,
+    hasExplicitTacticalSystemContext(normalizedPlay) ? systems : {}
+  );
   return {
     ...workspace,
     activePlayStyleBySituation: {
@@ -81,7 +112,7 @@ export const addOffensivePlayToWorkspace = (workspace, play) => {
     },
     activePlayIdByContext: {
       ...(workspace?.activePlayIdByContext || {}),
-      [getOffensivePlayContextKey(normalizedPlay.offensiveSituation, playStyle)]: normalizedPlay.id,
+      [contextKey]: normalizedPlay.id,
     },
     activePlayIdBySituation: {
       ...(workspace?.activePlayIdBySituation || {}),
@@ -124,21 +155,24 @@ export const deleteOffensivePlayFromWorkspace = (workspace, {
   situation,
   playStyle,
   playId,
+  caudalSystem,
+  rivalSystem,
 } = {}) => {
   const plays = safePlays(workspace);
+  const systems = { caudalSystem, rivalSystem };
   const target = plays.find((play) => (
-    play.id === playId && offensivePlayMatchesContext(play, situation, playStyle)
+    play.id === playId && offensivePlayMatchesContext(play, situation, playStyle, systems)
   ));
   if (!target) return workspace;
   const remainingPlays = plays.filter((play) => play.id !== playId);
   const nextPlayId = remainingPlays.find((play) => (
-    offensivePlayMatchesContext(play, situation, playStyle)
+    offensivePlayMatchesContext(play, situation, playStyle, systems)
   ))?.id || '';
   return {
     ...workspace,
     activePlayIdByContext: {
       ...(workspace?.activePlayIdByContext || {}),
-      [getOffensivePlayContextKey(situation, playStyle)]: nextPlayId,
+      [getOffensivePlayContextKey(situation, playStyle, systems)]: nextPlayId,
     },
     activePlayIdBySituation: {
       ...(workspace?.activePlayIdBySituation || {}),
