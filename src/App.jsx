@@ -63,6 +63,11 @@ import {
 } from './utils/playerDelegatedLiveReport';
 import { getPlayerPositionUsage } from './utils/playerPositionUsage';
 import { resolveOpponentTeamIdentity } from './utils/opponentTeamIdentity';
+import {
+  buildPlayerPdfCrestAudit,
+  completePlayerPdfCrestAudit,
+  isPlayerPdfCrestAuditEnabled,
+} from './utils/playerPdfCrestAudit';
 import { createMatchPlayerIdentityIndex, resolveMatchPlayerCandidate } from './utils/matchPlayerIdentity';
 import { getSportsSeason, resolveSportsSeasonFromMatches } from './utils/sportsSeason';
 import {
@@ -5724,6 +5729,9 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const [mobileTacticalFeedback, setMobileTacticalFeedback] = useState({ scope: '', message: '' });
   const [playerPdfExporting, setPlayerPdfExporting] = useState(false);
   const [playerPdfExportError, setPlayerPdfExportError] = useState('');
+  const [playerPdfCrestAudit, setPlayerPdfCrestAudit] = useState(null);
+  const [playerPdfCrestAuditCopied, setPlayerPdfCrestAuditCopied] = useState(false);
+  const playerPdfCrestAuditEnabled = isPlayerPdfCrestAuditEnabled(typeof window !== 'undefined' ? window.location : null);
   useEffect(() => {
     const showChunkLoadError = (event) => {
       setPlayerPdfExportError(event.detail?.message || PDF_GENERATOR_LOAD_ERROR_MESSAGE);
@@ -30220,12 +30228,32 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 if (playerPdfExporting) return;
                 setPlayerPdfExporting(true);
                 setPlayerPdfExportError('');
+                if (playerPdfCrestAuditEnabled) {
+                  setPlayerPdfCrestAudit(null);
+                  setPlayerPdfCrestAuditCopied(false);
+                }
                 try {
+                  const crestAuditSeed = playerPdfCrestAuditEnabled
+                    ? buildPlayerPdfCrestAudit({
+                      matches: aggregate.rows.map((row) => ({
+                        ...row.match,
+                        competitionKey: getCompetitionFromCatalog(row.match).key,
+                      })),
+                      teams,
+                    })
+                    : null;
                   const result = await exportPlayerProfilePdf({
                     report: playerPdfModel,
                     documentRef: document,
                     filename: `informe-${String(selectedPlayerProfile.name || 'jugador').trim().toLowerCase().replace(/[^a-z0-9áéíóúüñ]+/gi, '-')}.pdf`,
+                    qaCrestLoadAudit: playerPdfCrestAuditEnabled,
                   });
+                  if (crestAuditSeed) {
+                    setPlayerPdfCrestAudit(completePlayerPdfCrestAudit(
+                      crestAuditSeed,
+                      result.presentationAudit?.opponentCrests,
+                    ));
+                  }
                   console.info('PDF individual vectorial generado con enlaces verificados.', result.audit);
                   if (import.meta.env.DEV) {
                     const unresolvedOpponentCrests = (result.presentationAudit?.opponentCrests || [])
@@ -30244,6 +30272,15 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                   }
                 } finally {
                   setPlayerPdfExporting(false);
+                }
+              };
+              const copyPlayerPdfCrestAudit = async () => {
+                if (!playerPdfCrestAudit || !navigator.clipboard?.writeText) return;
+                try {
+                  await navigator.clipboard.writeText(JSON.stringify(playerPdfCrestAudit, null, 2));
+                  setPlayerPdfCrestAuditCopied(true);
+                } catch {
+                  setPlayerPdfExportError('No se pudo copiar el diagnóstico de escudos. Revisa el permiso del portapapeles e inténtalo de nuevo.');
                 }
               };
               const renderProfileEmptyState = (title, copy, variant = 'compact') => {
@@ -30320,6 +30357,16 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                         >
                           {playerPdfExporting ? 'Generando PDF…' : 'Exportar PDF'}
                         </button>
+                        {playerPdfCrestAuditEnabled && playerPdfCrestAudit ? (
+                          <button
+                            type="button"
+                            onClick={copyPlayerPdfCrestAudit}
+                            className="rounded-2xl border border-caudal-electric/35 bg-caudal-electric/10 px-4 py-2 text-sm font-black uppercase tracking-[0.12em] text-caudal-electric transition hover:bg-caudal-electric/20"
+                          >
+                            COPIAR DIAGNÓSTICO ESCUDOS
+                            {playerPdfCrestAuditCopied ? <span className="ml-2 text-[10px] text-emerald-300">COPIADO</span> : null}
+                          </button>
+                        ) : null}
                         <button onClick={() => setSelectedPlayerProfileId(null)} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10">Volver a plantilla</button>
                       </div>
                     </div>

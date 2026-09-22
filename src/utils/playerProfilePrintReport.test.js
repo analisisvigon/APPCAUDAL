@@ -264,6 +264,8 @@ assert.match(appSource, /resolveOpponentTeamIdentity\(\{ match: row\.match, team
 assert.match(appSource, /date:\s*matchDisplayDate\(match\.date\)/, 'la ficha de acción recibe la fecha real');
 assert.match(appSource, /result:\s*score\.hasScore \? [`]?[\s\S]*?: 'Sin datos'/, 'un partido sin resultado no se convierte artificialmente en 0-0');
 assert.match(appSource, /report:\s*playerPdfModel/, 'el modelo normalizado llega directamente al renderizador PDF');
+assert.match(appSource, /playerPdfCrestAuditEnabled && playerPdfCrestAudit \? \([\s\S]*?COPIAR DIAGNÓSTICO ESCUDOS/, 'el botón temporal solo aparece tras generar diagnóstico con el flag QA');
+assert.match(appSource, /qaCrestLoadAudit:\s*playerPdfCrestAuditEnabled/, 'el detalle de carga solo se solicita con qaCrestAudit=1');
 assert.match(footballMapSource, /<circle cx="34" cy="52\.5"[\s\S]*<rect x="14" y="2"[\s\S]*<rect x="24" y="2"[\s\S]*className="pitch-goal"/, 'los tres mapas reutilizan un campo con círculo, áreas, áreas pequeñas y porterías');
 assert.match(printCss, /Dossier profesional individual 2026\/27/);
 assert.match(printCss, /\.player-pdf-primary-stats\s*\{[\s\S]*grid-template-columns:\s*repeat\(5/, 'las métricas principales tienen jerarquía numérica propia');
@@ -284,3 +286,4 @@ console.log('playerProfilePrintReport tests passed');
 await import('./playerDelegatedLiveReport.test.js');
 await import('./playerPositionTimelinePresentation.test.js');
 await import('./opponentTeamIdentity.test.js');
+await import('./playerPdfCrestAudit.test.js');

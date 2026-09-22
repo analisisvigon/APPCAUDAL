@@ -975,6 +975,7 @@ export const createPlayerProfilePdf = async ({
   documentRef = globalThis.document,
   JsPdfConstructor = jsPDF,
   fetchImpl = globalThis.fetch,
+  qaCrestLoadAudit = false,
 } = {}) => {
   if (!report?.identity?.name) throw new Error('No se puede generar el PDF: falta el modelo normalizado del jugador.');
   const positionMapModel = buildPlayerPositionMapModel(report.positionUsage);
@@ -1191,6 +1192,7 @@ export const createPlayerProfilePdf = async ({
           loaded: Boolean(loaded?.data),
           error: source ? clean(loaded?.error) : 'missing_source',
           placeholder: !loaded?.data,
+          ...(qaCrestLoadAudit ? { imageFormat: clean(loaded?.format) } : {}),
         };
       }),
       positionMap: {

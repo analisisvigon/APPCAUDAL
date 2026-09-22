@@ -194,6 +194,16 @@ assert.deepEqual(repeatedCrestResult.presentationAudit.opponentCrests.map(({ loa
   [true, 'https://images.example/shared-crest.png'],
   [true, 'https://images.example/shared-crest.png'],
 ], 'dos partidos del mismo rival reutilizan exactamente el mismo escudo canónico');
+const auditedCrestResult = await createPlayerProfilePdf({
+  report: repeatedCrestReport,
+  qaCrestLoadAudit: true,
+  fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
+});
+assert.equal(Object.hasOwn(repeatedCrestResult.presentationAudit.opponentCrests[0], 'imageFormat'), false, 'sin el flag QA no se añade diagnóstico de tipo de imagen');
+assert.deepEqual(auditedCrestResult.presentationAudit.opponentCrests.map(({ imageFormat }) => imageFormat), ['PNG', 'PNG'], 'el flag QA observa el formato ya cargado');
+assert.equal(auditedCrestResult.arrayBuffer.byteLength, repeatedCrestResult.arrayBuffer.byteLength, 'la observación QA no modifica los bytes renderizados del PDF');
+assert.deepEqual(auditedCrestResult.pageSections, repeatedCrestResult.pageSections, 'la observación QA no altera estructura ni paginación');
+assert.deepEqual(auditedCrestResult.presentationAudit.maximumsLayout, repeatedCrestResult.presentationAudit.maximumsLayout, 'la observación QA no altera el layout 4+3');
 const missingCrestResult = await createPlayerProfilePdf({
   report: { ...jairoReport, history: [{ ...jairoReport.history[0], opponentCrest: '' }] },
   fetchImpl: null,
