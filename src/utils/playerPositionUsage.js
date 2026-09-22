@@ -222,6 +222,8 @@ const buildPlayerMatchPositionUsage = ({ row, identity }) => {
         isComplete: Boolean(interval.isComplete),
         slotCount: rows(interval.slots).length,
         playerResolution,
+        derivedTemporalRepair: Boolean(interval.derivedTemporalRepair),
+        derivedTemporalRepairs: rows(interval.derivedTemporalRepairs),
       } : null,
     });
   };
@@ -310,7 +312,9 @@ const buildPlayerMatchPositionUsage = ({ row, identity }) => {
     nextEvent: tacticalEvents.find((event) => event.minute > segment.fromMinute) || null,
     snapshot: segment.snapshot,
   }));
-  const reconstructionAudit = segments.filter((segment) => segment.intervalSource === 'inferred_substitution').map((segment) => ({
+  const reconstructionAudit = segments.filter((segment) => (
+    segment.intervalSource === 'inferred_substitution' || segment.snapshot?.derivedTemporalRepair
+  )).map((segment) => ({
     matchId: clean(row.matchId),
     ...getMatchMetadata(row),
     playerId: identity.playerId,
@@ -321,7 +325,9 @@ const buildPlayerMatchPositionUsage = ({ row, identity }) => {
     minutes: segment.minutes,
     system: segment.system,
     position: segment.position,
-    evidence: 'same_system_direct_replacement_slot',
+    evidence: segment.snapshot?.derivedTemporalRepair
+      ? 'historical_same_system_direct_replacement_slot'
+      : 'same_system_direct_replacement_slot',
     boundaryEvents: tacticalEvents.filter((event) => event.minute === segment.fromMinute),
     previousEvent: tacticalEvents.filter((event) => event.minute < segment.fromMinute).at(-1) || null,
     nextEvent: tacticalEvents.find((event) => event.minute > segment.fromMinute) || null,

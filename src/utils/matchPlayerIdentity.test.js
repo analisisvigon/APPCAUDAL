@@ -44,6 +44,7 @@ const uniqueName = resolveMatchPlayerCandidate({
 });
 assert.equal(uniqueName.status, 'resolved');
 assert.equal(uniqueName.mode, 'unique_name', 'el nombre estricto solo se usa si el candidato carece de ID contradictorio');
+assert.equal(getMatchPlayerIdentityKey(uniqueName.candidate, identityIndex), 'canonical:dani-current', 'una observación sin ID reutiliza la identidad nominal única en las comparaciones temporales');
 
 const ambiguousName = resolveMatchPlayerCandidate({
   reference: { playerName: 'Daniel Palacio' },

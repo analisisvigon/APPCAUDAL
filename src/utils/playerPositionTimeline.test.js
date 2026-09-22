@@ -45,7 +45,7 @@ const matchRow = ({
     duration,
     initialSystem,
     initialSlots,
-    intervals: history.intervals,
+    intervals: history.analyticsIntervals,
     playerStats,
     matchMetadata: { opponent: 'Rival de prueba', date: '2026-09-20', competition: 'Liga', venue: 'Local', result: '2-1' },
   };

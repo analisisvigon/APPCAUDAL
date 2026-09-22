@@ -42,6 +42,10 @@ export const createMatchPlayerIdentityIndex = (records = []) => {
     const name = normalizeMatchPlayerName(getMatchPlayerName(record));
     if (!ids.length && !name) return;
     const related = identities.filter((identity) => ids.length && intersects(ids, identity.ids));
+    const uniqueNamedIdentity = !ids.length && name
+      ? identities.filter((identity) => identity.canonicalId && identity.names.includes(name))
+      : [];
+    if (uniqueNamedIdentity.length === 1) return;
     const canonicalId = clean(record.canonicalPlayerId || record.canonical_player_id || record.canonicalId || record.id || record.jugadorId || record.jugador_id || record.playerId || record.player_id);
     if (!related.length) {
       identities.push({ canonicalId: canonicalId || ids[0] || '', ids, names: name ? [name] : [] });
@@ -93,6 +97,7 @@ export const getMatchPlayerIdentityKey = (row = {}, index = null) => {
   const inspected = inspectMatchPlayerIdentity(row, index);
   if (inspected.identity?.canonicalId) return `canonical:${inspected.identity.canonicalId}`;
   if (inspected.rawIds.length) return `id:${inspected.rawIds[0]}`;
+  if (inspected.namedIdentity?.canonicalId) return `canonical:${inspected.namedIdentity.canonicalId}`;
   return inspected.name ? `name:${inspected.name}` : '';
 };
 

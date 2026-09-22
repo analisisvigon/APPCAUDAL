@@ -18521,7 +18521,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     const plan = buildAutomaticSubstitutionSnapshot({
       minute,
       system,
-      intervals: history.intervals,
+      intervals: history.analyticsIntervals,
       initialSlots: getMatchInitialTacticalSlots(match),
       playerStats: safeObject(match.statsPlayerData),
       systemSlotCount: hasFormationSlotsForSavedLineup(system) ? getTacticalSnapshotFormationSlots(system).length : 0,
@@ -21691,9 +21691,9 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     safeArray(scopedMatches).forEach((match) => {
       const duration = getMatchDurationMinutes(match);
       const tacticalHistory = getMatchTacticalHistory(match);
-      const matchIntervals = tacticalHistory.intervals;
+      const matchIntervals = tacticalHistory.analyticsIntervals;
       intervals.push(...matchIntervals);
-      invariantReports.push({ matchId: match.id, ...tacticalHistory.invariant });
+      invariantReports.push({ matchId: match.id, ...tacticalHistory.analyticsInvariant });
       if (matchIntervals.some((interval) => interval.isComplete)) coverage.tacticalMatches += 1;
       coverage.missingSegments += matchIntervals.filter((interval) => !interval.isComplete).length;
       coverage.missingMinutes += matchIntervals.filter((interval) => !interval.isComplete).reduce((sum, interval) => sum + interval.minutes, 0);
@@ -30083,7 +30083,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                     duration: getMatchDurationMinutes(row.match),
                     initialSystem: getInitialMatchSystem(row.match),
                     initialSlots: getMatchInitialTacticalSlots(row.match),
-                    intervals: tacticalHistory.intervals,
+                    intervals: tacticalHistory.analyticsIntervals,
                     playerStats: safeObject(row.match.statsPlayerData),
                     systemEvents: safeArray(row.match.systemEvents),
                     snapshots: safeArray(row.match.tacticalSnapshots),

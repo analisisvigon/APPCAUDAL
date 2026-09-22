@@ -183,7 +183,7 @@ const positionUsage = buildPlayerPositionUsage({
       substitutionMinutes: getHistoricalSubstitutionMinutes(statsByMatch[match.id] || {}),
       playerStats: statsByMatch[match.id] || {},
       playerIdentities: rows(rosterResponse.data),
-    }).intervals,
+    }).analyticsIntervals,
     playerStats: statsByMatch[match.id] || {},
   })),
 });

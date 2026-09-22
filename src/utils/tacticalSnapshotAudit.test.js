@@ -8,15 +8,17 @@ import {
 } from './tacticalSnapshots.js';
 
 const player = (slot, playerId = `p${slot}`, playerName = `Jugador ${slot}`) => ({ slot, playerId, playerName });
-const initialSlots = Array.from({ length: 11 }, (_, slot) => player(slot));
+const initialSlots = Array.from({ length: 11 }, (_, slot) => (
+  slot === 9 ? player(slot, 'p9', 'J. CÁRCABA') : player(slot)
+));
 const stats = Object.fromEntries(initialSlots.map((row) => [row.playerName, {
   jugadorId: row.playerId, role: 'Titular', minutes: 90, replacementName: '',
 }]));
-stats['Jugador 9'] = { jugadorId: 'p9', role: 'Titular', minutes: 78, replacementName: 'Daniel Palacio' };
+stats['J. CÁRCABA'] = { jugadorId: 'p9', role: 'Titular', minutes: 78, replacementName: 'Daniel Palacio' };
 stats['Daniel Palacio'] = { jugadorId: 'dani-current', role: 'Suplente', minutes: 12, replacementName: '' };
 const identities = [{ id: 'dani-current', aliasIds: ['dani-legacy'], name: 'Daniel Palacio' }];
 const at65 = initialSlots.map((row) => {
-  if (row.slot === 5) return player(5, 'p9', 'Jugador 9');
+  if (row.slot === 5) return player(5, 'p9', 'J. CÁRCABA');
   if (row.slot === 9) return player(9, 'p5', 'Jugador 5');
   return { ...row };
 });
@@ -42,11 +44,36 @@ assert.equal(conflictAudit.identityConflicts.length, 1);
 assert.equal(conflictAudit.snapshots[0].isComplete, false);
 
 // C) Snapshot histórico conserva al saliente: reparación derivada A→B en el mismo slot.
-const staleAudit = baseAudit([snapshot('stale-78', 78, at65)]);
+const staleInput = snapshot('stale-78', 78, at65);
+const staleInputBeforeAudit = structuredClone(staleInput);
+const staleAudit = baseAudit([staleInput]);
 assert.equal(staleAudit.repairedSnapshots, 1);
-assert.equal(staleAudit.details[0].temporallyConsistent, true);
-assert.equal(staleAudit.snapshots[0].derivedTemporalRepair, true);
-assert.equal(staleAudit.snapshots[0].slots.find((row) => row.slot === 5).playerId, 'dani-current');
+assert.equal(staleAudit.details[0].temporallyConsistent, false, 'el RAW conserva su incoherencia temporal');
+assert.equal(staleAudit.snapshots[0].isComplete, false, 'el RAW continúa incompleto para el editor');
+assert.equal(staleAudit.snapshots[0].slots.find((row) => row.slot === 5).playerId, 'p9');
+assert.equal(staleAudit.analyticsDetails[0].temporallyConsistent, true);
+assert.equal(staleAudit.analyticsSnapshots[0].derivedTemporalRepair, true);
+assert.equal(staleAudit.analyticsSnapshots[0].slots.find((row) => row.slot === 5).playerId, 'dani-current');
+assert.deepEqual(staleInput, staleInputBeforeAudit, 'la reparación no muta el snapshot RAW recibido');
+
+// La geometría reparable no deja de serlo porque el RAW ya venga declarado incompleto.
+const declaredIncompleteStale = baseAudit([{ ...snapshot('declared-incomplete-78', 78, at65), isComplete: false }]);
+assert.equal(declaredIncompleteStale.details[0].declaredComplete, false);
+assert.equal(declaredIncompleteStale.details[0].structuralComplete, true);
+assert.equal(declaredIncompleteStale.repairedSnapshots, 1);
+assert.equal(declaredIncompleteStale.analyticsSnapshots[0].isComplete, true);
+
+// Los históricos sin jugador_id pueden usar el nombre exacto solo si conduce a una identidad única no contradictoria.
+const idlessInitialSlots = initialSlots.map((row) => row.playerId === 'p9' ? { ...row, playerId: '' } : row);
+const idlessAt65 = at65.map((row) => row.playerId === 'p9' ? { ...row, playerId: '' } : row);
+const idlessAudit = auditTacticalMatchSnapshots({
+  matchId: 'ceares-idless', initialSystem: '4-2-3-1', initialSlots: idlessInitialSlots,
+  snapshots: [{ ...snapshot('idless-stale-78', 78, idlessAt65), isComplete: false }],
+  systemEvents: [{ id: 'system-65', minute: 65, toSystem: '4-4-2' }],
+  substitutionMinutes: [78], playerStats: stats, playerIdentities: identities,
+});
+assert.equal(idlessAudit.repairedSnapshots, 1);
+assert.equal(idlessAudit.analyticsSnapshots[0].slots.find((row) => row.slot === 5).playerId, 'dani-current');
 
 // D) Snapshot correcto: Dani está y Cárcaba ya no está.
 const correctAudit = baseAudit([snapshot('correct-78', 78, correctAt78)]);
@@ -64,11 +91,24 @@ const daniUsage = getPlayerPositionUsage({
   playerId: 'dani-current', playerName: 'Daniel Palacio', playerIdentity: identities[0], playerIdentities: identities,
   matchRows: [{
     matchId: 'ceares', minutes: 12, role: 'Suplente', duration: 90, initialSystem: '4-2-3-1', initialSlots,
-    intervals: history.intervals, playerStats: stats,
+    intervals: history.analyticsIntervals, playerStats: stats,
   }],
 });
+const rawAt78 = history.intervals.find((interval) => interval.fromMinute === 78);
+const analyticsAt78 = history.analyticsIntervals.find((interval) => interval.fromMinute === 78);
+assert.equal(rawAt78.isComplete, false);
+assert.equal(rawAt78.slots.some((row) => row.playerId === 'p9'), true, 'el editor conserva al saliente guardado');
+assert.equal(rawAt78.slots.some((row) => row.playerId === 'dani-current'), false);
+assert.equal(analyticsAt78.isComplete, true);
+assert.equal(analyticsAt78.derivedTemporalRepair, true);
+assert.equal(analyticsAt78.rawSnapshotAudit.temporallyConsistent, false);
+assert.equal(analyticsAt78.slots.find((row) => row.playerId === 'dani-current').slot, 5, 'analytics hereda el slot real del saliente');
+assert.equal(analyticsAt78.slots.some((row) => row.playerId === 'p9'), false);
 assert.deepEqual(daniUsage.positions.map(({ position, minutes }) => [position, minutes]), [['Extremo derecho', 12]]);
 assert.equal(daniUsage.unknownMinutes, 0);
+assert.deepEqual(daniUsage.reconstructionAudit.map(({ fromMinute, toMinute, evidence }) => [fromMinute, toMinute, evidence]), [
+  [78, 90, 'historical_same_system_direct_replacement_slot'],
+]);
 
 // Dos sustituciones simultáneas se reparan solo cuando ambos pares son directos.
 const simultaneousStats = {
@@ -81,8 +121,8 @@ const simultaneous = auditTacticalMatchSnapshots({
   substitutionMinutes: [78], playerStats: simultaneousStats,
 });
 assert.equal(simultaneous.repairedSnapshots, 1);
-assert.equal(simultaneous.snapshots[0].slots.some((row) => row.playerId === 'dani-current'), true);
-assert.equal(simultaneous.snapshots[0].slots.some((row) => row.playerId === 'sub8'), true);
+assert.equal(simultaneous.analyticsSnapshots[0].slots.some((row) => row.playerId === 'dani-current'), true);
+assert.equal(simultaneous.analyticsSnapshots[0].slots.some((row) => row.playerId === 'sub8'), true);
 
 // Si una sustitución simultánea ya estaba bien y otra quedó obsoleta, solo se repara la obsoleta.
 const partiallyUpdated = initialSlots.map((row) => row.playerId === 'p8'
@@ -94,8 +134,8 @@ const partialSimultaneous = auditTacticalMatchSnapshots({
   substitutionMinutes: [78], playerStats: simultaneousStats,
 });
 assert.equal(partialSimultaneous.repairedSnapshots, 1);
-assert.equal(partialSimultaneous.snapshots[0].slots.some((row) => row.playerId === 'dani-current'), true);
-assert.equal(partialSimultaneous.snapshots[0].slots.some((row) => row.playerId === 'sub8'), true);
+assert.equal(partialSimultaneous.analyticsSnapshots[0].slots.some((row) => row.playerId === 'dani-current'), true);
+assert.equal(partialSimultaneous.analyticsSnapshots[0].slots.some((row) => row.playerId === 'sub8'), true);
 
 // Tres sustituciones en minutos distintos producen tres estados temporalmente coherentes.
 const threeStats = {
@@ -114,7 +154,8 @@ const threeAudit = auditTacticalMatchSnapshots({
   snapshots: [snapshot('s60', 60, initialSlots), snapshot('s70', 70, after60), snapshot('s80', 80, after70)],
 });
 assert.equal(threeAudit.repairedSnapshots, 3);
-assert.equal(threeAudit.temporallyConsistentSnapshots, 3);
+assert.equal(threeAudit.temporallyInconsistentSnapshots, 3);
+assert.equal(threeAudit.analyticsDetails.every((detail) => detail.temporallyConsistent), true);
 
 // Cambio de sistema sin sustitución conserva el mismo XI; con sustitución simultánea no repara slots antiguos.
 const systemOnly = auditTacticalMatchSnapshots({
@@ -133,6 +174,19 @@ const explicitSameMinuteChange = baseAudit([snapshot('same-minute-explicit', 78,
 assert.equal(explicitSameMinuteChange.repairedSnapshots, 0);
 assert.equal(explicitSameMinuteChange.snapshots[0].isComplete, true, 'la disposición explícita correcta del nuevo sistema tiene prioridad');
 
+// Un incoming ya aplicado no se duplica y no necesita reparación.
+assert.equal(correctAudit.analyticsSnapshots[0].slots.filter((row) => row.playerId === 'dani-current').length, 1);
+
+// Sin saliente, con un segundo error o con identidad conflictiva, la reparación se rechaza.
+const outgoingMissingRows = at65.map((row) => row.playerId === 'p9' ? { ...row, playerId: 'outsider', playerName: 'Ajeno' } : row);
+const outgoingMissingAudit = baseAudit([snapshot('outgoing-missing', 78, outgoingMissingRows)]);
+assert.equal(outgoingMissingAudit.repairedSnapshots, 0);
+
+const extraMismatchRows = at65.map((row) => row.playerId === 'p8' ? { ...row, playerId: 'outsider-8', playerName: 'Ajeno 8' } : row);
+const extraMismatchAudit = baseAudit([snapshot('extra-mismatch', 78, extraMismatchRows)]);
+assert.equal(extraMismatchAudit.repairedSnapshots, 0, 'si A→B no produce exactamente el XI esperado no se acepta');
+assert.equal(conflictAudit.repairedSnapshots, 0);
+
 // La completitud estructural exige once slots distintos y once jugadores distintos.
 const duplicateSlotRows = initialSlots.map((row) => ({ ...row }));
 duplicateSlotRows[10].slot = 9;
@@ -141,6 +195,11 @@ const duplicateSlotAudit = auditTacticalMatchSnapshots({
 });
 assert.equal(duplicateSlotAudit.details[0].structuralComplete, false);
 assert.deepEqual(duplicateSlotAudit.details[0].duplicateSlots, [9]);
+
+const staleDuplicateSlotRows = at65.map((row) => ({ ...row }));
+staleDuplicateSlotRows[10].slot = 9;
+const staleDuplicateSlotAudit = baseAudit([snapshot('stale-duplicate-slot', 78, staleDuplicateSlotRows)]);
+assert.equal(staleDuplicateSlotAudit.repairedSnapshots, 0, 'un snapshot con slot duplicado nunca se repara');
 
 const duplicatePlayerRows = initialSlots.map((row) => ({ ...row }));
 duplicatePlayerRows[10] = { ...duplicatePlayerRows[10], playerId: 'p9', playerName: 'Jugador 9' };
