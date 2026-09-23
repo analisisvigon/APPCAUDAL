@@ -22,18 +22,20 @@ const matches = [
   { id: 'f2', type: 'Amistoso', season: '2025/26', isHome: false },
   { id: 'u1', competition_key: null, type: 'Torneo desconocido', season: '2025/26', isHome: true },
   { id: 'old', competition_key: 'league', season: '2024/25', isHome: true },
+  { id: 'dated', competition_key: 'league', date: '2025-09-20', isHome: true },
+  { id: 'unknown-season', competition_key: 'league', isHome: true },
 ];
 
 const ids = (scope, rows = matches) =>
   filterMatchesByCompetition(rows, scope, catalog, { activeSeason: '2025/26' }).map(({ id }) => id);
 
-assert.deepEqual(ids('Temporada'), ['l1', 'l2', 'c1', 'p1']);
-assert.deepEqual(ids('Todos'), ['l1', 'l2', 'c1', 'p1', 'f1', 'f2', 'u1']);
-assert.deepEqual(ids('Liga'), ['l1', 'l2']);
+assert.deepEqual(ids('Temporada'), ['l1', 'l2', 'c1', 'p1', 'dated']);
+assert.deepEqual(ids('Todos'), ['l1', 'l2', 'c1', 'p1', 'f1', 'f2', 'u1', 'dated']);
+assert.deepEqual(ids('Liga'), ['l1', 'l2', 'dated']);
 assert.deepEqual(ids('Copa RFEF'), ['c1']);
 assert.deepEqual(ids('Play Off'), ['p1']);
 assert.deepEqual(ids('Amistoso'), ['f1', 'f2']);
-assert.deepEqual(ids('Temporada', matches.filter((match) => match.isHome)), ['l1', 'c1']);
+assert.deepEqual(ids('Temporada', matches.filter((match) => match.isHome)), ['l1', 'c1', 'dated']);
 assert.deepEqual(ids('Temporada', matches.filter((match) => !match.isHome)), ['l2', 'p1']);
 assert.equal(normalizeCompetitionKey({ competition_key: null, type: 'Prueba' }), 'other');
 assert.equal(isOfficialCompetition('future_cup', catalog), true);

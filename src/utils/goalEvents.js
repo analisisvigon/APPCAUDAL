@@ -1,3 +1,9 @@
+import {
+  createMatchPlayerIdentityIndex,
+  getMatchPlayerIdentityIds,
+  resolveMatchPlayerCandidate,
+} from './matchPlayerIdentity.js';
+
 const normalizeIdentityText = (value) => String(value || '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
@@ -103,20 +109,28 @@ export const createGoalAssistantDraftPatch = (selection, players = []) => {
 
 export const resolveGoalParticipant = (event = {}, role, players = []) => {
   const participant = role === 'assistant' ? getGoalAssistant(event) : getGoalScorer(event);
-  const byId = participant.id
-    ? players.find((player) => String(player?.id || '') === String(participant.id))
-    : null;
-  if (byId) return byId;
-  const normalizedName = normalizeIdentityText(participant.name);
-  return normalizedName
-    ? players.find((player) => normalizeIdentityText(player?.name) === normalizedName) || null
-    : null;
+  const resolution = resolveMatchPlayerCandidate({
+    reference: { playerId: participant.id, playerName: participant.name },
+    candidates: players,
+    identityIndex: createMatchPlayerIdentityIndex(players),
+  });
+  return resolution.status === 'resolved' ? resolution.candidate : null;
 };
 
-export const goalParticipantMatchesPlayer = (event = {}, role, player = {}) => {
+export const goalParticipantMatchesPlayer = (event = {}, role, player = {}, players = []) => {
   if (isGoalOwnGoal(event)) return false;
   const participant = role === 'assistant' ? getGoalAssistant(event) : getGoalScorer(event);
-  if (participant.id && player?.id && String(participant.id) === String(player.id)) return true;
+  if (Array.isArray(players) && players.length) {
+    const resolved = resolveGoalParticipant(event, role, players);
+    if (!resolved) return false;
+    const playerIds = getMatchPlayerIdentityIds(player);
+    const resolvedIds = getMatchPlayerIdentityIds(resolved);
+    return playerIds.some((id) => resolvedIds.includes(id));
+  }
+  if (participant.id) {
+    const playerIds = getMatchPlayerIdentityIds(player);
+    return playerIds.includes(String(participant.id));
+  }
   const participantName = normalizeIdentityText(participant.name);
   const playerName = normalizeIdentityText(player?.name);
   return Boolean(participantName && playerName && participantName === playerName);
@@ -162,6 +176,7 @@ const getStablePlayerIds = (player = {}) => [
   player.membership_id,
   player.legacyId,
   player.legacy_id,
+  ...(Array.isArray(player.aliasIds || player.alias_ids) ? (player.aliasIds || player.alias_ids) : []),
 ].map((value) => String(value || '').trim()).filter(Boolean);
 
 export const getGoalTimelineParticipantName = (

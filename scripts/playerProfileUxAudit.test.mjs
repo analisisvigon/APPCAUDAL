@@ -32,11 +32,11 @@ assert.match(profile, /Zonas de producción/);
 assert.match(profile, /const playerPositionUsage = getPlayerPositionUsage\(\{/);
 assert.match(profile, /<PlayerPositionUsageSummary usage=\{playerPositionUsage\}/);
 assert.ok(profile.indexOf('<PlayerPositionUsageSummary usage={playerPositionUsage}') < profile.indexOf('Zonas de producción'), 'Posiciones utilizadas debe aparecer antes que zonas y conexiones');
-assert.match(profile, /positionUsage: playerPositionUsage/);
-assert.match(profile, /const playerPositionMatchRows = aggregate\.rows\.map/, 'los datos tácticos deben derivarse exclusivamente de los partidos ya filtrados de la ficha');
+assert.match(profile, /positionUsage: pdfPlayerPositionUsage/, 'el PDF usa el universo canónico de la temporada sin alterar el selector táctico');
+assert.match(profile, /const playerPositionMatchRows = buildPlayerPositionMatchRows\(aggregate\.rows\)/, 'los datos tácticos de la ficha deben derivarse exclusivamente de sus partidos ya filtrados');
 assert.match(profile, /matchRows: playerPositionMatchRows/, 'el mapa y la auditoría QA deben reutilizar exactamente las mismas filas filtradas');
-assert.match(source, /filterMatchesByCompetitionCatalog\(\[row\.match\], getCompetitionFilterKey\(playerCompetitionFilter\)\)/, 'competición filtra antes del cálculo posicional');
-assert.match(source, /playerVenueFilter === 'Todos' \|\| \(playerVenueFilter === 'Local'/, 'local y visitante filtran antes del cálculo posicional');
+assert.match(source, /getCompetitionFilterKey\(competitionFilter\)/, 'competición filtra antes del cálculo posicional');
+assert.match(source, /venueFilter === 'Todos' \|\| getPlayerDossierVenue\(row\.match\) === venueFilter/, 'local y visitante filtran antes del cálculo posicional');
 assert.equal(profile.includes('profilePosition: selectedPlayerProfile.position'), false, 'La posición general no puede actuar como fallback táctico');
 assert.match(positionComponent, /Posiciones utilizadas/);
 assert.match(positionMap, /levelLabel: 'Principal'/);
@@ -62,7 +62,7 @@ assert.match(profile, /Object\.values\(shotZoneCounts\)\.some/);
 for (const metric of ['Goles/90', 'Asist./90', 'G+A/90', 'G+A total']) {
   assert.ok(profile.includes(metric), `Falta la métrica oficial ${metric}`);
 }
-assert.match(profile, /aggregate\.minutes \? \(\(goalContributions \/ aggregate\.minutes\) \* 90\)\.toFixed\(2\) : '0\.00'/);
+assert.match(profile, /calculatePlayerDossierPer90\(goalContributions, aggregate\.minutes\)/, 'sin denominador los ratios oficiales permanecen no disponibles');
 
 assert.match(profile, /playerInfluenceFilter === 'Goles' && hasGoalBodyPartData[^]*Cómo marca/);
 assert.match(profile, /playerInfluenceFilter === 'Goles' && hasGoalPhaseData[^]*Tipo de gol/);

@@ -15,7 +15,7 @@ import {
 
 const players = [
   { id: 'p1', name: 'Agustín Porto' },
-  { id: 'p2', name: 'Aitor Ferrero' },
+  { id: 'p2', aliasIds: ['p2-antiguo'], name: 'Aitor Ferrero' },
 ];
 
 assert.deepEqual(getGoalAssistant({ assistant_id: 'p2', assistant: 'Aitor Ferrero' }), { id: 'p2', name: 'Aitor Ferrero' });
@@ -24,8 +24,10 @@ assert.deepEqual(getGoalAssistant({ assistantId: 'p2', assistantName: 'Aitor Fer
 assert.equal(hasGoalAssistant({ assistant: 'Aitor Ferrero' }), true);
 assert.equal(hasGoalAssistant({ assistant: '   ', assistant_id: null }), false);
 assert.equal(hasGoalAssistant({ assistant: null, assist_zone: 'finalizacion_centro' }), false, 'la zona no equivale a un asistente');
-assert.equal(resolveGoalParticipant({ assistantId: 'id-antiguo', assistant: 'Aitor Férrero' }, 'assistant', players)?.id, 'p2', 'un ID antiguo hace fallback al nombre normalizado');
-assert.equal(goalParticipantMatchesPlayer({ assistantId: 'id-antiguo', assistant: 'Aitor Ferrero' }, 'assistant', players[1]), true);
+assert.equal(resolveGoalParticipant({ assistantId: 'id-antiguo', assistant: 'Aitor Férrero' }, 'assistant', players), null, 'un ID contradictorio nunca hace fallback nominal');
+assert.equal(goalParticipantMatchesPlayer({ assistantId: 'id-antiguo', assistant: 'Aitor Ferrero' }, 'assistant', players[1]), false);
+assert.equal(resolveGoalParticipant({ assistantId: 'p2-antiguo', assistant: 'Aitor Férrero' }, 'assistant', players)?.id, 'p2', 'un alias de ID explícito conserva el evento histórico legítimo');
+assert.equal(goalParticipantMatchesPlayer({ assistantId: 'p2-antiguo', assistant: 'Aitor Ferrero' }, 'assistant', players[1], players), true);
 assert.deepEqual(normalizeGoalParticipants({ scorer: 'Agustín Porto', assist: 'Aitor Ferrero' }), {
   scorer: 'Agustín Porto', scorerId: null, assistant: 'Aitor Ferrero', assistantId: null,
 });

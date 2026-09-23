@@ -67,4 +67,30 @@ const globalAlias = resolveMatchPlayerCandidate({
 });
 assert.equal(globalAlias.status, 'resolved', 'globalPlayerId relacionado funciona como alias, no como identidad paralela');
 
+const membershipAlias = resolveMatchPlayerCandidate({
+  reference: { membershipId: 'dani-membership', playerName: 'Daniel Palacio' },
+  candidates: [dani],
+  identityIndex,
+});
+assert.equal(membershipAlias.status, 'resolved', 'membershipId explícito pertenece a la misma identidad canónica');
+
+const renamedAliasIndex = createMatchPlayerIdentityIndex([{ ...dani, aliasNames: ['Dani Palacio'] }]);
+const renamedLegacy = resolveMatchPlayerCandidate({
+  reference: dani,
+  candidates: [{ playerName: 'Dani Palacio' }],
+  identityIndex: renamedAliasIndex,
+});
+assert.equal(renamedLegacy.status, 'resolved', 'un cambio nominal sólo resuelve cuando el alias está registrado');
+
+const homonyms = [
+  { id: 'alex-a', name: 'Álex García' },
+  { id: 'alex-b', name: 'Álex García' },
+];
+const homonymResolution = resolveMatchPlayerCandidate({
+  reference: { playerName: 'Alex Garcia' },
+  candidates: [{ playerName: 'Álex García' }],
+  identityIndex: createMatchPlayerIdentityIndex(homonyms),
+});
+assert.equal(homonymResolution.status, 'ambiguous', 'un legacy sin ID no se asigna entre homónimos');
+
 console.log('match player identity tests passed');

@@ -2,6 +2,9 @@ import { buildMatchPositionSystemLines } from './playerPositionTimelinePresentat
 
 const rows = (value) => Array.isArray(value) ? value : [];
 const clean = (value) => String(value ?? '').trim();
+const finiteOrNull = (value) => value !== null && value !== undefined && clean(value) !== '' && Number.isFinite(Number(value))
+  ? Number(value)
+  : null;
 
 export const getPlayerReportActionUrl = (value) => {
   const url = clean(value);
@@ -68,7 +71,11 @@ const goalAnalysisTotal = (analysis = {}) => Math.max(
 );
 
 export const buildPlayerCompetitionProfile = (competitionBreakdown = []) => {
-  const competitions = rows(competitionBreakdown).filter((competition) => Number(competition.played || 0) > 0);
+  const competitions = rows(competitionBreakdown).filter((competition) => (
+    Number(competition.played || 0) > 0
+    || Number(competition.goals || 0) > 0
+    || Number(competition.assists || 0) > 0
+  ));
   if (competitions.length === 1) {
     const competition = competitions[0];
     return {
@@ -149,12 +156,18 @@ export const buildPlayerProfilePrintReport = (source = {}) => {
     ? rows(source.influenceMaps).map((map) => ({ ...map, zones: rows(map.zones) }))
     : [{ key: 'all', label: 'Todos', zones: rows(source.influenceZones) }];
   const competitionBreakdown = rows(source.competitionBreakdown)
-    .filter((competition) => Number(competition.played || 0) > 0)
+    .filter((competition) => (
+      Number(competition.played || 0) > 0
+      || Number(competition.goals || 0) > 0
+      || Number(competition.assists || 0) > 0
+    ))
     .map((competition) => ({
       ...competition,
-      minutesPerMatch: Number(competition.minutesPerMatch ?? (
-        Number(competition.played || 0) > 0 ? Math.round(Number(competition.minutes || 0) / Number(competition.played || 0)) : 0
-      )),
+      minutesPerMatch: finiteOrNull(competition.minutesPerMatch) ?? (
+        finiteOrNull(competition.minutes) !== null && Number(competition.played || 0) > 0
+          ? Math.round(Number(competition.minutes) / Number(competition.played))
+          : null
+      ),
       goalContributions: Number(competition.goalContributions ?? (Number(competition.goals || 0) + Number(competition.assists || 0))),
     }));
   const competitionProfile = buildPlayerCompetitionProfile(competitionBreakdown);

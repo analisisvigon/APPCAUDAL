@@ -15,6 +15,15 @@ export const getMatchPlayerName = (row = {}) => clean(
   || row.name
 );
 
+export const getMatchPlayerIdentityNames = (row = {}) => Array.from(new Set([
+  getMatchPlayerName(row),
+  row.shirtName,
+  row.shirt_name,
+  row.googleFormsName,
+  row.google_forms_name,
+  ...rows(row.aliasNames || row.alias_names || row.legacyNames || row.legacy_names || row.aliases),
+].map(normalizeMatchPlayerName).filter(Boolean)));
+
 export const getMatchPlayerIdentityIds = (row = {}) => Array.from(new Set([
   row.canonicalPlayerId,
   row.canonical_player_id,
@@ -39,8 +48,9 @@ export const createMatchPlayerIdentityIndex = (records = []) => {
   const identities = [];
   rows(records).filter(Boolean).forEach((record) => {
     const ids = getMatchPlayerIdentityIds(record);
-    const name = normalizeMatchPlayerName(getMatchPlayerName(record));
-    if (!ids.length && !name) return;
+    const names = getMatchPlayerIdentityNames(record);
+    const name = names[0] || '';
+    if (!ids.length && !names.length) return;
     const related = identities.filter((identity) => ids.length && intersects(ids, identity.ids));
     const uniqueNamedIdentity = !ids.length && name
       ? identities.filter((identity) => identity.canonicalId && identity.names.includes(name))
@@ -48,13 +58,13 @@ export const createMatchPlayerIdentityIndex = (records = []) => {
     if (uniqueNamedIdentity.length === 1) return;
     const canonicalId = clean(record.canonicalPlayerId || record.canonical_player_id || record.canonicalId || record.id || record.jugadorId || record.jugador_id || record.playerId || record.player_id);
     if (!related.length) {
-      identities.push({ canonicalId: canonicalId || ids[0] || '', ids, names: name ? [name] : [] });
+      identities.push({ canonicalId: canonicalId || ids[0] || '', ids, names });
       return;
     }
     const target = related[0];
     target.canonicalId ||= canonicalId || ids[0] || '';
     target.ids = Array.from(new Set([...target.ids, ...ids]));
-    target.names = Array.from(new Set([...target.names, ...(name ? [name] : [])]));
+    target.names = Array.from(new Set([...target.names, ...names]));
     related.slice(1).forEach((duplicate) => {
       target.ids = Array.from(new Set([...target.ids, ...duplicate.ids]));
       target.names = Array.from(new Set([...target.names, ...duplicate.names]));
@@ -119,9 +129,36 @@ export const resolveMatchPlayerCandidate = ({ reference = {}, candidates = [], i
   if (idMatches.length > 1 || idMatches.some(({ inspected }) => inspected.ambiguousIds || inspected.nameConflict)) {
     return { status: 'ambiguous', candidate: null, mode: '', conflicts: idMatches.map(({ candidate }) => candidate) };
   }
-  const nameMatches = inspectedReference.name
-    ? inspectedCandidates.filter(({ inspected }) => inspected.name === inspectedReference.name)
+  const contradictoryNamedCandidates = inspectedReference.name
+    ? inspectedCandidates.filter(({ inspected }) => (
+      inspected.name === inspectedReference.name
+      && inspectedReference.rawIds.length > 0
+      && inspected.rawIds.length > 0
+      && !intersects(inspectedReference.ids, inspected.ids)
+    ))
     : [];
+  if (contradictoryNamedCandidates.length) {
+    return { status: 'identity_conflict', candidate: null, mode: '', conflicts: contradictoryNamedCandidates.map(({ candidate }) => candidate) };
+  }
+  const nameMatches = inspectedReference.name
+    ? inspectedCandidates.filter(({ inspected }) => {
+      if (inspectedReference.rawIds.length && inspected.rawIds.length) return false;
+      const namedIdentities = identitiesForName(identityIndex, inspected.name);
+      if (namedIdentities.length > 1) return false;
+      if (inspectedReference.identity && namedIdentities.length === 1) {
+        return namedIdentities[0] === inspectedReference.identity;
+      }
+      return inspected.name === inspectedReference.name;
+    })
+    : [];
+  const ambiguousNameCandidates = inspectedCandidates.filter(({ inspected }) => (
+    !(inspectedReference.rawIds.length && inspected.rawIds.length)
+    && inspected.name
+    && identitiesForName(identityIndex, inspected.name).length > 1
+  ));
+  if (!nameMatches.length && ambiguousNameCandidates.length) {
+    return { status: 'ambiguous', candidate: null, mode: '', conflicts: ambiguousNameCandidates.map(({ candidate }) => candidate) };
+  }
   if (nameMatches.length !== 1) {
     return {
       status: nameMatches.length > 1 ? 'ambiguous' : 'missing',

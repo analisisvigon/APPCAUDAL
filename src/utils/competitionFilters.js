@@ -1,3 +1,5 @@
+import { matchBelongsToSportsSeason } from './sportsSeason.js';
+
 const normalizeText = (value) =>
   String(value || '')
     .trim()
@@ -91,13 +93,9 @@ const getCompetitionType = (competitionKey, catalog = []) => {
 export const isOfficialCompetition = (competitionKey, catalog = []) =>
   getCompetitionType(competitionKey, catalog) === 'official';
 
-const getSeason = (value = {}) =>
-  String(value.season ?? value.seasonKey ?? value.season_key ?? value.temporada ?? '').trim();
-
 export const matchBelongsToActiveSeason = (match, activeSeason) => {
   if (!activeSeason) return true;
-  const matchSeason = getSeason(match);
-  return Boolean(matchSeason) && matchSeason === String(activeSeason).trim();
+  return matchBelongsToSportsSeason(match, activeSeason);
 };
 
 export const matchMatchesCompetitionScope = (

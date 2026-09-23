@@ -9,18 +9,20 @@ const isBlankMinutes = (value) => (
 export const DEFAULT_STATS_MATCH_DURATION_MINUTES = 90;
 
 export const getStatsMatchDurationMinutes = (match = {}) => {
-  const candidates = [
+  const persistedCandidates = [
     match.duration,
     match.matchDuration,
     match.officialDuration,
     match.minutes,
-    ...Object.values(match.statsPlayerData && typeof match.statsPlayerData === 'object' ? match.statsPlayerData : {})
-      .map((row) => row?.minutes),
-  ];
-  const numeric = candidates
+  ]
     .map((value) => Number(value))
     .filter((value) => Number.isFinite(value) && value > 0);
-  return Math.max(DEFAULT_STATS_MATCH_DURATION_MINUTES, ...numeric);
+  const observedPlayerMinutes = Object.values(match.statsPlayerData && typeof match.statsPlayerData === 'object' ? match.statsPlayerData : {})
+    .map((row) => Number(row?.minutes))
+    .filter((value) => Number.isFinite(value) && value > DEFAULT_STATS_MATCH_DURATION_MINUTES);
+  if (persistedCandidates.length) return Math.max(...persistedCandidates, ...observedPlayerMinutes);
+  if (observedPlayerMinutes.length) return Math.max(...observedPlayerMinutes);
+  return DEFAULT_STATS_MATCH_DURATION_MINUTES;
 };
 
 export const isStatsMatchCompleted = (match = {}, now = new Date()) => {

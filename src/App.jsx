@@ -63,8 +63,25 @@ import {
 } from './utils/playerDelegatedLiveReport';
 import { getPlayerPositionUsage } from './utils/playerPositionUsage';
 import { resolveOpponentTeamIdentity } from './utils/opponentTeamIdentity';
-import { createMatchPlayerIdentityIndex, resolveMatchPlayerCandidate } from './utils/matchPlayerIdentity';
+import {
+  createMatchPlayerIdentityIndex,
+  getMatchPlayerIdentityIds,
+  resolveMatchPlayerCandidate,
+} from './utils/matchPlayerIdentity';
 import { getSportsSeason, resolveSportsSeasonFromMatches } from './utils/sportsSeason';
+import {
+  buildPlayerDossierAggregate,
+  buildPlayerDossierCompetitionBreakdown,
+  calculatePlayerDossierPer90,
+  deduplicatePlayerOfficialStatsRows,
+  getKnownBoolean,
+  getKnownYellowCount,
+  getPlayerDossierVenue,
+  isPlayerDossierMatchEligible,
+  isPlayerDossierRowPlayed,
+  normalizePlayerDossierRole,
+  sortPlayerDossierMatchRows,
+} from './utils/playerDossierData';
 import {
   buildPlayerBodyPartSummary,
   buildPlayerConnectionRows,
@@ -1977,7 +1994,7 @@ const normalizeSupabasePartido = (match) =>
     opponentCrest: match.opponent_crest || '',
     homeTeam: match.home_team || 'C.D. Caudal',
     awayTeam: match.away_team || '',
-    isHome: Boolean(match.is_home),
+    isHome: typeof (match.is_home ?? match.isHome) === 'boolean' ? (match.is_home ?? match.isHome) : null,
     status: match.status || 'Previa',
     homeScore: match.home_score ?? match.homeScore ?? '',
     awayScore: match.away_score ?? match.awayScore ?? '',
@@ -6327,8 +6344,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     return found ? { ...fallback, ...found, key } : fallback;
   };
 
-  const filterMatchesByCompetitionCatalog = (rows = [], competitionKey = 'all') =>
-    filterMatchesByCompetition(rows, competitionKey, competitions);
+  const filterMatchesByCompetitionCatalog = (rows = [], competitionKey = 'all', options) =>
+    filterMatchesByCompetition(rows, competitionKey, competitions, options);
 
   const loadCompetitions = async ({ shouldApply = () => true } = {}) => {
     const { data, error } = await supabase
@@ -7165,11 +7182,19 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     setPlayerProfileError('');
 
     try {
-      const statsRequests = [
-        supabase.from("partido_estadisticas_jugador").select("*").eq("player_name", player.name),
-      ];
-      if (isUuid(player.id)) {
-        statsRequests.push(supabase.from("partido_estadisticas_jugador").select("*").eq("jugador_id", player.id));
+      const explicitPlayerNames = Array.from(new Set([
+        player.name,
+        player.shirtName,
+        player.googleFormsName,
+        ...(Array.isArray(player.aliasNames) ? player.aliasNames : []),
+        ...(Array.isArray(player.legacyNames) ? player.legacyNames : []),
+      ].map((value) => String(value || '').trim()).filter(Boolean)));
+      const statsRequests = explicitPlayerNames.map((playerName) => (
+        supabase.from("partido_estadisticas_jugador").select("*").eq("player_name", playerName)
+      ));
+      const explicitPlayerIds = getMatchPlayerIdentityIds(player).filter(isUuid);
+      if (explicitPlayerIds.length) {
+        statsRequests.push(supabase.from("partido_estadisticas_jugador").select("*").in("jugador_id", explicitPlayerIds));
       }
 
       const quickEventRequest = isUuid(player.id)
@@ -7191,11 +7216,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         });
       }
 
-      const statsByKey = new Map();
-      statsResponses.flatMap((response) => response.data || []).forEach((row) => {
-        statsByKey.set(`${row.partido_id}-${row.player_name}`, row);
+      const statsRows = deduplicatePlayerOfficialStatsRows({
+        statsRows: statsResponses.flatMap((response) => response.data || []),
+        player,
+        players,
       });
-      const statsRows = Array.from(statsByKey.values());
 
       const goalEvents = safeArray(goalEventsResponse.data)
         .map(normalizeSupabaseGoalEvent)
@@ -15594,11 +15619,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
 
   const getStatsGoalEvents = () => selectedMatch?.statsGoalEvents || [];
   const goalEventMatchesPlayer = (event, player) => {
-    return goalParticipantMatchesPlayer(event, 'scorer', player)
-      || goalParticipantMatchesPlayer(event, 'assistant', player);
+    return goalParticipantMatchesPlayer(event, 'scorer', player, players)
+      || goalParticipantMatchesPlayer(event, 'assistant', player, players);
   };
-  const isGoalScoredByPlayer = (event, player) => goalParticipantMatchesPlayer(event, 'scorer', player);
-  const isGoalAssistedByPlayer = (event, player) => goalParticipantMatchesPlayer(event, 'assistant', player);
+  const isGoalScoredByPlayer = (event, player) => goalParticipantMatchesPlayer(event, 'scorer', player, players);
+  const isGoalAssistedByPlayer = (event, player) => goalParticipantMatchesPlayer(event, 'assistant', player, players);
   const getStatsScore = () => {
     const eventCaudalGoals = getStatsGoalEvents().filter((event) => event.type === 'Gol a favor').length;
     const eventRivalGoals = getStatsGoalEvents().filter((event) => event.type === 'Gol en contra').length;
@@ -20745,13 +20770,17 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     );
   };
 
-  const getPlayerMatchRows = (player) => {
+  const getPlayerMatchRows = (player, {
+    competitionFilter = playerCompetitionFilter,
+    venueFilter = playerVenueFilter,
+    activeSeason = getSportsSeason()?.label || '',
+  } = {}) => {
     if (!player) return [];
     const statsRows = playerProfileData?.statsRows || [];
     const goalEvents = playerProfileData?.goalEvents || [];
     const partidosById = playerProfileData?.partidosById || {};
 
-    return statsRows
+    const matchRows = statsRows
       .map((stats) => {
         const match = partidosById[stats.partido_id];
         if (!match) return null;
@@ -20759,7 +20788,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
           ...safeObject(match.statsPlayerData),
           [stats.player_name]: {
             ...safeObject(safeObject(match.statsPlayerData)[stats.player_name]),
-            role: stats.role || 'Suplente',
+            role: normalizePlayerDossierRole(stats.role),
             minutes: stats.minutes ?? '',
             replacementName: stats.replacement_name || '',
             jugadorId: stats.jugador_id || null,
@@ -20774,28 +20803,40 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
           matchCompleted: isStatsMatchCompleted(match),
         });
         const matchEvents = goalEvents.filter((event) => event.partidoId === stats.partido_id);
-        const yellowCount = Number(stats.yellow_count || 0) || (stats.yellow ? 1 : 0);
+        const goals = matchEvents.filter((event) => isGoalScoredByPlayer(event, player));
+        const assists = matchEvents.filter((event) => isGoalAssistedByPlayer(event, player));
+        if (!isPlayerDossierMatchEligible({ match, stats, goalCount: goals.length, assistCount: assists.length })) return null;
+        const role = normalizePlayerDossierRole(stats.role);
+        const yellowCount = getKnownYellowCount(stats);
+        const red = getKnownBoolean(stats.red);
+        const injured = getKnownBoolean(stats.injured);
         const cardActions = [
-          ...Array.from({ length: yellowCount }, (_, index) => ({ minute: stats.minutes || '', type: `Tarjeta amarilla${yellowCount > 1 ? ` ${index + 1}` : ''}` })),
-          ...(stats.red ? [{ minute: stats.minutes || '', type: 'Tarjeta roja' }] : []),
+          ...Array.from({ length: Number(yellowCount || 0) }, (_, index) => ({ minute: stats.minutes || '', type: `Tarjeta amarilla${yellowCount > 1 ? ` ${index + 1}` : ''}` })),
+          ...(red === true ? [{ minute: stats.minutes || '', type: 'Tarjeta roja' }] : []),
         ];
-        return {
+        const row = {
           match,
           isCalled: true,
-          role: stats.role || 'Suplente',
+          role,
           minutes,
-          goals: matchEvents.filter((event) => isGoalScoredByPlayer(event, player)),
-          assists: matchEvents.filter((event) => isGoalAssistedByPlayer(event, player)),
+          goals,
+          assists,
           yellow: yellowCount,
-          red: Boolean(stats.red),
-          injured: Boolean(stats.injured),
+          red,
+          injured,
           rating: stats.rating || '',
           cardActions,
         };
+        return { ...row, played: isPlayerDossierRowPlayed(row) };
       })
       .filter(Boolean)
-      .filter((row) => filterMatchesByCompetitionCatalog([row.match], getCompetitionFilterKey(playerCompetitionFilter)).length)
-      .filter((row) => playerVenueFilter === 'Todos' || (playerVenueFilter === 'Local' ? row.match.isHome : !row.match.isHome));
+      .filter((row) => filterMatchesByCompetitionCatalog(
+        [row.match],
+        getCompetitionFilterKey(competitionFilter),
+        { activeSeason },
+      ).length)
+      .filter((row) => venueFilter === 'Todos' || getPlayerDossierVenue(row.match) === venueFilter);
+    return sortPlayerDossierMatchRows(matchRows);
   };
 
   const getQuickEventCount = (events, tipoEvento, side = 'caudal') =>
@@ -20901,40 +20942,19 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     ).length > 0,
   });
 
-  const getPlayerAggregate = (player) => {
-    const rows = getPlayerMatchRows(player);
-    const played = rows.filter((row) => row.minutes > 0 || row.role === 'Titular').length;
-    const starts = rows.filter((row) => row.role === 'Titular').length;
-    const subs = Math.max(0, played - starts);
-    const minutes = rows.reduce((sum, row) => sum + Number(row.minutes || 0), 0);
-    const goals = rows.reduce((sum, row) => sum + row.goals.length, 0);
-    const assists = rows.reduce((sum, row) => sum + row.assists.length, 0);
-    const yellow = rows.reduce((sum, row) => sum + Number(row.yellow || 0), 0);
-    const red = rows.filter((row) => row.red).length;
-    const injured = rows.filter((row) => row.injured).length;
-    const possibleMinutes = rows.length * 90;
+  const getPlayerAggregate = (player, options) => {
+    const aggregate = buildPlayerDossierAggregate(getPlayerMatchRows(player, options));
     const quick = getPlayerQuickSummary(player);
     const quickPer90 = EVENT_STAT_FIELDS
       .filter((field) => !field.teamOnly)
       .reduce((acc, field) => ({
         ...acc,
-        [field.key]: minutes > 0 ? ((Number(quick[field.key] || 0) / minutes) * 90).toFixed(2) : 'No disponible',
+        [field.key]: Number(aggregate.minutes) > 0 ? ((Number(quick[field.key] || 0) / aggregate.minutes) * 90).toFixed(2) : 'No disponible',
       }), {});
     return {
-      rows,
-      played,
-      starts,
-      subs,
-      minutes,
-      participation: possibleMinutes ? Math.round((minutes / possibleMinutes) * 100) : 0,
-      goals,
-      assists,
-      yellow,
-      red,
-      injured,
-      goalsPer90: minutes ? (goals / minutes * 90).toFixed(2) : '0.00',
-      assistsPer90: minutes ? (assists / minutes * 90).toFixed(2) : '0.00',
-      directGoalParticipation: goals + assists,
+      ...aggregate,
+      subs: aggregate.benchEntries,
+      directGoalParticipation: aggregate.goals + aggregate.assists,
       quick: { ...quick, per90: quickPer90 },
     };
   };
@@ -29854,8 +29874,16 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 );
               }
               const aggregate = getPlayerAggregate(selectedPlayerProfile);
+              const activePlayerDossierSeason = getSportsSeason();
+              const pdfSeasonLabel = activePlayerDossierSeason?.label || '';
+              const pdfAggregate = getPlayerAggregate(selectedPlayerProfile, {
+                competitionFilter: 'Temporada',
+                venueFilter: 'Todos',
+                activeSeason: pdfSeasonLabel,
+              });
               const quick = aggregate.quick;
               const visibleMatchIds = new Set(aggregate.rows.map((row) => row.match.id));
+              const pdfMatchIds = new Set(pdfAggregate.rows.map((row) => row.match.id));
               const enrichPlayerProductionAction = (event, match, action) => {
                 if (!match) return buildPlayerProductionAction({ ...event, action, match: null });
                 const score = getMatchScoreData(match);
@@ -29880,6 +29908,14 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 .filter((event) => isGoalAssistedByPlayer(event, selectedPlayerProfile) && visibleMatchIds.has(event.partidoId))
                 .map((event) => enrichPlayerProductionAction(event, playerProfileData.partidosById[event.partidoId], 'Asistencia'))
                 .filter((event) => event.match);
+              const pdfGoalActions = (playerProfileData?.goalEvents || [])
+                .filter((event) => isGoalScoredByPlayer(event, selectedPlayerProfile) && pdfMatchIds.has(event.partidoId))
+                .map((event) => enrichPlayerProductionAction(event, playerProfileData.partidosById[event.partidoId], 'Gol'))
+                .filter((event) => event.match);
+              const pdfAssistActions = (playerProfileData?.goalEvents || [])
+                .filter((event) => isGoalAssistedByPlayer(event, selectedPlayerProfile) && pdfMatchIds.has(event.partidoId))
+                .map((event) => enrichPlayerProductionAction(event, playerProfileData.partidosById[event.partidoId], 'Asistencia'))
+                .filter((event) => event.match);
               const influenceActions = getPlayerInfluenceActions({ goalActions: allGoalActions, assistActions: allAssistActions, filter: playerInfluenceFilter });
               const influenceDetailLabel = playerInfluenceFilter === 'Todos' ? 'acciones' : playerInfluenceFilter.toLowerCase();
               const shotZoneCounts = countPitchZones(influenceActions.map((event) => event.action === 'Gol' ? event.shotZone : event.assistZone));
@@ -29894,7 +29930,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
               const maxPlayerGoalPhase = Math.max(1, ...playerGoalPhaseCounts.map((row) => row.count));
               const societyRows = buildPlayerConnectionRows({ goalActions: allGoalActions, assistActions: allAssistActions, filter: 'Todos' });
               const pdfConnectionIdentityIndex = createMatchPlayerIdentityIndex(players);
-              const pdfSocietyRows = societyRows.map((connection) => {
+              const pdfBaseSocietyRows = buildPlayerConnectionRows({ goalActions: pdfGoalActions, assistActions: pdfAssistActions, filter: 'Todos' });
+              const pdfSocietyRows = pdfBaseSocietyRows.map((connection) => {
                 const connectionResolution = resolvePlayerConnectionIdentity({ connection, players, identityIndex: pdfConnectionIdentityIndex });
                 const connectionPlayer = connectionResolution.status === 'resolved'
                   ? connectionResolution.candidate
@@ -29905,21 +29942,29 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 };
               });
               const goalTargetZones = goalMouthZoneCatalog.map((zone) => ({ ...zone, count: goalZoneCounts[zone.value] || 0 }));
+              const pdfInfluenceZoneCounts = countPitchZones([...pdfGoalActions, ...pdfAssistActions].map((event) => event.action === 'Gol' ? event.shotZone : event.assistZone));
+              const pdfGoalInfluenceZoneCounts = countPitchZones(pdfGoalActions.map((event) => event.shotZone));
+              const pdfAssistInfluenceZoneCounts = countPitchZones(pdfAssistActions.map((event) => event.assistZone));
+              const pdfGoalBodyPartSummary = buildPlayerBodyPartSummary(pdfGoalActions);
+              const pdfGoalTypeSummary = buildPlayerGoalTypeSummary(pdfGoalActions);
+              const pdfGoalTargetSummary = buildPlayerGoalTargetSummary(pdfGoalActions);
+              const pdfGoalZoneCounts = Object.fromEntries(pdfGoalTargetSummary.values.map((zone) => [zone.label, zone.count]));
+              const pdfGoalTargetZones = goalMouthZoneCatalog.map((zone) => ({ ...zone, count: pdfGoalZoneCounts[zone.value] || 0 }));
               const productionInvariant = buildPlayerProductionInvariantReport({
-                goals: allGoalActions,
-                assists: allAssistActions,
-                bodyParts: goalBodyPartSummary,
-                goalTypes: goalTypeSummary,
-                goalTarget: { ...goalTargetSummary, zones: goalTargetZones },
-                connections: societyRows,
+                goals: pdfGoalActions,
+                assists: pdfAssistActions,
+                bodyParts: pdfGoalBodyPartSummary,
+                goalTypes: pdfGoalTypeSummary,
+                goalTarget: { ...pdfGoalTargetSummary, zones: pdfGoalTargetZones },
+                connections: pdfBaseSocietyRows,
               });
               const visibleSocietyRows = buildPlayerConnectionRows({ goalActions: allGoalActions, assistActions: allAssistActions, filter: playerInfluenceFilter });
               const videoActions = influenceActions.filter((event) => event.videoUrl);
               const primaryMetrics = [
-                { label: 'Minutos', value: `${aggregate.minutes}'`, detail: aggregate.played ? `${Math.round(aggregate.minutes / Math.max(1, aggregate.played))}'/partido` : 'Sin partidos' },
+                { label: 'Minutos', value: aggregate.minutes === null ? '—' : `${aggregate.minutes}'`, detail: aggregate.minutes !== null && aggregate.played ? `${Math.round(aggregate.minutes / aggregate.played)}'/partido` : aggregate.played ? 'Información incompleta' : 'Sin partidos' },
                 { label: 'Partidos', value: aggregate.played, detail: `${aggregate.starts} titularidades` },
-                { label: 'Titularidades', value: aggregate.starts, detail: `${aggregate.subs} desde banquillo` },
-                { label: 'Participación', value: `${aggregate.participation}%`, detail: `${aggregate.minutes}' de ${aggregate.rows.length * 90}' posibles` },
+                { label: 'Titularidades', value: aggregate.starts, detail: aggregate.subs === null ? 'Suplencias incompletas' : `${aggregate.subs} desde banquillo` },
+                { label: 'Participación', value: aggregate.participation === null ? '—' : `${aggregate.participation}%`, detail: aggregate.participation === null ? 'Información incompleta' : `${aggregate.minutes}' de ${aggregate.possibleMinutes}' posibles` },
               ];
               const secondaryMetrics = [
                 ['Goles', aggregate.goals, 'text-emerald-200'],
@@ -29929,7 +29974,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 ['Lesiones', aggregate.injured, 'text-red-100'],
               ];
               const goalContributions = aggregate.goals + aggregate.assists;
-              const goalContributionsPer90 = aggregate.minutes ? ((goalContributions / aggregate.minutes) * 90).toFixed(2) : '0.00';
+              const goalContributionsPer90 = calculatePlayerDossierPer90(goalContributions, aggregate.minutes);
               const hasInfluenceData = Object.values(shotZoneCounts).some((count) => count > 0);
               const hasGoalZoneData = allGoalActions.some((event) => event.goalZone);
               const hasGoalPhaseData = playerGoalPhaseCounts.some((row) => row.count > 0);
@@ -29937,41 +29982,20 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
               const hasUsefulQuickData = quick.matchesWithEvents > 0;
               const dominantGoalPhase = hasGoalPhaseData ? [...playerGoalPhaseCounts].sort((a, b) => b.count - a.count)[0] : null;
               const pdfCompetitionOrder = ['league', 'copa_rfef', 'playoff', 'friendly'];
-              const pdfCompetitionRows = Object.values(aggregate.rows.reduce((acc, row) => {
-                const competition = getCompetitionFromCatalog(row.match);
-                const key = competition.key || competition.label || 'sin-competicion';
-                acc[key] = acc[key] || {
-                  key,
-                  label: competition.label || 'Sin datos',
-                  season: competition.season || '',
-                  logoUrl: competition.logoUrl || '',
-                  icon: competition.icon || '',
-                  played: 0,
-                  starts: 0,
-                  minutes: 0,
-                  goals: 0,
-                  assists: 0,
-                };
-                if (row.minutes > 0 || row.role === 'Titular') acc[key].played += 1;
-                if (row.role === 'Titular') acc[key].starts += 1;
-                acc[key].minutes += Number(row.minutes || 0);
-                acc[key].goals += row.goals.length;
-                acc[key].assists += row.assists.length;
-                return acc;
-              }, {}))
-                .filter((competition) => competition.played > 0)
+              const pdfCompetitionRows = buildPlayerDossierCompetitionBreakdown({
+                matchRows: pdfAggregate.rows,
+                getCompetition: getCompetitionFromCatalog,
+              })
                 .sort((left, right) => {
                   const leftIndex = pdfCompetitionOrder.indexOf(left.key);
                   const rightIndex = pdfCompetitionOrder.indexOf(right.key);
                   return (leftIndex < 0 ? pdfCompetitionOrder.length : leftIndex) - (rightIndex < 0 ? pdfCompetitionOrder.length : rightIndex)
                     || left.label.localeCompare(right.label, 'es');
                 });
-              const pdfSeasonLabels = [...new Set(pdfCompetitionRows.map((competition) => competition.season).filter(Boolean))];
-              const pdfSeasonResolution = resolveSportsSeasonFromMatches(aggregate.rows.map((row) => row.match));
-              const pdfSeasonLabel = pdfSeasonResolution.season?.label || (pdfSeasonLabels.length === 1 ? pdfSeasonLabels[0] : '');
+              const pdfSeasonResolution = resolveSportsSeasonFromMatches(pdfAggregate.rows.map((row) => row.match));
               const pdfOwnTeam = teams.find((team) => team.isOwnClub || team.teamKind === 'own') || null;
               const pdfPlayerFoot = /^(no indicada|no indicado|sin datos|—|-)$/i.test(String(selectedPlayerProfile.foot || '').trim()) ? '' : selectedPlayerProfile.foot || '';
-              const playerPositionMatchRows = aggregate.rows.map((row) => {
+              const buildPlayerPositionMatchRows = (rows) => rows.map((row) => {
                 const tacticalHistory = getMatchTacticalHistory(row.match);
                 const score = getMatchScoreData(row.match);
                 return {
@@ -29989,17 +30013,25 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                     opponent: row.match.opponent,
                     date: row.match.date,
                     competition: getCompetitionFromCatalog(row.match).label,
-                    venue: row.match.isHome ? 'Local' : 'Visitante',
+                    venue: getPlayerDossierVenue(row.match) || '',
                     result: score.hasScore ? `${score.caudalGoals}-${score.rivalGoals}` : '',
                   },
                 };
               });
+              const playerPositionMatchRows = buildPlayerPositionMatchRows(aggregate.rows);
               const playerPositionUsage = getPlayerPositionUsage({
                 playerId: selectedPlayerProfile.id,
                 playerName: selectedPlayerProfile.name,
                 playerIdentity: selectedPlayerProfile,
                 playerIdentities: players,
                 matchRows: playerPositionMatchRows,
+              });
+              const pdfPlayerPositionUsage = getPlayerPositionUsage({
+                playerId: selectedPlayerProfile.id,
+                playerName: selectedPlayerProfile.name,
+                playerIdentity: selectedPlayerProfile,
+                playerIdentities: players,
+                matchRows: buildPlayerPositionMatchRows(pdfAggregate.rows),
               });
               const playerPositionUsageByMatchId = new Map(playerPositionUsage.matches.map((match) => [match.matchId, match]));
               if (import.meta.env.DEV && typeof window !== 'undefined') {
@@ -30015,7 +30047,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                   unknownSegments: playerPositionUsage.unknownAudit,
                 };
               }
-              const playerPdfActions = [...allGoalActions, ...allAssistActions].map((event) => ({
+              const playerPdfActions = [...pdfGoalActions, ...pdfAssistActions].map((event) => ({
                 ...event,
                 id: `${event.action}-${event.match.id}-${event.id}`,
                 type: event.action,
@@ -30028,11 +30060,13 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 matchesById: playerProfileData?.partidosById || {},
                 player: selectedPlayerProfile,
                 players,
-                venue: playerVenueFilter,
-                matchAllowed: (match) => filterMatchesByCompetitionCatalog(
-                  [match],
-                  getCompetitionFilterKey(playerCompetitionFilter),
-                ).length > 0,
+                venue: 'Todos',
+                matchAllowed: (match) => isPlayerDossierMatchEligible({ match, goalCount: 1 })
+                  && filterMatchesByCompetitionCatalog(
+                    [match],
+                    getCompetitionFilterKey('Temporada'),
+                    { activeSeason: pdfSeasonLabel },
+                  ).length > 0,
               });
               const pdfSeasonMatchStats = pdfSeasonQuick.matchStats
                 .map(({ match, ...stats }) => {
@@ -30047,7 +30081,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                     opponentCrestSource: opponentIdentity.source,
                     competitionKey: getCompetitionFromCatalog(match).key,
                     competitionName: getCompetitionFromCatalog(match).label,
-                    isHome: Boolean(match.isHome),
+                    isHome: typeof match.isHome === 'boolean' ? match.isHome : null,
                   };
                 })
                 .sort((left, right) => `${left.matchDate}:${left.matchId}`.localeCompare(`${right.matchDate}:${right.matchId}`));
@@ -30069,57 +30103,59 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 },
                 filters: {
                   season: pdfSeasonLabel,
-                  competition: playerCompetitionFilter,
-                  venue: playerVenueFilter,
+                  competition: 'Temporada',
+                  venue: 'Todos',
                 },
                 validation: {
                   seasonValid: Boolean(pdfSeasonLabel) && pdfSeasonResolution.reason !== 'MULTIPLE_SEASONS',
                   seasonReason: pdfSeasonResolution.reason,
                   production: productionInvariant,
-                  positionUsage: playerPositionUsage,
+                  positionUsage: pdfPlayerPositionUsage,
                 },
                 seasonSummary: {
-                  played: aggregate.played,
-                  starts: aggregate.starts,
-                  minutes: aggregate.minutes,
-                  minutesPerMatch: aggregate.played ? Math.round(aggregate.minutes / aggregate.played) : 0,
-                  starterPercentage: aggregate.played ? Math.round((aggregate.starts / aggregate.played) * 100) : 0,
-                  minutesPlayedPercentage: aggregate.participation,
-                  possibleMinutes: aggregate.rows.length * 90,
-                  goals: aggregate.goals,
-                  assists: aggregate.assists,
-                  goalContributions: aggregate.goals + aggregate.assists,
-                  yellow: aggregate.yellow,
-                  red: aggregate.red,
-                  injuries: aggregate.injured,
-                  benchEntries: aggregate.subs,
+                  played: pdfAggregate.played,
+                  starts: pdfAggregate.starts,
+                  minutes: pdfAggregate.minutes,
+                  minutesPerMatch: pdfAggregate.minutes !== null && pdfAggregate.played
+                    ? Math.round(pdfAggregate.minutes / pdfAggregate.played)
+                    : null,
+                  starterPercentage: pdfAggregate.played ? Math.round((pdfAggregate.starts / pdfAggregate.played) * 100) : null,
+                  minutesPlayedPercentage: pdfAggregate.participation,
+                  possibleMinutes: pdfAggregate.possibleMinutes,
+                  goals: pdfAggregate.goals,
+                  assists: pdfAggregate.assists,
+                  goalContributions: pdfAggregate.goals + pdfAggregate.assists,
+                  yellow: pdfAggregate.yellow,
+                  red: pdfAggregate.red,
+                  injuries: pdfAggregate.injured,
+                  benchEntries: pdfAggregate.subs,
                 },
                 competitionBreakdown: pdfCompetitionRows,
                 liveSeason: pdfSeasonAnalysis.live,
                 seasonMaximums: pdfSeasonAnalysis.maximums,
-                positionUsage: playerPositionUsage,
+                positionUsage: pdfPlayerPositionUsage,
                 production: {
-                  goalsPer90: aggregate.goalsPer90,
-                  assistsPer90: aggregate.assistsPer90,
-                  goalContributionsPer90: aggregate.minutes ? (((aggregate.goals + aggregate.assists) / aggregate.minutes) * 90).toFixed(2) : '0.00',
-                  goalContributions: aggregate.goals + aggregate.assists,
+                  goalsPer90: pdfAggregate.goalsPer90,
+                  assistsPer90: pdfAggregate.assistsPer90,
+                  goalContributionsPer90: calculatePlayerDossierPer90(pdfAggregate.goals + pdfAggregate.assists, pdfAggregate.minutes),
+                  goalContributions: pdfAggregate.goals + pdfAggregate.assists,
                 },
                 influenceMaps: [
-                  { key: 'all', label: 'Todos', zones: pitchZoneCatalog.map((zone) => ({ ...zone, count: allInfluenceZoneCounts[zone.value] || 0 })) },
-                  { key: 'goals', label: 'Goles', zones: pitchZoneCatalog.map((zone) => ({ ...zone, count: goalInfluenceZoneCounts[zone.value] || 0 })) },
-                  { key: 'assists', label: 'Asistencias', zones: pitchZoneCatalog.map((zone) => ({ ...zone, count: assistInfluenceZoneCounts[zone.value] || 0 })) },
+                  { key: 'all', label: 'Todos', zones: pitchZoneCatalog.map((zone) => ({ ...zone, count: pdfInfluenceZoneCounts[zone.value] || 0 })) },
+                  { key: 'goals', label: 'Goles', zones: pitchZoneCatalog.map((zone) => ({ ...zone, count: pdfGoalInfluenceZoneCounts[zone.value] || 0 })) },
+                  { key: 'assists', label: 'Asistencias', zones: pitchZoneCatalog.map((zone) => ({ ...zone, count: pdfAssistInfluenceZoneCounts[zone.value] || 0 })) },
                 ],
                 goalAnalysis: {
-                  bodyParts: goalBodyPartSummary,
-                  types: goalTypeSummary,
+                  bodyParts: pdfGoalBodyPartSummary,
+                  types: pdfGoalTypeSummary,
                   target: {
-                    ...goalTargetSummary,
-                    zones: goalTargetZones,
+                    ...pdfGoalTargetSummary,
+                    zones: pdfGoalTargetZones,
                   },
                 },
                 society: pdfSocietyRows,
                 actions: playerPdfActions,
-                history: aggregate.rows.map((row) => {
+                history: pdfAggregate.rows.map((row) => {
                   const score = getMatchScoreData(row.match);
                   const linkedActions = playerPdfActions.filter((action) => action.matchId === row.match.id);
                   const opponentIdentity = resolveOpponentTeamIdentity({ match: row.match, teams });
@@ -30133,13 +30169,15 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                     result: score.hasScore ? `${score.caudalGoals}-${score.rivalGoals}` : 'Sin datos',
                     outcome: score.hasScore ? (score.caudalGoals > score.rivalGoals ? 'V' : score.caudalGoals < score.rivalGoals ? 'D' : 'E') : '',
                     competition: getCompetitionFromCatalog(row.match).label,
-                    venue: row.match.isHome ? 'L' : 'V',
-                    role: row.role,
+                    venue: getPlayerDossierVenue(row.match) === 'Local' ? 'L' : getPlayerDossierVenue(row.match) === 'Visitante' ? 'V' : '—',
+                    role: row.role || '—',
                     minutes: row.minutes === null ? '—' : `${row.minutes}'`,
                     goals: row.goals.length || '-',
                     assists: row.assists.length || '-',
-                    cards: [row.yellow ? `${row.yellow} TA` : '', row.red ? '1 TR' : ''].filter(Boolean).join(' · ') || '-',
-                    injury: row.injured ? 'Sí' : '-',
+                    cards: row.yellow === null || row.red === null
+                      ? '—'
+                      : [row.yellow ? `${row.yellow} TA` : '', row.red ? '1 TR' : ''].filter(Boolean).join(' · ') || '-',
+                    injury: row.injured === null ? '—' : row.injured ? 'Sí' : '-',
                     goalLinks: linkedActions.filter((action) => action.type === 'Gol').map((action) => action.url),
                     assistLinks: linkedActions.filter((action) => action.type === 'Asistencia').map((action) => action.url),
                   };
@@ -30295,7 +30333,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                         <div className="mt-3 grid grid-cols-5 gap-2">
                           {secondaryMetrics.map(([label, value, className]) => (
                             <div key={label} className="rounded-[1rem] bg-white/[0.045] px-2 py-3 text-center">
-                              <p className={`text-2xl font-black ${className}`}>{value}</p>
+                              <p className={`text-2xl font-black ${className}`}>{value ?? '—'}</p>
                               <p className="mt-1 truncate text-[9px] font-black uppercase tracking-[0.08em] text-slate-500">{label}</p>
                             </div>
                           ))}
@@ -30383,7 +30421,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                               ].map(([label, value, color]) => (
                                 <div key={label} className="rounded-2xl border border-white/[0.08] bg-white/[0.045] px-3 py-3">
                                   <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{label}</span>
-                                  <strong className={`mt-1 block text-xl ${color}`}>{value}</strong>
+                                  <strong className={`mt-1 block text-xl ${color}`}>{value ?? '—'}</strong>
                                 </div>
                               ))}
                             </div>
@@ -30526,7 +30564,9 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                           {aggregate.rows.length ? aggregate.rows.map((row) => {
                             const score = getMatchScoreData(row.match);
                             const resultLabel = score.hasScore ? (score.caudalGoals > score.rivalGoals ? 'V' : score.caudalGoals < score.rivalGoals ? 'D' : 'E') : null;
-                            const cardLabel = [row.yellow ? `${row.yellow} TA` : null, row.red ? '1 TR' : null].filter(Boolean).join(' · ') || '-';
+                            const cardLabel = row.yellow === null || row.red === null
+                              ? '—'
+                              : [row.yellow ? `${row.yellow} TA` : null, row.red ? '1 TR' : null].filter(Boolean).join(' · ') || '-';
                             const matchPositionUsage = playerPositionUsageByMatchId.get(row.match.id);
                             return (
                             <tr key={row.match.id} className={`border-t border-white/10 ${row.goals.length || row.assists.length ? 'bg-emerald-200/[0.04]' : row.red || row.injured ? 'bg-red-200/[0.03]' : ''}`}>
@@ -30543,8 +30583,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                                 </span>
                               </td>
                               <td className="min-w-[160px] px-3 py-4 text-slate-300">{getCompetitionFromCatalog(row.match).label}</td>
-                              <td className="whitespace-nowrap px-3 py-4 text-slate-300">{row.match.isHome ? 'Local' : 'Visitante'}</td>
-                              <td className="px-3 py-4"><span className={`rounded-xl px-2 py-1 text-xs font-black ${row.role === 'Titular' ? 'bg-caudal-electric/15 text-caudal-electric' : 'bg-white/[0.06] text-slate-300'}`}>{row.role}</span></td>
+                              <td className="whitespace-nowrap px-3 py-4 text-slate-300">{getPlayerDossierVenue(row.match) || '—'}</td>
+                              <td className="px-3 py-4"><span className={`rounded-xl px-2 py-1 text-xs font-black ${row.role === 'Titular' ? 'bg-caudal-electric/15 text-caudal-electric' : 'bg-white/[0.06] text-slate-300'}`}>{row.role || '—'}</span></td>
                               <td className="min-w-[132px] px-3 py-3 align-top" data-player-match-position-summary>
                                 <PlayerMatchPositionSummary matchUsage={matchPositionUsage} />
                               </td>
@@ -30552,7 +30592,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                               <td className="px-3 py-4 text-emerald-100">{row.goals.length || '-'}</td>
                               <td className="px-3 py-4 text-caudal-electric">{row.assists.length || '-'}</td>
                               <td className="px-3 py-4 text-amber-100">{cardLabel}</td>
-                              <td className="px-3 py-4 text-red-100">{row.injured ? 'Sí' : '-'}</td>
+                              <td className="px-3 py-4 text-red-100">{row.injured === null ? '—' : row.injured ? 'Sí' : '-'}</td>
                             </tr>
                           );
                           }) : <tr><td colSpan="12" className="px-3 py-6 text-center text-slate-500">Sin datos registrados</td></tr>}

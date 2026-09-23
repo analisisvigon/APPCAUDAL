@@ -52,6 +52,28 @@ export const parseLocalMatchDate = (value) => {
   return date;
 };
 
+const parseLocalMatchTime = (value) => {
+  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const seconds = Number(match[3] || 0);
+  if (hours > 23 || minutes > 59 || seconds > 59) return null;
+  return { hours, minutes, seconds };
+};
+
+export const isMatchScheduledInFuture = (match = {}, now = new Date()) => {
+  const date = parseLocalMatchDate(match.date ?? match.matchDate ?? match.match_date);
+  if (!date) return false;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0);
+  if (date > today) return true;
+  if (date < today) return false;
+  const time = parseLocalMatchTime(match.time ?? match.matchTime ?? match.match_time);
+  if (!time) return false;
+  const kickoff = new Date(date.getFullYear(), date.getMonth(), date.getDate(), time.hours, time.minutes, time.seconds, 0);
+  return kickoff > now;
+};
+
 const localDayNumber = (value) => {
   const date = value instanceof Date ? value : parseLocalMatchDate(value);
   if (!date || Number.isNaN(date.getTime())) return null;

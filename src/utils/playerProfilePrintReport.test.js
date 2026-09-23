@@ -249,14 +249,14 @@ assert.match(appSource, /team:\s*getOwnClubDisplayName\(pdfOwnTeam\?\.name\)/, '
 assert.match(appSource, /teamCrest:\s*pdfOwnTeam\?\.crest \|\| clubCrest/, 'el PDF reutiliza el escudo canónico de APPCAUDAL si el registro propio no lo incluye');
 assert.match(appSource, /image:\s*getPlayerAvatarSource\(selectedPlayerProfile\)/, 'el PDF reutiliza la fuente de foto de mayor resolución disponible en el perfil');
 assert.match(appSource, /competitionBreakdown:\s*pdfCompetitionRows/, 'el desglose se construye desde partidos filtrados reales');
-assert.match(appSource, /logoUrl:\s*competition\.logoUrl \|\| ''/, 'el modelo PDF conserva el logo real del catálogo de competiciones');
+assert.match(appSource, /buildPlayerDossierCompetitionBreakdown\(\{[\s\S]*?getCompetition:\s*getCompetitionFromCatalog/, 'el modelo PDF conserva el catálogo real al construir el desglose');
 assert.match(appSource, /buildPlayerDelegatedSeasonExportSummary\(\{/, 'el PDF usa un selector de exportación independiente del filtro visible');
 assert.match(appSource, /buildPlayerDelegatedLivePresentationInput\(pdfSeasonQuick\)/, 'el PDF reutiliza sin recalcular las métricas canónicas de la ficha');
 assert.match(appSource, /buildPlayerAnalysisSeasonReport\(\{[\s\S]*?liveStats:[\s\S]*?matches:\s*pdfSeasonMatchStats/, 'APP y PDF comparten el presenter de temporada y máximos');
 assert.match(appSource, /liveSeason:\s*pdfSeasonAnalysis\.live[\s\S]*?seasonMaximums:\s*pdfSeasonAnalysis\.maximums/, 'el modelo normalizado recibe ambos bloques sin recalcularlos en el exportador');
 assert.match(appSource, /<PlayerPositionUsageSummary usage=\{playerPositionUsage\}/, 'la ficha App mantiene íntegro su bloque posicional completo');
-assert.match(appSource, /minutesPlayedPercentage:\s*aggregate\.participation/, 'el PDF reutiliza el porcentaje canónico de participación de la ficha');
-assert.match(appSource, /possibleMinutes:\s*aggregate\.rows\.length \* 90/, 'los minutos posibles usan la misma base objetiva ya mostrada en la App');
+assert.match(appSource, /minutesPlayedPercentage:\s*pdfAggregate\.participation/, 'el PDF reutiliza el porcentaje canónico de participación de la temporada');
+assert.match(appSource, /possibleMinutes:\s*pdfAggregate\.possibleMinutes/, 'los minutos posibles usan las duraciones efectivas del universo jugado');
 assert.match(appSource, /const pdfConnectionIdentityIndex = createMatchPlayerIdentityIndex\(players\)[\s\S]*?resolvePlayerConnectionIdentity\([\s\S]*?getPlayerAvatarSource/, 'las fotos de conexiones priorizan la identidad canónica y sólo se incorporan tras una resolución inequívoca');
 assert.match(appSource, /goalContributionsPer90/, 'G+A\/90 se calcula desde minutos y eventos oficiales');
 assert.match(appSource, /opponentCrest:\s*opponentIdentity\.crest/, 'el historial recibe el escudo desde el adaptador canónico por ID');

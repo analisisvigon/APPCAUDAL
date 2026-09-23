@@ -16,6 +16,7 @@ assert.deepEqual(
 );
 
 assert.equal(getStatsMatchDurationMinutes({}), 90, 'la duración canónica de un partido normal es 90');
+assert.equal(getStatsMatchDurationMinutes({ officialDuration: 45 }), 45, 'una duración persistida inferior a 90 no se sustituye por un partido imaginario de 90');
 assert.equal(getStatsMatchDurationMinutes({ officialDuration: 120 }), 120, 'una duración oficial explícita prevalece');
 assert.equal(getStatsMatchDurationMinutes({ statsPlayerData: { A: { minutes: '105' } } }), 105, 'la evidencia real superior amplía la duración');
 

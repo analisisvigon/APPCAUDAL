@@ -289,16 +289,19 @@ const drawFooter = (pdf, report, page, total) => {
 
 const drawKpis = (pdf, report, y) => {
   const summary = report.seasonSummary || {};
-  const possibleMinutes = number(summary.possibleMinutes);
+  const possibleMinutes = hasValue(summary.possibleMinutes) ? number(summary.possibleMinutes) : null;
   const minutesPlayedPercentage = hasValue(summary.minutesPlayedPercentage)
     ? number(summary.minutesPlayedPercentage)
-    : possibleMinutes > 0 ? Math.round((number(summary.minutes) / possibleMinutes) * 100) : 0;
+    : null;
+  const minutesDetail = hasValue(summary.minutes) && possibleMinutes !== null
+    ? `${number(summary.minutes)}' de ${possibleMinutes}' posibles`
+    : 'Información incompleta';
   const primary = [
     ['Partidos', summary.played],
     ['Titularidades', summary.starts],
-    ['Minutos', `${number(summary.minutes)}'`],
-    ['Min/partido', `${number(summary.minutesPerMatch)}'`],
-    ['Minutos disputados', `${minutesPlayedPercentage}%`, `${number(summary.minutes)}' de ${possibleMinutes}' posibles`],
+    ['Minutos', hasValue(summary.minutes) ? `${number(summary.minutes)}'` : '—'],
+    ['Min/partido', hasValue(summary.minutesPerMatch) ? `${number(summary.minutesPerMatch)}'` : '—'],
+    ['Minutos disputados', minutesPlayedPercentage === null ? '—' : `${minutesPlayedPercentage}%`, minutesDetail],
   ];
   const width = CONTENT_WIDTH / primary.length;
   primary.forEach(([label, value, detail], index) => {
@@ -320,7 +323,7 @@ const drawKpis = (pdf, report, y) => {
     const x = PAGE_MARGIN + secondaryWidth * index;
     pdf.setFillColor(...(index < 3 ? [239, 247, 251] : COLORS.panel));
     pdf.rect(x + 0.5, y + 25, secondaryWidth - 1, 13, 'F');
-    text(pdf, hasValue(value) ? value : 0, x + secondaryWidth / 2, y + 30.7, { size: 10.5, style: 'bold', color: index < 3 ? COLORS.blue : COLORS.ink, align: 'center' });
+    text(pdf, hasValue(value) ? value : '—', x + secondaryWidth / 2, y + 30.7, { size: 10.5, style: 'bold', color: index < 3 ? COLORS.blue : COLORS.ink, align: 'center' });
     text(pdf, label.toUpperCase(), x + secondaryWidth / 2, y + 35.5, { size: 4.5, style: 'bold', color: COLORS.muted, align: 'center' });
   });
   return y + 43;
@@ -480,13 +483,20 @@ const drawCompetitionTable = (pdf, competitions, y, sectionNumber, imageMap = ne
       pdf.setFillColor(...COLORS.panel);
       pdf.rect(PAGE_MARGIN, y, CONTENT_WIDTH, 8.2, 'F');
     }
-    const minutesPerMatch = hasValue(row.minutesPerMatch)
-      ? row.minutesPerMatch
-      : number(row.played) > 0 ? Math.round(number(row.minutes) / number(row.played)) : 0;
+    const minutesPerMatch = hasValue(row.minutesPerMatch) ? row.minutesPerMatch : null;
     const logoSource = clean(row.logoUrl || row.logo_url);
     const logo = imageMap.get(logoSource);
     const logoWidth = fitImage(pdf, logo, PAGE_MARGIN + 1.5, y + 1.2, 5.8, 5.8) ? 7.5 : 0;
-    const values = [row.label, row.played, row.starts, `${row.minutes}'`, `${minutesPerMatch}'`, row.goals, row.assists, row.goalContributions];
+    const values = [
+      row.label,
+      row.played,
+      row.starts,
+      hasValue(row.minutes) ? `${row.minutes}'` : '—',
+      minutesPerMatch === null ? '—' : `${minutesPerMatch}'`,
+      row.goals,
+      row.assists,
+      row.goalContributions,
+    ];
     x = PAGE_MARGIN;
     values.forEach((value, index) => {
       text(pdf, value, x + (index ? widths[index] / 2 : 2 + logoWidth), y + 5.3, { size: 6.5, style: index === 6 ? 'bold' : 'normal', color: COLORS.ink, align: index ? 'center' : 'left', maxWidth: index ? 0 : widths[index] - 4 - logoWidth });
@@ -846,7 +856,7 @@ const drawProductionMetrics = (pdf, production, y, sectionNumber) => {
     pdf.setFillColor(...(index < 3 ? [242, 248, 252] : COLORS.panel));
     pdf.setDrawColor(...COLORS.line);
     pdf.roundedRect(x + 1, y, width - 2, 19, 1, 1, 'FD');
-    text(pdf, hasValue(value) ? value : 0, x + width / 2, y + 8.8, { size: 14, style: 'bold', color: COLORS.blue, align: 'center' });
+    text(pdf, hasValue(value) ? value : '—', x + width / 2, y + 8.8, { size: 14, style: 'bold', color: COLORS.blue, align: 'center' });
     text(pdf, label.toUpperCase(), x + width / 2, y + 15, { size: 5, style: 'bold', color: COLORS.muted, align: 'center' });
   });
   return y + 23;
@@ -1209,13 +1219,11 @@ export const createPlayerProfilePdf = async ({
         source: clean(report.identity?.image),
       },
       minutesPlayed: {
-        minutes: number(report.seasonSummary?.minutes),
-        possibleMinutes: number(report.seasonSummary?.possibleMinutes),
+        minutes: hasValue(report.seasonSummary?.minutes) ? number(report.seasonSummary?.minutes) : null,
+        possibleMinutes: hasValue(report.seasonSummary?.possibleMinutes) ? number(report.seasonSummary?.possibleMinutes) : null,
         percentage: hasValue(report.seasonSummary?.minutesPlayedPercentage)
           ? number(report.seasonSummary?.minutesPlayedPercentage)
-          : number(report.seasonSummary?.possibleMinutes) > 0
-            ? Math.round((number(report.seasonSummary?.minutes) / number(report.seasonSummary?.possibleMinutes)) * 100)
-            : 0,
+          : null,
       },
       positions: positionMapModel.positions.map((position) => ({
         position: position.position,

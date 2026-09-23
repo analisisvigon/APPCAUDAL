@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { jsPDF } from 'jspdf';
+import './playerDossierData.test.js';
 import { inspectPlayerDossier, printPlayerDossier } from './playerDossierPrint.js';
 import { auditPlayerPdfLinkAnnotations, createPlayerProfilePdf, getObjectiveMetricRowLayout, loadPlayerPdfImage } from './playerProfilePdfExport.js';
 import { buildPlayerAnalysisSeasonReport } from './playerAnalysisPresentation.js';
