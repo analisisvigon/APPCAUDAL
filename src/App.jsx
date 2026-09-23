@@ -5729,7 +5729,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const [playerPdfExportError, setPlayerPdfExportError] = useState('');
   const [playerPdfCrestAudit, setPlayerPdfCrestAudit] = useState(null);
   const [playerPdfCrestAuditCopied, setPlayerPdfCrestAuditCopied] = useState(false);
-  const playerPdfCrestAuditEnabled = isPlayerPdfCrestAuditEnabled(typeof window !== 'undefined' ? window.location : null);
+  const playerPdfCrestAuditEnabled = isPlayerPdfCrestAuditEnabled(import.meta.env.DEV);
   useEffect(() => {
     const showChunkLoadError = (event) => {
       setPlayerPdfExportError(event.detail?.message || PDF_GENERATOR_LOAD_ERROR_MESSAGE);

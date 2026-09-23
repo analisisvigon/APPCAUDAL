@@ -11,9 +11,9 @@ import {
 import { buildPlayerConnectionRows } from './playerProductionDetails.js';
 import { getPlayerPositionUsage } from './playerPositionUsage.js';
 
-assert.equal(isPlayerPdfCrestAuditEnabled({ search: '' }), false);
-assert.equal(isPlayerPdfCrestAuditEnabled({ search: '?qaCrestAudit=0' }), false);
-assert.equal(isPlayerPdfCrestAuditEnabled({ search: '?section=players&qaCrestAudit=1' }), true);
+assert.equal(isPlayerPdfCrestAuditEnabled(true), true, 'DEV habilita el diagnóstico sin depender de la URL');
+assert.equal(isPlayerPdfCrestAuditEnabled(false), false, 'producción mantiene deshabilitado el diagnóstico');
+assert.equal(isPlayerPdfCrestAuditEnabled(), false, 'el valor seguro por defecto no expone el diagnóstico');
 
 const teams = [
   { id: 'own', name: 'Caudal', crest: 'https://images.example/own.png', isOwnClub: true },

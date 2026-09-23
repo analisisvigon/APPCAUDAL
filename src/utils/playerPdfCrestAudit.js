@@ -76,13 +76,7 @@ const isRivalTeam = (team) => (
   && clean(team?.teamKind || team?.team_kind || 'rival') !== 'own'
 );
 
-export const isPlayerPdfCrestAuditEnabled = (locationLike = globalThis.location) => {
-  try {
-    return new URLSearchParams(clean(locationLike?.search)).get('qaCrestAudit') === '1';
-  } catch {
-    return false;
-  }
-};
+export const isPlayerPdfCrestAuditEnabled = (isDev = false) => isDev === true;
 
 export const buildPlayerPdfCrestAudit = ({ matches = [], teams = [] } = {}) => {
   const rivalTeams = rows(teams).filter(isRivalTeam);
