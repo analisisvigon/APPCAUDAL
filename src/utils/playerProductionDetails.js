@@ -1,3 +1,6 @@
+import { getGoalAssistant, getGoalScorer } from './goalEvents.js';
+import { createMatchPlayerIdentityIndex, normalizeMatchPlayerName, resolveMatchPlayerCandidate } from './matchPlayerIdentity.js';
+
 const rows = (value) => Array.isArray(value) ? value : [];
 const clean = (value) => String(value ?? '').trim();
 
@@ -39,33 +42,72 @@ export const buildPlayerConnectionRows = ({ goalActions = [], assistActions = []
   const includeGoals = filter !== 'Asistencias';
   const includeAssists = filter !== 'Goles';
   const connections = new Map();
-  const ensure = (name) => {
-    if (!connections.has(name)) connections.set(name, { name, given: 0, received: 0, total: 0 });
-    return connections.get(name);
+  const ensure = (name, participantId = '') => {
+    if (!connections.has(name)) connections.set(name, { name, given: 0, received: 0, total: 0, participantIds: new Set() });
+    const row = connections.get(name);
+    if (clean(participantId)) row.participantIds.add(clean(participantId));
+    return row;
   };
 
   if (includeGoals) {
     rows(goalActions).forEach((action) => {
-      const name = clean(action?.assistant);
+      const assistant = getGoalAssistant(action);
+      const name = clean(assistant.name);
       if (!name) return;
-      const row = ensure(name);
+      const row = ensure(name, assistant.id);
       row.received += 1;
       row.total += 1;
     });
   }
   if (includeAssists) {
     rows(assistActions).forEach((action) => {
-      const name = clean(action?.scorer);
+      const scorer = getGoalScorer(action);
+      const name = clean(scorer.name);
       if (!name) return;
-      const row = ensure(name);
+      const row = ensure(name, scorer.id);
       row.given += 1;
       row.total += 1;
     });
   }
 
   return [...connections.values()]
+    .map(({ participantIds, ...row }) => {
+      const identityIds = [...participantIds];
+      if (!identityIds.length) return row;
+      return {
+        ...row,
+        id: identityIds.length === 1 ? identityIds[0] : null,
+        identityIds,
+        identityConflict: identityIds.length > 1,
+      };
+    })
     .sort((left, right) => right.total - left.total || left.name.localeCompare(right.name, 'es'));
 };
+
+export const resolvePlayerConnectionIdentity = ({ connection = {}, players = [], identityIndex = null } = {}) => (
+  resolveMatchPlayerCandidate({
+    reference: {
+      playerId: connection.id,
+      aliasIds: connection.identityIds,
+      playerName: connection.name,
+    },
+    candidates: [connection.id, ...rows(connection.identityIds)].some((value) => clean(value))
+      ? rows(players)
+      : rows(players).flatMap((player) => {
+        const seen = new Set();
+        return [player.name, player.shirtName, player.shirt_name, player.googleFormsName, player.google_forms_name]
+          .map(clean)
+          .filter((name) => {
+            const normalized = normalizeMatchPlayerName(name);
+            if (!normalized || seen.has(normalized)) return false;
+            seen.add(normalized);
+            return true;
+          })
+          .map((playerName) => ({ ...player, playerName }));
+      }),
+    identityIndex: identityIndex || createMatchPlayerIdentityIndex(players),
+  })
+);
 
 export const getPlayerInfluenceActions = ({ goalActions = [], assistActions = [], filter = 'Todos' } = {}) => {
   if (filter === 'Goles') return rows(goalActions);

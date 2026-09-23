@@ -134,7 +134,7 @@ const readLimitedBytes = async (response: Response, maxBytes: number) => {
   return bytes;
 };
 
-const fetchPlayerPhoto = async (initialUrl: URL) => {
+const fetchPlayerPhoto = async (initialUrl: URL, { minWidth = 150, minHeight = 150 } = {}) => {
   let currentUrl = initialUrl;
   for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
     await validateResolvedHost(currentUrl);
@@ -166,11 +166,20 @@ const fetchPlayerPhoto = async (initialUrl: URL) => {
       throw new Error(`Tipo de imagen no permitido: ${headerMime}.`);
     }
     const bytes = await readLimitedBytes(response, MAX_IMAGE_BYTES);
-    const validation = validatePlayerPhotoBytes(bytes, { maxBytes: MAX_IMAGE_BYTES, minWidth: 150, minHeight: 150 });
+    const validation = validatePlayerPhotoBytes(bytes, { maxBytes: MAX_IMAGE_BYTES, minWidth, minHeight });
     if (!validation.ok) throw new Error(validation.reason);
     return { bytes, finalUrl: currentUrl.href, ...validation };
   }
   throw new Error('No se pudo completar el acceso a la imagen.');
+};
+
+const bytesToBase64 = (bytes: Uint8Array) => {
+  let binary = '';
+  const chunkSize = 32768;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
 };
 
 const storePlayerPhoto = async ({ photoUrl, playerId, requestId }: { photoUrl: URL; playerId?: unknown; requestId: string }) => {
@@ -218,7 +227,7 @@ serve(async (request) => {
     }
     const payload = await request.json();
     const mode = String(payload?.mode || 'full_analysis');
-    if (!['full_analysis', 'photo_only', 'store_photo'].includes(mode)) {
+    if (!['full_analysis', 'photo_only', 'store_photo', 'image_data'].includes(mode)) {
       return jsonResponse({ ok: false, requestId, error: 'Modo de análisis no permitido.' }, 400);
     }
     const sourceUrl = validateSourceUrl(mode === 'store_photo' ? payload?.photoUrl : payload?.url);
@@ -228,6 +237,25 @@ serve(async (request) => {
       const storedPhoto = await storePlayerPhoto({ photoUrl: sourceUrl, playerId: payload?.playerId, requestId });
       console.info(JSON.stringify({ event: 'player_source_photo_stored', requestId, hostname: sourceUrl.hostname, width: storedPhoto.width, height: storedPhoto.height }));
       return jsonResponse({ ok: true, requestId, mode, status: 'photo_stored', accessed: true, analyzedAt: new Date().toISOString(), photo: storedPhoto });
+    }
+
+    if (mode === 'image_data') {
+      const fetchedImage = await fetchPlayerPhoto(sourceUrl, { minWidth: 1, minHeight: 1 });
+      console.info(JSON.stringify({ event: 'player_source_image_fetched', requestId, hostname: sourceUrl.hostname, width: fetchedImage.width, height: fetchedImage.height }));
+      return jsonResponse({
+        ok: true,
+        requestId,
+        mode,
+        status: 'image_fetched',
+        accessed: true,
+        image: {
+          data: `data:${fetchedImage.mimeType};base64,${bytesToBase64(fetchedImage.bytes)}`,
+          mimeType: fetchedImage.mimeType,
+          width: fetchedImage.width,
+          height: fetchedImage.height,
+          byteLength: fetchedImage.byteLength,
+        },
+      });
     }
 
     const fetched = await fetchHtml(sourceUrl);

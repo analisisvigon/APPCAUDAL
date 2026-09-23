@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
-import { buildPlayerPositionUsage, getPlayerPositionUsage } from './playerPositionUsage.js';
+import {
+  buildPlayerPositionUsage,
+  getPlayerPositionUsage,
+  getTacticalPositionIdentity,
+} from './playerPositionUsage.js';
 
 const identity = { playerId: 'p1', playerName: 'Jugador Uno' };
 const slot = (slotIndex, extra = {}) => ({ slot: slotIndex, playerId: 'p1', playerName: 'Jugador Uno', ...extra });
@@ -76,6 +80,41 @@ assert.equal(partialPolyvalent.unknownMinutes, 15);
 
 const codedExplicitPosition = buildPlayerPositionUsage({ ...identity, matchRows: [match({ intervals: [interval(0, 90, '4-2-3-1', 10, { position: 'DC' })] })] });
 assert.equal(codedExplicitPosition.positions[0].position, 'Delantero centro', 'los códigos posicionales estructurados se traducen al catálogo específico');
+
+for (const code of ['DC', 'DC_I', 'DC_D']) {
+  assert.deepEqual(getTacticalPositionIdentity({ explicitPosition: code }), {
+    canonicalPosition: 'centre_forward',
+    displayLabel: 'Delantero centro',
+    abbreviation: 'DC',
+  }, `${code} comparte identidad canónica de delantero centro`);
+}
+
+for (const [system, slotIndex] of [['3-4-1-2', 9], ['3-4-1-2', 10], ['3-4-3', 9], ['5-4-1', 10]]) {
+  assert.deepEqual(getTacticalPositionIdentity({ system, slot: slotIndex }), {
+    canonicalPosition: 'centre_forward',
+    displayLabel: 'Delantero centro',
+    abbreviation: 'DC',
+  }, `${system} normaliza su slot de delantero mediante la taxonomía canónica`);
+}
+
+for (const [code, expected] of [['EI', 'Extremo izquierdo'], ['ED', 'Extremo derecho'], ['MPC', 'Mediapunta']]) {
+  const tacticalPosition = getTacticalPositionIdentity({ explicitPosition: code });
+  assert.notEqual(tacticalPosition.canonicalPosition, 'centre_forward', `${code} no se fusiona con delantero centro`);
+  assert.equal(tacticalPosition.displayLabel, expected);
+}
+
+const acereteCanonical = buildPlayerPositionUsage({
+  ...identity,
+  matchRows: [
+    ...[90, 90, 90, 90, 90, 41].map((minutes) => match({ minutes, system: '4-3-3', initialSlot: 10 })),
+    match({ minutes: 36, role: 'Suplente', system: '3-4-1-2', initialSlot: null, playerStats: { Titular: { minutes: 54, replacementName: 'Jugador Uno' } }, intervals: [interval(54, 90, '3-4-1-2', 9)] }),
+    match({ minutes: 32, system: '4-2-3-1', initialSlot: 10 }),
+  ],
+});
+assert.deepEqual(acereteCanonical.positions.map(({ position, canonicalPosition, abbreviation, minutes, percentage }) => ({ position, canonicalPosition, abbreviation, minutes, percentage })), [
+  { position: 'Extremo izquierdo', canonicalPosition: 'left_winger', abbreviation: 'EI', minutes: 491, percentage: 88 },
+  { position: 'Delantero centro', canonicalPosition: 'centre_forward', abbreviation: 'DC', minutes: 68, percentage: 12 },
+], 'Acerete agrega SLOT_9 y DC en delantero centro sin fusionar sus minutos de extremo');
 
 const legacyIdentity = { id: 'p1', name: 'Jugador Uno', aliasIds: ['p1-legacy'] };
 const legacyPosition = buildPlayerPositionUsage({

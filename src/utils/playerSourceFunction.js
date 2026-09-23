@@ -93,3 +93,12 @@ export const invokePlayerSourceAnalyzer = async (client, sourceUrl, options = {}
     clearTimeout(timeout);
   }
 };
+
+export const loadAuthenticatedExternalImage = async (client, sourceUrl) => {
+  const result = await invokePlayerSourceAnalyzer(client, sourceUrl, { mode: 'image_data' });
+  return {
+    data: result.image?.data || '',
+    mimeType: result.image?.mimeType || '',
+    httpStatus: 200,
+  };
+};

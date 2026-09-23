@@ -1,4 +1,5 @@
 import { getFormationSlotsForSavedLineup } from './formationSlotCoordinates.js';
+import { getSpecificPositionLabel, mapExternalPositionToPlayerPositions } from '../constants/playerPositions.js';
 import {
   buildMatchPlayerIdentityRecordsFromStats,
   createMatchPlayerIdentityIndex,
@@ -61,14 +62,28 @@ const POSITION_ABBREVIATIONS = {
   'Delantero centro': 'DC',
 };
 
-export const getTacticalPositionLabel = ({ system, slot, explicitPosition = '' } = {}) => {
-  if (clean(explicitPosition)) return SLOT_POSITION_LABELS[clean(explicitPosition).toUpperCase()] || clean(explicitPosition);
+export const getTacticalPositionIdentity = ({ system, slot, explicitPosition = '' } = {}) => {
+  let rawPosition = '';
+  if (clean(explicitPosition)) rawPosition = SLOT_POSITION_LABELS[clean(explicitPosition).toUpperCase()] || clean(explicitPosition);
   const slotRow = getFormationSlotsForSavedLineup(system)[Number(slot)];
-  if (!slotRow) return '';
-  return SLOT_POSITION_LABELS[slotRow.id] || clean(slotRow.role || slotRow.label);
+  if (!rawPosition && slotRow) rawPosition = SLOT_POSITION_LABELS[slotRow.id] || clean(slotRow.role || slotRow.label);
+  if (!rawPosition) return { canonicalPosition: '', displayLabel: '', abbreviation: '—' };
+  const canonicalPosition = mapExternalPositionToPlayerPositions(rawPosition).primarySpecificPosition;
+  const displayLabel = canonicalPosition === 'centre_forward'
+    ? getSpecificPositionLabel(canonicalPosition)
+    : rawPosition;
+  return {
+    canonicalPosition,
+    displayLabel,
+    abbreviation: canonicalPosition === 'centre_forward'
+      ? 'DC'
+      : POSITION_ABBREVIATIONS[displayLabel] || displayLabel || '—',
+  };
 };
 
-export const getTacticalPositionAbbreviation = (position = '') => POSITION_ABBREVIATIONS[clean(position)] || clean(position) || '—';
+export const getTacticalPositionLabel = (options = {}) => getTacticalPositionIdentity(options).displayLabel;
+
+export const getTacticalPositionAbbreviation = (position = '') => getTacticalPositionIdentity({ explicitPosition: position }).abbreviation;
 
 const resolvePlayerCandidate = (candidates, identity, identityIndex) => resolveMatchPlayerCandidate({
   reference: identity,
@@ -196,6 +211,7 @@ const buildPlayerMatchPositionUsage = ({ row, identity }) => {
     const safeFrom = Math.max(participation.fromMinute, Number(fromMinute));
     const safeTo = Math.min(participation.toMinute, Number(toMinute));
     if (safeTo <= safeFrom) return;
+    const positionIdentity = getTacticalPositionIdentity({ explicitPosition: position });
     segments.push({
       matchId: clean(row.matchId),
       fromMinute: safeFrom,
@@ -204,7 +220,9 @@ const buildPlayerMatchPositionUsage = ({ row, identity }) => {
       endMinute: safeTo,
       minutes: safeTo - safeFrom,
       system: clean(system),
-      position: clean(position),
+      position: positionIdentity.displayLabel,
+      canonicalPosition: positionIdentity.canonicalPosition,
+      positionAbbreviation: positionIdentity.abbreviation,
       identified: Boolean(clean(position)),
       positionIdentified: Boolean(clean(position)),
       systemIdentified: Boolean(clean(system)),
@@ -370,8 +388,14 @@ export const getPlayerPositionUsage = ({
   matches.flatMap((match) => match.segments).forEach((segment) => {
     sources[segment.source] = (sources[segment.source] || 0) + segment.minutes;
     if (!segment.identified) return;
-    const key = normalizeIdentity(segment.position);
-    const current = allocations.get(key) || { position: segment.position, minutes: 0, sources: new Set() };
+    const key = segment.canonicalPosition || normalizeIdentity(segment.position);
+    const current = allocations.get(key) || {
+      canonicalPosition: segment.canonicalPosition,
+      position: segment.position,
+      abbreviation: segment.positionAbbreviation,
+      minutes: 0,
+      sources: new Set(),
+    };
     current.minutes += segment.minutes;
     current.sources.add(segment.source);
     allocations.set(key, current);
@@ -380,6 +404,8 @@ export const getPlayerPositionUsage = ({
   const positions = [...allocations.values()]
     .map((row) => ({
       position: row.position,
+      canonicalPosition: row.canonicalPosition,
+      abbreviation: row.abbreviation,
       minutes: row.minutes,
       percentage: totalMinutes ? Math.round((row.minutes / totalMinutes) * 100) : 0,
       sources: [...row.sources],

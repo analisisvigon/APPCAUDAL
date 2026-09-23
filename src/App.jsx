@@ -63,10 +63,6 @@ import {
 } from './utils/playerDelegatedLiveReport';
 import { getPlayerPositionUsage } from './utils/playerPositionUsage';
 import { resolveOpponentTeamIdentity } from './utils/opponentTeamIdentity';
-import {
-  buildPlayerPdfDiagnostic,
-  completePlayerPdfDiagnostic,
-} from './utils/playerPdfCrestAudit';
 import { createMatchPlayerIdentityIndex, resolveMatchPlayerCandidate } from './utils/matchPlayerIdentity';
 import { getSportsSeason, resolveSportsSeasonFromMatches } from './utils/sportsSeason';
 import {
@@ -77,6 +73,7 @@ import {
   buildPlayerProductionAction,
   buildPlayerProductionInvariantReport,
   getPlayerInfluenceActions,
+  resolvePlayerConnectionIdentity,
 } from './utils/playerProductionDetails';
 import { PDF_GENERATOR_LOAD_ERROR_MESSAGE, recoverFromStaleChunkOnce } from './utils/pwaChunkRecovery';
 import {
@@ -307,6 +304,7 @@ import {
 import {
   getPlayerSourceFunctionUserMessage,
   invokePlayerSourceAnalyzer,
+  loadAuthenticatedExternalImage,
 } from './utils/playerSourceFunction';
 import {
   assignGlobalPlayerToTeam,
@@ -5726,8 +5724,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const [mobileTacticalFeedback, setMobileTacticalFeedback] = useState({ scope: '', message: '' });
   const [playerPdfExporting, setPlayerPdfExporting] = useState(false);
   const [playerPdfExportError, setPlayerPdfExportError] = useState('');
-  const [playerPdfCrestAudit, setPlayerPdfCrestAudit] = useState(null);
-  const [playerPdfCrestAuditCopied, setPlayerPdfCrestAuditCopied] = useState(false);
   useEffect(() => {
     const showChunkLoadError = (event) => {
       setPlayerPdfExportError(event.detail?.message || PDF_GENERATOR_LOAD_ERROR_MESSAGE);
@@ -29897,12 +29893,12 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
               const playerGoalPhaseCounts = countPhases(allGoalActions);
               const maxPlayerGoalPhase = Math.max(1, ...playerGoalPhaseCounts.map((row) => row.count));
               const societyRows = buildPlayerConnectionRows({ goalActions: allGoalActions, assistActions: allAssistActions, filter: 'Todos' });
+              const pdfConnectionIdentityIndex = createMatchPlayerIdentityIndex(players);
               const pdfSocietyRows = societyRows.map((connection) => {
-                const connectionName = normalizePlayerIdentityName(connection.name);
-                const candidates = players.filter((player) => [player.name, player.shirtName, player.shirt_name]
-                  .filter(Boolean)
-                  .some((name) => normalizePlayerIdentityName(name) === connectionName));
-                const connectionPlayer = candidates.length === 1 ? candidates[0] : null;
+                const connectionResolution = resolvePlayerConnectionIdentity({ connection, players, identityIndex: pdfConnectionIdentityIndex });
+                const connectionPlayer = connectionResolution.status === 'resolved'
+                  ? connectionResolution.candidate
+                  : null;
                 return {
                   ...connection,
                   image: connectionPlayer ? getPlayerAvatarSource(connectionPlayer) : '',
@@ -30153,34 +30149,13 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 if (playerPdfExporting) return;
                 setPlayerPdfExporting(true);
                 setPlayerPdfExportError('');
-                setPlayerPdfCrestAudit(null);
-                setPlayerPdfCrestAuditCopied(false);
                 try {
-                  const pdfDiagnosticSeed = buildPlayerPdfDiagnostic({
-                    matches: aggregate.rows.map((row) => ({
-                      ...row.match,
-                      competitionKey: getCompetitionFromCatalog(row.match).key,
-                    })),
-                    teams,
-                    positionUsage: playerPositionUsage,
-                    positionMatchRows: playerPositionMatchRows,
-                    player: selectedPlayerProfile,
-                    players,
-                    goalActions: allGoalActions,
-                    assistActions: allAssistActions,
-                    flattenedConnections: societyRows,
-                    pdfConnections: pdfSocietyRows,
-                  });
                   const result = await exportPlayerProfilePdf({
                     report: playerPdfModel,
                     documentRef: document,
                     filename: `informe-${String(selectedPlayerProfile.name || 'jugador').trim().toLowerCase().replace(/[^a-z0-9áéíóúüñ]+/gi, '-')}.pdf`,
-                    qaCrestLoadAudit: true,
+                    imageFallbackLoader: (imageUrl) => loadAuthenticatedExternalImage(supabase, imageUrl),
                   });
-                  setPlayerPdfCrestAudit(completePlayerPdfDiagnostic(
-                    pdfDiagnosticSeed,
-                    result.presentationAudit,
-                  ));
                   console.info('PDF individual vectorial generado con enlaces verificados.', result.audit);
                   if (import.meta.env.DEV) {
                     const unresolvedOpponentCrests = (result.presentationAudit?.opponentCrests || [])
@@ -30199,15 +30174,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                   }
                 } finally {
                   setPlayerPdfExporting(false);
-                }
-              };
-              const copyPlayerPdfCrestAudit = async () => {
-                if (!playerPdfCrestAudit || !navigator.clipboard?.writeText) return;
-                try {
-                  await navigator.clipboard.writeText(JSON.stringify(playerPdfCrestAudit, null, 2));
-                  setPlayerPdfCrestAuditCopied(true);
-                } catch {
-                  setPlayerPdfExportError('No se pudo copiar el diagnóstico PDF. Revisa el permiso del portapapeles e inténtalo de nuevo.');
                 }
               };
               const renderProfileEmptyState = (title, copy, variant = 'compact') => {
@@ -30283,15 +30249,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                           className="rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-[#7aacff] disabled:cursor-wait disabled:opacity-60"
                         >
                           {playerPdfExporting ? 'Generando PDF…' : 'Exportar PDF'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={copyPlayerPdfCrestAudit}
-                          disabled={!playerPdfCrestAudit || playerPdfExporting}
-                          className="rounded-2xl border border-caudal-electric/35 bg-caudal-electric/10 px-4 py-2 text-sm font-black uppercase tracking-[0.12em] text-caudal-electric transition hover:bg-caudal-electric/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          COPIAR DIAGNÓSTICO PDF
-                          {playerPdfCrestAuditCopied ? <span className="ml-2 text-[10px] text-emerald-300">COPIADO</span> : null}
                         </button>
                         <button onClick={() => setSelectedPlayerProfileId(null)} className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10">Volver a plantilla</button>
                       </div>

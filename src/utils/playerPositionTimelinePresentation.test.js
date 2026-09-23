@@ -106,6 +106,7 @@ assert.equal(internalBoundaries.canonicalSegments.length, 3);
 assert.deepEqual(buildMatchPositionSystemLines({ segments: contiguous }).lines.map((line) => line.label), ['ED · 4-2-3-1'], 'misma posición y sistema contiguos producen una sola línea PDF');
 assert.deepEqual(buildMatchPositionSystemLines({ segments: onePositionTwoSystems.canonicalSegments }).lines.map((line) => line.label), ['ED · 4-3-3', 'ED · 4-2-3-1'], 'un cambio de sistema conserva dos líneas compactas');
 assert.deepEqual(buildMatchPositionSystemLines({ segments: twoPositionsTwoSystems.canonicalSegments }).lines.map((line) => line.label), ['MP · 4-2-3-1', 'MC · 4-4-2'], 'un cambio de posición conserva ambas líneas');
+assert.deepEqual(buildMatchPositionSystemLines({ segments: [segment(54, 90, 'Delantero centro', '3-4-1-2')] }).lines.map((line) => line.label), ['DC · 3-4-1-2'], 'el tramo de delantero centro del 3-4-1-2 usa la abreviatura canónica DC');
 assert.deepEqual(buildMatchPositionSystemLines({ segments: [segment(0, 20, 'Extremo derecho', '')] }).lines.map((line) => line.label), ['ED · —']);
 assert.deepEqual(buildMatchPositionSystemLines({ segments: [segment(0, 20, '', '4-2-3-1')] }).lines.map((line) => line.label), ['— · 4-2-3-1']);
 assert.deepEqual(buildMatchPositionSystemLines({ segments: [segment(0, 20, '', '')] }).lines.map((line) => line.label), ['—']);

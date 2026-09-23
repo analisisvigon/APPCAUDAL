@@ -7,6 +7,7 @@ import {
   buildPlayerProductionAction,
   buildPlayerProductionInvariantReport,
   getPlayerInfluenceActions,
+  resolvePlayerConnectionIdentity,
 } from './playerProductionDetails.js';
 
 const goals = [
@@ -19,6 +20,44 @@ const assists = [
   { id: 'a1', action: 'Asistencia', scorer: 'Óscar', assistZone: 'creacion_derecha' },
   { id: 'a2', action: 'Asistencia', scorer: 'Óscar', assistZone: '' },
 ];
+
+const identifiedGoals = [
+  { id: 'ig1', assistant: 'Julio Delgado', assistantId: 'julio-player-id' },
+];
+const identifiedAssists = [
+  { id: 'ia1', scorer: 'Cristian Ebea', scorerId: 'ebea-global-id' },
+];
+assert.deepEqual(buildPlayerConnectionRows({ goalActions: identifiedGoals, assistActions: identifiedAssists }), [
+  { name: 'Cristian Ebea', given: 1, received: 0, total: 1, id: 'ebea-global-id', identityIds: ['ebea-global-id'], identityConflict: false },
+  { name: 'Julio Delgado', given: 0, received: 1, total: 1, id: 'julio-player-id', identityIds: ['julio-player-id'], identityConflict: false },
+], 'las conexiones conservan scorerId y assistantId cuando el evento los conoce');
+
+const conflictingConnection = buildPlayerConnectionRows({ goalActions: [
+  { assistant: 'Homónimo', assistantId: 'player-a' },
+  { assistant: 'Homónimo', assistantId: 'player-b' },
+] })[0];
+assert.deepEqual({ id: conflictingConnection.id, identityIds: conflictingConnection.identityIds, identityConflict: conflictingConnection.identityConflict }, {
+  id: null,
+  identityIds: ['player-a', 'player-b'],
+  identityConflict: true,
+}, 'IDs contradictorios permanecen explícitos y no se ocultan tras el nombre');
+
+const identityPlayers = [
+  { id: 'player-id', globalPlayerId: 'global-id', membershipId: 'membership-id', legacyId: 'legacy-id', name: 'Jugador Identificado' },
+  { id: 'homonym-a', name: 'Nombre Repetido' },
+  { id: 'homonym-b', name: 'Nombre Repetido' },
+  { id: 'unique-name', name: 'Nombre Único', shirtName: 'Alias Único' },
+];
+for (const id of ['player-id', 'global-id', 'membership-id', 'legacy-id']) {
+  const resolution = resolvePlayerConnectionIdentity({ connection: { id, identityIds: [id], name: 'Jugador Identificado' }, players: identityPlayers });
+  assert.equal(resolution.status, 'resolved', `${id} resuelve mediante la identidad canónica`);
+  assert.equal(resolution.candidate.id, 'player-id');
+  assert.equal(resolution.mode, 'id');
+}
+assert.equal(resolvePlayerConnectionIdentity({ connection: { name: 'Nombre Único' }, players: identityPlayers }).candidate?.id, 'unique-name', 'el nombre exacto normalizado y único sigue siendo fallback histórico');
+assert.equal(resolvePlayerConnectionIdentity({ connection: { name: 'Alias Unico' }, players: identityPlayers }).candidate?.id, 'unique-name', 'un alias nominal explícito y único se resuelve sin fuzzy matching');
+assert.equal(resolvePlayerConnectionIdentity({ connection: { name: 'Nombre Repetido' }, players: identityPlayers }).status, 'ambiguous', 'los homónimos no se resuelven');
+assert.equal(resolvePlayerConnectionIdentity({ connection: { id: 'unknown-id', identityIds: ['unknown-id'], name: 'Nombre Único' }, players: identityPlayers }).status, 'identity_conflict', 'un ID contradictorio no cae silenciosamente al nombre');
 
 assert.deepEqual(buildPlayerBodyPartSummary(goals), {
   values: [

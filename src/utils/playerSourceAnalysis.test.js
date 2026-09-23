@@ -6,6 +6,7 @@ import {
   classifyPlayerSourceFunctionError,
   isManualPlayerPhoto,
   invokePlayerSourceAnalyzer,
+  loadAuthenticatedExternalImage,
 } from './playerSourceFunction.js';
 
 const profileHtml = `
@@ -126,6 +127,16 @@ assert.equal(invocationOptions.body.url, aitorSourceUrl);
 
 await invokePlayerSourceAnalyzer(successfulClient, aitorPhotoUrl, { mode: 'store_photo', photoUrl: aitorPhotoUrl, playerId: 'player-id' });
 assert.deepEqual(invocationOptions.body, { mode: 'store_photo', photoUrl: aitorPhotoUrl, playerId: 'player-id' });
+
+successfulClient.functions.invoke = async (name, options) => {
+  assert.equal(name, 'analyze-player-source');
+  invocationOptions = options;
+  return { data: { ok: true, status: 'image_fetched', image: { data: 'data:image/png;base64,AA==', mimeType: 'image/png' } }, error: null };
+};
+assert.deepEqual(await loadAuthenticatedExternalImage(successfulClient, aitorPhotoUrl), {
+  data: 'data:image/png;base64,AA==', mimeType: 'image/png', httpStatus: 200,
+});
+assert.deepEqual(invocationOptions.body, { mode: 'image_data', url: aitorPhotoUrl });
 
 await assert.rejects(
   invokePlayerSourceAnalyzer({ auth: { getSession: async () => ({ data: { session: null }, error: null }) } }, 'https://example.test/player'),

@@ -2,11 +2,12 @@
 
 Nombre remoto obligatorio: `analyze-player-source`.
 
-La función valida una sesión mediante el JWT recibido en `Authorization`, descarga únicamente URLs HTTPS públicas y ofrece tres modos:
+La función valida una sesión mediante el JWT recibido en `Authorization`, descarga únicamente URLs HTTPS públicas y ofrece cuatro modos:
 
 - `full_analysis`: extracción revisable de datos del perfil.
 - `photo_only`: extracción aislada de la fotografía, sin devolver nombre, edad, posición ni otros campos.
 - `store_photo`: valida de nuevo JPG/PNG/WEBP (máximo 5 MB y mínimo 150 × 150) y guarda una copia en `rival-player-assets`.
+- `image_data`: obtiene una imagen JPG/PNG/WEBP para consumidores internos autenticados, aplica las mismas protecciones de red y tamaño y devuelve una data URL sin persistirla.
 
 No usa OpenAI.
 
@@ -30,6 +31,7 @@ Los eventos incluyen un `requestId` y se registran como JSON con estos nombres:
 - `player_source_analysis_completed`
 - `player_source_photo_completed`
 - `player_source_photo_stored`
+- `player_source_image_fetched`
 - `player_source_analysis_failed`
 - `player_source_auth_missing`
 

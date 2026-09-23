@@ -4,6 +4,7 @@ import { jsPDF } from 'jspdf';
 import { inspectPlayerDossier, printPlayerDossier } from './playerDossierPrint.js';
 import { auditPlayerPdfLinkAnnotations, createPlayerProfilePdf, getObjectiveMetricRowLayout, loadPlayerPdfImage } from './playerProfilePdfExport.js';
 import { buildPlayerAnalysisSeasonReport } from './playerAnalysisPresentation.js';
+import { loadAuthenticatedExternalImage } from './playerSourceFunction.js';
 
 const createReportNode = ({ width = 900, height = 2400, text = 'Borja Rodríguez Minutos Partidos Titularidades Goles Asistencias', blocks = 8 } = {}) => ({
   childElementCount: blocks,
@@ -145,7 +146,9 @@ objectiveLayoutCases.forEach(([value, valueTextWidth]) => {
   assert.ok(layout.labelX + layout.labelWidth < layout.barX, `${value}: la etiqueta no invade la barra`);
 });
 
-const transparentPng = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lSxWAAAAAElFTkSuQmCC', 'base64'));
+const transparentPngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lSxWAAAAAElFTkSuQmCC';
+const transparentPng = Uint8Array.from(Buffer.from(transparentPngBase64, 'base64'));
+const transparentPngDataUrl = `data:image/png;base64,${transparentPngBase64}`;
 const loadedRemoteImage = await loadPlayerPdfImage('https://images.example/crest.png', {
   fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
 });
@@ -153,6 +156,10 @@ assert.equal(loadedRemoteImage.format, 'PNG');
 assert.equal(loadedRemoteImage.attempted, true);
 assert.equal(loadedRemoteImage.mimeType, 'image/png');
 assert.equal(Boolean(loadedRemoteImage.data), true, 'un escudo remoto compatible se convierte para el PDF');
+const loadedSupabaseImage = await loadPlayerPdfImage('https://project.supabase.co/storage/v1/object/public/player-assets/photo.png', {
+  fetchImpl: async () => ({ ok: true, status: 200, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
+});
+assert.equal(loadedSupabaseImage.format, 'PNG', 'una imagen propia de Supabase Storage mantiene la ruta directa');
 const failedRemoteImage = await loadPlayerPdfImage('https://images.example/missing.png', {
   fetchImpl: async () => ({ ok: false, status: 404 }),
 });
@@ -163,6 +170,42 @@ const unsupportedRemoteImage = await loadPlayerPdfImage('https://images.example/
 });
 assert.equal(unsupportedRemoteImage.error, 'unsupported_mime:image/svg+xml');
 assert.equal(unsupportedRemoteImage.mimeType, 'image/svg+xml');
+const serverFallbackImage = await loadPlayerPdfImage('https://external.example/cors-blocked.png', {
+  fetchImpl: async () => { throw new Error('Failed to fetch'); },
+  fallbackLoader: async () => ({ data: transparentPngDataUrl, mimeType: 'image/png', httpStatus: 200 }),
+});
+assert.equal(serverFallbackImage.acquisition, 'authenticated_server_fallback', 'un bloqueo CORS usa la adquisición server-side autenticada');
+assert.equal(serverFallbackImage.format, 'PNG');
+assert.equal(Boolean(serverFallbackImage.data), true);
+
+const originalBtoa = globalThis.btoa;
+try {
+  globalThis.btoa = () => { throw new Error('conversion unavailable'); };
+  const conversionFailure = await loadPlayerPdfImage('https://images.example/conversion.png', {
+    fetchImpl: async () => ({ ok: true, status: 200, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
+  });
+  assert.match(conversionFailure.error, /^conversion_failed:/, 'una conversión fallida conserva un error controlado');
+} finally {
+  globalThis.btoa = originalBtoa;
+}
+
+let analyzerInvocation;
+const authenticatedImage = await loadAuthenticatedExternalImage({
+  auth: { getSession: async () => ({ data: { session: { access_token: 'test-session' } }, error: null }) },
+  functions: { invoke: async (name, options) => {
+    analyzerInvocation = { name, options };
+    return { data: { ok: true, image: { data: transparentPngDataUrl, mimeType: 'image/png' } }, error: null };
+  } },
+}, 'https://external.example/photo.png');
+assert.equal(analyzerInvocation.name, 'analyze-player-source');
+assert.deepEqual(analyzerInvocation.options.body, { mode: 'image_data', url: 'https://external.example/photo.png' });
+assert.equal(authenticatedImage.data, transparentPngDataUrl);
+
+const edgeImageLoaderSource = fs.readFileSync(new URL('../../supabase/functions/analyze-player-source/index.ts', import.meta.url), 'utf8');
+assert.match(edgeImageLoaderSource, /mode === 'image_data'/, 'el fallback reutiliza la Edge Function autenticada existente');
+assert.match(edgeImageLoaderSource, /url\.protocol !== 'https:'/, 'el fallback server-side sólo admite HTTPS');
+assert.match(edgeImageLoaderSource, /validateResolvedHost\(currentUrl\)/, 'cada destino y redirección se valida contra SSRF');
+assert.match(edgeImageLoaderSource, /MAX_IMAGE_BYTES = 5 \* 1024 \* 1024/, 'el fallback mantiene el límite de tamaño');
 const competitionLogoResult = await createPlayerProfilePdf({
   report: jairoReport,
   fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
@@ -198,18 +241,13 @@ assert.deepEqual(repeatedCrestResult.presentationAudit.opponentCrests.map(({ loa
   [true, 'https://images.example/shared-crest.png'],
   [true, 'https://images.example/shared-crest.png'],
 ], 'dos partidos del mismo rival reutilizan exactamente el mismo escudo canónico');
-const auditedCrestResult = await createPlayerProfilePdf({
+const serverFallbackPdf = await createPlayerProfilePdf({
   report: repeatedCrestReport,
-  qaCrestLoadAudit: true,
-  fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
+  fetchImpl: async () => { throw new Error('CORS'); },
+  imageFallbackLoader: async () => ({ data: transparentPngDataUrl, mimeType: 'image/png', httpStatus: 200 }),
 });
-assert.equal(Object.hasOwn(repeatedCrestResult.presentationAudit.opponentCrests[0], 'imageFormat'), false, 'sin el flag QA no se añade diagnóstico de tipo de imagen');
-assert.deepEqual(auditedCrestResult.presentationAudit.opponentCrests.map(({ imageFormat }) => imageFormat), ['PNG', 'PNG'], 'el flag QA observa el formato ya cargado');
-assert.equal(auditedCrestResult.presentationAudit.opponentCrests.every(({ loadAttempted }) => loadAttempted), true, 'QA registra el intento real de descarga del escudo');
-assert.equal(auditedCrestResult.presentationAudit.opponentCrests.every(({ renderSuccess, placeholder }) => typeof renderSuccess === 'boolean' && placeholder === !renderSuccess), true, 'QA separa descarga y renderizado real del escudo');
-assert.equal(auditedCrestResult.arrayBuffer.byteLength, repeatedCrestResult.arrayBuffer.byteLength, 'la observación QA no modifica los bytes renderizados del PDF');
-assert.deepEqual(auditedCrestResult.pageSections, repeatedCrestResult.pageSections, 'la observación QA no altera estructura ni paginación');
-assert.deepEqual(auditedCrestResult.presentationAudit.maximumsLayout, repeatedCrestResult.presentationAudit.maximumsLayout, 'la observación QA no altera el layout 4+3');
+assert.equal(serverFallbackPdf.presentationAudit.opponentCrests.every(({ loaded, placeholder }) => loaded && !placeholder), true, 'el PDF incrusta escudos adquiridos por el fallback y conserva su paginación');
+assert.deepEqual(serverFallbackPdf.pageSections, repeatedCrestResult.pageSections);
 const missingCrestResult = await createPlayerProfilePdf({
   report: { ...jairoReport, history: [{ ...jairoReport.history[0], opponentCrest: '' }] },
   fetchImpl: null,
@@ -294,15 +332,13 @@ const picturedConnection = await createPlayerProfilePdf({
 assert.equal(picturedConnection.presentationAudit.connections[0].fromImageLoaded, true);
 assert.equal(picturedConnection.presentationAudit.connections[0].toImageLoaded, true, 'las dos fotografías reales de la conexión llegan al PDF');
 assert.equal(picturedConnection.presentationAudit.connectionLayout.columns, 1, 'una conexión usa una tarjeta centrada');
-const picturedConnectionAudit = await createPlayerProfilePdf({
+const picturedConnectionFallback = await createPlayerProfilePdf({
   report: picturedConnectionReport,
-  qaCrestLoadAudit: true,
-  fetchImpl: async () => ({ ok: true, status: 200, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
+  fetchImpl: async () => { throw new Error('CORS'); },
+  imageFallbackLoader: async () => ({ data: transparentPngDataUrl, mimeType: 'image/png', httpStatus: 200 }),
 });
-assert.equal(picturedConnectionAudit.presentationAudit.connectionImages.length, 2, 'QA registra ambos extremos renderizados sin alterar la conexión');
-assert.equal(picturedConnectionAudit.presentationAudit.connectionImages.every(({ loaded, success, mimeType }) => loaded && typeof success === 'boolean' && mimeType === 'image/png'), true);
-assert.equal(Object.hasOwn(picturedConnection.presentationAudit, 'connectionImages'), false, 'la exportación normal no añade instrumentación de conexiones');
-
+assert.equal(picturedConnectionFallback.presentationAudit.connections[0].fromImageLoaded, true);
+assert.equal(picturedConnectionFallback.presentationAudit.connections[0].toImageLoaded, true, 'las fotos externas de conexiones se incrustan mediante el fallback server-side');
 const mandatoryScenarios = [
   ['A · 1 gol', { goals: 1, targetCounts: [0, 1] }],
   ['B · varios goles', { goals: 4, targetCounts: [1, 2, 1] }],
