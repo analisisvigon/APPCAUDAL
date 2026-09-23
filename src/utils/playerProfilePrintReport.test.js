@@ -264,10 +264,11 @@ assert.match(appSource, /resolveOpponentTeamIdentity\(\{ match: row\.match, team
 assert.match(appSource, /date:\s*matchDisplayDate\(match\.date\)/, 'la ficha de acción recibe la fecha real');
 assert.match(appSource, /result:\s*score\.hasScore \? [`]?[\s\S]*?: 'Sin datos'/, 'un partido sin resultado no se convierte artificialmente en 0-0');
 assert.match(appSource, /report:\s*playerPdfModel/, 'el modelo normalizado llega directamente al renderizador PDF');
-assert.match(appSource, /isPlayerPdfCrestAuditEnabled\(import\.meta\.env\.DEV\)/, 'el diagnóstico se habilita exclusivamente con la señal DEV canónica de Vite');
-assert.doesNotMatch(appSource, /qaCrestAudit|location\.search/, 'el diagnóstico no depende de modificar la URL');
-assert.match(appSource, /playerPdfCrestAuditEnabled && playerPdfCrestAudit \? \([\s\S]*?COPIAR DIAGNÓSTICO PDF/, 'el botón temporal solo aparece en DEV tras generar el diagnóstico');
-assert.match(appSource, /qaCrestLoadAudit:\s*playerPdfCrestAuditEnabled/, 'el detalle de carga solo se solicita cuando la instrumentación DEV está habilitada');
+assert.doesNotMatch(appSource, /qaCrestAudit|playerPdfCrestAuditEnabled/, 'el diagnóstico temporal no depende del entorno ni de modificar la URL');
+assert.match(appSource, /disabled=\{!playerPdfCrestAudit \|\| playerPdfExporting\}[\s\S]*?COPIAR DIAGNÓSTICO PDF/, 'el botón temporal permanece visible y deshabilitado hasta completar una exportación');
+assert.match(appSource, /qaCrestLoadAudit:\s*true/, 'la exportación normal recopila temporalmente el detalle diagnóstico también en producción');
+assert.match(appSource, /setPlayerPdfCrestAudit\(completePlayerPdfDiagnostic\([\s\S]*?result\.presentationAudit/, 'el diagnóstico habilitado corresponde al resultado de la exportación completada');
+assert.match(appSource, /navigator\.clipboard\.writeText\(JSON\.stringify\(playerPdfCrestAudit, null, 2\)\)/, 'el botón copia al portapapeles el JSON completo de esa exportación');
 assert.match(appSource, /buildPlayerPdfDiagnostic\([\s\S]*?positionUsage:\s*playerPositionUsage[\s\S]*?goalActions:\s*allGoalActions[\s\S]*?assistActions:\s*allAssistActions/, 'el diagnóstico QA reúne posiciones, escudos y conexiones desde el modelo ya cargado');
 assert.match(footballMapSource, /<circle cx="34" cy="52\.5"[\s\S]*<rect x="14" y="2"[\s\S]*<rect x="24" y="2"[\s\S]*className="pitch-goal"/, 'los tres mapas reutilizan un campo con círculo, áreas, áreas pequeñas y porterías');
 assert.match(printCss, /Dossier profesional individual 2026\/27/);

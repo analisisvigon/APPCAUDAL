@@ -6,14 +6,9 @@ import {
   buildPlayerPdfOpponentCrestAudit,
   completePlayerPdfDiagnostic,
   completePlayerPdfCrestAudit,
-  isPlayerPdfCrestAuditEnabled,
 } from './playerPdfCrestAudit.js';
 import { buildPlayerConnectionRows } from './playerProductionDetails.js';
 import { getPlayerPositionUsage } from './playerPositionUsage.js';
-
-assert.equal(isPlayerPdfCrestAuditEnabled(true), true, 'DEV habilita el diagnóstico sin depender de la URL');
-assert.equal(isPlayerPdfCrestAuditEnabled(false), false, 'producción mantiene deshabilitado el diagnóstico');
-assert.equal(isPlayerPdfCrestAuditEnabled(), false, 'el valor seguro por defecto no expone el diagnóstico');
 
 const teams = [
   { id: 'own', name: 'Caudal', crest: 'https://images.example/own.png', isOwnClub: true },

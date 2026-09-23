@@ -76,8 +76,6 @@ const isRivalTeam = (team) => (
   && clean(team?.teamKind || team?.team_kind || 'rival') !== 'own'
 );
 
-export const isPlayerPdfCrestAuditEnabled = (isDev = false) => isDev === true;
-
 export const buildPlayerPdfCrestAudit = ({ matches = [], teams = [] } = {}) => {
   const rivalTeams = rows(teams).filter(isRivalTeam);
   return {
