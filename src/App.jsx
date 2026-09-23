@@ -64,8 +64,8 @@ import {
 import { getPlayerPositionUsage } from './utils/playerPositionUsage';
 import { resolveOpponentTeamIdentity } from './utils/opponentTeamIdentity';
 import {
-  buildPlayerPdfCrestAudit,
-  completePlayerPdfCrestAudit,
+  buildPlayerPdfDiagnostic,
+  completePlayerPdfDiagnostic,
   isPlayerPdfCrestAuditEnabled,
 } from './utils/playerPdfCrestAudit';
 import { createMatchPlayerIdentityIndex, resolveMatchPlayerCandidate } from './utils/matchPlayerIdentity';
@@ -29977,34 +29977,35 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
               const pdfSeasonLabel = pdfSeasonResolution.season?.label || (pdfSeasonLabels.length === 1 ? pdfSeasonLabels[0] : '');
               const pdfOwnTeam = teams.find((team) => team.isOwnClub || team.teamKind === 'own') || null;
               const pdfPlayerFoot = /^(no indicada|no indicado|sin datos|—|-)$/i.test(String(selectedPlayerProfile.foot || '').trim()) ? '' : selectedPlayerProfile.foot || '';
+              const playerPositionMatchRows = aggregate.rows.map((row) => {
+                const tacticalHistory = getMatchTacticalHistory(row.match);
+                const score = getMatchScoreData(row.match);
+                return {
+                  matchId: row.match.id,
+                  minutes: row.minutes,
+                  role: row.role,
+                  duration: getMatchDurationMinutes(row.match),
+                  initialSystem: getInitialMatchSystem(row.match),
+                  initialSlots: getMatchInitialTacticalSlots(row.match),
+                  intervals: tacticalHistory.analyticsIntervals,
+                  playerStats: safeObject(row.match.statsPlayerData),
+                  systemEvents: safeArray(row.match.systemEvents),
+                  snapshots: safeArray(row.match.tacticalSnapshots),
+                  matchMetadata: {
+                    opponent: row.match.opponent,
+                    date: row.match.date,
+                    competition: getCompetitionFromCatalog(row.match).label,
+                    venue: row.match.isHome ? 'Local' : 'Visitante',
+                    result: score.hasScore ? `${score.caudalGoals}-${score.rivalGoals}` : '',
+                  },
+                };
+              });
               const playerPositionUsage = getPlayerPositionUsage({
                 playerId: selectedPlayerProfile.id,
                 playerName: selectedPlayerProfile.name,
                 playerIdentity: selectedPlayerProfile,
                 playerIdentities: players,
-                matchRows: aggregate.rows.map((row) => {
-                  const tacticalHistory = getMatchTacticalHistory(row.match);
-                  const score = getMatchScoreData(row.match);
-                  return {
-                    matchId: row.match.id,
-                    minutes: row.minutes,
-                    role: row.role,
-                    duration: getMatchDurationMinutes(row.match),
-                    initialSystem: getInitialMatchSystem(row.match),
-                    initialSlots: getMatchInitialTacticalSlots(row.match),
-                    intervals: tacticalHistory.analyticsIntervals,
-                    playerStats: safeObject(row.match.statsPlayerData),
-                    systemEvents: safeArray(row.match.systemEvents),
-                    snapshots: safeArray(row.match.tacticalSnapshots),
-                    matchMetadata: {
-                      opponent: row.match.opponent,
-                      date: row.match.date,
-                      competition: getCompetitionFromCatalog(row.match).label,
-                      venue: row.match.isHome ? 'Local' : 'Visitante',
-                      result: score.hasScore ? `${score.caudalGoals}-${score.rivalGoals}` : '',
-                    },
-                  };
-                }),
+                matchRows: playerPositionMatchRows,
               });
               const playerPositionUsageByMatchId = new Map(playerPositionUsage.matches.map((match) => [match.matchId, match]));
               if (import.meta.env.DEV && typeof window !== 'undefined') {
@@ -30159,13 +30160,21 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                   setPlayerPdfCrestAuditCopied(false);
                 }
                 try {
-                  const crestAuditSeed = playerPdfCrestAuditEnabled
-                    ? buildPlayerPdfCrestAudit({
+                  const pdfDiagnosticSeed = playerPdfCrestAuditEnabled
+                    ? buildPlayerPdfDiagnostic({
                       matches: aggregate.rows.map((row) => ({
                         ...row.match,
                         competitionKey: getCompetitionFromCatalog(row.match).key,
                       })),
                       teams,
+                      positionUsage: playerPositionUsage,
+                      positionMatchRows: playerPositionMatchRows,
+                      player: selectedPlayerProfile,
+                      players,
+                      goalActions: allGoalActions,
+                      assistActions: allAssistActions,
+                      flattenedConnections: societyRows,
+                      pdfConnections: pdfSocietyRows,
                     })
                     : null;
                   const result = await exportPlayerProfilePdf({
@@ -30174,10 +30183,10 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                     filename: `informe-${String(selectedPlayerProfile.name || 'jugador').trim().toLowerCase().replace(/[^a-z0-9áéíóúüñ]+/gi, '-')}.pdf`,
                     qaCrestLoadAudit: playerPdfCrestAuditEnabled,
                   });
-                  if (crestAuditSeed) {
-                    setPlayerPdfCrestAudit(completePlayerPdfCrestAudit(
-                      crestAuditSeed,
-                      result.presentationAudit?.opponentCrests,
+                  if (pdfDiagnosticSeed) {
+                    setPlayerPdfCrestAudit(completePlayerPdfDiagnostic(
+                      pdfDiagnosticSeed,
+                      result.presentationAudit,
                     ));
                   }
                   console.info('PDF individual vectorial generado con enlaces verificados.', result.audit);
@@ -30206,7 +30215,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                   await navigator.clipboard.writeText(JSON.stringify(playerPdfCrestAudit, null, 2));
                   setPlayerPdfCrestAuditCopied(true);
                 } catch {
-                  setPlayerPdfExportError('No se pudo copiar el diagnóstico de escudos. Revisa el permiso del portapapeles e inténtalo de nuevo.');
+                  setPlayerPdfExportError('No se pudo copiar el diagnóstico PDF. Revisa el permiso del portapapeles e inténtalo de nuevo.');
                 }
               };
               const renderProfileEmptyState = (title, copy, variant = 'compact') => {
@@ -30289,7 +30298,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                             onClick={copyPlayerPdfCrestAudit}
                             className="rounded-2xl border border-caudal-electric/35 bg-caudal-electric/10 px-4 py-2 text-sm font-black uppercase tracking-[0.12em] text-caudal-electric transition hover:bg-caudal-electric/20"
                           >
-                            COPIAR DIAGNÓSTICO ESCUDOS
+                            COPIAR DIAGNÓSTICO PDF
                             {playerPdfCrestAuditCopied ? <span className="ml-2 text-[10px] text-emerald-300">COPIADO</span> : null}
                           </button>
                         ) : null}

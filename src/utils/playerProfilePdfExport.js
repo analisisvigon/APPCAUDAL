@@ -109,17 +109,21 @@ const sectionTitle = (pdf, label, y, eyebrow = '') => {
   return y + 7;
 };
 
-const fitImage = (pdf, image, x, y, width, height) => {
-  if (!image?.data) return false;
+const fitImage = (pdf, image, x, y, width, height, onResult = null) => {
+  const finish = (result) => {
+    if (typeof onResult === 'function') onResult(result);
+    return result.success;
+  };
+  if (!image?.data) return finish({ success: false, error: clean(image?.error) || 'missing_image_data' });
   try {
     const properties = pdf.getImageProperties(image.data);
     const ratio = Math.min(width / properties.width, height / properties.height);
     const renderedWidth = properties.width * ratio;
     const renderedHeight = properties.height * ratio;
     pdf.addImage(image.data, image.format, x + (width - renderedWidth) / 2, y + (height - renderedHeight) / 2, renderedWidth, renderedHeight, undefined, 'FAST');
-    return true;
+    return finish({ success: true, error: '' });
   } catch {
-    return false;
+    return finish({ success: false, error: 'jspdf_render_failed' });
   }
 };
 
@@ -132,22 +136,33 @@ const blobToDataUrl = async (blob) => {
 
 export const loadPlayerPdfImage = async (url, { fetchImpl = globalThis.fetch, documentRef } = {}) => {
   const source = clean(url);
-  if (!source) return { source: '', data: '', format: '', error: 'missing_source' };
-  if (typeof fetchImpl !== 'function') return { source, data: '', format: '', error: 'fetch_unavailable' };
+  if (!source) return { source: '', data: '', format: '', error: 'missing_source', attempted: false, httpStatus: null, mimeType: '' };
+  if (typeof fetchImpl !== 'function') return { source, data: '', format: '', error: 'fetch_unavailable', attempted: false, httpStatus: null, mimeType: '' };
+  let response;
   try {
     const absolute = source.startsWith('/') && documentRef?.location?.origin ? new URL(source, documentRef.location.origin).href : source;
-    const response = await fetchImpl(absolute, { mode: 'cors', credentials: 'omit' });
-    if (!response.ok) return { source, data: '', format: '', error: `http_${response.status || 'error'}` };
-    const blob = await response.blob();
-    const mimeType = String(blob.type || '').toLowerCase();
-    if (!['image/png', 'image/jpeg', 'image/jpg', 'image/webp'].includes(mimeType)) {
-      return { source, data: '', format: '', error: mimeType ? `unsupported_mime:${mimeType}` : 'missing_mime' };
-    }
+    response = await fetchImpl(absolute, { mode: 'cors', credentials: 'omit' });
+  } catch (error) {
+    return { source, data: '', format: '', error: `fetch_failed:${clean(error?.message) || 'unknown'}`, attempted: true, httpStatus: null, mimeType: '' };
+  }
+  const httpStatus = Number.isFinite(Number(response?.status)) ? Number(response.status) : null;
+  if (!response?.ok) return { source, data: '', format: '', error: `http_${response?.status || 'error'}`, attempted: true, httpStatus, mimeType: '' };
+  let blob;
+  try {
+    blob = await response.blob();
+  } catch (error) {
+    return { source, data: '', format: '', error: `blob_failed:${clean(error?.message) || 'unknown'}`, attempted: true, httpStatus, mimeType: '' };
+  }
+  const mimeType = String(blob.type || '').toLowerCase();
+  if (!['image/png', 'image/jpeg', 'image/jpg', 'image/webp'].includes(mimeType)) {
+    return { source, data: '', format: '', error: mimeType ? `unsupported_mime:${mimeType}` : 'missing_mime', attempted: true, httpStatus, mimeType };
+  }
+  try {
     const data = await blobToDataUrl(blob);
     const format = /jpe?g/i.test(mimeType) ? 'JPEG' : /webp/i.test(mimeType) ? 'WEBP' : 'PNG';
-    return { source, data, format, error: '' };
+    return { source, data, format, error: '', attempted: true, httpStatus, mimeType };
   } catch (error) {
-    return { source, data: '', format: '', error: `fetch_failed:${clean(error?.message) || 'unknown'}` };
+    return { source, data: '', format: '', error: `conversion_failed:${clean(error?.message) || 'unknown'}`, attempted: true, httpStatus, mimeType };
   }
 };
 
@@ -688,7 +703,7 @@ const getHistoryPositionSystemLines = (row = {}) => {
 
 const getHistoryRowHeight = (row = {}) => Math.max(8.4, 4.8 + getHistoryPositionSystemLines(row).length * 3.6);
 
-const drawHistoryRow = (pdf, row, y, widths, rivalImage, rowIndex) => {
+const drawHistoryRow = (pdf, row, y, widths, rivalImage, rowIndex, onRivalImageResult = null) => {
   const height = getHistoryRowHeight(row);
   if (rowIndex % 2 === 0) {
     pdf.setFillColor(...COLORS.panel);
@@ -699,7 +714,7 @@ const drawHistoryRow = (pdf, row, y, widths, rivalImage, rowIndex) => {
   const center = (value, index, options = {}) => text(pdf, value, x + widths[index] / 2, baseline, { size: 5.6, color: COLORS.ink, align: 'center', ...options });
   center(row.date, 0);
   x += widths[0];
-  const rivalImageDrawn = fitImage(pdf, rivalImage, x + 1, y + (height - 6.5) / 2, 6.5, 6.5);
+  const rivalImageDrawn = fitImage(pdf, rivalImage, x + 1, y + (height - 6.5) / 2, 6.5, 6.5, onRivalImageResult);
   if (!rivalImageDrawn) {
     const initials = clean(row.opponent).split(/\s+/).filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'R';
     pdf.setFillColor(226, 232, 240);
@@ -817,11 +832,11 @@ const sortConnections = (connections) => rows(connections)
 
 const connectionInitials = (value) => clean(value).split(/\s+/).filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'JG';
 
-const drawConnectionAvatar = (pdf, image, name, x, y, size) => {
+const drawConnectionAvatar = (pdf, image, name, x, y, size, onImageResult = null) => {
   pdf.setFillColor(...COLORS.paper);
   pdf.setDrawColor(...COLORS.line);
   pdf.roundedRect(x, y, size, size, 1.2, 1.2, 'FD');
-  if (fitImage(pdf, image, x + 0.6, y + 0.6, size - 1.2, size - 1.2)) return true;
+  if (fitImage(pdf, image, x + 0.6, y + 0.6, size - 1.2, size - 1.2, onImageResult)) return true;
   pdf.setFillColor(231, 243, 249);
   pdf.roundedRect(x + 0.6, y + 0.6, size - 1.2, size - 1.2, 1, 1, 'F');
   text(pdf, connectionInitials(name), x + size / 2, y + size / 2 + 1.6, { size: 5.8, style: 'bold', color: COLORS.blue, align: 'center' });
@@ -843,7 +858,7 @@ const getConnectionGridMetrics = (count) => {
   return { columns, gap, cardWidth, cardHeight, rowsCount, height: 7 + rowsCount * cardHeight + Math.max(0, rowsCount - 1) * gap + 3 };
 };
 
-const drawConnections = (pdf, connections, y, sectionNumber, imageMap, limit = Infinity) => {
+const drawConnections = (pdf, connections, y, sectionNumber, imageMap, limit = Infinity, onImageResult = null) => {
   const connectionRows = sortConnections(connections).slice(0, limit);
   if (!connectionRows.length) return y;
   y = sectionTitle(pdf, 'Conexiones ofensivas', y, sectionNumber);
@@ -862,8 +877,22 @@ const drawConnections = (pdf, connections, y, sectionNumber, imageMap, limit = I
     pdf.setFillColor(...COLORS.panel);
     pdf.setDrawColor(...COLORS.line);
     pdf.roundedRect(x, cardY, grid.cardWidth, grid.cardHeight, 1.4, 1.4, 'FD');
-    drawConnectionAvatar(pdf, imageMap.get(clean(connection.fromImage)), connection.from, fromCenter - avatarSize / 2, avatarY, avatarSize);
-    drawConnectionAvatar(pdf, imageMap.get(clean(connection.toImage)), connection.to, toCenter - avatarSize / 2, avatarY, avatarSize);
+    drawConnectionAvatar(pdf, imageMap.get(clean(connection.fromImage)), connection.from, fromCenter - avatarSize / 2, avatarY, avatarSize, (result) => onImageResult?.({
+      connectionId: clean(connection.id),
+      direction: clean(connection.direction),
+      side: 'from',
+      name: clean(connection.from),
+      source: clean(connection.fromImage),
+      ...result,
+    }));
+    drawConnectionAvatar(pdf, imageMap.get(clean(connection.toImage)), connection.to, toCenter - avatarSize / 2, avatarY, avatarSize, (result) => onImageResult?.({
+      connectionId: clean(connection.id),
+      direction: clean(connection.direction),
+      side: 'to',
+      name: clean(connection.to),
+      source: clean(connection.toImage),
+      ...result,
+    }));
     drawConnectionName(pdf, connection.from, fromCenter, avatarY + avatarSize + 3.2, grid.cardWidth * 0.38);
     drawConnectionName(pdf, connection.to, toCenter, avatarY + avatarSize + 3.2, grid.cardWidth * 0.38);
 
@@ -1006,6 +1035,8 @@ export const createPlayerProfilePdf = async ({
     team: imageMap.get(clean(report.identity?.teamCrest)),
     competition: imageMap.get(clean(competitionProfile.logoUrl)),
   };
+  const opponentRenderAudit = new Map();
+  const connectionRenderAudit = [];
 
   const pdf = new JsPdfConstructor({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true, putOnlyUsedFonts: true });
   const pageSections = [];
@@ -1035,7 +1066,9 @@ export const createPlayerProfilePdf = async ({
         header = drawHistoryHeader(pdf, y);
         y = header.y;
       }
-      y = drawHistoryRow(pdf, row, y, header.widths, imageMap.get(clean(row.opponentCrest)), index);
+      y = drawHistoryRow(pdf, row, y, header.widths, imageMap.get(clean(row.opponentCrest)), index, qaCrestLoadAudit
+        ? (renderResult) => opponentRenderAudit.set(clean(row.id || row.matchId), renderResult)
+        : null);
     });
   } else {
     y = sectionTitle(pdf, 'Historial partido a partido', y, sectionNumbers.history);
@@ -1061,7 +1094,9 @@ export const createPlayerProfilePdf = async ({
     const productionConnections = sortedOffensiveConnections.slice(0, 5);
     if (productionConnections.length) {
       if (y + getConnectionGridMetrics(productionConnections.length).height > CONTENT_BOTTOM) y = addPage('CONEXIONES OFENSIVAS');
-      y = drawConnections(pdf, productionConnections, y, sectionNumbers.connections, imageMap, 5);
+      y = drawConnections(pdf, productionConnections, y, sectionNumbers.connections, imageMap, 5, qaCrestLoadAudit
+        ? (renderResult) => connectionRenderAudit.push(renderResult)
+        : null);
     }
     const hasGoalAnalysis = number(report.goalAnalysis?.bodyParts?.total)
       || number(report.goalAnalysis?.types?.total)
@@ -1183,6 +1218,7 @@ export const createPlayerProfilePdf = async ({
       opponentCrests: rows(report.history).map((row) => {
         const source = clean(row.opponentCrest);
         const loaded = source ? imageMap.get(source) : null;
+        const rendered = opponentRenderAudit.get(clean(row.id || row.matchId));
         return {
           matchId: clean(row.id || row.matchId),
           opponent: clean(row.opponent),
@@ -1190,9 +1226,16 @@ export const createPlayerProfilePdf = async ({
           source,
           resolutionSource: clean(row.opponentCrestSource),
           loaded: Boolean(loaded?.data),
-          error: source ? clean(loaded?.error) : 'missing_source',
-          placeholder: !loaded?.data,
-          ...(qaCrestLoadAudit ? { imageFormat: clean(loaded?.format) } : {}),
+          error: source ? clean(loaded?.error || rendered?.error) : 'missing_source',
+          placeholder: qaCrestLoadAudit ? !rendered?.success : !loaded?.data,
+          ...(qaCrestLoadAudit ? {
+            loadAttempted: Boolean(loaded?.attempted),
+            httpStatus: loaded?.httpStatus ?? null,
+            mimeType: clean(loaded?.mimeType),
+            imageFormat: clean(loaded?.format),
+            renderSuccess: Boolean(rendered?.success),
+            renderError: clean(rendered?.error),
+          } : {}),
         };
       }),
       positionMap: {
@@ -1233,6 +1276,20 @@ export const createPlayerProfilePdf = async ({
         fromImageLoaded: Boolean(imageMap.get(clean(connection.fromImage))?.data),
         toImageLoaded: Boolean(imageMap.get(clean(connection.toImage))?.data),
       })),
+      ...(qaCrestLoadAudit ? {
+        connectionImages: connectionRenderAudit.map((rendered) => {
+          const loaded = rendered.source ? imageMap.get(rendered.source) : null;
+          return {
+            ...rendered,
+            loadAttempted: Boolean(loaded?.attempted),
+            loaded: Boolean(loaded?.data),
+            httpStatus: loaded?.httpStatus ?? null,
+            mimeType: clean(loaded?.mimeType),
+            imageFormat: clean(loaded?.format),
+            loadError: rendered.source ? clean(loaded?.error || rendered.error) : 'missing_source',
+          };
+        }),
+      } : {}),
       connectionLayout: rows(report.offensiveConnections).length
         ? getConnectionGridMetrics(Math.min(5, rows(report.offensiveConnections).length))
         : null,

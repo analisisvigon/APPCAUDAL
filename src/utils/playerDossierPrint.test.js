@@ -150,15 +150,19 @@ const loadedRemoteImage = await loadPlayerPdfImage('https://images.example/crest
   fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
 });
 assert.equal(loadedRemoteImage.format, 'PNG');
+assert.equal(loadedRemoteImage.attempted, true);
+assert.equal(loadedRemoteImage.mimeType, 'image/png');
 assert.equal(Boolean(loadedRemoteImage.data), true, 'un escudo remoto compatible se convierte para el PDF');
 const failedRemoteImage = await loadPlayerPdfImage('https://images.example/missing.png', {
   fetchImpl: async () => ({ ok: false, status: 404 }),
 });
 assert.equal(failedRemoteImage.error, 'http_404', 'el fallo remoto queda auditable y permite usar placeholder');
+assert.equal(failedRemoteImage.httpStatus, 404, 'el diagnóstico conserva el estado HTTP real');
 const unsupportedRemoteImage = await loadPlayerPdfImage('https://images.example/crest.svg', {
   fetchImpl: async () => ({ ok: true, blob: async () => new Blob(['<svg/>'], { type: 'image/svg+xml' }) }),
 });
 assert.equal(unsupportedRemoteImage.error, 'unsupported_mime:image/svg+xml');
+assert.equal(unsupportedRemoteImage.mimeType, 'image/svg+xml');
 const competitionLogoResult = await createPlayerProfilePdf({
   report: jairoReport,
   fetchImpl: async () => ({ ok: true, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
@@ -201,6 +205,8 @@ const auditedCrestResult = await createPlayerProfilePdf({
 });
 assert.equal(Object.hasOwn(repeatedCrestResult.presentationAudit.opponentCrests[0], 'imageFormat'), false, 'sin el flag QA no se añade diagnóstico de tipo de imagen');
 assert.deepEqual(auditedCrestResult.presentationAudit.opponentCrests.map(({ imageFormat }) => imageFormat), ['PNG', 'PNG'], 'el flag QA observa el formato ya cargado');
+assert.equal(auditedCrestResult.presentationAudit.opponentCrests.every(({ loadAttempted }) => loadAttempted), true, 'QA registra el intento real de descarga del escudo');
+assert.equal(auditedCrestResult.presentationAudit.opponentCrests.every(({ renderSuccess, placeholder }) => typeof renderSuccess === 'boolean' && placeholder === !renderSuccess), true, 'QA separa descarga y renderizado real del escudo');
 assert.equal(auditedCrestResult.arrayBuffer.byteLength, repeatedCrestResult.arrayBuffer.byteLength, 'la observación QA no modifica los bytes renderizados del PDF');
 assert.deepEqual(auditedCrestResult.pageSections, repeatedCrestResult.pageSections, 'la observación QA no altera estructura ni paginación');
 assert.deepEqual(auditedCrestResult.presentationAudit.maximumsLayout, repeatedCrestResult.presentationAudit.maximumsLayout, 'la observación QA no altera el layout 4+3');
@@ -288,6 +294,14 @@ const picturedConnection = await createPlayerProfilePdf({
 assert.equal(picturedConnection.presentationAudit.connections[0].fromImageLoaded, true);
 assert.equal(picturedConnection.presentationAudit.connections[0].toImageLoaded, true, 'las dos fotografías reales de la conexión llegan al PDF');
 assert.equal(picturedConnection.presentationAudit.connectionLayout.columns, 1, 'una conexión usa una tarjeta centrada');
+const picturedConnectionAudit = await createPlayerProfilePdf({
+  report: picturedConnectionReport,
+  qaCrestLoadAudit: true,
+  fetchImpl: async () => ({ ok: true, status: 200, blob: async () => new Blob([transparentPng], { type: 'image/png' }) }),
+});
+assert.equal(picturedConnectionAudit.presentationAudit.connectionImages.length, 2, 'QA registra ambos extremos renderizados sin alterar la conexión');
+assert.equal(picturedConnectionAudit.presentationAudit.connectionImages.every(({ loaded, success, mimeType }) => loaded && typeof success === 'boolean' && mimeType === 'image/png'), true);
+assert.equal(Object.hasOwn(picturedConnection.presentationAudit, 'connectionImages'), false, 'la exportación normal no añade instrumentación de conexiones');
 
 const mandatoryScenarios = [
   ['A · 1 gol', { goals: 1, targetCounts: [0, 1] }],
