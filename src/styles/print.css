@@ -1604,6 +1604,7 @@
   width: 0;
   height: 0;
   overflow: hidden;
+  pointer-events: none;
 }
 
 .match-plan-print-keys {
@@ -4636,6 +4637,7 @@
     margin: 0 !important;
     padding: 0 !important;
     overflow: visible !important;
+    pointer-events: auto !important;
   }
 
   body * {

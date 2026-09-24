@@ -19,6 +19,8 @@ assert.equal(/html,\s*body,\s*#root\s*\{[^}]*width:\s*210mm/s.test(printMedia), 
 assert.match(printMedia, /html:has\(body > \.player-profile-print-portal\),[\s\S]*width: 210mm !important;[\s\S]*min-height: 297mm !important;/);
 assert.equal(printMedia.includes('body > .print-dossier-portal {'), false, 'el portal individual no usa un selector genérico compartido con ABP');
 assert.equal(printMedia.includes('body:has(> .print-dossier-portal)'), false, 'la geometría del portal queda discriminada por tipo de documento');
+assert.match(css, /\.print-dossier-portal\s*\{[\s\S]*pointer-events:\s*none;/, 'el portal de impresión no participa en los clicks durante la aplicación');
+assert.match(printMedia, /body > \.printing-dossier\.print-dossier-portal\s*\{[\s\S]*pointer-events:\s*auto !important;/, 'el portal recupera interacción solo durante impresión');
 
 const abpRule = css.match(/\.set-piece-pro-sheet\s*\{([^}]*)\}/)?.[1] || '';
 assert.match(abpRule, /--abp-page-width:\s*297mm/);
