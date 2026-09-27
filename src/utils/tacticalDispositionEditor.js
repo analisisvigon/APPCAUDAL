@@ -1,11 +1,7 @@
 import { getMatchPlayerIdentityKey } from './matchPlayerIdentity.js';
+import { getMatchSubstitutionEvents } from './matchSubstitutions.js';
 
 const clean = (value) => String(value ?? '').trim();
-const normalizeName = (value) => clean(value)
-  .normalize('NFD')
-  .replace(/[\u0300-\u036f]/g, '')
-  .replace(/\s+/g, ' ')
-  .toLowerCase();
 
 export const normalizeTacticalParticipant = (row = {}) => {
   const source = row || {};
@@ -20,34 +16,26 @@ export const getTacticalParticipantKey = (row = {}, identityIndex = null) => {
   return getMatchPlayerIdentityKey({ ...row, ...participant }, identityIndex);
 };
 
-const findStatsEntry = (playerStats = {}, playerName = '') => {
-  if (playerStats[playerName]) return [playerName, playerStats[playerName]];
-  const identity = normalizeName(playerName);
-  return Object.entries(playerStats).find(([name]) => normalizeName(name) === identity) || [playerName, {}];
-};
+const resolveTacticalSubstitutions = ({ playerStats = {}, substitutionEvents = [], duration = 90 } = {}) => (
+  getMatchSubstitutionEvents({ canonicalEvents: substitutionEvents, playerStats, duration }).events.map((event) => ({
+    minute: event.minute,
+    eventOrder: event.eventOrder,
+    outPlayer: normalizeTacticalParticipant(event.outgoingPlayer),
+    inPlayer: normalizeTacticalParticipant(event.incomingPlayer),
+    reason: event.reason,
+    source: event.source,
+  }))
+);
 
-export const getTacticalSubstitutionsAtMinute = ({ playerStats = {}, minute } = {}) => {
+export const getTacticalSubstitutionsAtMinute = ({ playerStats = {}, substitutionEvents = [], minute, duration = 90 } = {}) => {
   const targetMinute = Number(minute);
   if (!Number.isFinite(targetMinute)) return [];
-  return Object.entries(playerStats || {}).flatMap(([outName, stats]) => {
-    const replacementName = clean(stats?.replacementName || stats?.replacement_name);
-    if (!replacementName || Number(stats?.minutes) !== targetMinute) return [];
-    const [storedInName, inStats] = findStatsEntry(playerStats, replacementName);
-    return [{
-      minute: targetMinute,
-      outPlayer: normalizeTacticalParticipant({
-        playerId: stats?.jugadorId || stats?.jugador_id,
-        playerName: outName,
-      }),
-      inPlayer: normalizeTacticalParticipant({
-        playerId: inStats?.jugadorId || inStats?.jugador_id,
-        playerName: storedInName || replacementName,
-      }),
-    }];
-  }).sort((left, right) => getTacticalParticipantKey(left.outPlayer).localeCompare(getTacticalParticipantKey(right.outPlayer)));
+  return resolveTacticalSubstitutions({ playerStats, substitutionEvents, duration })
+    .filter((event) => event.minute === targetMinute)
+    .sort((left, right) => left.eventOrder - right.eventOrder || getTacticalParticipantKey(left.outPlayer).localeCompare(getTacticalParticipantKey(right.outPlayer)));
 };
 
-export const buildKnownOnFieldPlayers = ({ initialSlots = [], playerStats = {}, atMinute = 0, identityIndex = null } = {}) => {
+export const buildKnownOnFieldPlayers = ({ initialSlots = [], playerStats = {}, substitutionEvents = [], atMinute = 0, duration = 90, identityIndex = null } = {}) => {
   const errors = [];
   const initial = initialSlots
     .slice()
@@ -59,18 +47,8 @@ export const buildKnownOnFieldPlayers = ({ initialSlots = [], playerStats = {}, 
     errors.push('La alineación inicial no contiene 11 jugadores únicos.');
   }
   const playersByKey = new Map(initial.map((player) => [getTacticalParticipantKey(player, identityIndex), player]));
-  const substitutions = Object.entries(playerStats || {}).flatMap(([outName, stats]) => {
-    const minute = Number(stats?.minutes);
-    const replacementName = clean(stats?.replacementName || stats?.replacement_name);
-    if (!replacementName || !Number.isFinite(minute) || minute <= 0 || minute > Number(atMinute)) return [];
-    const [storedInName, inStats] = findStatsEntry(playerStats, replacementName);
-    const outStats = stats || {};
-    return [{
-      minute,
-      outPlayer: normalizeTacticalParticipant({ playerId: outStats.jugadorId || outStats.jugador_id, playerName: outName }),
-      inPlayer: normalizeTacticalParticipant({ playerId: inStats.jugadorId || inStats.jugador_id, playerName: storedInName || replacementName }),
-    }];
-  }).sort((left, right) => left.minute - right.minute || getTacticalParticipantKey(left.outPlayer).localeCompare(getTacticalParticipantKey(right.outPlayer)));
+  const substitutions = resolveTacticalSubstitutions({ playerStats, substitutionEvents, duration })
+    .filter((event) => event.minute <= Number(atMinute));
 
   substitutions.forEach(({ minute, outPlayer, inPlayer }) => {
     const outKey = getTacticalParticipantKey(outPlayer, identityIndex);
@@ -125,11 +103,13 @@ export const buildAutomaticSubstitutionSnapshot = ({
   intervals = [],
   initialSlots = [],
   playerStats = {},
+  substitutionEvents = [],
+  duration = 90,
   systemSlotCount = 11,
   identityIndex = null,
 } = {}) => {
   const targetMinute = Number(minute);
-  const substitutions = getTacticalSubstitutionsAtMinute({ playerStats, minute: targetMinute });
+  const substitutions = getTacticalSubstitutionsAtMinute({ playerStats, substitutionEvents, minute: targetMinute, duration });
   const fail = (reason, errors = []) => ({
     status: 'needs_confirmation',
     reason,
@@ -189,7 +169,7 @@ export const buildAutomaticSubstitutionSnapshot = ({
   });
   if (errors.length) return fail('ambiguous_substitution', errors);
 
-  const known = buildKnownOnFieldPlayers({ initialSlots, playerStats, atMinute: targetMinute, identityIndex });
+  const known = buildKnownOnFieldPlayers({ initialSlots, playerStats, substitutionEvents, atMinute: targetMinute, duration, identityIndex });
   const validation = validateTacticalDisposition({ lineup, knownPlayers: known.players, identityIndex });
   if (!known.valid || !validation.valid) {
     return fail('lineup_validation_failed', [...known.errors, ...validation.errors]);

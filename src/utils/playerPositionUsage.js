@@ -3,8 +3,10 @@ import { getSpecificPositionLabel, mapExternalPositionToPlayerPositions } from '
 import {
   buildMatchPlayerIdentityRecordsFromStats,
   createMatchPlayerIdentityIndex,
+  getMatchPlayerIdentityKey,
   resolveMatchPlayerCandidate,
 } from './matchPlayerIdentity.js';
+import { getMatchSubstitutionEvents } from './matchSubstitutions.js';
 
 const rows = (value) => Array.isArray(value) ? value : [];
 const clean = (value) => String(value ?? '').trim();
@@ -100,18 +102,35 @@ const findPlayerStats = (playerStats, identity, identityIndex) => {
   return resolvePlayerCandidate(candidates, identity, identityIndex).candidate || {};
 };
 
-const getParticipationWindow = ({ minutes, role, duration, playerStats, identity }) => {
+const getParticipationWindow = ({ minutes, role, duration, playerStats, substitutionEvents = [], identity, identityIndex }) => {
   const playedMinutes = Math.max(0, Math.min(Number(duration || 90), Number(minutes || 0)));
   if (!playedMinutes) return { fromMinute: 0, toMinute: 0, minutes: 0 };
-  if (normalizeIdentity(role) === 'titular') return { fromMinute: 0, toMinute: playedMinutes, minutes: playedMinutes };
+  const identityKey = getMatchPlayerIdentityKey(identity, identityIndex);
+  const orderedEvents = rows(substitutionEvents);
+  const entryEvent = orderedEvents.find((event) => getMatchPlayerIdentityKey(event.incomingPlayer, identityIndex) === identityKey);
+  const fromMinute = normalizeIdentity(role) === 'titular'
+    ? 0
+    : Number.isFinite(Number(entryEvent?.minute))
+      ? Math.min(Number(duration || 90), Number(entryEvent.minute))
+      : null;
+  const exitEvent = orderedEvents.find((event) => (
+    getMatchPlayerIdentityKey(event.outgoingPlayer, identityIndex) === identityKey
+    && Number(event.minute) >= Number(fromMinute ?? 0)
+  ));
+  if (fromMinute !== null) {
+    const toMinute = Number.isFinite(Number(exitEvent?.minute))
+      ? Math.min(Number(duration || 90), Number(exitEvent.minute))
+      : Math.min(Number(duration || 90), fromMinute + playedMinutes);
+    return { fromMinute, toMinute, minutes: playedMinutes };
+  }
   const replacementEntry = Object.entries(playerStats || {}).find(([, stats]) => (
     normalizeIdentity(stats?.replacementName || stats?.replacement_name) === normalizeIdentity(identity.playerName)
   ));
   const recordedEntry = Number(replacementEntry?.[1]?.minutes);
-  const fromMinute = Number.isFinite(recordedEntry) && recordedEntry >= 0
+  const legacyFromMinute = Number.isFinite(recordedEntry) && recordedEntry >= 0
     ? Math.min(Number(duration || 90), recordedEntry)
     : Math.max(0, Number(duration || 90) - playedMinutes);
-  return { fromMinute, toMinute: Math.min(Number(duration || 90), fromMinute + playedMinutes), minutes: playedMinutes };
+  return { fromMinute: legacyFromMinute, toMinute: Math.min(Number(duration || 90), legacyFromMinute + playedMinutes), minutes: playedMinutes };
 };
 
 const getInitialPosition = ({ initialSlots, system, identity, identityIndex }) => {
@@ -147,11 +166,24 @@ const classifyUnknownSegment = (segment = {}) => {
 };
 
 const buildTacticalAuditEvents = (row = {}) => {
-  const substitutions = Object.entries(row.playerStats || {}).flatMap(([outPlayerName, stats]) => {
-    const minute = Number(stats?.minutes);
-    const inPlayerName = clean(stats?.replacementName || stats?.replacement_name);
-    return inPlayerName && Number.isFinite(minute) ? [{ type: 'substitution', minute, outPlayerName, inPlayerName }] : [];
-  });
+  const substitutions = getMatchSubstitutionEvents({
+    canonicalEvents: row.substitutionEvents,
+    playerStats: row.playerStats,
+    lineup: row.initialSlots,
+    players: row.playerIdentities,
+    duration: row.duration,
+  }).events.map((event) => ({
+    type: 'substitution',
+    minute: event.minute,
+    eventOrder: event.eventOrder,
+    eventId: event.id,
+    outPlayerId: event.outgoingPlayer.playerId,
+    outPlayerName: event.outgoingPlayer.playerName,
+    inPlayerId: event.incomingPlayer.playerId,
+    inPlayerName: event.incomingPlayer.playerName,
+    reason: event.reason,
+    source: event.source,
+  }));
   const systemChanges = rows(row.systemEvents).flatMap((event) => {
     const minute = Number(event?.minute);
     if (!Number.isFinite(minute)) return [];
@@ -189,12 +221,21 @@ const buildPlayerMatchPositionUsage = ({ row, identity }) => {
     identity,
   ]);
   const stats = findPlayerStats(playerStats, identity, identityIndex);
+  const substitutionEvents = getMatchSubstitutionEvents({
+    canonicalEvents: row.substitutionEvents,
+    playerStats,
+    lineup: row.initialSlots,
+    players: row.playerIdentities,
+    duration,
+  }).events;
   const participation = getParticipationWindow({
     minutes: actualMinutes,
     role: row.role || stats.role,
     duration,
     playerStats,
+    substitutionEvents,
     identity,
+    identityIndex,
   });
   const initialPosition = getInitialPosition({
     initialSlots: row.initialSlots,
