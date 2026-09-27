@@ -126,6 +126,7 @@ export default function MobileEditableTacticalPitch({
               onPointerMove={trackPointerDrag}
               onPointerUp={finishPointerDrag}
               onPointerCancel={cancelPointerDrag}
+              onDragStart={(event) => event.preventDefault()}
               onClick={(event) => {
                 if (suppressClickRef.current) {
                   suppressClickRef.current = false;

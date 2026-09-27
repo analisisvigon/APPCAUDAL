@@ -39,14 +39,25 @@ assert.equal(at84.valid, true);
 assert.equal(at84.players.some((player) => player.playerId === 'p2'), false);
 assert.equal(at84.players.some((player) => player.playerId === 'marcos'), true, 'la foto 84-90 usa el cuarto cambio conocido sin inferir su posición');
 
-const chainedInitialSlots = initialSlots.map((row) => row.playerId === 'p10' ? { ...row, playerName: 'Borja' } : row);
+const chainedInitialSlots = initialSlots.map((row) => (
+  row.playerId === 'p10' ? { ...row, playerName: 'Borja' }
+    : row.playerId === 'p4' ? { ...row, playerName: 'Albuquerque' }
+      : row
+));
 const chainedSubstitutions = [
   { id: 'sub-60', minute: 60, eventOrder: 0, outgoingPlayerId: 'p10', incomingPlayerId: 'josin', outgoingNameSnapshot: 'Borja', incomingNameSnapshot: 'Josín' },
   { id: 'sub-75', minute: 75, eventOrder: 0, outgoingPlayerId: 'josin', incomingPlayerId: 'julio', outgoingNameSnapshot: 'Josín', incomingNameSnapshot: 'Julio' },
 ];
-const activeAt60 = buildKnownOnFieldPlayers({ initialSlots: chainedInitialSlots, substitutionEvents: chainedSubstitutions, atMinute: 60 });
-const activeAt74 = buildKnownOnFieldPlayers({ initialSlots: chainedInitialSlots, substitutionEvents: chainedSubstitutions, atMinute: 74 });
-const activeAt75 = buildKnownOnFieldPlayers({ initialSlots: chainedInitialSlots, substitutionEvents: chainedSubstitutions, atMinute: 75 });
+const chainedPlayerStats = {
+  Borja: { jugadorId: 'p10', minutes: 60, replacementName: 'Josín', role: 'Titular' },
+  Josín: { jugadorId: 'josin', minutes: 15, replacementName: 'Julio', role: 'Suplente' },
+  Julio: { jugadorId: 'julio', minutes: 15, replacementName: '', role: 'Suplente' },
+  Albuquerque: { jugadorId: 'p4', minutes: 90, replacementName: '', role: 'Titular' },
+};
+const substitutionStateBeforeMove = structuredClone({ chainedSubstitutions, chainedPlayerStats });
+const activeAt60 = buildKnownOnFieldPlayers({ initialSlots: chainedInitialSlots, playerStats: chainedPlayerStats, substitutionEvents: chainedSubstitutions, atMinute: 60 });
+const activeAt74 = buildKnownOnFieldPlayers({ initialSlots: chainedInitialSlots, playerStats: chainedPlayerStats, substitutionEvents: chainedSubstitutions, atMinute: 74 });
+const activeAt75 = buildKnownOnFieldPlayers({ initialSlots: chainedInitialSlots, playerStats: chainedPlayerStats, substitutionEvents: chainedSubstitutions, atMinute: 75 });
 assert.equal(activeAt60.valid && activeAt60.players.length, 11, 'A/E: el snapshot de la primera entrada conserva once activos');
 assert.equal(activeAt60.players.some((player) => player.playerId === 'josin'), true, 'B: Josín está activo desde el minuto 60');
 assert.equal(activeAt60.players.some((player) => player.playerId === 'p10'), false, 'D: Borja saliente no forma parte del snapshot');
@@ -57,10 +68,14 @@ const activeAt60Lineup = activeAt60.players.map((player) => ({ ...player, role: 
 const movedIncoming = moveTacticalDispositionPlayer({
   lineup: activeAt60Lineup,
   player: activeAt60Lineup.find((player) => player.playerId === 'josin'),
-  targetSlot: 4,
+  targetSlot: activeAt60Lineup.findIndex((player) => player.playerId === 'p4'),
 });
-assert.equal(movedIncoming[4].playerId, 'josin', 'C/9: el suplente entrante puede recolocarse por su ID canónico');
+assert.equal(movedIncoming[4].playerId, 'josin', 'C/9/16: Josín entrante intercambia con Albuquerque por ID canónico');
+assert.equal(movedIncoming[10].playerId, 'p4', '16: Albuquerque ocupa el slot anterior del entrante');
+assert.equal(movedIncoming.filter(Boolean).length, 11, '15/16: el swap de ocupados no pierde jugadores');
+assert.equal(new Set(movedIncoming.map((player) => player?.playerId).filter(Boolean)).size, 11, '15/16: el swap conserva once identidades únicas');
 assert.equal(validateTacticalDisposition({ lineup: movedIncoming, knownPlayers: activeAt60.players }).valid, true, 'mover al entrante conserva exactamente los once activos');
+assert.deepEqual({ chainedSubstitutions, chainedPlayerStats }, substitutionStateBeforeMove, '16: mover jugadores no altera eventos, minutos, role ni replacement_name');
 assert.deepEqual(chainedSubstitutions.map(({ id, minute, outgoingPlayerId, incomingPlayerId }) => ({ id, minute, outgoingPlayerId, incomingPlayerId })), [
   { id: 'sub-60', minute: 60, outgoingPlayerId: 'p10', incomingPlayerId: 'josin' },
   { id: 'sub-75', minute: 75, outgoingPlayerId: 'josin', incomingPlayerId: 'julio' },

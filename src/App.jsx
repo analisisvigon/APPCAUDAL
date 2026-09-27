@@ -19163,7 +19163,13 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
               tabIndex={editingDisposition ? 0 : undefined}
               aria-label={editingDisposition ? (playerName ? `Seleccionar o intercambiar ${playerIdentityTitle}` : `Colocar jugador en ${playerIdentityLabel}`) : undefined}
               draggable={!editingDisposition && Boolean(getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex)) && !historyBrowsing && !statsSquadSaving}
-              onDragStart={() => getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex) && setDraggedPlayer(participant)}
+              onDragStart={(event) => {
+                if (editingDisposition) {
+                  event.preventDefault();
+                  return;
+                }
+                if (getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex)) setDraggedPlayer(participant);
+              }}
               data-stats-slot-index={slotIndex}
               onPointerDown={editingDisposition ? (event) => beginTacticalDispositionPointerDrag(event, participant) : undefined}
               onPointerMove={editingDisposition ? trackTacticalDispositionPointerDrag : undefined}
@@ -19188,7 +19194,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 if (editingDisposition && draggedPlayer) moveTacticalEditorPlayer(draggedPlayer, slotIndex);
                 else if (!historyBrowsing) handleDropOnStatsLineupSlot(slotIndex);
               }}
-              className={`stats-player-slot absolute z-20 h-16 -translate-x-1/2 -translate-y-1/2 text-center ${getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex) ? 'cursor-grab' : ''} ${editingDisposition ? 'touch-none select-none' : ''}`}
+              className={`stats-player-slot absolute z-20 h-16 -translate-x-1/2 -translate-y-1/2 text-center ${getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex) ? 'cursor-grab' : ''} ${editingDisposition ? 'touch-none select-none stats-disposition-slot' : ''}`}
               style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
             >
               {incidentIndicators.length ? (

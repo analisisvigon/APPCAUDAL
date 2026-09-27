@@ -14,7 +14,7 @@ const minute = 78;
 const initialSlots = Array.from({ length: 11 }, (_, slot) => ({
   slot,
   playerId: slot === 5 ? 'carcaba' : `player-${slot}`,
-  playerName: slot === 5 ? 'J. Cárcaba' : `Jugador ${slot}`,
+  playerName: slot === 5 ? 'J. Cárcaba' : slot === 4 ? 'Albuquerque' : `Jugador ${slot}`,
 }));
 const playerStats = Object.fromEntries(initialSlots.map((player) => [player.playerName, {
   jugadorId: player.playerId,
@@ -23,6 +23,7 @@ const playerStats = Object.fromEntries(initialSlots.map((player) => [player.play
 }]));
 playerStats['J. Cárcaba'] = { jugadorId: 'carcaba', minutes: 78, replacementName: 'Dani Palacio' };
 playerStats['Dani Palacio'] = { jugadorId: 'dani', minutes: 12, replacementName: '' };
+const playerStatsBeforePositionEdits = structuredClone(playerStats);
 
 const postSubstitution = buildKnownOnFieldPlayers({ initialSlots, playerStats, atMinute: minute });
 assert.equal(postSubstitution.valid, true, 'E) el XI del minuto 78 es reconstruible');
@@ -92,7 +93,17 @@ assert.equal(new Set(firstSave.snapshot.slots.map((slot) => slot.slot)).size, 11
 
 const editedLineup = Array.from({ length: 11 }, () => null);
 completeSlots.forEach((slot) => { editedLineup[slot.slot] = { playerId: slot.playerId, playerName: slot.playerName }; });
-const movedLineup = moveTacticalDispositionPlayer({ lineup: editedLineup, player: editedLineup[5], targetSlot: 8 });
+const moveIdentityToSlot = (lineup, playerId, targetSlot) => moveTacticalDispositionPlayer({
+  lineup,
+  player: lineup.find((player) => player?.playerId === playerId),
+  targetSlot,
+});
+let movedLineup = moveIdentityToSlot(editedLineup, 'dani', 4);
+assert.equal(movedLineup[4].playerId, 'dani', '16: el entrante intercambia posición con Albuquerque');
+assert.equal(movedLineup[5].playerId, 'player-4', '16: Albuquerque ocupa el slot anterior del entrante');
+movedLineup = moveIdentityToSlot(movedLineup, 'player-0', 1);
+movedLineup = moveIdentityToSlot(movedLineup, 'player-1', 2);
+movedLineup = moveIdentityToSlot(movedLineup, 'player-3', 4);
 const movedSlots = validateTacticalDisposition({ lineup: movedLineup, knownPlayers: postSubstitution.players }).slots;
 await saveTacticalDispositionWithReload({
   save: () => persistUpsert(movedSlots),
@@ -102,7 +113,12 @@ await saveTacticalDispositionWithReload({
   system,
   slots: movedSlots,
 });
-assert.equal(snapshots[0].slots.find((slot) => slot.jugador_id === 'dani').slot, 8, 'B) editar, guardar y recargar conserva el slot nuevo exacto');
+assert.equal(snapshots[0].slots.find((slot) => slot.jugador_id === 'dani').slot, 3, 'B/17: los swaps consecutivos se guardan y recargan en el slot final');
+assert.equal(snapshots[0].slots.find((slot) => slot.jugador_id === 'player-4').slot, 5, '17: Albuquerque conserva la posición intercambiada al recargar');
+assert.deepEqual(snapshots[0].slots.map((slot) => slot.jugador_id), movedSlots.map((slot) => slot.playerId), '17: recargar conserva exactamente los once jugadores y su orden');
+assert.equal(snapshots[0].minute, minute, '10: los movimientos siguen asociados al intervalo original');
+assert.equal(snapshots[0].system, system, '11: recolocar no cambia el sistema táctico');
+assert.deepEqual(playerStats, playerStatsBeforePositionEdits, '16: recolocar no cambia minutos ni replacement_name');
 
 let successVisible = false;
 const beforeFailure = structuredClone(snapshots);

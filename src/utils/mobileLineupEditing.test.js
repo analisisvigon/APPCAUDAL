@@ -46,6 +46,8 @@ assert.equal(statsSwap[1].playerId, 'p0', 'ESTADÍSTICAS B: el seleccionado ocup
 assert.equal(statsSwap[0].playerId, 'p1', 'ESTADÍSTICAS B: el ocupante vuelve al origen');
 assert.equal(validateTacticalDisposition({ lineup: statsSwap, knownPlayers: participants }).valid, true, 'ESTADÍSTICAS: el draft conserva exactamente once jugadores únicos');
 
+assert.equal(statsSwap.filter(Boolean).length, 11, 'occupied-slot swap keeps all eleven players');
+assert.equal(new Set(statsSwap.map((player) => player?.playerId).filter(Boolean)).size, 11, 'occupied-slot swap keeps eleven unique identities');
 let consecutive = moveTacticalDispositionPlayer({ lineup: participants, player: participants[0], targetSlot: 1 });
 consecutive = moveTacticalDispositionPlayer({ lineup: consecutive, player: participants[0], targetSlot: 5 });
 assert.equal(validateTacticalDisposition({ lineup: consecutive, knownPlayers: participants }).valid, true, 'F: varios movimientos consecutivos conservan invariantes');
@@ -67,13 +69,15 @@ assert.match(appSource, /movePreCaudalPlayerOnMobile[\s\S]*?moveStatsLineupPlaye
 assert.match(appSource, /onSelectTarget=\{\(targetSlot, slotIndex\)[\s\S]*?moveTacticalEditorPlayer/, 'ESTADÍSTICAS móvil modifica el mismo draft del editor');
 assert.match(appSource, /draggable=\{!editingDisposition && Boolean\(getTacticalParticipantKey\(participant, tacticalPlayerIdentityIndex\)\)/, 'el drag nativo no compite con la edición de disposición');
 assert.match(appSource, /onPointerDown=\{editingDisposition \? \(event\) => beginTacticalDispositionPointerDrag\(event, participant\) : undefined\}/, 'cada jugador activo inicia un gesto pointer independientemente de role');
+assert.match(appSource, /if \(editingDisposition\)\s*\{\s*event\.preventDefault\(\);\s*return;/, 'el drag nativo de la imagen del retrato no cancela el gesto pointer del slot');
 assert.match(appSource, /document\.elementFromPoint\(event\.clientX, event\.clientY\)[\s\S]*?closest\('\.stats-match-pitch'\)/, 'el drop solo resuelve destinos del campo actual mediante hit-test');
 assert.match(appSource, /onMovePlayer=\{\(sourceSlot, targetSlot, targetSlotIndex\)[\s\S]*?moveTacticalEditorPlayer\(sourceSlot\.participant, targetSlotIndex\)/, 'el gesto móvil solo cambia el slot táctico del jugador');
 assert.match(appSource, /sendTacticalEditorPlayerToBench[\s\S]*?removeTacticalDispositionPlayer/, 'ESTADÍSTICAS móvil y desktop devuelven el titular al grupo de convocados del mismo editor');
 assert.match(componentSource, /<button[\s\S]*?aria-pressed=/, 'los slots son controles accesibles con estado de selección');
 assert.match(componentSource, /if \(isSelected\) onCancelSelection/, 'E: tocar de nuevo el jugador seleccionado cancela la selección');
-assert.doesNotMatch(componentSource, /draggable|onDragStart|onDrop/, 'la variante móvil no depende de HTML Drag & Drop');
+assert.doesNotMatch(componentSource, /draggable=|onDrop=/, 'la variante móvil no depende de HTML Drag & Drop');
 assert.match(componentSource, /onPointerDown=\{\(event\) => beginPointerDrag\(event, slot, index\)\}/, 'la ficha móvil inicia el drag táctil con Pointer Events');
+assert.match(componentSource, /onDragStart=\{\(event\) => event\.preventDefault\(\)\}/, 'el drag nativo de la foto no interrumpe el drag táctil');
 assert.match(componentSource, /data-mobile-slot-index=\{index\}/, 'el hit-test móvil identifica el destino táctico');
 assert.match(cssSource, /@media \(max-width: 430px\)[\s\S]*?\.desktop-mobile-edit-fallback/, 'el renderer móvil se activa mediante breakpoint, sin user agent');
 assert.match(componentSource, /onMovePlayer \? 'mobile-edit-pitch-slot--drag-enabled'/, 'solo el editor con drag activa la superficie de gesto táctil');

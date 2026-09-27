@@ -275,6 +275,11 @@ table {
   width: min(104px, 20cqw);
 }
 
+.stats-disposition-slot:hover > .relative {
+  outline: 2px solid rgba(61, 217, 255, 0.9);
+  outline-offset: 2px;
+}
+
 .tactical-board-scroll:focus-visible {
   border-radius: 1.5rem;
 }
