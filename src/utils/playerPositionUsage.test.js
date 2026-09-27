@@ -4,6 +4,7 @@ import {
   getPlayerPositionUsage,
   getTacticalPositionIdentity,
 } from './playerPositionUsage.js';
+import { buildTacticalMatchHistory } from './tacticalSnapshots.js';
 
 const identity = { playerId: 'p1', playerName: 'Jugador Uno' };
 const slot = (slotIndex, extra = {}) => ({ slot: slotIndex, playerId: 'p1', playerName: 'Jugador Uno', ...extra });
@@ -44,6 +45,57 @@ assert.equal(substituted.positions[0].minutes, 60);
 const benchStats = { Titular: { minutes: 60, replacementName: 'Jugador Uno' }, 'Jugador Uno': { role: 'Suplente', minutes: 30, jugadorId: 'p1' } };
 const fromBench = buildPlayerPositionUsage({ ...identity, matchRows: [match({ minutes: 30, role: 'Suplente', initialSlot: null, playerStats: benchStats, intervals: [interval(0, 60, '4-2-3-1', 10, { playerId: 'starter', playerName: 'Titular' }), interval(60, 90, '4-2-3-1', 10)] })] });
 assert.deepEqual(fromBench.positions.map((row) => [row.position, row.minutes]), [['Delantero centro', 30]], 'F: el suplente comienza a sumar al entrar');
+
+const palaceInitialSlots = Array.from({ length: 11 }, (_, slotIndex) => ({
+  slot: slotIndex,
+  playerId: slotIndex === 10 ? 'borja-id' : `starter-${slotIndex}`,
+  playerName: slotIndex === 10 ? 'Borja' : `Titular ${slotIndex}`,
+}));
+const palaceSubstitutionEvents = [
+  { id: 'davo-in-60', minute: 60, eventOrder: 0, outgoingPlayerId: 'borja-id', incomingPlayerId: 'davo-id', outgoingNameSnapshot: 'Borja', incomingNameSnapshot: 'Davo' },
+  { id: 'palacio-in-75', minute: 75, eventOrder: 0, outgoingPlayerId: 'davo-id', incomingPlayerId: 'palacio-id', outgoingNameSnapshot: 'Davo', incomingNameSnapshot: 'Daniel Palacio' },
+];
+const davoPalacioSlots = (incomingId, incomingName) => palaceInitialSlots.map((slot) => slot.slot === 10
+  ? { ...slot, playerId: incomingId, playerName: incomingName }
+  : slot);
+const palacePlayerStats = {
+  Borja: { role: 'Titular', minutes: 60, replacementName: '', jugadorId: 'borja-id' },
+  Davo: { role: 'Suplente', minutes: 15, replacementName: '', jugadorId: 'davo-id' },
+  'Daniel Palacio': { role: 'Suplente', minutes: 15, replacementName: '', jugadorId: 'palacio-id' },
+};
+const palaceTacticalHistory = buildTacticalMatchHistory({
+  matchId: 'davo-palacio-chain',
+  duration: 90,
+  initialSystem: '4-2-3-1',
+  initialSlots: palaceInitialSlots,
+  substitutionEvents: palaceSubstitutionEvents,
+  playerStats: palacePlayerStats,
+  snapshots: [
+    { id: 'davo-snapshot-60', matchId: 'davo-palacio-chain', minute: 60, system: '4-2-3-1', isComplete: true, slots: davoPalacioSlots('davo-id', 'Davo') },
+    { id: 'palacio-snapshot-75', matchId: 'davo-palacio-chain', minute: 75, system: '4-2-3-1', isComplete: true, slots: davoPalacioSlots('palacio-id', 'Daniel Palacio') },
+  ],
+});
+const canonicalSubstituteUsage = (playerId, playerName) => getPlayerPositionUsage({
+  playerId,
+  playerName,
+  playerIdentity: { id: playerId, name: playerName },
+  matchRows: [{
+    matchId: 'davo-palacio-chain',
+    minutes: 15,
+    role: 'Suplente',
+    duration: 90,
+    initialSystem: '4-2-3-1',
+    initialSlots: palaceInitialSlots,
+    intervals: palaceTacticalHistory.analyticsIntervals,
+    playerStats: palacePlayerStats,
+    substitutionEvents: palaceSubstitutionEvents,
+  }],
+});
+const davoPositionUsage = canonicalSubstituteUsage('davo-id', 'Davo');
+const palacePositionUsage = canonicalSubstituteUsage('palacio-id', 'Daniel Palacio');
+assert.deepEqual(davoPositionUsage.positions.map((row) => [row.position, row.minutes]), [['Delantero centro', 15]], 'Davo: el entrante se resuelve en su snapshot por ID');
+assert.deepEqual(palacePositionUsage.positions.map((row) => [row.position, row.minutes]), [['Delantero centro', 15]], 'Daniel Palacio: usa el mismo resolver, frontera y snapshot canónicos');
+assert.equal(palacePositionUsage.matches[0].segments[0].snapshot.playerResolution, 'resolved', 'Palacio se encuentra por su ID canónico, no por posición habitual');
 
 const unknown = buildPlayerPositionUsage({ ...identity, profilePosition: 'Defensa', matchRows: [match({ initialSlot: null, intervals: [] })] });
 assert.equal(unknown.unknownMinutes, 90, 'G: los minutos sin posición fiable no se redistribuyen');

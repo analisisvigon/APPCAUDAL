@@ -7263,10 +7263,24 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
           supabase.from("partido_eventos_sistema").select("*").in("partido_id", partidoIds),
           supabase.from("partido_snapshots_tacticos").select("*").in("partido_id", partidoIds).order("minute", { ascending: true }),
         ]);
+        const substitutionEventResponses = await Promise.all(partidoIds.map((partidoId) => (
+          supabase.rpc('get_match_substitution_events', { p_partido_id: partidoId })
+        )));
         if (partidosResponse.error) throw partidosResponse.error;
         [allStatsResponse, lineupSlotsResponse, systemEventsResponse, tacticalSnapshotsResponse]
           .filter((response) => response.error)
           .forEach((response) => console.warn('Cobertura táctica parcial en el dossier individual; los minutos sin posición fiable quedarán identificados:', response.error));
+        const substitutionEventsByMatch = Object.fromEntries(partidoIds.map((partidoId, index) => {
+          const response = substitutionEventResponses[index];
+          if (response.error) {
+            console.warn('No se pudieron cargar cambios canónicos del partido para POS./SIST.; se evaluará la evidencia legacy:', {
+              partidoId,
+              error: response.error,
+            });
+            return [partidoId, null];
+          }
+          return [partidoId, safeArray(response.data?.events)];
+        }));
 
         const snapshotRows = tacticalSnapshotsResponse.error ? [] : tacticalSnapshotsResponse.data || [];
         const tacticalSnapshotSlotsResponse = snapshotRows.length
@@ -7323,6 +7337,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
             lineupSlots: { stats: lineupSlots, preCaudal: [] },
             statsLineup: hydrateStatsLineup(lineupSlots),
             systemEvents: systemEventsByMatch[match.id] || [],
+            substitutionEvents: substitutionEventsByMatch[match.id],
             tacticalSnapshots: tacticalSnapshotsByMatch[match.id] || [],
           }];
         }));
@@ -30476,6 +30491,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                   initialSlots: getMatchInitialTacticalSlots(row.match),
                   intervals: tacticalHistory.analyticsIntervals,
                   playerStats: safeObject(row.match.statsPlayerData),
+                  substitutionEvents: safeArray(row.match.substitutionEvents),
                   systemEvents: safeArray(row.match.systemEvents),
                   snapshots: safeArray(row.match.tacticalSnapshots),
                   matchMetadata: {

@@ -20,6 +20,9 @@ assert.doesNotMatch(component, /overflow-x-auto/, 'el detalle por posición no i
 
 assert.match(app, /'Pos\.\/Sist\.'/i, 'el historial incorpora la columna compacta');
 assert.match(app, /playerPositionUsageByMatchId/, 'historial y resumen reutilizan la misma salida canónica');
+assert.match(app, /supabase\.rpc\('get_match_substitution_events', \{ p_partido_id: partidoId \}\)/, 'el dossier individual carga eventos canónicos para cada partido');
+assert.match(app, /substitutionEvents: substitutionEventsByMatch\[match\.id\]/, 'los eventos se adjuntan al partido usado por el historial');
+assert.match(app, /substitutionEvents: safeArray\(row\.match\.substitutionEvents\)/, 'POS./SIST. pasa eventos canónicos al helper compartido');
 assert.match(app, /data-player-match-position-summary/);
 assert.match(app, /<PlayerMatchPositionSummary matchUsage=\{matchPositionUsage\}/);
 assert.match(matchSummary, /buildMatchPositionSummary\(matchUsage\)/);
