@@ -156,6 +156,10 @@ import {
   parseTacticalMinute,
 } from './utils/tacticalSnapshots';
 import {
+  getMatchSubstitutionEvents,
+  projectSubstitutionMinutes,
+} from './utils/matchSubstitutions';
+import {
   buildAutomaticSubstitutionSnapshot,
   buildKnownOnFieldPlayers,
   buildTacticalDispositionDraft,
@@ -5384,6 +5388,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const [statsRefreshing, setStatsRefreshing] = useState(false);
   const [statsError, setStatsError] = useState('');
   const [statsSaveStatus, setStatsSaveStatus] = useState('');
+  const [statsSubstitutionEditor, setStatsSubstitutionEditor] = useState(null);
+  const [statsSubstitutionSaving, setStatsSubstitutionSaving] = useState(false);
   const [statsSquadSaving, setStatsSquadSaving] = useState(false);
   const [statsLineupProposal, setStatsLineupProposal] = useState(null);
   const [statsLineupHistoryModalOpen, setStatsLineupHistoryModalOpen] = useState(false);
@@ -6729,12 +6735,14 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       statsResponse,
       goalsResponse,
       slotsResponse,
+      substitutionEventsResponse,
     ] = await Promise.all([
       supabase.from("partidos").select("*").eq("id", partidoId).single(),
       supabase.from("partido_convocados").select("*").eq("partido_id", partidoId),
       supabase.from("partido_estadisticas_jugador").select("*").eq("partido_id", partidoId),
       supabase.from("partido_eventos_gol").select("*").eq("partido_id", partidoId).order("minute", { ascending: true }),
       supabase.from("partido_alineacion_slots").select("*").eq("partido_id", partidoId).eq("scope", "stats").order("slot", { ascending: true }),
+      supabase.rpc('get_match_substitution_events', { p_partido_id: partidoId }),
     ]);
 
     const responses = [partidoResponse, convocadosResponse, statsResponse, goalsResponse, slotsResponse];
@@ -6751,6 +6759,12 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       setStatsError(failed.error.message || 'No se pudieron refrescar las estadísticas desde Supabase.');
       setStatsRefreshing(false);
       throw failed.error;
+    }
+    if (substitutionEventsResponse.error) {
+      console.warn('No se pudieron cargar sustituciones canónicas; se usará la proyección legacy de solo lectura:', {
+        partidoId,
+        error: substitutionEventsResponse.error,
+      });
     }
 
     let quickEvents = [];
@@ -6835,6 +6849,9 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         .map((row) => [row.player_name, row.jugador_id])),
       statsPlayerData,
       statsGoalEvents: (goalsResponse.data || []).map(normalizeSupabaseGoalEvent),
+      substitutionEvents: substitutionEventsResponse.error ? null : safeArray(substitutionEventsResponse.data?.events),
+      substitutionEventsLoaded: !substitutionEventsResponse.error,
+      substitutionEventsLoadError: substitutionEventsResponse.error?.message || '',
       systemEvents,
       tacticalSnapshots,
       quickEvents,
@@ -15670,6 +15687,10 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     if (halfDiff) return halfDiff;
     const minuteDiff = Number(a.sortMinute ?? a.minute ?? 999) - Number(b.sortMinute ?? b.minute ?? 999);
     if (minuteDiff) return minuteDiff;
+    if (a.key === 'substitution' && b.key === 'substitution') {
+      const eventOrderDiff = Number(a.eventOrder || 0) - Number(b.eventOrder || 0);
+      if (eventOrderDiff) return eventOrderDiff;
+    }
     const secondDiff = Number(a.second || 0) - Number(b.second || 0);
     if (secondDiff) return secondDiff;
     const createdDiff = String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
@@ -15741,8 +15762,16 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     const substitutions = getStatsSubstitutionEvents().map((event) => {
       const meta = getMatchEventMeta('substitution');
       return {
-        id: `sub-${event.outPlayer}-${event.inPlayer}-${event.minute}`,
-        source: 'stats',
+        id: `sub-${event.id}`,
+        rawId: event.id,
+        source: 'substitution',
+        substitutionSource: event.source,
+        eventOrder: event.eventOrder,
+        outPlayerId: event.outPlayerId,
+        inPlayerId: event.inPlayerId,
+        reason: event.reason,
+        outgoingPlayer: event.outgoingPlayer,
+        incomingPlayer: event.incomingPlayer,
         key: 'substitution',
         minute: event.minute,
         half: Number(event.minute || 0) <= 45 ? '1ª parte' : '2ª parte',
@@ -16155,17 +16184,57 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     });
   };
 
+  const getStatsPlayerId = (playerName, match = selectedMatch) => {
+    const storedId = safeObject(match?.statsPlayerData?.[playerName]).jugadorId
+      || match?.statsCalledPlayerIds?.[playerName];
+    if (isUuid(storedId)) return storedId;
+    const rosterPlayer = players.find((player) => normalizePlayerIdentityName(player.name) === normalizePlayerIdentityName(playerName));
+    return isUuid(rosterPlayer?.id) ? rosterPlayer.id : '';
+  };
+
+  const getStatsSubstitutionSequence = (match = selectedMatch) => {
+    const initialPlayers = getMatchInitialTacticalSlots(match).map((slot) => ({
+      playerId: slot.jugadorId || getStatsPlayerId(slot.playerName, match),
+      playerName: slot.playerName,
+    }));
+    return getMatchSubstitutionEvents({
+      canonicalEvents: safeArray(match?.substitutionEvents),
+      playerStats: safeObject(match?.statsPlayerData),
+      lineup: initialPlayers,
+      players,
+      duration: getMatchDurationMinutes(match),
+    });
+  };
+
+  const getStatsSubstitutionProjection = (match = selectedMatch) => {
+    const sequence = getStatsSubstitutionSequence(match);
+    if (!sequence.valid || !sequence.events.length) return null;
+    return projectSubstitutionMinutes({
+      initialPlayers: getMatchInitialTacticalSlots(match).map((slot) => ({
+        playerId: slot.jugadorId || getStatsPlayerId(slot.playerName, match),
+        playerName: slot.playerName,
+      })),
+      events: sequence.events,
+      duration: getMatchDurationMinutes(match),
+    });
+  };
+
   const getStatsPlayerData = (playerName) => {
     const lineup = selectedMatch?.statsLineup || [];
     const stored = selectedMatch?.statsPlayerData?.[playerName] || {};
     const isStarter = lineup.includes(playerName);
     const totals = getStatsPlayerTotals(playerName);
+    const substitutionProjection = getStatsSubstitutionProjection();
+    const playerId = getStatsPlayerId(playerName);
+    const projectedMinutes = playerId ? substitutionProjection?.minutesByPlayer?.[playerId] : undefined;
     const yellowCount = Number(stored.yellowCount ?? (stored.yellow ? 1 : 0)) || 0;
+    const hasProjectedMinutes = Number.isFinite(Number(projectedMinutes));
     const hasStoredMinutes = hasRealValue(stored.minutes);
-    const minutesReal = hasStoredMinutes ? Number(stored.minutes || 0) : null;
+    const minutes = hasProjectedMinutes ? String(projectedMinutes) : hasStoredMinutes ? stored.minutes : '';
+    const minutesReal = hasProjectedMinutes ? Number(projectedMinutes) : hasStoredMinutes ? Number(stored.minutes || 0) : null;
     return {
       role: isStarter ? 'Titular' : stored.role || 'Suplente',
-      minutes: hasStoredMinutes ? stored.minutes : '',
+      minutes,
       minutesReal,
       yellow: yellowCount > 0,
       yellowCount,
@@ -16180,56 +16249,295 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
 
   const getStatsReplacementInfo = (starterName) => {
     const stats = getStatsPlayerData(starterName);
-    const minutes = Number(stats.minutes || 0);
-    const matchDuration = getMatchDurationMinutes(selectedMatch);
-    if (stats.role !== 'Titular' || minutes <= 0 || minutes >= matchDuration || !stats.replacementName) return null;
-    const replacementStored = selectedMatch?.statsPlayerData?.[stats.replacementName] || {};
+    const substitution = getStatsSubstitutionEvents().find((event) => (
+      event.outPlayerId === getStatsPlayerId(starterName) || event.outPlayer === starterName
+    ));
+    if (!substitution) return null;
+    const replacementStored = selectedMatch?.statsPlayerData?.[substitution.inPlayer] || {};
     const identity = resolveStatsVisualIdentity({
-      playerId: replacementStored.jugadorId
+      playerId: substitution.inPlayerId || replacementStored.jugadorId
         || replacementStored.jugador_id
         || replacementStored.playerId
         || replacementStored.player_id,
-      storedName: stats.replacementName,
+      storedName: substitution.inPlayer,
       players,
     });
     return {
-      replacementName: stats.replacementName,
+      replacementName: substitution.inPlayer,
       replacement: identity.player,
       replacementDisplayName: identity.displayName,
       replacementPitchName: formatStatsPitchPlayerName(identity.displayName),
-      minute: minutes,
-      substituteMinutes: matchDuration - minutes,
+      minute: substitution.minute,
+      substituteMinutes: getStatsSubstituteMinutes(substitution.inPlayer),
     };
   };
 
   const getStatsSubstituteMinutes = (playerName) => {
-    const matchDuration = getMatchDurationMinutes(selectedMatch);
-    const starter = getStatsCalledPlayers().find((calledPlayer) => {
-      const stats = getStatsPlayerData(calledPlayer.name);
-      const minutes = Number(stats.minutes || 0);
-      return stats.role === 'Titular' && minutes > 0 && minutes < matchDuration && stats.replacementName === playerName;
-    });
-    if (!starter) return 0;
-    return matchDuration - Number(getStatsPlayerData(starter.name).minutes || 0);
+    const playerId = getStatsPlayerId(playerName);
+    const entered = getStatsSubstitutionEvents().some((event) => (
+      event.inPlayerId === playerId || event.inPlayer === playerName
+    ));
+    if (!entered) return 0;
+    return Number(getStatsPlayerData(playerName).minutes || 0);
   };
 
   const getStatsSubstitutionEvents = () => {
-    const matchDuration = getMatchDurationMinutes(selectedMatch);
-    return getStatsCalledPlayers()
-      .map((player) => {
-        const stats = getStatsPlayerData(player.name);
-        const minute = Number(stats.minutes || 0);
-        if (stats.role !== 'Titular' || !stats.replacementName || minute <= 0 || minute >= matchDuration) return null;
-        return {
-          minute,
-          outPlayer: player.name,
-          inPlayer: stats.replacementName,
-          outStats: stats,
-          inStats: getStatsPlayerData(stats.replacementName),
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.minute - b.minute);
+    const sequence = getStatsSubstitutionSequence();
+    return sequence.events.map((event) => ({
+      ...event,
+      outPlayerId: event.outgoingPlayer.playerId,
+      outPlayer: event.outgoingPlayer.playerName,
+      inPlayerId: event.incomingPlayer.playerId,
+      inPlayer: event.incomingPlayer.playerName,
+      outStats: selectedMatch?.statsPlayerData?.[event.outgoingPlayer.playerName] || {},
+      inStats: selectedMatch?.statsPlayerData?.[event.incomingPlayer.playerName] || {},
+    }));
+  };
+
+  const getStatsSubstitutionParticipants = () => {
+    const match = selectedMatch;
+    const names = [
+      ...getStatsCalledPlayerNames(),
+      ...Object.keys(safeObject(match?.statsPlayerData)),
+      ...getMatchInitialTacticalSlots(match).map((slot) => slot.playerName),
+    ];
+    return Array.from(new Map(names.filter(Boolean).map((playerName) => {
+      const playerId = getStatsPlayerId(playerName, match);
+      return [playerId || normalizePlayerIdentityName(playerName), { playerId, playerName }];
+    })).values()).filter((participant) => isUuid(participant.playerId));
+  };
+
+  const getStatsSubstitutionEditorContext = (draft = statsSubstitutionEditor) => {
+    if (!selectedMatch || !draft || draft.matchId !== selectedMatch.id) return { valid: false, error: 'Selecciona un partido.' };
+    const minute = Number(draft.minute);
+    const duration = getMatchDurationMinutes(selectedMatch);
+    if (!Number.isInteger(minute) || minute < 1 || minute > duration) {
+      return { valid: false, error: `El minuto debe estar entre 1 y ${duration}.` };
+    }
+    const sequence = getStatsSubstitutionSequence();
+    if (!sequence.valid) return { valid: false, error: sequence.errors.join(' ') || 'La secuencia legacy es ambigua.' };
+    const currentEvent = sequence.events.find((event) => event.id === draft.eventId);
+    const eventOrder = currentEvent && currentEvent.minute === minute
+      ? currentEvent.eventOrder
+      : Math.max(-1, ...sequence.events.filter((event) => event.id !== draft.eventId && event.minute === minute).map((event) => event.eventOrder)) + 1;
+    const eventsBefore = sequence.events.filter((event) => event.id !== draft.eventId && (
+      event.minute < minute || (event.minute === minute && event.eventOrder < eventOrder)
+    ));
+    const initialPlayers = getMatchInitialTacticalSlots(selectedMatch).map((slot) => ({
+      playerId: slot.jugadorId || getStatsPlayerId(slot.playerName),
+      playerName: slot.playerName,
+    }));
+    const fieldState = projectSubstitutionMinutes({ initialPlayers, events: eventsBefore, duration });
+    if (!fieldState.valid) return { valid: false, error: fieldState.errors.join(' ') || 'No se puede reconstruir quién está en campo.' };
+    const participants = getStatsSubstitutionParticipants();
+    const onField = new Set(fieldState.onFieldPlayerIds);
+    const exitedPlayers = new Set(eventsBefore.map((event) => event.outgoingPlayer.playerId));
+    return {
+      valid: true,
+      eventOrder,
+      outgoingOptions: participants.filter((participant) => onField.has(participant.playerId)),
+      incomingOptions: participants.filter((participant) => !onField.has(participant.playerId) && !exitedPlayers.has(participant.playerId)),
+    };
+  };
+
+  const getStatsActiveSubstitutionPlayerIds = () => {
+    const sequence = getStatsSubstitutionSequence();
+    if (!sequence.valid) return new Set();
+    const state = projectSubstitutionMinutes({
+      initialPlayers: getMatchInitialTacticalSlots(selectedMatch).map((slot) => ({
+        playerId: slot.jugadorId || getStatsPlayerId(slot.playerName),
+        playerName: slot.playerName,
+      })),
+      events: sequence.events,
+      duration: getMatchDurationMinutes(selectedMatch),
+    });
+    return state.valid ? new Set(state.onFieldPlayerIds) : new Set();
+  };
+
+  const openStatsSubstitutionEditor = ({ playerName = '', event = null } = {}) => {
+    if (!selectedMatch?.substitutionEventsLoaded || !isStatsMatchCompleted(selectedMatch)) return;
+    const duration = getMatchDurationMinutes(selectedMatch);
+    setStatsSubstitutionEditor({
+      matchId: selectedMatch.id,
+      eventId: event?.id || '',
+      originalMinute: event?.minute ?? null,
+      minute: String(event?.minute ?? Math.max(1, duration - 1)),
+      eventOrder: event?.eventOrder ?? 0,
+      outgoingPlayerId: event?.outPlayerId || getStatsPlayerId(playerName),
+      incomingPlayerId: event?.inPlayerId || '',
+      reason: event?.reason || '',
+      error: '',
+    });
+  };
+
+  const saveStatsSubstitutionEvent = async () => {
+    const draft = statsSubstitutionEditor;
+    if (!selectedMatch || !draft || draft.matchId !== selectedMatch.id || statsSubstitutionSaving) return;
+    if (!isStatsMatchCompleted(selectedMatch)) {
+      setStatsSubstitutionEditor((current) => current ? { ...current, error: 'Los cambios y minutos se pueden cerrar cuando haya evidencia de finalización del partido.' } : current);
+      return;
+    }
+    const context = getStatsSubstitutionEditorContext(draft);
+    if (!context.valid) {
+      setStatsSubstitutionEditor((current) => current ? { ...current, error: context.error } : current);
+      return;
+    }
+    if (!context.outgoingOptions.some((participant) => participant.playerId === draft.outgoingPlayerId)) {
+      setStatsSubstitutionEditor((current) => current ? { ...current, error: 'El jugador que sale no está en campo en ese minuto.' } : current);
+      return;
+    }
+    if (!context.incomingOptions.some((participant) => participant.playerId === draft.incomingPlayerId)) {
+      setStatsSubstitutionEditor((current) => current ? { ...current, error: 'El jugador que entra ya está en campo o no pertenece a la convocatoria.' } : current);
+      return;
+    }
+    setStatsSubstitutionSaving(true);
+    setStatsSubstitutionEditor((current) => current ? { ...current, error: '' } : current);
+    setStatsError('');
+    const matchId = selectedMatch.id;
+    const previousEvent = draft.eventId
+      ? getStatsSubstitutionSequence().events.find((event) => event.id === draft.eventId) || null
+      : null;
+    try {
+      const { error: mutationError } = await supabase.rpc('mutate_match_substitution_atomic', {
+        p_operation: draft.eventId ? 'update' : 'create',
+        p_partido_id: matchId,
+        p_event_id: draft.eventId || null,
+        p_event: {
+          minute: Number(draft.minute),
+          event_order: context.eventOrder,
+          outgoing_jugador_id: draft.outgoingPlayerId,
+          incoming_jugador_id: draft.incomingPlayerId,
+          reason: draft.reason || null,
+        },
+        p_match_duration: getMatchDurationMinutes(selectedMatch),
+      });
+      if (mutationError) throw mutationError;
+      const refreshed = await loadMatchStatsData(matchId);
+      if (!refreshed) throw new Error('El cambio se guardó, pero no se pudo confirmar recargando el partido.');
+      setStatsSubstitutionEditor(null);
+      setStatsSaveStatus('Cambio y minutos guardados ✓');
+      window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Cambio y minutos guardados ✓' ? '' : current)), 2400);
+      if (previousEvent && Number(draft.minute) > Number(previousEvent.minute)) {
+        await rebuildTacticalSnapshotAfterSubstitutionRemoval({
+          match: refreshed,
+          minute: previousEvent.minute,
+          removedEvent: previousEvent,
+        });
+      }
+      await persistAutomaticSubstitutionSnapshot({ match: refreshed, minute: Number(draft.minute) });
+    } catch (saveError) {
+      const message = saveError.message || 'No se pudo guardar el cambio.';
+      setStatsSubstitutionEditor((current) => current ? { ...current, error: message } : current);
+      setStatsError(message);
+    } finally {
+      setStatsSubstitutionSaving(false);
+    }
+  };
+
+  const deleteStatsSubstitutionEvent = async (event) => {
+    if (!selectedMatch || !isStatsMatchCompleted(selectedMatch) || !event?.id || statsSubstitutionSaving) return;
+    if (!window.confirm(`¿Eliminar el cambio de ${event.outPlayer} por ${event.inPlayer} en el ${event.minute}'? Se recalcularán los minutos.`)) return;
+    const removedEvent = getStatsSubstitutionSequence().events.find((candidate) => candidate.id === event.id) || null;
+    setStatsSubstitutionSaving(true);
+    setStatsError('');
+    const matchId = selectedMatch.id;
+    try {
+      const { error: mutationError } = await supabase.rpc('mutate_match_substitution_atomic', {
+        p_operation: 'delete',
+        p_partido_id: matchId,
+        p_event_id: event.id,
+        p_event: null,
+        p_match_duration: getMatchDurationMinutes(selectedMatch),
+      });
+      if (mutationError) throw mutationError;
+      const refreshed = await loadMatchStatsData(matchId);
+      if (!refreshed) throw new Error('El cambio se eliminó, pero no se pudo confirmar recargando el partido.');
+      setStatsSaveStatus('Cambio eliminado · minutos recalculados ✓');
+      window.setTimeout(() => setStatsSaveStatus((current) => (current === 'Cambio eliminado · minutos recalculados ✓' ? '' : current)), 2400);
+      await rebuildTacticalSnapshotAfterSubstitutionRemoval({ match: refreshed, minute: event.minute, removedEvent });
+    } catch (deleteError) {
+      setStatsError(deleteError.message || 'No se pudo eliminar el cambio.');
+    } finally {
+      setStatsSubstitutionSaving(false);
+    }
+  };
+
+  const renderStatsSubstitutionAction = (playerName) => {
+    const playerId = getStatsPlayerId(playerName);
+    const activeOnPitch = getStatsActiveSubstitutionPlayerIds().has(playerId);
+    const canEditEvents = Boolean(selectedMatch?.substitutionEventsLoaded && isStatsMatchCompleted(selectedMatch));
+    return (
+      <button
+        type="button"
+        disabled={!canEditEvents || !activeOnPitch || statsSubstitutionSaving}
+        onClick={() => openStatsSubstitutionEditor({ playerName })}
+        className="min-h-9 border border-white/10 bg-white/[0.06] px-2.5 text-[9px] font-black uppercase tracking-[0.08em] text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+        title={!isStatsMatchCompleted(selectedMatch) ? 'Disponible al confirmar el cierre del partido' : activeOnPitch ? `Registrar salida de ${playerName}` : 'El jugador no está actualmente en campo'}
+      >
+        {activeOnPitch ? 'Cambio' : 'Fuera'}
+      </button>
+    );
+  };
+
+  const renderStatsSubstitutionEditor = () => {
+    if (!selectedMatch) return null;
+    const draft = statsSubstitutionEditor?.matchId === selectedMatch.id ? statsSubstitutionEditor : null;
+    const context = draft ? getStatsSubstitutionEditorContext(draft) : null;
+    const participantLabel = (participant) => {
+      const player = players.find((candidate) => String(candidate.id) === String(participant.playerId));
+      return player ? displayPlayerName(player) : participant.playerName;
+    };
+    return (
+      <div className="mt-4 border border-white/10 bg-black/15 p-3" data-testid="stats-substitution-editor">
+        {!draft ? (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Sustituciones</p>
+              {selectedMatch.substitutionEventsLoaded && isStatsMatchCompleted(selectedMatch) ? <p className="mt-1 text-xs font-semibold text-slate-500">Los cambios se ordenan por minuto y secuencia.</p> : <p role="status" className="mt-1 text-xs font-semibold text-amber-200">{selectedMatch.substitutionEventsLoaded ? 'El editor se habilita al confirmar el cierre del partido.' : `Editor canónico no disponible: ${selectedMatch.substitutionEventsLoadError || 'se necesita acceso STAFF y Core 31 desplegado.'}`}</p>}
+            </div>
+            <button type="button" disabled={!selectedMatch.substitutionEventsLoaded || !isStatsMatchCompleted(selectedMatch) || statsSubstitutionSaving} onClick={() => openStatsSubstitutionEditor()} className="min-h-10 border border-caudal-electric/35 bg-caudal-electric/10 px-3 text-[10px] font-black uppercase tracking-[0.1em] text-caudal-electric disabled:cursor-not-allowed disabled:opacity-45">+ Añadir cambio</button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{draft.eventId ? 'Editar cambio' : 'Añadir cambio'}</p>
+              <button type="button" disabled={statsSubstitutionSaving} onClick={() => setStatsSubstitutionEditor(null)} className="min-h-9 border border-white/10 px-3 text-[9px] font-black uppercase text-slate-300">Cancelar</button>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-4">
+              <label className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-400">Minuto
+                <input type="number" min="1" max={getMatchDurationMinutes(selectedMatch)} value={draft.minute} disabled={statsSubstitutionSaving} onChange={(event) => setStatsSubstitutionEditor((current) => current ? { ...current, minute: event.target.value, incomingPlayerId: '', error: '' } : current)} className="mt-1 min-h-10 w-full border border-white/10 bg-white px-2 text-sm font-black text-slate-950" />
+              </label>
+              <label className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-400">Sale
+                <select value={draft.outgoingPlayerId} disabled={statsSubstitutionSaving || !context?.valid} onChange={(event) => setStatsSubstitutionEditor((current) => current ? { ...current, outgoingPlayerId: event.target.value, incomingPlayerId: '', error: '' } : current)} className="mt-1 min-h-10 w-full border border-white/10 bg-white px-2 text-xs font-bold text-slate-950 disabled:opacity-50">
+                  <option value="">Seleccionar activo</option>
+                  {context?.outgoingOptions.map((participant) => <option key={participant.playerId} value={participant.playerId}>{participantLabel(participant)}</option>)}
+                </select>
+              </label>
+              <label className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-400">Entra
+                <select value={draft.incomingPlayerId} disabled={statsSubstitutionSaving || !context?.valid} onChange={(event) => setStatsSubstitutionEditor((current) => current ? { ...current, incomingPlayerId: event.target.value, error: '' } : current)} className="mt-1 min-h-10 w-full border border-white/10 bg-white px-2 text-xs font-bold text-slate-950 disabled:opacity-50">
+                  <option value="">Seleccionar jugador fuera</option>
+                  {context?.incomingOptions.map((participant) => <option key={participant.playerId} value={participant.playerId}>{participantLabel(participant)}</option>)}
+                </select>
+              </label>
+              <label className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-400">Motivo opcional
+                <select value={draft.reason} disabled={statsSubstitutionSaving} onChange={(event) => setStatsSubstitutionEditor((current) => current ? { ...current, reason: event.target.value } : current)} className="mt-1 min-h-10 w-full border border-white/10 bg-white px-2 text-xs font-bold text-slate-950">
+                  <option value="">Sin motivo</option>
+                  <option value="tactical">Táctico</option>
+                  <option value="injury">Lesión</option>
+                  <option value="discomfort">Molestias</option>
+                  <option value="other">Otro</option>
+                </select>
+              </label>
+            </div>
+            {!context?.valid ? <p role="alert" className="text-xs font-bold text-amber-200">{context?.error || 'No se conoce la secuencia de jugadores de este minuto.'}</p> : null}
+            {draft.error ? <p role="alert" className="text-xs font-bold text-red-200">{draft.error}</p> : null}
+            <div className="flex justify-end">
+              <button type="button" disabled={statsSubstitutionSaving || !context?.valid || !draft.outgoingPlayerId || !draft.incomingPlayerId} onClick={saveStatsSubstitutionEvent} className="min-h-10 bg-caudal-electric px-4 text-[10px] font-black uppercase text-slate-950 disabled:cursor-not-allowed disabled:opacity-45">{statsSubstitutionSaving ? 'Guardando…' : draft.eventId ? 'Guardar cambio' : 'Añadir cambio'}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const getStatsPlayerVisualEvents = (playerName) => {
@@ -16397,12 +16705,6 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
         preStatsLinks: currentLinks.map((link) => (link.consignaId === consignaId ? { ...link, ...patch } : link)),
       },
     });
-  };
-
-  const getStatsReplacementOptions = (starterName) => {
-    const calledPlayers = getStatsCalledPlayers();
-    const substitutes = calledPlayers.filter((player) => getStatsPlayerData(player.name).role !== 'Titular' && player.name !== starterName);
-    return substitutes.length ? substitutes : calledPlayers.filter((player) => player.name !== starterName);
   };
 
   const getStatsPlayedPosition = (playerName) => {
@@ -18460,6 +18762,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       initialSlots,
       snapshots: safeArray(match.tacticalSnapshots),
       systemEvents: safeArray(match.systemEvents),
+      substitutionEvents: safeArray(match.substitutionEvents),
       substitutionMinutes: getHistoricalSubstitutionMinutes(safeObject(match.statsPlayerData)),
       playerStats: safeObject(match.statsPlayerData),
       playerIdentities: players,
@@ -18486,6 +18789,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       intervals: history.analyticsIntervals,
       initialSlots: getMatchInitialTacticalSlots(match),
       playerStats: safeObject(match.statsPlayerData),
+      substitutionEvents: safeArray(match.substitutionEvents),
       systemSlotCount: hasFormationSlotsForSavedLineup(system) ? getTacticalSnapshotFormationSlots(system).length : 0,
       identityIndex: createMatchPlayerIdentityIndex(players),
     });
@@ -18541,6 +18845,86 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       setStatsError(`La sustitución se guardó, pero su disposición requiere revisión: ${snapshotError.message || 'error desconocido'}`);
       return { ...plan, status: 'needs_confirmation', errors: [snapshotError.message || 'No se pudo guardar el snapshot.'] };
     }
+  };
+
+  const rebuildTacticalSnapshotAfterSubstitutionRemoval = async ({ match, minute, removedEvent }) => {
+    if (!match?.id || !Number.isInteger(Number(minute)) || Number(minute) <= 0) return null;
+    const history = getMatchTacticalHistory(match);
+    const interval = history.intervals.find((candidate) => Number(candidate.fromMinute) === Number(minute));
+    const system = interval?.system || getInitialMatchSystem(match);
+    const duration = getMatchDurationMinutes(match);
+    const identityIndex = createMatchPlayerIdentityIndex(players);
+    const known = buildKnownOnFieldPlayers({
+      initialSlots: getMatchInitialTacticalSlots(match),
+      playerStats: safeObject(match.statsPlayerData),
+      substitutionEvents: safeArray(match.substitutionEvents),
+      atMinute: Number(minute),
+      duration,
+      identityIndex,
+    });
+    const previousInterval = history.analyticsIntervals
+      .filter((candidate) => candidate.isComplete && Number(candidate.fromMinute) < Number(minute) && candidate.system === system)
+      .sort((left, right) => Number(right.fromMinute) - Number(left.fromMinute))[0] || null;
+    const substitutions = getMatchSubstitutionEvents({
+      canonicalEvents: safeArray(match.substitutionEvents),
+      playerStats: safeObject(match.statsPlayerData),
+      lineup: getMatchInitialTacticalSlots(match),
+      players,
+      duration,
+    }).events.filter((event) => Number(event.minute) === Number(minute));
+    if (removedEvent?.outgoingPlayer && removedEvent?.incomingPlayer) {
+      substitutions.push({ outPlayer: removedEvent.incomingPlayer, inPlayer: removedEvent.outgoingPlayer });
+    }
+    if (!known.valid || !hasFormationSlotsForSavedLineup(system)) {
+      throw new Error(known.errors.join(' ') || 'No se pudo reconstruir el XI para la frontera editada.');
+    }
+    const draft = buildTacticalDispositionDraft({
+      interval: interval ? { ...interval, isComplete: false, slots: safeArray(interval.slots) } : {
+        fromMinute: Number(minute),
+        toMinute: duration,
+        system,
+        isComplete: false,
+        slots: [],
+      },
+      previousInterval,
+      knownPlayers: known.players,
+      substitutions,
+      identityIndex,
+    });
+    const validation = validateTacticalDisposition({ lineup: draft.lineup, knownPlayers: known.players, identityIndex });
+    if (!validation.valid) throw new Error(validation.errors.join(' '));
+    await saveTacticalDispositionWithReload({
+      matchId: match.id,
+      minute: Number(minute),
+      system,
+      slots: validation.slots,
+      identityIndex,
+      save: async () => {
+        const response = await supabase.rpc('save_match_tactical_snapshot', {
+          p_partido_id: match.id,
+          p_minute: Number(minute),
+          p_period: interval?.period || (Number(minute) <= 45 ? '1ª parte' : '2ª parte'),
+          p_system: system,
+          p_reason: `Cambio editado · disposición reconciliada · ${minute}'`,
+          p_is_complete: true,
+          p_slots: validation.slots.map((slot) => ({
+            slot: slot.slot,
+            jugador_id: isUuid(slot.playerId) ? slot.playerId : null,
+            player_name_snapshot: slot.playerName || null,
+          })),
+          p_source_system_event_id: interval?.sourceSystemEventId || null,
+        });
+        if (response.error) throw response.error;
+        return response.data;
+      },
+      reload: () => loadMatchStatsData(match.id),
+      validateReloadedSnapshot: ({ reloaded }) => isReloadedTacticalDispositionReliable({
+        match: reloaded,
+        minute: Number(minute),
+        system,
+      }),
+    });
+    return true;
   };
 
   const tacticalPlayerIdentityIndex = createMatchPlayerIdentityIndex(players);
@@ -19500,6 +19884,24 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                                 </svg>
                               </button>
                             </div>
+                          ) : event.source === 'substitution' && event.substitutionSource === 'canonical' ? (
+                            <div className="flex gap-1.5">
+                              <button type="button" disabled={!isStatsMatchCompleted(selectedMatch) || statsSubstitutionSaving} title="Editar cambio" aria-label="Editar cambio" onClick={(clickEvent) => { clickEvent.stopPropagation(); openStatsSubstitutionEditor({ event: { ...event, id: event.rawId } }); }} className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 text-slate-200 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40">
+                                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                  <path d="M12 20h9" />
+                                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                                </svg>
+                              </button>
+                              <button type="button" disabled={!isStatsMatchCompleted(selectedMatch) || statsSubstitutionSaving} title="Eliminar cambio" aria-label="Eliminar cambio" onClick={(clickEvent) => { clickEvent.stopPropagation(); deleteStatsSubstitutionEvent({ ...event, id: event.rawId }); }} className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-500/15 text-red-100 hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-40">
+                                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                  <path d="M3 6h18" />
+                                  <path d="M8 6V4h8v2" />
+                                  <path d="M6 6l1 15h10l1-15" />
+                                  <path d="M10 11v6" />
+                                  <path d="M14 11v6" />
+                                </svg>
+                              </button>
+                            </div>
                           ) : null}
                         </div>
                         {event.timelineLines?.length ? (
@@ -19622,6 +20024,9 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
             ) : null}
           </div>
           {statRows.length ? (
+            renderStatsSubstitutionEditor()
+          ) : null}
+          {statRows.length ? (
             <div className="mt-4 overflow-auto border border-white/10 bg-[#071123]/80">
               <table className="w-full min-w-[980px] border-separate border-spacing-0 text-left text-xs">
                 <thead className="sticky top-0 z-20 bg-[#091428] text-[10px] uppercase tracking-[0.14em] text-slate-500">
@@ -19639,11 +20044,10 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                     const stats = getStatsPlayerData(player.name);
                     const minutes = Number(stats.minutes || 0);
                     const matchDuration = getMatchDurationMinutes(selectedMatch);
-                    const canReplace = stats.role === 'Titular' && minutes > 0 && minutes < matchDuration;
-                    const substituteMinutes = stats.role === 'Suplente' ? getStatsSubstituteMinutes(player.name) : 0;
+                    const enteredAsSub = getStatsSubstitutionEvents().some((event) => event.inPlayerId === getStatsPlayerId(player.name) || event.inPlayer === player.name);
+                    const substituteMinutes = enteredAsSub ? getStatsSubstituteMinutes(player.name) : 0;
                     const minutesInput = resolveStatsWorkingMinutes({ role: stats.role, minutes: stats.minutes, substituteMinutes, matchDuration });
                     const displayedMinutes = minutesInput.value;
-                    const enteredAsSub = substituteMinutes > 0;
                     return (
                       <tr key={player.id} className={`group transition hover:bg-white/[0.07] ${stats.red ? 'bg-red-500/[0.06]' : stats.injured ? 'bg-rose-500/[0.06]' : enteredAsSub ? 'bg-emerald-400/[0.05]' : stats.role === 'Titular' ? 'bg-caudal-electric/10' : 'bg-white/[0.02]'}`}>
                         <td className={`sticky left-0 z-10 border-t border-white/10 px-3 py-2 font-bold text-white shadow-[8px_0_18px_rgba(0,0,0,0.22)] transition group-hover:bg-[#10213f] ${stats.red ? 'bg-[#1c1220]' : stats.injured ? 'bg-[#171525]' : stats.role === 'Titular' ? 'bg-[#0d1f3b]' : 'bg-[#091428]'}`}>
@@ -19663,14 +20067,9 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                             {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((rating) => <option key={rating} value={rating}>{rating}</option>)}
                           </select>
                         </td>
-                        <td className="border-t border-white/10 px-2 py-2 text-center"><input type="number" min="0" max={matchDuration} value={displayedMinutes} title={minutesInput.isUnconfirmedStarterValue ? `${matchDuration} iniciales de trabajo; entra en el campo para confirmarlos` : undefined} onFocus={() => isStatsMatchCompleted(selectedMatch) && minutesInput.isUnconfirmedStarterValue && updateStatsPlayerData(player.name, { minutes: String(minutesInput.value), replacementName: '' })} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value, replacementName: Number(event.target.value) >= matchDuration ? '' : stats.replacementName })} className="w-14 bg-white px-2 py-2 text-center font-black text-slate-950" /></td>
+                        <td className="border-t border-white/10 px-2 py-2 text-center"><input type="number" min="0" max={matchDuration} value={displayedMinutes} disabled={safeArray(selectedMatch.substitutionEvents).length > 0} title={safeArray(selectedMatch.substitutionEvents).length ? 'Minutos proyectados por la secuencia de cambios' : minutesInput.isUnconfirmedStarterValue ? `${matchDuration} iniciales de trabajo; entra en el campo para confirmarlos` : undefined} onFocus={() => isStatsMatchCompleted(selectedMatch) && minutesInput.isUnconfirmedStarterValue && updateStatsPlayerData(player.name, { minutes: String(minutesInput.value), replacementName: '' })} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value, replacementName: Number(event.target.value) >= matchDuration ? '' : stats.replacementName })} className="w-14 bg-white px-2 py-2 text-center font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-70" /></td>
                         <td className="border-t border-white/10 px-2 py-2 text-center text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{enteredAsSub ? 'Entrado' : stats.role}</td>
-                        <td className="border-t border-white/10 px-2 py-2 text-center">
-                          <select value={stats.replacementName} disabled={!canReplace} onChange={(event) => updateStatsPlayerData(player.name, { replacementName: event.target.value })} className="w-44 bg-white px-2 py-2 text-[11px] font-bold text-slate-950 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500">
-                            <option value="">{canReplace ? `Sale ${minutes}' · entra...` : enteredAsSub ? `Entra · ${displayedMinutes}'` : 'Sin cambio'}</option>
-                            {getStatsReplacementOptions(player.name).map((replacement) => <option key={replacement.id} value={replacement.name}>{replacement.name}</option>)}
-                          </select>
-                        </td>
+                        <td className="border-t border-white/10 px-2 py-2 text-center">{renderStatsSubstitutionAction(player.name)}</td>
                         <td className="border-t border-white/10 px-2 py-2 text-center font-black text-white">{stats.goals}</td>
                         <td className="border-t border-white/10 px-2 py-2 text-center font-black text-white">{stats.assists}</td>
                         <td className="border-t border-white/10 px-2 py-2">
@@ -35361,11 +35760,10 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                               const stats = getStatsPlayerData(player.name);
                               const minutes = Number(stats.minutes || 0);
                               const matchDuration = getMatchDurationMinutes(selectedMatch);
-                              const canReplace = stats.role === 'Titular' && minutes > 0 && minutes < matchDuration;
-                              const substituteMinutes = stats.role === 'Suplente' ? getStatsSubstituteMinutes(player.name) : 0;
+                              const enteredAsSub = getStatsSubstitutionEvents().some((event) => event.inPlayerId === getStatsPlayerId(player.name) || event.inPlayer === player.name);
+                              const substituteMinutes = enteredAsSub ? getStatsSubstituteMinutes(player.name) : 0;
                               const minutesInput = resolveStatsWorkingMinutes({ role: stats.role, minutes: stats.minutes, substituteMinutes, matchDuration });
                               const displayedMinutes = minutesInput.value;
-                              const enteredAsSub = substituteMinutes > 0;
                               const rowSummary = `${displayPlayerName(player)}: ${displayedMinutes || 0}' · G${stats.goals} A${stats.assists}${stats.yellow ? ` · AM ${stats.yellowCount}` : ''}${stats.red ? ' · RJ' : ''}${stats.injured ? ' · LES' : ''}`;
                               return (
                                 <tr key={player.id} title={rowSummary} className={`group transition hover:bg-white/[0.07] ${stats.red ? 'bg-red-500/[0.06]' : stats.injured ? 'bg-rose-500/[0.06]' : enteredAsSub ? 'bg-emerald-400/[0.05]' : stats.role === 'Titular' ? 'bg-caudal-electric/10' : 'bg-white/[0.02]'}`}>
@@ -35377,20 +35775,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                                   </td>
                                   <td className="border-t border-white/10 px-2 py-2 text-center text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">{enteredAsSub ? 'Entrado' : stats.role}</td>
                                   <td className="border-t border-white/10 px-2 py-2 text-center text-[11px] font-semibold text-slate-300">{getStatsPlayedPosition(player.name)}</td>
-                                  <td className="border-t border-white/10 px-2 py-2 text-center"><input type="number" min="0" max={matchDuration} value={displayedMinutes} title={minutesInput.isUnconfirmedStarterValue ? `${matchDuration} iniciales de trabajo; entra en el campo para confirmarlos` : undefined} onFocus={() => isStatsMatchCompleted(selectedMatch) && minutesInput.isUnconfirmedStarterValue && updateStatsPlayerData(player.name, { minutes: String(minutesInput.value), replacementName: '' })} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value, replacementName: Number(event.target.value) >= matchDuration ? '' : stats.replacementName })} className="w-14 rounded-lg bg-white px-2 py-1.5 text-center font-black text-slate-950" /></td>
-                                  <td className="border-t border-white/10 px-2 py-2 text-center">
-                                    <select
-                                      value={stats.replacementName}
-                                      disabled={!canReplace}
-                                      onChange={(event) => updateStatsPlayerData(player.name, { replacementName: event.target.value })}
-                                      className="w-44 rounded-lg bg-white px-2 py-1.5 text-[11px] font-bold text-slate-950 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
-                                    >
-                                      <option value="">{canReplace ? `Sale ${minutes}' · entra...` : enteredAsSub ? `Entra · ${displayedMinutes}'` : 'Sin cambio'}</option>
-                                      {getStatsReplacementOptions(player.name).map((replacement) => (
-                                        <option key={replacement.id} value={replacement.name}>{displayPlayerName(replacement)}</option>
-                                      ))}
-                                    </select>
-                                  </td>
+                                  <td className="border-t border-white/10 px-2 py-2 text-center"><input type="number" min="0" max={matchDuration} value={displayedMinutes} disabled={safeArray(selectedMatch.substitutionEvents).length > 0} title={safeArray(selectedMatch.substitutionEvents).length ? 'Minutos proyectados por la secuencia de cambios' : minutesInput.isUnconfirmedStarterValue ? `${matchDuration} iniciales de trabajo; entra en el campo para confirmarlos` : undefined} onFocus={() => isStatsMatchCompleted(selectedMatch) && minutesInput.isUnconfirmedStarterValue && updateStatsPlayerData(player.name, { minutes: String(minutesInput.value), replacementName: '' })} onChange={(event) => updateStatsPlayerData(player.name, { minutes: event.target.value, replacementName: Number(event.target.value) >= matchDuration ? '' : stats.replacementName })} className="w-14 rounded-lg bg-white px-2 py-1.5 text-center font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-70" /></td>
+                                  <td className="border-t border-white/10 px-2 py-2 text-center">{renderStatsSubstitutionAction(player.name)}</td>
                                   <td className="border-t border-white/10 px-2 py-2 text-center font-black text-white">{stats.goals}</td>
                                   <td className="border-t border-white/10 px-2 py-2 text-center font-black text-white">{stats.assists}</td>
                                   <td className="border-t border-white/10 px-2 py-2">
@@ -35448,6 +35834,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                           <p className="text-sm text-slate-400">La tabla aparecerá cuando añadas convocados.</p>
                         </div>
                       )}
+                      {renderStatsSubstitutionEditor()}
                     </div>
                     </AccordionSection>
                     </>

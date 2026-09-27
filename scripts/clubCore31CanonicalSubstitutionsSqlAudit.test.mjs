@@ -43,6 +43,7 @@ assert.match(normalizedMigration, /security definer set search_path = pg_catalog
 assert.equal((normalizedMigration.match(/if not public\.is_app_staff\(\)/g) || []).length, 2);
 assert.match(normalizedMigration, /from public\.partidos match_row[\s\S]*for update/);
 assert.match(normalizedMigration, /legacy_substitution_ambiguous/);
+assert.match(normalizedMigration, /substitution_reentry_not_supported/);
 assert.match(normalizedMigration, /order by event\.minute, event\.event_order, event\.id/);
 assert.match(normalizedMigration, /set minutes = coalesce\(played_minutes->>stats\.jugador_id::text, '0'\)/);
 assert.match(normalizedMigration, /set replacement_name = coalesce/);
@@ -55,21 +56,22 @@ const expectedChecks = [
   'RPC_mutation_contract', 'SECURITY_rpc_acl', 'SCHEMA_updated_at_trigger',
   'FIXTURE_transactional_ready', 'A_starter_90_without_exit',
   'B_starter_exits_60', 'C_substitute_enters_60_finishes_30',
-  'D_substitute_enters_60_exits_75_15', 'E_second_substitute_enters_75_15',
+  'D_substitute_enters_60_exits_89_29', 'E_second_substitute_enters_89_1',
   'F_full_chain_two_events', 'G_same_minute_event_order',
   'H_outgoing_out_rejected', 'I_incoming_inside_rejected',
   'J_minute_out_of_range_rejected', 'K_player_denied', 'L_viewer_denied',
   'M_anon_denied', 'N_staff_allowed', 'O_legacy_materializable',
   'P_legacy_ambiguous_controlled_error', 'Q_delete_recalculates',
   'R_update_recalculates', 'S_minutes_and_replacement_projection',
+  'T_reentry_rejected',
 ];
 for (const check of expectedChecks) {
   assert.ok(verify.includes(`'${check}'`), `Verifier Core 31 sin ${check}`);
 }
-assert.equal((verify.match(/(?:select|perform) pg_temp\.add_core31_check\(/g) || []).length, 30);
+assert.equal((verify.match(/(?:select|perform) pg_temp\.add_core31_check\(/g) || []).length, 31);
 assert.match(normalizedVerify, /set local role authenticated/);
 assert.match(normalizedVerify, /set local role anon/);
-assert.match(normalizedVerify, /check_count <> 30/);
+assert.match(normalizedVerify, /check_count <> 31/);
 assert.doesNotMatch(executable(verify), /(^|;) commit;/);
 
 for (const frontendIdentifier of ['src/App.jsx', 'MatchPrintTab', 'PlayerProfile', 'renderStats']) {
@@ -77,4 +79,4 @@ for (const frontendIdentifier of ['src/App.jsx', 'MatchPrintTab', 'PlayerProfile
   assert.ok(!verify.includes(frontendIdentifier));
 }
 
-console.log('Club Core 31 canonical substitutions SQL audit: OK (30 transactional checks).');
+console.log('Club Core 31 canonical substitutions SQL audit: OK (31 transactional checks).');

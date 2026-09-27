@@ -185,6 +185,7 @@ declare
   match_duration integer;
   initial_player_ids uuid[] := array[]::uuid[];
   on_field_player_ids uuid[] := array[]::uuid[];
+  substituted_out_player_ids uuid[] := array[]::uuid[];
   entry_minutes jsonb := '{}'::jsonb;
   played_minutes jsonb := '{}'::jsonb;
   result_events jsonb;
@@ -461,6 +462,10 @@ begin
       raise exception 'SUBSTITUTION_INCOMING_ALREADY_ON_FIELD:%', event_row.id
         using errcode = '23514';
     end if;
+    if event_row.incoming_jugador_id = any(substituted_out_player_ids) then
+      raise exception 'SUBSTITUTION_REENTRY_NOT_SUPPORTED:%', event_row.id
+        using errcode = '23514';
+    end if;
     entered_at := (entry_minutes->>event_row.outgoing_jugador_id::text)::integer;
     if entered_at is null or event_row.minute < entered_at then
       raise exception 'SUBSTITUTION_EXIT_BEFORE_ENTRY:%', event_row.id
@@ -475,6 +480,7 @@ begin
       true
     );
     on_field_player_ids := pg_catalog.array_remove(on_field_player_ids, event_row.outgoing_jugador_id);
+    substituted_out_player_ids := pg_catalog.array_append(substituted_out_player_ids, event_row.outgoing_jugador_id);
     on_field_player_ids := pg_catalog.array_append(on_field_player_ids, event_row.incoming_jugador_id);
     entry_minutes := entry_minutes - event_row.outgoing_jugador_id::text;
     entry_minutes := pg_catalog.jsonb_set(

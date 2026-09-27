@@ -321,27 +321,37 @@ begin
   );
 
   result := public.mutate_match_substitution_atomic('create', match_chain, null,
-    pg_catalog.jsonb_build_object('minute', 75, 'event_order', 0,
+    pg_catalog.jsonb_build_object('minute', 89, 'event_order', 0,
       'outgoing_jugador_id', player_ids[12], 'incoming_jugador_id', player_ids[13], 'reason', 'injury'), 90);
   second_event_id := (result->'event'->>'id')::uuid;
 
   perform pg_temp.add_core31_check(
-    'D_substitute_enters_60_exits_75_15',
-    (select minutes from public.partido_estadisticas_jugador where partido_id = match_chain and jugador_id = player_ids[12]) = '15',
+    'D_substitute_enters_60_exits_89_29',
+    (select minutes from public.partido_estadisticas_jugador where partido_id = match_chain and jugador_id = player_ids[12]) = '29',
     'el suplente encadenado usa salida menos entrada'
   );
   perform pg_temp.add_core31_check(
-    'E_second_substitute_enters_75_15',
-    (select minutes from public.partido_estadisticas_jugador where partido_id = match_chain and jugador_id = player_ids[13]) = '15',
+    'E_second_substitute_enters_89_1',
+    (select minutes from public.partido_estadisticas_jugador where partido_id = match_chain and jugador_id = player_ids[13]) = '1',
     'el segundo suplente suma hasta el final'
   );
   perform pg_temp.add_core31_check(
     'F_full_chain_two_events',
     (select pg_catalog.count(*) from public.partido_eventos_sustitucion where partido_id = match_chain) = 2
       and (result->'events'->0->>'minute')::integer = 60
-      and (result->'events'->1->>'minute')::integer = 75,
-    'Borja-Josin-Julio persiste como dos eventos ordenados'
+      and (result->'events'->1->>'minute')::integer = 89
+      and (result->'events'->0->>'incoming_jugador_id')::uuid = player_ids[12]
+      and (result->'events'->1->>'outgoing_jugador_id')::uuid = player_ids[12],
+    'el suplente es primero entrante y despues saliente en dos eventos separados'
   );
+
+  denied := false;
+  begin
+    perform public.mutate_match_substitution_atomic('create', match_chain, null,
+      pg_catalog.jsonb_build_object('minute', 90, 'event_order', 0,
+        'outgoing_jugador_id', player_ids[2], 'incoming_jugador_id', player_ids[12]), 90);
+  exception when check_violation then denied := true; end;
+  perform pg_temp.add_core31_check('T_reentry_rejected', denied, 'un jugador que ya salio no puede volver a entrar');
 
   result := public.mutate_match_substitution_atomic('create', match_chain, null,
     pg_catalog.jsonb_build_object('minute', 80, 'event_order', 0,
@@ -458,7 +468,7 @@ begin
   );
 
   result := public.mutate_match_substitution_atomic('create', match_chain, null,
-    pg_catalog.jsonb_build_object('minute', 75, 'event_order', 0,
+    pg_catalog.jsonb_build_object('minute', 89, 'event_order', 0,
       'outgoing_jugador_id', player_ids[12], 'incoming_jugador_id', player_ids[13], 'reason', 'injury'), 90);
   second_event_id := (result->'event'->>'id')::uuid;
   result := public.mutate_match_substitution_atomic('update', match_chain, second_event_id,
@@ -495,8 +505,8 @@ begin
   into failed
   from pg_temp.core31_results result
   where not result.test_ok;
-  if check_count <> 30 then
-    raise exception 'Verify 31: se esperaban 30 checks y se registraron %', check_count;
+  if check_count <> 31 then
+    raise exception 'Verify 31: se esperaban 31 checks y se registraron %', check_count;
   end if;
   if failed is not null then
     raise exception 'Verify 31 fallo:%', E'\n' || failed;

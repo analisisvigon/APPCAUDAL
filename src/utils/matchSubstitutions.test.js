@@ -32,6 +32,42 @@ assert.equal(projection.minutesByPlayer.josin, 15, 'D: el suplente juega del 60 
 assert.equal(projection.minutesByPlayer.julio, 15, 'E: el segundo suplente juega del 75 al final');
 assert.equal(projection.minutesByPlayer['starter-0'], 90, 'A: un titular sin cambio completa la duración');
 
+const davoChain = [
+  {
+    id: 'davo-in-60', minute: 60, eventOrder: 0,
+    outgoingPlayerId: 'borja', incomingPlayerId: 'davo',
+    outgoingNameSnapshot: 'Jugador A', incomingNameSnapshot: 'Davo', reason: 'tactical',
+  },
+  {
+    id: 'davo-out-89', minute: 89, eventOrder: 0,
+    outgoingPlayerId: 'davo', incomingPlayerId: 'jugador-b',
+    outgoingNameSnapshot: 'Davo', incomingNameSnapshot: 'Jugador B', reason: 'discomfort',
+  },
+];
+const davoProjection = projectSubstitutionMinutes({ initialPlayers: starters, events: davoChain, duration: 90 });
+assert.equal(davoProjection.valid, true, davoProjection.errors.join(', '));
+assert.equal(davoProjection.minutesByPlayer.borja, 60, 'Davo: el titular saliente suma 60 minutos');
+assert.equal(davoProjection.minutesByPlayer.davo, 29, 'Davo: entrada 60 y salida 89 producen 29 minutos');
+assert.equal(davoProjection.minutesByPlayer['jugador-b'], 1, 'Davo: el segundo suplente juega del 89 al final');
+assert.equal(getOnFieldPlayerIdsAtMinute({ initialPlayers: starters, events: davoChain, minute: 88 }).includes('davo'), true, 'Davo está activo antes del segundo cambio');
+assert.equal(getOnFieldPlayerIdsAtMinute({ initialPlayers: starters, events: davoChain, minute: 89 }).includes('davo'), false, 'Davo deja de estar activo desde el minuto 89');
+assert.equal(getOnFieldPlayerIdsAtMinute({ initialPlayers: starters, events: davoChain, minute: 89 }).includes('jugador-b'), true, 'Jugador B entra desde el minuto 89');
+const davoTimeline = buildSubstitutionTimelineEvents(davoChain);
+assert.deepEqual(davoTimeline.map((event) => [event.minute, event.outPlayer.playerName, event.inPlayer.playerName]), [
+  [60, 'Jugador A', 'Davo'],
+  [89, 'Davo', 'Jugador B'],
+], 'Davo: los dos cambios aparecen como eventos independientes en el timeline');
+assert.equal(davoTimeline[1].reason, 'discomfort', 'Davo: el motivo se conserva sin crear datos médicos');
+const forbiddenDavoReentry = projectSubstitutionMinutes({
+  initialPlayers: starters,
+  events: [...davoChain, {
+    id: 'davo-reentry-90', minute: 90, eventOrder: 0,
+    outgoingPlayerId: 'starter-0', incomingPlayerId: 'davo',
+  }],
+  duration: 90,
+});
+assert.match(forbiddenDavoReentry.errors.join(','), /PLAYER_REENTRY_NOT_SUPPORTED/, 'Davo: quien ya salió no vuelve a entrar en esta secuencia');
+
 assert.deepEqual(getOnFieldPlayerIdsAtMinute({ initialPlayers: starters, events: chain, minute: 59 }).sort(), starters.map((item) => item.playerId).sort());
 assert.equal(getOnFieldPlayerIdsAtMinute({ initialPlayers: starters, events: chain, minute: 60 }).includes('josin'), true);
 assert.equal(getOnFieldPlayerIdsAtMinute({ initialPlayers: starters, events: chain, minute: 60 }).includes('borja'), false);

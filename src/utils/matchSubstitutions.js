@@ -166,6 +166,7 @@ export const projectSubstitutionMinutes = ({ initialPlayers = [], events = [], d
   if (starters.some((player) => !player.playerId)) errors.push('INITIAL_PLAYER_IDENTITY_REQUIRED');
   if (new Set(starters.map((player) => player.playerId)).size !== starters.length) errors.push('DUPLICATE_INITIAL_PLAYER');
   const onField = new Set(starters.map((player) => player.playerId));
+  const exitedPlayers = new Set();
   const entryMinute = new Map(starters.map((player) => [player.playerId, 0]));
   const minutesByPlayer = new Map(starters.map((player) => [player.playerId, 0]));
   const namesByPlayer = new Map(starters.map((player) => [player.playerId, player.playerName]));
@@ -200,6 +201,10 @@ export const projectSubstitutionMinutes = ({ initialPlayers = [], events = [], d
       errors.push(`INCOMING_PLAYER_ALREADY_ON_FIELD:${event.id}`);
       return;
     }
+    if (exitedPlayers.has(incomingId)) {
+      errors.push(`PLAYER_REENTRY_NOT_SUPPORTED:${event.id}`);
+      return;
+    }
     const enteredAt = entryMinute.get(outgoingId);
     if (!Number.isFinite(enteredAt) || event.minute < enteredAt) {
       errors.push(`OUTGOING_PLAYER_BEFORE_ENTRY:${event.id}`);
@@ -207,6 +212,7 @@ export const projectSubstitutionMinutes = ({ initialPlayers = [], events = [], d
     }
     minutesByPlayer.set(outgoingId, (minutesByPlayer.get(outgoingId) || 0) + event.minute - enteredAt);
     onField.delete(outgoingId);
+    exitedPlayers.add(outgoingId);
     onField.add(incomingId);
     entryMinute.delete(outgoingId);
     entryMinute.set(incomingId, event.minute);
@@ -236,10 +242,12 @@ export const projectSubstitutionMinutes = ({ initialPlayers = [], events = [], d
 export const getOnFieldPlayerIdsAtMinute = ({ initialPlayers = [], events = [], minute = 0 } = {}) => {
   const targetMinute = Number(minute);
   const onField = new Set(normalizeInitialPlayers(initialPlayers).map((player) => player.playerId).filter(Boolean));
+  const exitedPlayers = new Set();
   sortSubstitutionEvents(events).forEach((event) => {
     if (event.minute > targetMinute) return;
-    if (!onField.has(event.outgoingPlayer.playerId) || onField.has(event.incomingPlayer.playerId)) return;
+    if (!onField.has(event.outgoingPlayer.playerId) || onField.has(event.incomingPlayer.playerId) || exitedPlayers.has(event.incomingPlayer.playerId)) return;
     onField.delete(event.outgoingPlayer.playerId);
+    exitedPlayers.add(event.outgoingPlayer.playerId);
     onField.add(event.incomingPlayer.playerId);
   });
   return Array.from(onField);

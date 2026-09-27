@@ -165,11 +165,12 @@ const tryRepairHistoricalSubstitutionSnapshot = ({
   snapshot,
   audit,
   playerStats,
+  substitutionEvents,
   identityIndex,
   hasSameMinuteSystemChange,
 }) => {
   if (!audit.structuralComplete || audit.temporallyConsistent !== false || hasSameMinuteSystemChange) return null;
-  const substitutions = getTacticalSubstitutionsAtMinute({ playerStats, minute: snapshot.minute });
+  const substitutions = getTacticalSubstitutionsAtMinute({ playerStats, substitutionEvents, minute: snapshot.minute });
   if (!substitutions.length) return null;
   const nextSlots = snapshot.slots.map((slot) => ({ ...slot }));
   const repairs = [];
@@ -210,6 +211,7 @@ export const auditTacticalMatchSnapshots = ({
   snapshots = [],
   systemEvents = [],
   substitutionMinutes = [],
+  substitutionEvents = [],
   playerStats = {},
   playerIdentities = [],
   repairHistoricalSubstitutions = true,
@@ -220,8 +222,12 @@ export const auditTacticalMatchSnapshots = ({
     ...buildMatchPlayerIdentityRecordsFromStats(playerStats),
     ...rows(initialSlots),
   ]);
-  const knownSubstitutionMinutes = getHistoricalSubstitutionMinutes(playerStats);
-  const requestedSubstitutionMinutes = rows(substitutionMinutes).map(parseTacticalMinute).filter((minute) => minute !== null);
+  const knownSubstitutionMinutes = rows(substitutionEvents).length
+    ? rows(substitutionEvents).map((event) => parseTacticalMinute(event.minute)).filter((minute) => minute !== null)
+    : getHistoricalSubstitutionMinutes(playerStats);
+  const requestedSubstitutionMinutes = rows(substitutionEvents).length
+    ? knownSubstitutionMinutes
+    : rows(substitutionMinutes).map(parseTacticalMinute).filter((minute) => minute !== null);
   const substitutionEvidenceComplete = requestedSubstitutionMinutes.every((minute) => knownSubstitutionMinutes.includes(minute));
   const systemChangeMinutes = new Set(rows(systemEvents).map(getSystemEventMinute).filter((minute) => minute !== null));
   const details = [];
@@ -230,7 +236,7 @@ export const auditTacticalMatchSnapshots = ({
   const analyticsSnapshots = [];
   normalizedSnapshots.forEach((snapshot) => {
     const system = getActiveSystemAtMinute({ initialSystem, systemEvents, minute: snapshot.minute }) || snapshot.system;
-    const expected = buildKnownOnFieldPlayers({ initialSlots, playerStats, atMinute: snapshot.minute, identityIndex });
+    const expected = buildKnownOnFieldPlayers({ initialSlots, playerStats, substitutionEvents, atMinute: snapshot.minute, identityIndex });
     const expectedValid = expected.valid && substitutionEvidenceComplete;
     const rawAudit = auditNormalizedSnapshot({ snapshot, system, expectedPlayers: expected.players, expectedValid, identityIndex });
     const rawReliable = rawAudit.declaredComplete && rawAudit.structuralComplete && rawAudit.temporallyConsistent !== false;
@@ -249,6 +255,7 @@ export const auditTacticalMatchSnapshots = ({
         snapshot,
         audit: rawAudit,
         playerStats,
+        substitutionEvents,
         identityIndex,
         hasSameMinuteSystemChange: systemChangeMinutes.has(snapshot.minute),
       })
@@ -310,6 +317,7 @@ export const auditTacticalSeasonSnapshots = (matches = []) => {
       initialSlots: entry?.initialSlots || entry?.lineupSlots || [],
       snapshots: entry?.snapshots || entry?.tacticalSnapshots || [],
       systemEvents: entry?.systemEvents || entry?.tacticalSystemEvents || [],
+      substitutionEvents: entry?.substitutionEvents || [],
       substitutionMinutes: entry?.substitutionMinutes || getHistoricalSubstitutionMinutes(playerStats),
       playerStats,
       playerIdentities: entry?.playerIdentities || entry?.rosterPlayers || [],
@@ -339,9 +347,13 @@ export const buildTacticalSnapshotIntervals = ({
   snapshots = [],
   systemEvents = [],
   substitutionMinutes = [],
+  substitutionEvents = [],
   initialSystem = '',
 } = {}) => {
   const matchDuration = Math.max(0, Number(duration) || 90);
+  const effectiveSubstitutionMinutes = rows(substitutionEvents).length
+    ? rows(substitutionEvents).map((event) => event.minute)
+    : substitutionMinutes;
   const persisted = rows(snapshots).map(normalizeTacticalSnapshot);
   const candidates = [...persisted];
   if (initialSnapshot && !persisted.some((snapshot) => snapshot.minute === 0)) {
@@ -363,7 +375,7 @@ export const buildTacticalSnapshotIntervals = ({
       slots: [],
     }));
   });
-  rows(substitutionMinutes).forEach((value) => {
+  rows(effectiveSubstitutionMinutes).forEach((value) => {
     const minute = parseTacticalMinute(value);
     if (minute === null || minute <= 0 || minute > matchDuration || candidates.some((snapshot) => snapshot.minute === minute)) return;
     candidates.push(normalizeTacticalSnapshot({
@@ -552,9 +564,13 @@ export const buildTacticalMatchHistory = ({
   snapshots = [],
   systemEvents = [],
   substitutionMinutes = [],
+  substitutionEvents = [],
   playerStats = {},
   playerIdentities = [],
 } = {}) => {
+  const effectiveSubstitutionMinutes = rows(substitutionEvents).length
+    ? rows(substitutionEvents).map((event) => event.minute)
+    : substitutionMinutes;
   let initialSnapshot = buildInitialTacticalSnapshot({ matchId, system: initialSystem, slots: initialSlots });
   const snapshotAudit = auditTacticalMatchSnapshots({
     matchId,
@@ -562,7 +578,8 @@ export const buildTacticalMatchHistory = ({
     initialSlots,
     snapshots,
     systemEvents,
-    substitutionMinutes,
+    substitutionMinutes: effectiveSubstitutionMinutes,
+    substitutionEvents,
     playerStats,
     playerIdentities,
   });
@@ -574,7 +591,8 @@ export const buildTacticalMatchHistory = ({
     initialSlots,
     snapshots: [initialSnapshot],
     systemEvents,
-    substitutionMinutes,
+    substitutionMinutes: effectiveSubstitutionMinutes,
+    substitutionEvents,
     playerStats,
     playerIdentities,
     repairHistoricalSubstitutions: false,
@@ -587,7 +605,7 @@ export const buildTacticalMatchHistory = ({
     ...rows(initialSlots),
   ]);
   const systemChangeMinutes = new Set(rows(systemEvents).map(getSystemEventMinute).filter((minute) => minute !== null));
-  rows(substitutionMinutes)
+  rows(effectiveSubstitutionMinutes)
     .map(parseTacticalMinute)
     .filter((minute) => minute !== null && minute > 0 && minute <= Number(duration || 90))
     .sort((left, right) => left - right)
@@ -608,6 +626,7 @@ export const buildTacticalMatchHistory = ({
         intervals: provisionalIntervals,
         initialSlots,
         playerStats,
+        substitutionEvents,
         systemSlotCount: hasFormationSlotsForSavedLineup(interval?.system || initialSystem) ? 11 : 0,
         identityIndex,
       });
@@ -628,7 +647,8 @@ export const buildTacticalMatchHistory = ({
     initialSnapshot,
     snapshots: rawSnapshots,
     systemEvents,
-    substitutionMinutes,
+    substitutionMinutes: effectiveSubstitutionMinutes,
+    substitutionEvents,
     initialSystem,
   }).map((interval) => ({ ...interval, matchId: interval.matchId || matchId }));
   const analyticsIntervals = buildTacticalSnapshotIntervals({
@@ -636,7 +656,8 @@ export const buildTacticalMatchHistory = ({
     initialSnapshot: analyticsInitialSnapshot,
     snapshots: analyticsSnapshots,
     systemEvents,
-    substitutionMinutes,
+    substitutionMinutes: effectiveSubstitutionMinutes,
+    substitutionEvents,
     initialSystem,
   }).map((interval) => ({ ...interval, matchId: interval.matchId || matchId }));
   return {

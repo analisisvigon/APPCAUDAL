@@ -37,6 +37,38 @@ assert.deepEqual(initialIntervals.map(({ fromMinute, toMinute, system, isComplet
   { fromMinute: 0, toMinute: 90, system: '4-2-3-1', isComplete: true },
 ], 'snapshot inicial vigente durante todo el partido');
 
+const davoInitialSlots = lineup('davo-start').map((slot, index) => index === 0
+  ? { ...slot, playerId: 'player-a', playerName: 'Jugador A' }
+  : slot);
+const davoEvents = [
+  { id: 'davo-in-60', minute: 60, eventOrder: 0, outgoingPlayerId: 'player-a', incomingPlayerId: 'davo', outgoingNameSnapshot: 'Jugador A', incomingNameSnapshot: 'Davo' },
+  { id: 'davo-out-89', minute: 89, eventOrder: 0, outgoingPlayerId: 'davo', incomingPlayerId: 'player-b', outgoingNameSnapshot: 'Davo', incomingNameSnapshot: 'Jugador B' },
+];
+const davoAt60Slots = davoInitialSlots.map((slot) => slot.playerId === 'player-a'
+  ? { ...slot, playerId: 'davo', playerName: 'Davo' }
+  : slot);
+const davoAt89Slots = davoAt60Slots.map((slot) => slot.playerId === 'davo'
+  ? { ...slot, playerId: 'player-b', playerName: 'Jugador B' }
+  : slot);
+const davoHistory = buildTacticalMatchHistory({
+  matchId: 'davo-chain',
+  duration: 90,
+  initialSystem: '4-2-3-1',
+  initialSlots: davoInitialSlots,
+  substitutionEvents: davoEvents,
+  snapshots: [
+    { id: 'davo-snapshot-60', matchId: 'davo-chain', minute: 60, system: '4-2-3-1', isComplete: true, slots: davoAt60Slots },
+    { id: 'davo-snapshot-89', matchId: 'davo-chain', minute: 89, system: '4-2-3-1', isComplete: true, slots: davoAt89Slots },
+  ],
+});
+assert.deepEqual(davoHistory.intervals.map(({ fromMinute, toMinute, isComplete }) => [fromMinute, toMinute, isComplete]), [
+  [0, 60, true], [60, 89, true], [89, 90, true],
+], 'los cambios canónicos crean fronteras exactas de disposición en 60 y 89');
+assert.equal(davoHistory.intervals[1].slots.some((slot) => slot.playerId === 'davo'), true, 'Davo está en el snapshot 60-88');
+assert.equal(davoHistory.intervals[1].slots.some((slot) => slot.playerId === 'player-a'), false, 'el saliente inicial no aparece tras el 60');
+assert.equal(davoHistory.intervals[2].slots.some((slot) => slot.playerId === 'davo'), false, 'Davo ya no aparece desde el 89');
+assert.equal(davoHistory.intervals[2].slots.some((slot) => slot.playerId === 'player-b'), true, 'Jugador B aparece desde el 89');
+
 const changed = buildTacticalSnapshotIntervals({
   duration: 90,
   initialSnapshot: initial,
