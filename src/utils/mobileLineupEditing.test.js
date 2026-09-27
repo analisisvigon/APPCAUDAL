@@ -65,11 +65,19 @@ const cssSource = fs.readFileSync(new URL('../index.css', import.meta.url), 'utf
 assert.match(appSource, /moveSelectedTeamPlayerOnMobile[\s\S]*?placePlayer\(player, destination\)/, 'EQUIPOS móvil reutiliza placePlayer');
 assert.match(appSource, /movePreCaudalPlayerOnMobile[\s\S]*?moveStatsLineupPlayer/, 'PRE móvil reutiliza la transición con swap');
 assert.match(appSource, /onSelectTarget=\{\(targetSlot, slotIndex\)[\s\S]*?moveTacticalEditorPlayer/, 'ESTADÍSTICAS móvil modifica el mismo draft del editor');
+assert.match(appSource, /draggable=\{!editingDisposition && Boolean\(getTacticalParticipantKey\(participant, tacticalPlayerIdentityIndex\)\)/, 'el drag nativo no compite con la edición de disposición');
+assert.match(appSource, /onPointerDown=\{editingDisposition \? \(event\) => beginTacticalDispositionPointerDrag\(event, participant\) : undefined\}/, 'cada jugador activo inicia un gesto pointer independientemente de role');
+assert.match(appSource, /document\.elementFromPoint\(event\.clientX, event\.clientY\)[\s\S]*?closest\('\.stats-match-pitch'\)/, 'el drop solo resuelve destinos del campo actual mediante hit-test');
+assert.match(appSource, /onMovePlayer=\{\(sourceSlot, targetSlot, targetSlotIndex\)[\s\S]*?moveTacticalEditorPlayer\(sourceSlot\.participant, targetSlotIndex\)/, 'el gesto móvil solo cambia el slot táctico del jugador');
 assert.match(appSource, /sendTacticalEditorPlayerToBench[\s\S]*?removeTacticalDispositionPlayer/, 'ESTADÍSTICAS móvil y desktop devuelven el titular al grupo de convocados del mismo editor');
 assert.match(componentSource, /<button[\s\S]*?aria-pressed=/, 'los slots son controles accesibles con estado de selección');
 assert.match(componentSource, /if \(isSelected\) onCancelSelection/, 'E: tocar de nuevo el jugador seleccionado cancela la selección');
 assert.doesNotMatch(componentSource, /draggable|onDragStart|onDrop/, 'la variante móvil no depende de HTML Drag & Drop');
+assert.match(componentSource, /onPointerDown=\{\(event\) => beginPointerDrag\(event, slot, index\)\}/, 'la ficha móvil inicia el drag táctil con Pointer Events');
+assert.match(componentSource, /data-mobile-slot-index=\{index\}/, 'el hit-test móvil identifica el destino táctico');
 assert.match(cssSource, /@media \(max-width: 430px\)[\s\S]*?\.desktop-mobile-edit-fallback/, 'el renderer móvil se activa mediante breakpoint, sin user agent');
+assert.match(componentSource, /onMovePlayer \? 'mobile-edit-pitch-slot--drag-enabled'/, 'solo el editor con drag activa la superficie de gesto táctil');
+assert.match(cssSource, /\.mobile-edit-pitch-slot--drag-enabled\s*\{\s*touch-action: none;/, 'el gesto táctil de Estadísticas no se interpreta como scroll');
 assert.match(cssSource, /\.mobile-edit-pitch-portrait \{[\s\S]*?width: 44px;[\s\S]*?height: 44px;/, 'los destinos ofrecen un objetivo táctil de 44x44 px');
 
 console.log('mobileLineupEditing tests passed');

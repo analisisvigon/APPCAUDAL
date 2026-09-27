@@ -39,6 +39,33 @@ assert.equal(at84.valid, true);
 assert.equal(at84.players.some((player) => player.playerId === 'p2'), false);
 assert.equal(at84.players.some((player) => player.playerId === 'marcos'), true, 'la foto 84-90 usa el cuarto cambio conocido sin inferir su posición');
 
+const chainedInitialSlots = initialSlots.map((row) => row.playerId === 'p10' ? { ...row, playerName: 'Borja' } : row);
+const chainedSubstitutions = [
+  { id: 'sub-60', minute: 60, eventOrder: 0, outgoingPlayerId: 'p10', incomingPlayerId: 'josin', outgoingNameSnapshot: 'Borja', incomingNameSnapshot: 'Josín' },
+  { id: 'sub-75', minute: 75, eventOrder: 0, outgoingPlayerId: 'josin', incomingPlayerId: 'julio', outgoingNameSnapshot: 'Josín', incomingNameSnapshot: 'Julio' },
+];
+const activeAt60 = buildKnownOnFieldPlayers({ initialSlots: chainedInitialSlots, substitutionEvents: chainedSubstitutions, atMinute: 60 });
+const activeAt74 = buildKnownOnFieldPlayers({ initialSlots: chainedInitialSlots, substitutionEvents: chainedSubstitutions, atMinute: 74 });
+const activeAt75 = buildKnownOnFieldPlayers({ initialSlots: chainedInitialSlots, substitutionEvents: chainedSubstitutions, atMinute: 75 });
+assert.equal(activeAt60.valid && activeAt60.players.length, 11, 'A/E: el snapshot de la primera entrada conserva once activos');
+assert.equal(activeAt60.players.some((player) => player.playerId === 'josin'), true, 'B: Josín está activo desde el minuto 60');
+assert.equal(activeAt60.players.some((player) => player.playerId === 'p10'), false, 'D: Borja saliente no forma parte del snapshot');
+assert.equal(activeAt74.players.some((player) => player.playerId === 'josin'), true, '10: Josín permanece activo durante 60-74');
+assert.equal(activeAt75.players.some((player) => player.playerId === 'josin'), false, '10: Josín sale del snapshot desde el 75');
+assert.equal(activeAt75.players.some((player) => player.playerId === 'julio'), true, '10: Julio es activo desde el 75');
+const activeAt60Lineup = activeAt60.players.map((player) => ({ ...player, role: player.playerId === 'josin' ? 'Suplente' : 'Titular' }));
+const movedIncoming = moveTacticalDispositionPlayer({
+  lineup: activeAt60Lineup,
+  player: activeAt60Lineup.find((player) => player.playerId === 'josin'),
+  targetSlot: 4,
+});
+assert.equal(movedIncoming[4].playerId, 'josin', 'C/9: el suplente entrante puede recolocarse por su ID canónico');
+assert.equal(validateTacticalDisposition({ lineup: movedIncoming, knownPlayers: activeAt60.players }).valid, true, 'mover al entrante conserva exactamente los once activos');
+assert.deepEqual(chainedSubstitutions.map(({ id, minute, outgoingPlayerId, incomingPlayerId }) => ({ id, minute, outgoingPlayerId, incomingPlayerId })), [
+  { id: 'sub-60', minute: 60, outgoingPlayerId: 'p10', incomingPlayerId: 'josin' },
+  { id: 'sub-75', minute: 75, outgoingPlayerId: 'josin', incomingPlayerId: 'julio' },
+], '8: mover coordenadas no altera las sustituciones encadenadas');
+
 const at63Slots = initialSlots.map((row) => {
   if (row.playerId === 'p10') return { ...row, playerId: 'dani', playerName: 'Dani' };
   if (row.playerId === 'p5') return { ...row, playerId: 'kike', playerName: 'Kike' };

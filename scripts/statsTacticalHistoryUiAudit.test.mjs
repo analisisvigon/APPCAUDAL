@@ -44,6 +44,9 @@ assert.match(appSource, /if \(!isEditing \|\| systemChanged\) openTacticalDispos
 assert.match(appSource, /save_match_tactical_snapshot/, 'el guardado utiliza la RPC atómica de snapshots');
 assert.match(appSource, /reload: \(\) => loadMatchStatsData\(editor\.matchId\)/, 'después de guardar se relee el partido');
 assert.match(appSource, /saveTacticalDispositionWithReload/, 'la relectura verifica partido, minuto, sistema, slots y coherencia temporal');
+assert.match(appSource, /onPointerDown=\{editingDisposition \? \(event\) => beginTacticalDispositionPointerDrag\(event, participant\) : undefined\}/, 'todos los jugadores activos reciben Pointer Events al editar el snapshot');
+assert.match(appSource, /draggable=\{!editingDisposition && Boolean\(getTacticalParticipantKey\(participant, tacticalPlayerIdentityIndex\)\)/, 'role y drag nativo no bloquean fichas activas durante la edición');
+assert.match(appSource, /p_minute: editor\.minute,[\s\S]*?p_slots: persistedSlots/, 'la posición persiste en el minuto del snapshot editado');
 assert.doesNotMatch(appSource, /from\(["']partido_snapshots_tacticos["']\)\.(insert|update|upsert|delete)/, 'la UI no hace escrituras parciales de snapshots');
 assert.doesNotMatch(editorSource, /specificPosition|\.position\b|auto.?place/i, 'la reconstrucción no usa posiciones de plantilla ni autocolocación');
 assert.match(appSource, /tacticalHistory\.invariant\.overlap/, 'la UI consume el informe de intervalos sin solapamiento');

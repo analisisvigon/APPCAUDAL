@@ -6039,6 +6039,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   const goalMutationRequestRef = useRef(0);
   const currentGoalMatchIdRef = useRef(null);
   const statsSquadSaveInFlightRef = useRef(false);
+  const statsDispositionPointerDragRef = useRef(null);
+  const suppressStatsDispositionClickRef = useRef(false);
   const suspensionProcessingSignatureRef = useRef('');
   const postYoutubeIframeRef = useRef(null);
   const postYoutubePlayerRef = useRef(null);
@@ -18641,6 +18643,48 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     setDraggedPlayer(null);
   };
 
+  const beginTacticalDispositionPointerDrag = (event, participant) => {
+    if (!tacticalDispositionEditor || tacticalDispositionEditor.saving || event.button !== 0) return;
+    if (!getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex)) return;
+    statsDispositionPointerDragRef.current = {
+      pointerId: event.pointerId,
+      participant,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const trackTacticalDispositionPointerDrag = (event) => {
+    const drag = statsDispositionPointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) return;
+    drag.moved = true;
+    event.preventDefault();
+  };
+
+  const finishTacticalDispositionPointerDrag = (event) => {
+    const drag = statsDispositionPointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    statsDispositionPointerDragRef.current = null;
+    if (!drag.moved) return;
+    event.preventDefault();
+    suppressStatsDispositionClickRef.current = true;
+    window.setTimeout(() => { suppressStatsDispositionClickRef.current = false; }, 0);
+    const targetElement = document.elementFromPoint(event.clientX, event.clientY);
+    const targetSlot = targetElement?.closest('[data-stats-slot-index]');
+    const sourcePitch = event.currentTarget.closest('.stats-match-pitch');
+    if (!targetSlot || targetSlot.closest('.stats-match-pitch') !== sourcePitch) return;
+    moveTacticalEditorPlayer(drag.participant, Number(targetSlot.dataset.statsSlotIndex));
+  };
+
+  const cancelTacticalDispositionPointerDrag = (event) => {
+    if (statsDispositionPointerDragRef.current?.pointerId === event.pointerId) {
+      statsDispositionPointerDragRef.current = null;
+    }
+  };
+
   const sendTacticalEditorPlayerToBench = (player) => {
     setTacticalDispositionEditor((current) => current ? {
       ...current,
@@ -19011,6 +19055,14 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 setMobileTacticalSelection(null);
               }}
               onCancelSelection={() => setMobileTacticalSelection(null)}
+              onMovePlayer={(sourceSlot, targetSlot, targetSlotIndex) => {
+                moveTacticalEditorPlayer(sourceSlot.participant, targetSlotIndex);
+                setMobileTacticalFeedback({
+                  scope: 'stats',
+                  message: targetSlot.playerKey ? `${sourceSlot.name} intercambiado con ${targetSlot.name}.` : `${sourceSlot.name} colocado.`,
+                });
+                setMobileTacticalSelection(null);
+              }}
             />
             {pendingTacticalPlayers.length ? (
               <div className="mobile-edit-player-pool" aria-label="Jugadores pendientes de colocar">
@@ -19110,9 +19162,21 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
               role={editingDisposition ? 'button' : undefined}
               tabIndex={editingDisposition ? 0 : undefined}
               aria-label={editingDisposition ? (playerName ? `Seleccionar o intercambiar ${playerIdentityTitle}` : `Colocar jugador en ${playerIdentityLabel}`) : undefined}
-              draggable={Boolean(getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex)) && !historyBrowsing && !statsSquadSaving}
+              draggable={!editingDisposition && Boolean(getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex)) && !historyBrowsing && !statsSquadSaving}
               onDragStart={() => getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex) && setDraggedPlayer(participant)}
-              onClick={() => activateTacticalEditorSlot({ participant, slotIndex, playerName: playerIdentityTitle })}
+              data-stats-slot-index={slotIndex}
+              onPointerDown={editingDisposition ? (event) => beginTacticalDispositionPointerDrag(event, participant) : undefined}
+              onPointerMove={editingDisposition ? trackTacticalDispositionPointerDrag : undefined}
+              onPointerUp={editingDisposition ? finishTacticalDispositionPointerDrag : undefined}
+              onPointerCancel={editingDisposition ? cancelTacticalDispositionPointerDrag : undefined}
+              onClick={(event) => {
+                if (suppressStatsDispositionClickRef.current) {
+                  suppressStatsDispositionClickRef.current = false;
+                  event.preventDefault();
+                  return;
+                }
+                activateTacticalEditorSlot({ participant, slotIndex, playerName: playerIdentityTitle });
+              }}
               onKeyDown={(event) => {
                 if (event.key !== 'Enter' && event.key !== ' ') return;
                 event.preventDefault();
@@ -19124,7 +19188,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 if (editingDisposition && draggedPlayer) moveTacticalEditorPlayer(draggedPlayer, slotIndex);
                 else if (!historyBrowsing) handleDropOnStatsLineupSlot(slotIndex);
               }}
-              className={`stats-player-slot absolute z-20 h-16 -translate-x-1/2 -translate-y-1/2 text-center ${getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex) ? 'cursor-grab' : ''}`}
+              className={`stats-player-slot absolute z-20 h-16 -translate-x-1/2 -translate-y-1/2 text-center ${getTacticalParticipantKey(participant, tacticalPlayerIdentityIndex) ? 'cursor-grab' : ''} ${editingDisposition ? 'touch-none select-none' : ''}`}
               style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
             >
               {incidentIndicators.length ? (

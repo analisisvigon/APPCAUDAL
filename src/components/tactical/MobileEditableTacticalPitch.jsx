@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { buildMobileReadonlyPitchLayout } from '../../utils/mobileReadonlyPitchLayout';
 
 const cleanText = (value) => String(value || '').trim();
@@ -30,9 +31,53 @@ export default function MobileEditableTacticalPitch({
   onSelectPlayer,
   onSelectTarget,
   onCancelSelection,
+  onMovePlayer,
 }) {
   const positionedSlots = buildMobileReadonlyPitchLayout(slots);
   const selectionActive = Boolean(selectedPlayerKey);
+  const pointerDragRef = useRef(null);
+  const suppressClickRef = useRef(false);
+
+  const beginPointerDrag = (event, slot, slotIndex) => {
+    if (busy || !onMovePlayer || !slot.playerKey || event.button !== 0) return;
+    pointerDragRef.current = {
+      pointerId: event.pointerId,
+      slot,
+      slotIndex,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const trackPointerDrag = (event) => {
+    const drag = pointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) return;
+    drag.moved = true;
+    event.preventDefault();
+  };
+
+  const finishPointerDrag = (event) => {
+    const drag = pointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    pointerDragRef.current = null;
+    if (!drag.moved) return;
+    event.preventDefault();
+    suppressClickRef.current = true;
+    window.setTimeout(() => { suppressClickRef.current = false; }, 0);
+    const targetElement = document.elementFromPoint(event.clientX, event.clientY);
+    const target = targetElement?.closest('[data-mobile-slot-index]');
+    if (target?.closest('.mobile-edit-pitch') !== event.currentTarget.closest('.mobile-edit-pitch')) return;
+    const targetSlotIndex = Number(target.dataset.mobileSlotIndex);
+    const targetSlot = positionedSlots[targetSlotIndex];
+    if (targetSlot) onMovePlayer?.(drag.slot, targetSlot, targetSlotIndex);
+  };
+
+  const cancelPointerDrag = (event) => {
+    if (pointerDragRef.current?.pointerId === event.pointerId) pointerDragRef.current = null;
+  };
 
   return (
     <section className="mobile-edit-tactical-surface" aria-label={ariaLabel} data-mobile-editable-pitch="true">
@@ -73,15 +118,25 @@ export default function MobileEditableTacticalPitch({
             <button
               key={slot.id || `${slot.role}-${index}`}
               type="button"
+              data-mobile-slot-index={index}
               aria-label={label}
               aria-pressed={isSelected}
               disabled={busy || (!hasPlayer && !selectionActive)}
-              onClick={() => {
+              onPointerDown={(event) => beginPointerDrag(event, slot, index)}
+              onPointerMove={trackPointerDrag}
+              onPointerUp={finishPointerDrag}
+              onPointerCancel={cancelPointerDrag}
+              onClick={(event) => {
+                if (suppressClickRef.current) {
+                  suppressClickRef.current = false;
+                  event.preventDefault();
+                  return;
+                }
                 if (isSelected) onCancelSelection?.();
                 else if (selectionActive) onSelectTarget?.(slot, index);
                 else if (hasPlayer) onSelectPlayer?.(slot, index);
               }}
-              className={`mobile-edit-pitch-slot ${hasPlayer ? 'mobile-edit-pitch-slot--occupied' : 'mobile-edit-pitch-slot--empty'} ${isSelected ? 'mobile-edit-pitch-slot--selected' : ''} ${isDestination ? 'mobile-edit-pitch-slot--destination' : ''}`}
+              className={`mobile-edit-pitch-slot ${onMovePlayer ? 'mobile-edit-pitch-slot--drag-enabled' : ''} ${hasPlayer ? 'mobile-edit-pitch-slot--occupied' : 'mobile-edit-pitch-slot--empty'} ${isSelected ? 'mobile-edit-pitch-slot--selected' : ''} ${isDestination ? 'mobile-edit-pitch-slot--destination' : ''}`}
               style={{ left: `${slot.mobileX}%`, top: `${slot.mobileY}%` }}
             >
               <span className="mobile-edit-pitch-role">{compactRole(slot.role)}</span>

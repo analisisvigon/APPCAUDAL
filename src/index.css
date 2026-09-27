@@ -1323,6 +1323,10 @@ table {
     touch-action: manipulation;
   }
 
+  .mobile-edit-pitch-slot--drag-enabled {
+    touch-action: none;
+  }
+
   .mobile-edit-pitch-slot:disabled {
     opacity: 0.56;
   }
