@@ -28,8 +28,8 @@ const normalizeParticipant = (event = {}, side = 'outgoing') => {
   const outgoing = side === 'outgoing';
   return {
     playerId: clean(outgoing
-      ? event.outgoingPlayerId || event.outgoing_player_id || event.outPlayerId || event.outgoingPlayer?.playerId || event.outgoingPlayer?.jugadorId || event.outPlayer?.playerId || event.outPlayer?.jugadorId
-      : event.incomingPlayerId || event.incoming_player_id || event.inPlayerId || event.incomingPlayer?.playerId || event.incomingPlayer?.jugadorId || event.inPlayer?.playerId || event.inPlayer?.jugadorId),
+      ? event.outgoingPlayerId || event.outgoing_player_id || event.outgoing_jugador_id || event.outPlayerId || event.outgoingPlayer?.playerId || event.outgoingPlayer?.jugadorId || event.outgoingPlayer?.jugador_id || event.outPlayer?.playerId || event.outPlayer?.jugadorId || event.outPlayer?.jugador_id
+      : event.incomingPlayerId || event.incoming_player_id || event.incoming_jugador_id || event.inPlayerId || event.incomingPlayer?.playerId || event.incomingPlayer?.jugadorId || event.incomingPlayer?.jugador_id || event.inPlayer?.playerId || event.inPlayer?.jugadorId || event.inPlayer?.jugador_id),
     playerName: clean(outgoing
       ? event.outgoingNameSnapshot || event.outgoing_name_snapshot || event.outPlayerName || event.outgoingPlayer?.playerName || event.outPlayer?.playerName || event.outPlayer
       : event.incomingNameSnapshot || event.incoming_name_snapshot || event.inPlayerName || event.incomingPlayer?.playerName || event.inPlayer?.playerName || event.inPlayer),

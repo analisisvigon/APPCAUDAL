@@ -5,6 +5,7 @@ import {
   buildTacticalDispositionDraft,
   moveTacticalDispositionPlayer,
   removeTacticalDispositionPlayer,
+  saveTacticalDispositionWithReload,
   tacticalSnapshotMatchesDisposition,
   validateTacticalDisposition,
 } from './tacticalDispositionEditor.js';
@@ -166,6 +167,78 @@ const simpleAutomatic = buildAutomaticSubstitutionSnapshot({
 assert.equal(simpleAutomatic.status, 'complete', 'A) una sustitución simple genera snapshot completo');
 assert.equal(simpleAutomatic.slots.find((row) => row.slot === 7).playerId, 'sub', 'A) el entrante hereda como propuesta el slot del saliente');
 assert.equal(simpleAutomatic.slots.find((row) => row.playerId === 'p4').slot, 4, 'E) un jugador que no participa en el cambio conserva exactamente su slot');
+
+const borjaCanonicalId = '20000000-0000-4000-8000-000000000001';
+const davoCanonicalId = '20000000-0000-4000-8000-000000000002';
+const palacioCanonicalId = 'af4060e4-b54a-4e43-94b8-ccd600e7e784';
+const canonicalEntrantInitialSlots = initialSlots.map((row) => row.playerId === 'p10'
+  ? { ...row, playerId: borjaCanonicalId, playerName: 'Borja' }
+  : row);
+const assertCanonicalEntrantSnapshot = (incomingId, incomingName, minute) => {
+  const rawDatabaseEvent = {
+    id: `incoming-${incomingId}`,
+    partido_id: '25000000-0000-4000-8000-000000000001',
+    minute,
+    event_order: 0,
+    outgoing_jugador_id: borjaCanonicalId,
+    incoming_jugador_id: incomingId,
+    outgoing_name_snapshot: 'Borja',
+    incoming_name_snapshot: incomingName,
+  };
+  const plan = buildAutomaticSubstitutionSnapshot({
+    minute,
+    system: '4-2-3-1',
+    intervals: [{ fromMinute: 0, toMinute: 90, system: '4-2-3-1', isComplete: true, slots: canonicalEntrantInitialSlots }],
+    initialSlots: canonicalEntrantInitialSlots,
+    substitutionEvents: [rawDatabaseEvent],
+    duration: 90,
+    systemSlotCount: 11,
+  });
+  assert.equal(plan.status, 'complete', `${incomingName}: el evento SQL crudo genera snapshot completo`);
+  const incomingSlot = plan.slots.find((row) => row.playerId === incomingId);
+  assert.ok(incomingSlot, `${incomingName}: jugador_id persiste en el snapshot automático`);
+  assert.equal(incomingSlot.playerName, incomingName, `${incomingName}: nombre snapshot preservado`);
+  const lineup = Array.from({ length: 11 }, () => null);
+  plan.slots.forEach((row) => { lineup[row.slot] = row; });
+  const moved = moveTacticalDispositionPlayer({ lineup, player: incomingSlot, targetSlot: 8 });
+  const movedSlots = validateTacticalDisposition({
+    lineup: moved,
+    knownPlayers: buildKnownOnFieldPlayers({ initialSlots: canonicalEntrantInitialSlots, substitutionEvents: [rawDatabaseEvent], atMinute: minute }).players,
+  }).slots;
+  assert.equal(movedSlots.find((row) => row.playerId === incomingId)?.slot, 8, `${incomingName}: el swap conserva identidad canónica`);
+  assert.equal(movedSlots.find((row) => row.playerId === incomingId)?.playerName, incomingName, `${incomingName}: recolocar conserva player_name_snapshot`);
+  return movedSlots;
+};
+const davoCanonicalSnapshotSlots = assertCanonicalEntrantSnapshot(davoCanonicalId, 'Davo', 60);
+const palacioCanonicalSnapshotSlots = assertCanonicalEntrantSnapshot(palacioCanonicalId, 'Daniel Palalcio', 89);
+let reloadedPalacioSnapshot = null;
+await saveTacticalDispositionWithReload({
+  matchId: '25000000-0000-4000-8000-000000000001',
+  minute: 89,
+  system: '4-2-3-1',
+  slots: palacioCanonicalSnapshotSlots,
+  save: async () => {
+    reloadedPalacioSnapshot = {
+      id: 'palacio-reloaded-89',
+      partido_id: '25000000-0000-4000-8000-000000000001',
+      minute: 89,
+      system: '4-2-3-1',
+      slots: palacioCanonicalSnapshotSlots.map((row) => ({
+        slot: row.slot,
+        jugador_id: row.playerId,
+        player_name_snapshot: row.playerName,
+      })),
+    };
+    return reloadedPalacioSnapshot.id;
+  },
+  reload: async () => ({ tacticalSnapshots: [reloadedPalacioSnapshot] }),
+  validateReloadedSnapshot: ({ snapshot }) => (
+    snapshot.slots.some((row) => row.slot === 8 && row.jugador_id === palacioCanonicalId && row.player_name_snapshot === 'Daniel Palalcio')
+  ),
+});
+assert.equal(reloadedPalacioSnapshot.slots.find((row) => row.slot === 8)?.jugador_id, palacioCanonicalId, 'Palacio: guardar y recargar conserva el ID canónico en el nuevo slot');
+assert.equal(reloadedPalacioSnapshot.minute, 89, 'Palacio: la identidad queda en la frontera original');
+assert.equal(reloadedPalacioSnapshot.system, '4-2-3-1', 'Palacio: el guardado no cambia el sistema');
 
 const changedSystemBase = { ...initialInterval, fromMinute: 60, system: '4-2-3-1', sourceSystemEventId: 'system-60' };
 const mergedSystemChange = buildAutomaticSubstitutionSnapshot({
