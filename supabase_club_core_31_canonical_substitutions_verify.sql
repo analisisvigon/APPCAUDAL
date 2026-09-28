@@ -398,19 +398,25 @@ begin
   perform pg_catalog.set_config('request.jwt.claim.sub', player_user_id::text, true);
   perform pg_catalog.set_config('request.jwt.claim.role', 'authenticated', true);
   execute 'set local role authenticated';
+  select pg_catalog.count(*) into row_count
+  from public.partido_eventos_sustitucion
+  where partido_id = match_chain;
   denied := false;
   begin perform public.mutate_match_substitution_atomic('delete', match_chain, first_event_id, null, 90);
   exception when insufficient_privilege then denied := true; end;
-  perform pg_temp.add_core31_check('K_player_denied', denied, 'PLAYER no puede mutar sustituciones');
+  perform pg_temp.add_core31_check('K_player_denied', denied and row_count = 0, 'PLAYER no puede leer por RLS ni mutar sustituciones');
 
   execute 'reset role';
   perform pg_catalog.set_config('request.jwt.claims', pg_catalog.jsonb_build_object('sub', viewer_user_id, 'role', 'authenticated')::text, true);
   perform pg_catalog.set_config('request.jwt.claim.sub', viewer_user_id::text, true);
   execute 'set local role authenticated';
+  select pg_catalog.count(*) into row_count
+  from public.partido_eventos_sustitucion
+  where partido_id = match_chain;
   denied := false;
   begin perform public.get_match_substitution_events(match_chain);
   exception when insufficient_privilege then denied := true; end;
-  perform pg_temp.add_core31_check('L_viewer_denied', denied, 'VIEWER no puede leer ni gestionar por RPC');
+  perform pg_temp.add_core31_check('L_viewer_denied', denied and row_count = 0, 'VIEWER no puede leer por RLS ni gestionar por RPC');
 
   execute 'reset role';
   perform pg_catalog.set_config('request.jwt.claims', '{}'::jsonb::text, true);
@@ -428,15 +434,16 @@ begin
   perform pg_catalog.set_config('request.jwt.claim.role', 'authenticated', true);
   execute 'set local role authenticated';
   result := public.get_match_substitution_events(match_chain);
-  perform pg_temp.add_core31_check('N_staff_allowed', pg_catalog.jsonb_array_length(result->'events') = 4, 'STAFF obtiene los cuatro eventos actuales');
+  select pg_catalog.count(*) into row_count
+  from public.partido_eventos_sustitucion
+  where partido_id = match_chain;
+  perform pg_temp.add_core31_check('N_staff_allowed', pg_catalog.jsonb_array_length(result->'events') = 4 and row_count = 4, 'STAFF obtiene los cuatro eventos por RLS y RPC');
 
-  result := public.mutate_match_substitution_atomic('create', match_legacy, null,
-    pg_catalog.jsonb_build_object('minute', 70, 'event_order', 0,
-      'outgoing_jugador_id', player_ids[2], 'incoming_jugador_id', player_ids[14]), 90);
+  result := public.mutate_match_substitution_atomic('materialize', match_legacy, null, null, 90);
   perform pg_temp.add_core31_check(
     'O_legacy_materializable',
     (result->>'materialized_legacy_events')::integer = 1
-      and pg_catalog.jsonb_array_length(result->'events') = 2
+      and pg_catalog.jsonb_array_length(result->'events') = 1
       and (select minutes from public.partido_estadisticas_jugador where partido_id = match_legacy and jugador_id = player_ids[1]) = '60'
       and (select minutes from public.partido_estadisticas_jugador where partido_id = match_legacy and jugador_id = player_ids[12]) = '30',
     'el cambio legacy resoluble se materializa antes de la nueva escritura'

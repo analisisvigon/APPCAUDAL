@@ -43,6 +43,7 @@ assert.match(normalizedMigration, /security definer set search_path = pg_catalog
 assert.equal((normalizedMigration.match(/if not public\.is_app_staff\(\)/g) || []).length, 2);
 assert.match(normalizedMigration, /from public\.partidos match_row[\s\S]*for update/);
 assert.match(normalizedMigration, /legacy_substitution_ambiguous/);
+assert.match(normalizedMigration, /normalized_operation not in \('materialize', 'create', 'update', 'delete'\)/);
 assert.match(normalizedMigration, /substitution_reentry_not_supported/);
 assert.match(normalizedMigration, /order by event\.minute, event\.event_order, event\.id/);
 assert.match(normalizedMigration, /set minutes = coalesce\(played_minutes->>stats\.jugador_id::text, '0'\)/);

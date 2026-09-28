@@ -210,7 +210,7 @@ begin
   if not public.is_app_staff() then
     raise exception 'SUBSTITUTION_STAFF_REQUIRED' using errcode = '42501';
   end if;
-  if normalized_operation not in ('create', 'update', 'delete') then
+  if normalized_operation not in ('materialize', 'create', 'update', 'delete') then
     raise exception 'SUBSTITUTION_OPERATION_INVALID' using errcode = '22023';
   end if;
   if p_partido_id is null then
@@ -276,6 +276,14 @@ begin
     end if;
     if current_player_id = any(initial_player_ids) then
       raise exception 'SUBSTITUTION_LINEUP_DUPLICATE_PLAYER:%', current_player_id
+        using errcode = '23514';
+    end if;
+    select pg_catalog.count(*) into identity_count
+    from public.partido_estadisticas_jugador stats
+    where stats.partido_id = p_partido_id
+      and stats.jugador_id = current_player_id;
+    if identity_count <> 1 then
+      raise exception 'SUBSTITUTION_LINEUP_STATS_IDENTITY_INVALID:%', current_player_id
         using errcode = '23514';
     end if;
     initial_player_ids := pg_catalog.array_append(initial_player_ids, current_player_id);
@@ -428,7 +436,7 @@ begin
         raise exception 'SUBSTITUTION_EVENT_NOT_FOUND' using errcode = 'P0002';
       end if;
     end if;
-  else
+  elsif normalized_operation = 'delete' then
     delete from public.partido_eventos_sustitucion existing
     where existing.id = p_event_id
       and existing.partido_id = p_partido_id
@@ -453,6 +461,22 @@ begin
     if event_row.minute > match_duration then
       raise exception 'SUBSTITUTION_MINUTE_OUT_OF_RANGE:%', event_row.id
         using errcode = '22023';
+    end if;
+    select pg_catalog.count(*) into identity_count
+    from public.partido_estadisticas_jugador stats
+    where stats.partido_id = p_partido_id
+      and stats.jugador_id = event_row.outgoing_jugador_id;
+    if identity_count <> 1 then
+      raise exception 'SUBSTITUTION_OUTGOING_STATS_IDENTITY_INVALID:%', event_row.id
+        using errcode = '23514';
+    end if;
+    select pg_catalog.count(*) into identity_count
+    from public.partido_estadisticas_jugador stats
+    where stats.partido_id = p_partido_id
+      and stats.jugador_id = event_row.incoming_jugador_id;
+    if identity_count <> 1 then
+      raise exception 'SUBSTITUTION_INCOMING_STATS_IDENTITY_INVALID:%', event_row.id
+        using errcode = '23514';
     end if;
     if not (event_row.outgoing_jugador_id = any(on_field_player_ids)) then
       raise exception 'SUBSTITUTION_OUTGOING_NOT_ON_FIELD:%', event_row.id
@@ -575,7 +599,7 @@ begin
     'partido_id', p_partido_id,
     'duration', match_duration,
     'materialized_legacy_events', materialized_count,
-    'event', case when normalized_operation = 'delete' then null else saved_event end,
+    'event', case when normalized_operation in ('delete', 'materialize') then null else saved_event end,
     'deleted_event_id', case when normalized_operation = 'delete' then p_event_id else null end,
     'events', result_events,
     'minutes', result_minutes
