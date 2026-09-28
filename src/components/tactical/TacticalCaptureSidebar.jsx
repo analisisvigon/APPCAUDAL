@@ -4,14 +4,19 @@ import { getTacticalCaptureVisualIdentity } from '../../utils/tacticalCapturePre
 export default function TacticalCaptureSidebar({
   phase = '',
   transitionType = '',
+  moment = '',
+  behavior = '',
   presentation = {},
 }) {
-  const identity = getTacticalCaptureVisualIdentity({ phase, transitionType });
+  const identity = getTacticalCaptureVisualIdentity({ phase, transitionType, moment, behavior });
 
   return (
     <aside
       className="tactical-capture-sidebar"
       data-capture-phase={identity.key}
+      data-capture-moment={identity.momentKey}
+      data-capture-behavior={identity.behaviorKey || undefined}
+      style={identity.cssVariables}
       aria-label={identity.accessibleLabel}
     >
       <section className="tactical-capture-phase-block">

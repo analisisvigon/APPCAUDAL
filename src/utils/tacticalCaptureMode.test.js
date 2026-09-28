@@ -63,35 +63,59 @@ assert.deepEqual(buildTacticalCapturePresentation({
 assert.equal(buildTacticalCapturePresentation({ playStyleLabel: 'Juego directo' }).playStyle, 'Juego directo');
 assert.equal(buildTacticalCapturePresentation({}).playStyle, '', 'una jugada sin tipo no genera una línea vacía');
 
-assert.deepEqual(getTacticalCaptureVisualIdentity({ phase: 'defensive' }), {
-  key: 'defensive',
-  macroLabel: 'DEFENSA',
-  accessibleLabel: 'Fase defensiva',
-});
+const defensiveHighIdentity = getTacticalCaptureVisualIdentity({ phase: 'defensive', moment: 'high_block' });
+const defensiveMidIdentity = getTacticalCaptureVisualIdentity({ phase: 'defensive', moment: 'mid_block' });
+const defensiveLowIdentity = getTacticalCaptureVisualIdentity({ phase: 'defensive', moment: 'low_block' });
+assert.equal(defensiveHighIdentity.key, 'defensive');
+assert.equal(defensiveHighIdentity.macroLabel, 'DEFENSA');
+assert.equal(defensiveHighIdentity.accessibleLabel, 'Fase defensiva');
+assert.deepEqual(
+  [defensiveHighIdentity.momentAccent, defensiveMidIdentity.momentAccent, defensiveLowIdentity.momentAccent],
+  ['125, 211, 252', '56, 189, 248', '2, 132, 199'],
+  'los tres bloques defensivos comparten familia azul con intensidades distintas'
+);
 assert.equal(getTacticalCaptureVisualIdentity({ phase: 'offensive' }).macroLabel, 'ATAQUE');
-assert.deepEqual(getTacticalCaptureVisualIdentity({
+const transitionDefenseAttackIdentity = getTacticalCaptureVisualIdentity({
   phase: 'transition',
   transitionType: 'offensive_transition',
-}), {
-  key: 'transition-defense-attack',
-  macroLabel: 'TRANSICIÓN',
-  directionLabel: 'DEF → ATQ',
-  accessibleLabel: 'Transición defensa a ataque',
 });
-assert.deepEqual(getTacticalCaptureVisualIdentity({
+assert.equal(transitionDefenseAttackIdentity.key, 'transition-defense-attack');
+assert.equal(transitionDefenseAttackIdentity.directionLabel, 'DEF → ATQ');
+const transitionAttackDefenseIdentity = getTacticalCaptureVisualIdentity({
   phase: 'transition',
   transitionType: 'defensive_transition',
-}), {
-  key: 'transition-attack-defense',
-  macroLabel: 'TRANSICIÓN',
-  directionLabel: 'ATQ → DEF',
-  accessibleLabel: 'Transición ataque a defensa',
 });
+assert.equal(transitionAttackDefenseIdentity.key, 'transition-attack-defense');
+assert.equal(transitionAttackDefenseIdentity.directionLabel, 'ATQ → DEF');
+const offensiveAccents = ['build_up', 'creation', 'finishing'].map((moment) => (
+  getTacticalCaptureVisualIdentity({ phase: 'offensive', moment }).momentAccent
+));
+assert.equal(new Set(offensiveAccents).size, 3, 'inicio, creación y finalización tienen variantes ámbar distintas');
+assert.equal(
+  getTacticalCaptureVisualIdentity({ phase: 'offensive', moment: 'creation', behavior: 'combinative' }).behaviorKey,
+  'combinative',
+  'el tipo de juego persistido llega al presenter sin heurísticas'
+);
+assert.notEqual(
+  getTacticalCaptureVisualIdentity({ phase: 'transition', transitionType: 'offensive_transition', behavior: 'fast_attack' }).momentAccent,
+  getTacticalCaptureVisualIdentity({ phase: 'transition', transitionType: 'offensive_transition', behavior: 'keep_possession' }).momentAccent,
+  'los comportamientos de una misma dirección de transición se distinguen tonalmente'
+);
+assert.equal(
+  getTacticalCaptureVisualIdentity({ phase: 'set_piece', moment: 'wide_free_kick', behavior: 'offensive_set_piece' }).momentKey,
+  'wide_free_kick',
+  'ABP reutiliza su acción persistida como subtipo visual'
+);
 assert.match(sidebarSource, /aria-label=\{identity\.accessibleLabel\}/, 'las abreviaturas mantienen un nombre completo accesible');
 assert.match(sidebarSource, /data-capture-phase=\{identity\.key\}/, 'cada macrofase expone una identidad visual estable');
+assert.match(sidebarSource, /data-capture-moment=\{identity\.momentKey\}/, 'cada momento expone una variante visual estable');
+assert.match(sidebarSource, /style=\{identity\.cssVariables\}/, 'el presenter centraliza los acentos del panel');
 assert.match(sidebarSource, /tactical-capture-eyebrow">FASE DEL JUEGO</, 'todas las macrofases comparten el mismo supratítulo');
 assert.doesNotMatch(sidebarSource, /tactical-capture-watermark|identity\.mark/, 'el panel no incluye una marca tipográfica decorativa');
 assert.match(appSource, /transitionBehaviourOptions\[transitionType\]\?\.find[\s\S]*?transitionFieldZoneOptions\.find/, 'la transición muestra comportamiento y zona reales como momento');
+assert.match(appSource, /tacticalGamePhase === 'offensive' && selectedTacticalPlay\?\.playStyle[\s\S]*?normalizeOffensivePlayStyle\(selectedTacticalPlay\.playStyle\)/, 'combinativo/directo procede de la jugada persistida seleccionada');
+assert.match(captureViewSource, /moment=\{captureMoment\}[\s\S]*?behavior=\{captureBehavior\}/, 'el panel recibe momento y comportamiento canónicos');
+assert.match(appSource, /className="tactical-abp-information-panel"[\s\S]*?data-capture-moment=\{captureVisualIdentity\.momentKey\}/, 'ABP aplica la misma identidad a su panel informativo existente');
 
 assert.equal(buildTacticalCapturePresentation({
   phaseLabel: 'Fase defensiva',
@@ -175,14 +199,12 @@ assert.match(cssSource, /\.tactical-capture-sidebar\s*\{[\s\S]*flex: 1 1 0;[\s\S
 assert.match(cssSource, /\.tactical-capture-phase\s*\{[\s\S]*font-size: clamp\(44px, 5\.1vw, 92px\)/, 'la macrofase mantiene la jerarquía con una reducción aproximada del 12 %');
 assert.match(cssSource, /\.tactical-capture-direction\s*\{[\s\S]*border-left:[\s\S]*font-size: clamp\(34px, 3\.8vw, 66px\)/, 'las transiciones tienen dirección textual y señal gráfica');
 assert.match(cssSource, /data-capture-phase\^='transition-'[\s\S]*?\.tactical-capture-situation[\s\S]*?white-space: normal;/, 'los comportamientos largos de transición se muestran completos');
-[
-  ['defensive', '56, 189, 248'],
-  ['offensive', '251, 191, 36'],
-  ['transition-defense-attack', '52, 211, 153'],
-  ['transition-attack-defense', '251, 113, 133'],
-].forEach(([identity, accent]) => {
-  assert.match(cssSource, new RegExp(`data-capture-phase='${identity}'[\\s\\S]*?--capture-accent-rgb: ${accent}`), `${identity}: conserva su acento cromático aprobado`);
-});
+assert.match(cssSource, /--capture-base-accent-rgb:/, 'la macrofase conserva un acento base propio');
+assert.match(cssSource, /--capture-moment-accent-rgb:/, 'el segundo nivel dispone de un acento tonal independiente');
+assert.match(cssSource, /\.tactical-capture-sidebar::before[\s\S]*?var\(--capture-moment-accent-rgb\)/, 'la línea superior expresa el momento');
+assert.match(cssSource, /\.tactical-capture-situation\s*\{[\s\S]*?color: rgb\(var\(--capture-moment-accent-rgb\)\)/, 'el rótulo del momento refuerza su variante');
+assert.match(cssSource, /\.tactical-capture-play-style\s*\{[\s\S]*?border:[\s\S]*?background:[\s\S]*?text-transform: uppercase;/, 'combinativo/directo se presenta como descriptor secundario legible');
+assert.match(cssSource, /\.tactical-abp-information-panel::before[\s\S]*?var\(--capture-moment-accent-rgb\)/, 'ABP diferencia sus acciones en el panel existente');
 assert.doesNotMatch(cssSource, /\.tactical-capture-watermark\s*\{/, 'la marca tipográfica gigante se elimina también de los estilos');
 assert.match(cssSource, /\.tactical-capture-description\s*\{[\s\S]*font-size: clamp\(18px,[\s\S]*line-height: 1\.48;/, 'la descripción mantiene tamaño de presentación');
 assert.match(cssSource, /\.tactical-capture-description\s*\{[\s\S]*overflow-wrap: anywhere;[\s\S]*white-space: pre-wrap;/, 'captura conserva saltos manuales y mantiene wrap automático');

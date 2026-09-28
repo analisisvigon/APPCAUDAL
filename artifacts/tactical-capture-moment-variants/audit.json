@@ -1,0 +1,210 @@
+[
+  {
+    "file": "desktop-defensa-bloque-alto",
+    "phase": "defensive",
+    "moment": "high_block",
+    "baseAccent": "56, 189, 248",
+    "momentAccent": "125, 211, 252",
+    "board": {
+      "x": 16,
+      "y": 16,
+      "width": 873.328125,
+      "height": 1047.984375
+    },
+    "panel": {
+      "x": 905.328125,
+      "y": 16,
+      "width": 998.671875,
+      "height": 239.625
+    },
+    "stage": {
+      "width": 1888,
+      "height": 1048
+    },
+    "scrollWidth": 1920,
+    "viewportWidth": 1920,
+    "fieldBeforePanel": true
+  },
+  {
+    "file": "desktop-defensa-bloque-medio",
+    "phase": "defensive",
+    "moment": "mid_block",
+    "baseAccent": "56, 189, 248",
+    "momentAccent": "56, 189, 248",
+    "board": {
+      "x": 16,
+      "y": 16,
+      "width": 873.328125,
+      "height": 1047.984375
+    },
+    "panel": {
+      "x": 905.328125,
+      "y": 16,
+      "width": 998.671875,
+      "height": 378.78125
+    },
+    "stage": {
+      "width": 1888,
+      "height": 1048
+    },
+    "scrollWidth": 1920,
+    "viewportWidth": 1920,
+    "fieldBeforePanel": true
+  },
+  {
+    "file": "desktop-defensa-bloque-bajo",
+    "phase": "defensive",
+    "moment": "low_block",
+    "baseAccent": "56, 189, 248",
+    "momentAccent": "2, 132, 199",
+    "board": {
+      "x": 16,
+      "y": 16,
+      "width": 873.328125,
+      "height": 1047.984375
+    },
+    "panel": {
+      "x": 905.328125,
+      "y": 16,
+      "width": 998.671875,
+      "height": 239.625
+    },
+    "stage": {
+      "width": 1888,
+      "height": 1048
+    },
+    "scrollWidth": 1920,
+    "viewportWidth": 1920,
+    "fieldBeforePanel": true
+  },
+  {
+    "file": "desktop-ataque-inicio",
+    "phase": "offensive",
+    "moment": "build_up",
+    "baseAccent": "251, 191, 36",
+    "momentAccent": "253, 224, 71",
+    "board": {
+      "x": 16,
+      "y": 16,
+      "width": 873.328125,
+      "height": 1047.984375
+    },
+    "panel": {
+      "x": 905.328125,
+      "y": 16,
+      "width": 998.671875,
+      "height": 425.46875
+    },
+    "stage": {
+      "width": 1888,
+      "height": 1048
+    },
+    "scrollWidth": 1920,
+    "viewportWidth": 1920,
+    "fieldBeforePanel": true
+  },
+  {
+    "file": "desktop-ataque-creacion",
+    "phase": "offensive",
+    "moment": "creation",
+    "baseAccent": "251, 191, 36",
+    "momentAccent": "251, 191, 36",
+    "board": {
+      "x": 16,
+      "y": 16,
+      "width": 873.328125,
+      "height": 1047.984375
+    },
+    "panel": {
+      "x": 905.328125,
+      "y": 16,
+      "width": 998.671875,
+      "height": 425.46875
+    },
+    "stage": {
+      "width": 1888,
+      "height": 1048
+    },
+    "scrollWidth": 1920,
+    "viewportWidth": 1920,
+    "fieldBeforePanel": true
+  },
+  {
+    "file": "desktop-ataque-finalizacion",
+    "phase": "offensive",
+    "moment": "finishing",
+    "baseAccent": "251, 191, 36",
+    "momentAccent": "249, 115, 22",
+    "board": {
+      "x": 16,
+      "y": 16,
+      "width": 873.328125,
+      "height": 1047.984375
+    },
+    "panel": {
+      "x": 905.328125,
+      "y": 16,
+      "width": 998.671875,
+      "height": 425.46875
+    },
+    "stage": {
+      "width": 1888,
+      "height": 1048
+    },
+    "scrollWidth": 1920,
+    "viewportWidth": 1920,
+    "fieldBeforePanel": true
+  },
+  {
+    "file": "mobile-defensa-bloque-bajo",
+    "phase": "defensive",
+    "moment": "low_block",
+    "baseAccent": "56, 189, 248",
+    "momentAccent": "2, 132, 199",
+    "board": {
+      "x": 8,
+      "y": 74.359375,
+      "width": 346,
+      "height": 415.1875
+    },
+    "panel": {
+      "x": 8,
+      "y": 565.921875,
+      "width": 346,
+      "height": 270.078125
+    },
+    "stage": {
+      "width": 346,
+      "height": 828
+    },
+    "scrollWidth": 390,
+    "viewportWidth": 390,
+    "fieldBeforePanel": true
+  },
+  {
+    "file": "mobile-ataque-inicio",
+    "phase": "offensive",
+    "moment": "build_up",
+    "baseAccent": "251, 191, 36",
+    "momentAccent": "253, 224, 71",
+    "board": {
+      "x": 8,
+      "y": 74.359375,
+      "width": 346,
+      "height": 415.1875
+    },
+    "panel": {
+      "x": 8,
+      "y": 565.921875,
+      "width": 346,
+      "height": 270.078125
+    },
+    "stage": {
+      "width": 346,
+      "height": 828
+    },
+    "scrollWidth": 390,
+    "viewportWidth": 390,
+    "fieldBeforePanel": true
+  }
+]

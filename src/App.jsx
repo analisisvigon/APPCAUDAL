@@ -413,7 +413,10 @@ import {
   toggleAllTacticalBoardNames,
   updateTacticalBoardViewState,
 } from './utils/tacticalBoardViewState';
-import { buildTacticalCapturePresentation } from './utils/tacticalCapturePresentation';
+import {
+  buildTacticalCapturePresentation,
+  getTacticalCaptureVisualIdentity,
+} from './utils/tacticalCapturePresentation';
 import {
   createTacticalTemplate,
   deleteTacticalTemplate,
@@ -13535,11 +13538,31 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
             transitionFieldZoneOptions.find((option) => option.value === transitionFieldZone)?.label,
           ].filter(Boolean).join(' · ')
           : `${setPieceActionOptions.find((option) => option.value === setPieceAction)?.label || ''} ${captureSetPieceQualifier}`.trim();
-    const capturePlayStyleLabel = tacticalGamePhase === 'offensive' && selectedOffensivePlay?.playStyle
+    const capturePlayStyleLabel = tacticalGamePhase === 'offensive' && selectedTacticalPlay?.playStyle
       ? offensivePlayStyleOptions.find((option) => (
-        option.value === normalizeOffensivePlayStyle(selectedOffensivePlay.playStyle)
+        option.value === normalizeOffensivePlayStyle(selectedTacticalPlay.playStyle)
       ))?.label || ''
       : '';
+    const captureMoment = tacticalGamePhase === 'defensive'
+      ? defensiveSituation
+      : tacticalGamePhase === 'offensive'
+        ? offensiveSituation
+        : tacticalGamePhase === 'transition'
+          ? transitionBehaviour
+          : setPieceAction;
+    const captureBehavior = tacticalGamePhase === 'offensive'
+      ? selectedTacticalPlay?.playStyle || ''
+      : tacticalGamePhase === 'transition'
+        ? transitionBehaviour
+        : tacticalGamePhase === 'set_piece'
+          ? setPieceType
+          : '';
+    const captureVisualIdentity = getTacticalCaptureVisualIdentity({
+      phase: tacticalGamePhase,
+      transitionType,
+      moment: captureMoment,
+      behavior: captureBehavior,
+    });
     const capturePresentation = buildTacticalCapturePresentation({
       phaseLabel: capturePhaseLabel,
       situationLabel: captureSituationLabel,
@@ -13657,7 +13680,13 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                 </div>
               </div>
             </section>
-            <aside className="tactical-abp-information-panel">
+            <aside
+              className="tactical-abp-information-panel"
+              data-capture-phase={captureVisualIdentity.key}
+              data-capture-moment={captureVisualIdentity.momentKey}
+              data-capture-behavior={captureVisualIdentity.behaviorKey || undefined}
+              style={captureVisualIdentity.cssVariables}
+            >
               <header className="tactical-abp-heading">
                 <p>{setPieceTypeLabel}</p>
                 <h2>{captureSituationLabel || setPieceActionLabel}</h2>
@@ -13722,6 +13751,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
             <TacticalCaptureSidebar
               phase={tacticalGamePhase}
               transitionType={transitionType}
+              moment={captureMoment}
+              behavior={captureBehavior}
               presentation={capturePresentation}
             />
           </main>

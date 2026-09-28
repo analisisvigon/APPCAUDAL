@@ -38,6 +38,8 @@ const basePlay = {
   ballStartPosition: { x: 50, y: 50 },
   ballVisible: true,
   description: 'Jugada representativa para comprobar el render.',
+  systemContextVersion: 1,
+  systemContextSource: 'explicit_selection',
   createdAt: '2026-09-17T10:00:00.000Z',
   updatedAt: '2026-09-17T10:00:00.000Z',
 };
@@ -52,9 +54,17 @@ const preAiAnalysis = withAnalysis ? {
   offensivePhaseV1: {
     version: 1,
     activeSituation: 'build_up',
-    activePlayStyleBySituation: { build_up: 'combinative' },
-    activePlayIdByContext: { 'build_up:combinative': 'qa-offensive' },
-    plays: [{ ...basePlay, id: 'qa-offensive', phase: 'offensive', offensiveSituation: 'build_up', playStyle: 'combinative' }],
+    activePlayStyleBySituation: { build_up: 'combinative', creation: 'combinative', finishing: 'direct' },
+    activePlayIdByContext: {
+      '["systems-v1","4-4-2","4-4-2","offensive","build_up","combinative"]': 'qa-offensive-build-up',
+      '["systems-v1","4-4-2","4-4-2","offensive","creation","combinative"]': 'qa-offensive-creation',
+      '["systems-v1","4-4-2","4-4-2","offensive","finishing","direct"]': 'qa-offensive-finishing',
+    },
+    plays: [
+      { ...basePlay, id: 'qa-offensive-build-up', phase: 'offensive', offensiveSituation: 'build_up', playStyle: 'combinative' },
+      { ...basePlay, id: 'qa-offensive-creation', phase: 'offensive', offensiveSituation: 'creation', playStyle: 'combinative' },
+      { ...basePlay, id: 'qa-offensive-finishing', phase: 'offensive', offensiveSituation: 'finishing', playStyle: 'direct' },
+    ],
   },
   transitionPhaseV1: {
     version: 1,
