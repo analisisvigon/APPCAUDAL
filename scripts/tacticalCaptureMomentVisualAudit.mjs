@@ -100,7 +100,7 @@ const openQa = async (viewport) => {
   await waitFor(`document.querySelector('[data-tactical-surface="facing-systems"]')`, 'No se abrió Sistemas Enfrentados.');
 };
 
-const captureCase = async ({ file, phase, moment, viewport }) => {
+const captureCase = async ({ file, phase, moment, playStyle, playId, expectedPlayStyle = null, viewport }) => {
   await selectValue(phase);
   await waitFor(`(() => {
     const phaseSelect = [...document.querySelectorAll('select')]
@@ -113,6 +113,22 @@ const captureCase = async ({ file, phase, moment, viewport }) => {
       .find((item) => [...item.options].some((option) => option.value === ${JSON.stringify(moment)}));
     return momentSelect?.value === ${JSON.stringify(moment)};
   })()`, `No se activó el momento ${moment}.`);
+  if (playStyle) {
+    await selectValue(playStyle);
+    await waitFor(`(() => {
+      const playStyleSelect = [...document.querySelectorAll('select')]
+        .find((item) => [...item.options].some((option) => option.value === ${JSON.stringify(playStyle)}));
+      return playStyleSelect?.value === ${JSON.stringify(playStyle)};
+    })()`, `No se activó el tipo de juego ${playStyle}.`);
+  }
+  if (playId) {
+    await selectValue(playId);
+    await waitFor(`(() => {
+      const playSelect = [...document.querySelectorAll('select')]
+        .find((item) => [...item.options].some((option) => option.value === ${JSON.stringify(playId)}));
+      return playSelect?.value === ${JSON.stringify(playId)};
+    })()`, `No se seleccionó la jugada ${playId}.`);
+  }
   await clickButton('Modo captura');
   await waitFor(`document.querySelector('.tactical-capture-sidebar[data-capture-moment="${moment}"]')`, `Captura no expuso ${moment}.`);
   await new Promise((resolve) => setTimeout(resolve, 180));
@@ -130,6 +146,8 @@ const captureCase = async ({ file, phase, moment, viewport }) => {
       moment: panel.dataset.captureMoment,
       baseAccent: panelStyles.getPropertyValue('--capture-base-accent-rgb').trim(),
       momentAccent: panelStyles.getPropertyValue('--capture-moment-accent-rgb').trim(),
+      playStyleText: panel.querySelector('.tactical-capture-play-style')?.textContent.trim() || '',
+      playStyleCount: panel.querySelectorAll('.tactical-capture-play-style').length,
       board: { x: boardRect.x, y: boardRect.y, width: boardRect.width, height: boardRect.height },
       panel: { x: panelRect.x, y: panelRect.y, width: panelRect.width, height: panelRect.height },
       stage: { width: stageRect.width, height: stageRect.height },
@@ -139,6 +157,10 @@ const captureCase = async ({ file, phase, moment, viewport }) => {
     };
   })()`);
   assert.equal(audit.moment, moment);
+  if (expectedPlayStyle !== null) {
+    assert.equal(audit.playStyleText, expectedPlayStyle, `${file}: descriptor ofensivo incorrecto.`);
+    assert.equal(audit.playStyleCount, expectedPlayStyle ? 1 : 0, `${file}: presencia incorrecta del badge ofensivo.`);
+  }
   assert.ok(audit.board.width > 0 && audit.board.height > 0, `${file}: el campo debe ser visible.`);
   assert.ok(audit.scrollWidth <= audit.viewportWidth, `${file}: no debe haber overflow horizontal.`);
   if (viewport.width <= 768) assert.equal(audit.fieldBeforePanel, true, `${file}: el campo debe preceder al panel en móvil.`);
@@ -162,9 +184,11 @@ const cases = [
   { file: 'desktop-defensa-bloque-alto', phase: 'defensive', moment: 'high_block', viewport: desktop },
   { file: 'desktop-defensa-bloque-medio', phase: 'defensive', moment: 'mid_block', viewport: desktop },
   { file: 'desktop-defensa-bloque-bajo', phase: 'defensive', moment: 'low_block', viewport: desktop },
-  { file: 'desktop-ataque-inicio', phase: 'offensive', moment: 'build_up', viewport: desktop },
-  { file: 'desktop-ataque-creacion', phase: 'offensive', moment: 'creation', viewport: desktop },
-  { file: 'desktop-ataque-finalizacion', phase: 'offensive', moment: 'finishing', viewport: desktop },
+  { file: 'desktop-ataque-inicio', phase: 'offensive', moment: 'build_up', playStyle: 'combinative', expectedPlayStyle: 'Juego combinativo', viewport: desktop },
+  { file: 'desktop-ataque-creacion-combinativo', phase: 'offensive', moment: 'creation', playStyle: 'combinative', expectedPlayStyle: 'Juego combinativo', viewport: desktop },
+  { file: 'desktop-ataque-creacion-directo', phase: 'offensive', moment: 'creation', playStyle: 'direct', playId: 'qa-offensive-creation-direct', expectedPlayStyle: 'Juego directo', viewport: desktop },
+  { file: 'desktop-ataque-finalizacion', phase: 'offensive', moment: 'finishing', playStyle: 'direct', expectedPlayStyle: 'Juego directo', viewport: desktop },
+  { file: 'desktop-ataque-sin-play-style', phase: 'offensive', moment: 'build_up', playStyle: 'direct', expectedPlayStyle: '', viewport: desktop },
 ];
 const audits = [];
 for (const item of cases) audits.push({ file: item.file, ...(await captureCase(item)) });
@@ -181,7 +205,8 @@ assert.equal(new Set(offensiveAudits.map((item) => item.baseAccent)).size, 1, 'L
 const mobile = { width: 390, height: 844 };
 await setViewport(mobile);
 audits.push({ file: 'mobile-defensa-bloque-bajo', ...(await captureCase({ file: 'mobile-defensa-bloque-bajo', phase: 'defensive', moment: 'low_block', viewport: mobile })) });
-audits.push({ file: 'mobile-ataque-inicio', ...(await captureCase({ file: 'mobile-ataque-inicio', phase: 'offensive', moment: 'build_up', viewport: mobile })) });
+audits.push({ file: 'mobile-ataque-creacion-combinativo', ...(await captureCase({ file: 'mobile-ataque-creacion-combinativo', phase: 'offensive', moment: 'creation', playStyle: 'combinative', expectedPlayStyle: 'Juego combinativo', viewport: mobile })) });
+audits.push({ file: 'mobile-ataque-creacion-directo', ...(await captureCase({ file: 'mobile-ataque-creacion-directo', phase: 'offensive', moment: 'creation', playStyle: 'direct', playId: 'qa-offensive-creation-direct', expectedPlayStyle: 'Juego directo', viewport: mobile })) });
 
 await writeFile(`${outputDirectory}audit.json`, `${JSON.stringify(audits, null, 2)}\n`, 'utf8');
 socket.close();

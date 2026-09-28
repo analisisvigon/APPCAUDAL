@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   buildTacticalCapturePresentation,
+  getTacticalCapturePlayStyleLabel,
   getTacticalCaptureVisualIdentity,
 } from './tacticalCapturePresentation.js';
 import {
@@ -49,10 +50,32 @@ assert.deepEqual(defensiveHigh, {
   description: 'Marcas individuales.',
 }, 'fase, situación y descripción comparten el panel derecho');
 
+assert.equal(getTacticalCapturePlayStyleLabel('combinative'), 'Juego combinativo');
+assert.equal(getTacticalCapturePlayStyleLabel('direct'), 'Juego directo');
+assert.equal(getTacticalCapturePlayStyleLabel(null), '', 'null no inventa un descriptor');
+assert.equal(getTacticalCapturePlayStyleLabel(undefined), '', 'undefined no inventa un descriptor');
+assert.equal(getTacticalCapturePlayStyleLabel('unknown'), '', 'un valor no canónico no se reinterpreta');
+
+[
+  ['Creación', 'combinative', 'Juego combinativo'],
+  ['Creación', 'direct', 'Juego directo'],
+  ['Inicio', 'combinative', 'Juego combinativo'],
+  ['Finalización', 'direct', 'Juego directo'],
+  ['Creación', null, ''],
+].forEach(([situationLabel, playStyle, expectedLabel]) => {
+  const presentation = buildTacticalCapturePresentation({
+    phaseLabel: 'Fase ofensiva',
+    situationLabel,
+    playStyleLabel: getTacticalCapturePlayStyleLabel(playStyle),
+    selectedPlay: { id: `style-${playStyle || 'empty'}`, description: 'Progresar mediante apoyos.' },
+  });
+  assert.equal(presentation.situation, situationLabel);
+  assert.equal(presentation.playStyle, expectedLabel);
+});
 assert.deepEqual(buildTacticalCapturePresentation({
   phaseLabel: 'Fase ofensiva',
   situationLabel: 'Creación',
-  playStyleLabel: 'Juego combinativo',
+  playStyleLabel: getTacticalCapturePlayStyleLabel('combinative'),
   selectedPlay: { id: 'style-combinative', description: 'Progresar mediante apoyos.' },
 }), {
   phase: 'Fase ofensiva',
@@ -60,7 +83,6 @@ assert.deepEqual(buildTacticalCapturePresentation({
   playStyle: 'Juego combinativo',
   description: 'Progresar mediante apoyos.',
 }, 'la presentación ofensiva incluye el tipo de juego canónico');
-assert.equal(buildTacticalCapturePresentation({ playStyleLabel: 'Juego directo' }).playStyle, 'Juego directo');
 assert.equal(buildTacticalCapturePresentation({}).playStyle, '', 'una jugada sin tipo no genera una línea vacía');
 
 const defensiveHighIdentity = getTacticalCaptureVisualIdentity({ phase: 'defensive', moment: 'high_block' });
@@ -113,7 +135,13 @@ assert.match(sidebarSource, /style=\{identity\.cssVariables\}/, 'el presenter ce
 assert.match(sidebarSource, /tactical-capture-eyebrow">FASE DEL JUEGO</, 'todas las macrofases comparten el mismo supratítulo');
 assert.doesNotMatch(sidebarSource, /tactical-capture-watermark|identity\.mark/, 'el panel no incluye una marca tipográfica decorativa');
 assert.match(appSource, /transitionBehaviourOptions\[transitionType\]\?\.find[\s\S]*?transitionFieldZoneOptions\.find/, 'la transición muestra comportamiento y zona reales como momento');
-assert.match(appSource, /tacticalGamePhase === 'offensive' && selectedTacticalPlay\?\.playStyle[\s\S]*?normalizeOffensivePlayStyle\(selectedTacticalPlay\.playStyle\)/, 'combinativo/directo procede de la jugada persistida seleccionada');
+assert.match(appSource, /const capturePlayStyle = tacticalGamePhase === 'offensive'[\s\S]*?selectedTacticalPlay\?\.playStyle/, 'el descriptor parte de la jugada realmente seleccionada, incluida la ruta legacy');
+assert.match(appSource, /getTacticalCapturePlayStyleLabel\(capturePlayStyle\)/, 'el dato canónico llega al presenter mediante un mapeo explícito');
+const capturePlayStyleSource = appSource.slice(
+  appSource.indexOf("const capturePlayStyle = tacticalGamePhase === 'offensive'"),
+  appSource.indexOf('const captureMoment =', appSource.indexOf("const capturePlayStyle = tacticalGamePhase === 'offensive'"))
+);
+assert.doesNotMatch(capturePlayStyleSource, /normalizeOffensivePlayStyle|offensivePlayStyle\b/, 'captura no infiere el descriptor desde el selector ni normaliza valores ausentes');
 assert.match(captureViewSource, /moment=\{captureMoment\}[\s\S]*?behavior=\{captureBehavior\}/, 'el panel recibe momento y comportamiento canónicos');
 assert.match(appSource, /className="tactical-abp-information-panel"[\s\S]*?data-capture-moment=\{captureVisualIdentity\.momentKey\}/, 'ABP aplica la misma identidad a su panel informativo existente');
 

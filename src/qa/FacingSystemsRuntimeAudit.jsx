@@ -58,11 +58,21 @@ const preAiAnalysis = withAnalysis ? {
     activePlayIdByContext: {
       '["systems-v1","4-4-2","4-4-2","offensive","build_up","combinative"]': 'qa-offensive-build-up',
       '["systems-v1","4-4-2","4-4-2","offensive","creation","combinative"]': 'qa-offensive-creation',
+      '["systems-v1","4-4-2","4-4-2","offensive","creation","direct"]': 'qa-offensive-creation-direct',
       '["systems-v1","4-4-2","4-4-2","offensive","finishing","direct"]': 'qa-offensive-finishing',
     },
     plays: [
       { ...basePlay, id: 'qa-offensive-build-up', phase: 'offensive', offensiveSituation: 'build_up', playStyle: 'combinative' },
       { ...basePlay, id: 'qa-offensive-creation', phase: 'offensive', offensiveSituation: 'creation', playStyle: 'combinative' },
+      {
+        ...basePlay,
+        id: 'qa-offensive-creation-direct',
+        phase: 'offensive',
+        offensiveSituation: 'creation',
+        playStyle: 'direct',
+        systemContextVersion: null,
+        systemContextSource: '',
+      },
       { ...basePlay, id: 'qa-offensive-finishing', phase: 'offensive', offensiveSituation: 'finishing', playStyle: 'direct' },
     ],
   },

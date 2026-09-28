@@ -12,6 +12,17 @@ export const buildTacticalCapturePresentation = ({
   };
 };
 
+const TACTICAL_CAPTURE_PLAY_STYLE_LABELS = Object.freeze({
+  combinative: 'Juego combinativo',
+  direct: 'Juego directo',
+});
+
+export const getTacticalCapturePlayStyleLabel = (playStyle) => (
+  typeof playStyle === 'string' && Object.hasOwn(TACTICAL_CAPTURE_PLAY_STYLE_LABELS, playStyle)
+    ? TACTICAL_CAPTURE_PLAY_STYLE_LABELS[playStyle]
+    : ''
+);
+
 const TACTICAL_CAPTURE_VISUAL_IDENTITIES = {
   defensive: {
     key: 'defensive',

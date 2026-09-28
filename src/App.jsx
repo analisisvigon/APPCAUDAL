@@ -415,6 +415,7 @@ import {
 } from './utils/tacticalBoardViewState';
 import {
   buildTacticalCapturePresentation,
+  getTacticalCapturePlayStyleLabel,
   getTacticalCaptureVisualIdentity,
 } from './utils/tacticalCapturePresentation';
 import {
@@ -13538,11 +13539,10 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
             transitionFieldZoneOptions.find((option) => option.value === transitionFieldZone)?.label,
           ].filter(Boolean).join(' · ')
           : `${setPieceActionOptions.find((option) => option.value === setPieceAction)?.label || ''} ${captureSetPieceQualifier}`.trim();
-    const capturePlayStyleLabel = tacticalGamePhase === 'offensive' && selectedTacticalPlay?.playStyle
-      ? offensivePlayStyleOptions.find((option) => (
-        option.value === normalizeOffensivePlayStyle(selectedTacticalPlay.playStyle)
-      ))?.label || ''
-      : '';
+    const capturePlayStyle = tacticalGamePhase === 'offensive'
+      ? selectedTacticalPlay?.playStyle
+      : null;
+    const capturePlayStyleLabel = getTacticalCapturePlayStyleLabel(capturePlayStyle);
     const captureMoment = tacticalGamePhase === 'defensive'
       ? defensiveSituation
       : tacticalGamePhase === 'offensive'
@@ -13551,7 +13551,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
           ? transitionBehaviour
           : setPieceAction;
     const captureBehavior = tacticalGamePhase === 'offensive'
-      ? selectedTacticalPlay?.playStyle || ''
+      ? (capturePlayStyleLabel ? capturePlayStyle : '')
       : tacticalGamePhase === 'transition'
         ? transitionBehaviour
         : tacticalGamePhase === 'set_piece'
