@@ -69,9 +69,12 @@ assert.doesNotMatch(evolution, /(?:emerald|red)-(?:100|200|300|400|500)/, 'Máxi
 assert.match(presentation, /buildPlayerAnalysisMatchComparison/);
 assert.match(presentation, /\{ key: 'minutes', label: 'Minutos'/);
 assert.match(evolution, /grid-cols-\[minmax\(52px,1fr\)_minmax\(96px,1\.35fr\)_minmax\(52px,1fr\)\]/);
-assert.match(evolution, /bg-caudal-electric\/40/);
-assert.match(evolution, /numericA \* 100\) \/ magnitude/);
-assert.match(evolution, /numericB \* 100\) \/ magnitude/);
+assert.match(evolution, /bg-\[#5EA8FF\]/);
+assert.match(evolution, /bg-\[#22C7E8\]/);
+assert.match(evolution, /numericA === 0 \? 2 : \(numericA \* 100\) \/ magnitude/);
+assert.match(evolution, /numericB === 0 \? 2 : \(numericB \* 100\) \/ magnitude/);
+assert.match(evolution, /numericA !== null/);
+assert.match(evolution, /numericB !== null/);
 assert.match(evolution, /Necesitas al menos dos partidos para comparar\./);
 assert.doesNotMatch(evolution, /<table|<select/, 'El comparador móvil no usa tabla ni dropdown.');
 

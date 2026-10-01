@@ -73,7 +73,7 @@ function MatchMetricChart({ matches, metricKey, selectedMatchId, onSelect }) {
         {matches.map((match, index) => {
           const value = values[index];
           const selected = match.matchId === selectedMatchId;
-          const barHeight = value === null || value === 0 ? 4 : Math.max(10, Math.round((value / maxValue) * 68));
+          const barHeight = value === null ? null : value === 0 ? 2 : Math.max(10, Math.round((value / maxValue) * 68));
           return (
             <button
               key={match.matchId}
@@ -81,12 +81,13 @@ function MatchMetricChart({ matches, metricKey, selectedMatchId, onSelect }) {
               role="listitem"
               aria-pressed={selected}
               aria-label={`${match.sequenceLabel}, ${match.opponent || 'Rival'}: ${formatPlayerAnalysisMatchMetric(value, metric.format)}`}
+              title={`${match.sequenceLabel} · ${match.opponent || 'Rival'}\n${metric.detailLabel}: ${formatPlayerAnalysisMatchMetric(value, metric.format)}`}
               onClick={() => onSelect(match.matchId)}
               className={`flex min-h-[116px] min-w-[54px] flex-1 basis-[54px] flex-col items-center justify-end rounded-lg border border-transparent px-1 pb-1.5 pt-1 transition ${selected ? 'bg-caudal-electric/[0.09]' : 'hover:bg-white/[0.035]'} ${PLAYER_ANALYSIS_FOCUS}`}
             >
               <span className={`mb-1 text-[10px] font-black tabular-nums ${selected ? 'text-caudal-electric' : 'text-slate-300'}`}>{formatPlayerAnalysisMatchMetric(value, metric.format)}</span>
               <span className="flex h-[70px] items-end" aria-hidden="true">
-                <span className={`block w-4 rounded-t-[5px] transition-all ${selected ? 'bg-caudal-electric shadow-[0_0_14px_rgba(61,217,255,0.28)]' : 'bg-sky-400/45'}`} style={{ height: `${barHeight}px` }} />
+                {barHeight !== null ? <span className={`block w-[18px] rounded-t-[6px] bg-[#5EA8FF] transition-[height,filter,opacity] duration-200 ${selected ? 'opacity-100 shadow-[0_0_14px_rgba(94,168,255,0.3)]' : 'opacity-80 hover:brightness-110 hover:opacity-100'}`} style={{ height: `${barHeight}px` }} /> : null}
               </span>
               <strong className={`mt-1 text-[9px] font-black ${selected ? 'text-caudal-electric' : 'text-slate-500'}`}>{match.sequenceLabel}</strong>
             </button>
@@ -271,19 +272,19 @@ function MatchComparison({ matches }) {
       {comparison.rows.length ? (
         <dl className="mt-1.5 divide-y divide-white/[0.07] rounded-xl border border-white/[0.08] bg-black/10 px-2.5">
           {comparison.rows.map(({ metric, valueA, valueB }) => {
-            const numericA = Number.isFinite(Number(valueA)) ? Number(valueA) : 0;
-            const numericB = Number.isFinite(Number(valueB)) ? Number(valueB) : 0;
-            const magnitude = Math.max(numericA, numericB, 1);
+            const numericA = valueA === null || valueA === undefined || !Number.isFinite(Number(valueA)) ? null : Number(valueA);
+            const numericB = valueB === null || valueB === undefined || !Number.isFinite(Number(valueB)) ? null : Number(valueB);
+            const magnitude = Math.max(numericA ?? 0, numericB ?? 0, 1);
             return (
               <div key={metric.key} className="grid min-h-[43px] grid-cols-[minmax(52px,1fr)_minmax(96px,1.35fr)_minmax(52px,1fr)] items-center gap-2 py-1.5 text-center">
                 <dd className="min-w-0 text-sm font-black tabular-nums text-white">
                   {formatPlayerAnalysisMatchMetric(valueA, metric.format)}
-                  <span aria-hidden="true" className="mt-1 flex h-1 justify-end overflow-hidden rounded-full bg-white/[0.045]"><span className="h-full rounded-full bg-caudal-electric/40" style={{ width: `${(numericA * 100) / magnitude}%` }} /></span>
+                  <span aria-hidden="true" className="mt-1 flex h-1.5 justify-end overflow-hidden rounded-full bg-white/[0.045]">{numericA !== null ? <span className="h-full rounded-full bg-[#5EA8FF] opacity-85" style={{ width: `${numericA === 0 ? 2 : (numericA * 100) / magnitude}%` }} /> : null}</span>
                 </dd>
                 <dt className="text-[8px] font-black uppercase leading-3.5 tracking-[0.07em] text-slate-500">{metric.label}</dt>
                 <dd className="min-w-0 text-sm font-black tabular-nums text-white">
                   {formatPlayerAnalysisMatchMetric(valueB, metric.format)}
-                  <span aria-hidden="true" className="mt-1 flex h-1 overflow-hidden rounded-full bg-white/[0.045]"><span className="h-full rounded-full bg-caudal-electric/40" style={{ width: `${(numericB * 100) / magnitude}%` }} /></span>
+                  <span aria-hidden="true" className="mt-1 flex h-1.5 overflow-hidden rounded-full bg-white/[0.045]">{numericB !== null ? <span className="h-full rounded-full bg-[#22C7E8] opacity-85" style={{ width: `${numericB === 0 ? 2 : (numericB * 100) / magnitude}%` }} /> : null}</span>
                 </dd>
               </div>
             );

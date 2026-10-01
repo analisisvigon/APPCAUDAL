@@ -101,8 +101,8 @@ assert.equal((panel.match(/<PlayerPerformanceTrendChart model=\{model\}/g) || []
 assert.equal((panel.match(/<LoadEvolutionSection/g) || []).length, 1, 'La carga colectiva reutiliza una sola instancia del componente STAFF.');
 assert.match(panel, /mode="player"/);
 assert.match(trendChart, /<svg/);
-assert.match(trendChart, /<polyline/);
-assert.match(trendChart, /<circle/);
+assert.match(trendChart, /<rect/);
+assert.doesNotMatch(trendChart, /<polyline|<circle/);
 assert.match(trendChart, /<title>/);
 assert.match(trendChart, /role="img"/);
 assert.match(trendChart, /metric\.unit/);
@@ -136,7 +136,8 @@ assert.match(presentation, /metric\.scale \|\| getDynamicScale/);
 assert.match(presentation, /metric\.scale \|\| getDynamicScale\(scaleValues\)/, 'Peso mantiene una escala dinámica basada en sus propios valores.');
 assert.match(presentation, /summaryValues\.length > 1/);
 assert.doesNotMatch(presentation, /interpol|imput|value:\s*0/, 'No se imputan días ni valores ausentes.');
-assert.match(trendChart, /splitAvailablePlayerSeries\(points\)/, 'La línea se corta en días sin respuesta.');
+assert.match(trendChart, /available = points\.filter\(\(point\) => point\?\.date && point\?\.value !== null\)/, 'Los días sin respuesta no generan barras.');
+assert.match(trendChart, /CHART_SERIES_COLORS\[0\]/, 'La serie única usa el azul global.');
 
 // Calendario visual y detalle bajo demanda sustituyen el histórico largo.
 assert.match(panel, /function CalendarSection/);

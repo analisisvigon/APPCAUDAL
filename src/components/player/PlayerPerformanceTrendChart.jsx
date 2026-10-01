@@ -1,4 +1,9 @@
-import { splitAvailablePlayerSeries } from '../../utils/playerPerformancePresentation';
+import {
+  CHART_AXIS_COLOR,
+  CHART_BAR_RADIUS,
+  CHART_GRID_COLOR,
+  CHART_SERIES_COLORS,
+} from '../charts/chartTheme';
 
 const shortDate = (value) => {
   const match = String(value || '').match(/^\d{4}-(\d{2})-(\d{2})$/);
@@ -16,15 +21,16 @@ const formatValue = (value, unit) => `${formatNumber(value)}${unit === 'kg' ? ' 
 export default function PlayerPerformanceTrendChart({ model }) {
   const { metric, points = [], scale = { min: 0, max: 1 }, aggregation = 'daily' } = model || {};
   const available = points.filter((point) => point?.date && point?.value !== null);
-  const segments = splitAvailablePlayerSeries(points);
   const width = 640;
   const height = 200;
   const plot = { left: 38, right: 14, top: 34, bottom: 30 };
   const plotWidth = width - plot.left - plot.right;
   const plotHeight = height - plot.top - plot.bottom;
   const scaleSpan = Math.max(Number(scale.max) - Number(scale.min), 0.1);
-  const xFor = (index) => plot.left + ((plotWidth / Math.max(points.length - 1, 1)) * index);
+  const xFor = (index) => plot.left + ((plotWidth / Math.max(points.length, 1)) * (index + 0.5));
   const yFor = (value) => plot.top + (((scale.max - value) / scaleSpan) * plotHeight);
+  const baselineY = yFor(scale.min);
+  const barWidth = Math.max(18, Math.min(30, (plotWidth / Math.max(points.length, 1)) - 12));
   const indexById = new Map(points.map((point, index) => [point.id, index]));
   const axisLabelCount = Math.min(points.length, 5);
   const axisIndexes = new Set(
@@ -57,36 +63,35 @@ export default function PlayerPerformanceTrendChart({ model }) {
           const hideOnMobile = hasTenPointScale && value % 2 !== 0 && value !== scale.min && value !== scale.max;
           return (
           <g key={value} className={hideOnMobile ? 'hidden sm:block' : undefined}>
-            <line x1={plot.left} x2={width - plot.right} y1={yFor(value)} y2={yFor(value)} stroke="rgba(148,163,184,0.14)" strokeWidth="1" />
-            <text x={plot.left - 8} y={yFor(value) + 4} textAnchor="end" fill="#64748b" fontSize="11">
+            <line x1={plot.left} x2={width - plot.right} y1={yFor(value)} y2={yFor(value)} stroke={CHART_GRID_COLOR} strokeWidth="1" />
+            <text x={plot.left - 8} y={yFor(value) + 4} textAnchor="end" fill={CHART_AXIS_COLOR} fontSize="11">
               {formatNumber(value)}
             </text>
           </g>
           );
         })}
-        {segments.map((segment, segmentIndex) => (
-          <polyline
-            key={`segment-${segmentIndex}`}
-            points={segment.map((point) => `${xFor(indexById.get(point.id))},${yFor(point.value)}`).join(' ')}
-            fill="none"
-            stroke="#5ee7ff"
-            strokeWidth="4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ))}
         {available.map((point) => {
           const index = indexById.get(point.id);
+          const rawHeight = baselineY - yFor(point.value);
           const pointLabel = point.endDate && point.endDate !== point.date
             ? `${shortDate(point.date)}–${shortDate(point.endDate)}`
             : shortDate(point.date);
           return (
             <g key={point.id}>
               <title>{`${fullDate(point.date)}\n${metric.label}\n${formatValue(point.value, metric.unit)}${aggregation === 'weekly_average' ? ` · media de ${point.count} días (${pointLabel})` : ''}`}</title>
-              <text x={xFor(index)} y={yFor(point.value) - (index % 2 ? 22 : 11)} textAnchor="middle" fill="#e2f8ff" fontSize="15" fontWeight="800" stroke="#0b1424" strokeWidth="3" paintOrder="stroke">
+              <text x={xFor(index)} y={baselineY - Math.max(2, rawHeight) - 8} textAnchor="middle" fill="#e2f8ff" fontSize="15" fontWeight="800" stroke="#0b1424" strokeWidth="3" paintOrder="stroke">
                 {formatNumber(point.value)}
               </text>
-              <circle cx={xFor(index)} cy={yFor(point.value)} r="5.5" fill="#5ee7ff" stroke="#0b1424" strokeWidth="2.5" />
+              <rect
+                x={xFor(index) - (barWidth / 2)}
+                y={baselineY - Math.max(2, rawHeight)}
+                width={barWidth}
+                height={Math.max(2, rawHeight)}
+                rx={CHART_BAR_RADIUS}
+                fill={CHART_SERIES_COLORS[0]}
+                opacity="0.84"
+                className="transition-[opacity,filter] duration-200 hover:brightness-110 hover:opacity-100"
+              />
             </g>
           );
         })}
@@ -96,7 +101,7 @@ export default function PlayerPerformanceTrendChart({ model }) {
             x={xFor(index)}
             y={height - 9}
             textAnchor={index === 0 ? 'start' : index === points.length - 1 ? 'end' : 'middle'}
-            fill="#64748b"
+            fill={CHART_AXIS_COLOR}
             fontSize="11"
             fontWeight="600"
           >

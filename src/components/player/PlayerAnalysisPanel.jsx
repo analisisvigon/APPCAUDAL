@@ -279,7 +279,7 @@ function CompetitionMinutesBreakdown({ state, totalMinutes, onRetry }) {
                   aria-valuenow={Math.min(100, competition.percentage)}
                   className="ml-[46px] mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.08]"
                 >
-                  <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${Math.min(100, competition.percentage)}%` }} />
+                  <div className="h-full rounded-full bg-[#5EA8FF]" style={{ width: `${Math.min(100, competition.percentage)}%` }} />
                 </div>
               </div>
             ))}

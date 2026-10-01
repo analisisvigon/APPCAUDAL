@@ -7,6 +7,14 @@ import {
   getPerformanceLoadMetricConfig,
   summarizePerformanceMetricPoints,
 } from '../../utils/performanceLoad';
+import {
+  CHART_AXIS_COLOR,
+  CHART_BAR_RADIUS,
+  CHART_GRID_COLOR,
+  CHART_SERIES_COLORS,
+  getBarChartWidth,
+  getBarHeight,
+} from '../charts/chartTheme';
 
 const formatShortDate = (value) => {
   if (!value) return '';
@@ -121,28 +129,23 @@ const addDays = (dateString, days) => {
 };
 
 const LoadEvolutionChart = ({ points, selectedKey, onSelect, period, metric, mode = 'staff' }) => {
-  const width = 720;
-  const height = 260;
-  const plot = { left: 40, right: 20, top: 24, bottom: 40 };
+  const barWidth = period === 'month' ? 14 : 28;
+  const width = getBarChartWidth({
+    categoryCount: points.length,
+    minimumWidth: 520,
+    barWidth,
+    categoryGap: period === 'month' ? 10 : 18,
+  });
+  const height = 280;
+  const plot = { left: 44, right: 20, top: 20, bottom: 42 };
   const plotWidth = width - plot.left - plot.right;
   const plotHeight = height - plot.top - plot.bottom;
   const values = points.filter((point) => point.hasData).map((point) => point.value);
   const maxValue = values.length ? Math.max(...values) : 1;
 
-  const xFor = (index) => plot.left + ((plotWidth / Math.max(points.length - 1, 1)) * index);
+  const slotWidth = plotWidth / Math.max(points.length, 1);
+  const xFor = (index) => plot.left + (slotWidth * index) + (slotWidth / 2);
   const yFor = (value) => plot.top + ((1 - (value / Math.max(maxValue, 1))) * plotHeight);
-
-  const segments = [];
-  let currentSegment = [];
-  points.forEach((point, index) => {
-    if (point.hasData) {
-      currentSegment.push(`${xFor(index)},${yFor(point.value)}`);
-    } else if (currentSegment.length) {
-      segments.push(currentSegment);
-      currentSegment = [];
-    }
-  });
-  if (currentSegment.length) segments.push(currentSegment);
 
   if (!points.some((point) => point.hasData)) {
     if (mode === 'player') {
@@ -152,12 +155,11 @@ const LoadEvolutionChart = ({ points, selectedKey, onSelect, period, metric, mod
   }
 
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[#071124] p-4 sm:p-5">
+    <div className="relative rounded-3xl border border-white/[0.08] bg-[#071124] p-4 sm:p-5">
       <div className="mb-4 flex flex-wrap gap-4 text-xs font-bold text-slate-400">
-        <span className="inline-flex items-center gap-2"><span className="h-1.5 w-6 rounded-full bg-slate-300" />{metric.label} ({metric.unit})</span>
-        <span className="inline-flex items-center gap-2"><span className="h-1.5 w-6 rounded-full bg-sky-500/70" />Día con dato</span>
+        <span className="inline-flex items-center gap-2"><span className="h-2.5 w-5 rounded-[4px] bg-[#5EA8FF]" />{metric.label} ({metric.unit})</span>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full overflow-visible" role="img" aria-label={`Evolución de ${metric.label} en vista ${period}`}>
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full overflow-visible" style={{ minWidth: `${width}px` }} role="img" aria-label={`Evolución de ${metric.label} en vista ${period}, gráfico de barras`}>
         {[0, 0.25, 0.5, 0.75, 1].map((fraction) => {
           const value = maxValue * (1 - fraction);
           return (
@@ -167,24 +169,13 @@ const LoadEvolutionChart = ({ points, selectedKey, onSelect, period, metric, mod
                 x2={width - plot.right}
                 y1={plot.top + plotHeight * fraction}
                 y2={plot.top + plotHeight * fraction}
-                stroke="rgba(148,163,184,0.14)"
+                stroke={CHART_GRID_COLOR}
                 strokeWidth="1"
               />
-              <text x={plot.left - 10} y={plot.top + plotHeight * fraction + 4} textAnchor="end" fill="#94a3b8" fontSize="11">{formatMetricValue(value, metric.decimals)}</text>
+              <text x={plot.left - 10} y={plot.top + plotHeight * fraction + 4} textAnchor="end" fill={CHART_AXIS_COLOR} fontSize="11">{formatMetricValue(value, metric.decimals)}</text>
             </g>
           );
         })}
-        {segments.map((points, index) => (
-          <polyline
-            key={`series-${index}`}
-            points={points.join(' ')}
-            fill="none"
-            stroke="#60a5fa"
-            strokeWidth="4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ))}
         {points.map((point, index) => (
           <g
             key={point.key}
@@ -201,16 +192,20 @@ const LoadEvolutionChart = ({ points, selectedKey, onSelect, period, metric, mod
           >
             <title>{point.tooltip}</title>
             {point.hasData ? (
-              <circle
-                cx={xFor(index)}
-                cy={yFor(point.value)}
-                r={point.key === selectedKey ? 8 : 5.5}
-                fill="#60a5fa"
-                stroke="#0f172a"
-                strokeWidth={point.key === selectedKey ? 3 : 2}
+              <rect
+                x={xFor(index) - (barWidth / 2)}
+                y={yFor(point.value) - (point.value === 0 ? 2 : 0)}
+                width={barWidth}
+                height={getBarHeight(point.value, maxValue, plotHeight)}
+                rx={CHART_BAR_RADIUS}
+                fill={CHART_SERIES_COLORS[0]}
+                opacity={point.key === selectedKey ? 1 : 0.82}
+                stroke={point.key === selectedKey ? '#ffffff' : 'transparent'}
+                strokeWidth={point.key === selectedKey ? 2 : 0}
+                className="transition-[opacity,filter] duration-200 hover:brightness-110 hover:opacity-100"
               />
             ) : null}
-            <text x={xFor(index)} y={height - 12} textAnchor="middle" fill={point.key === selectedKey ? '#ffffff' : '#94a3b8'} fontSize={point.axisLabel ? 10 : 0} fontWeight={point.key === selectedKey ? 700 : 500}>
+            <text x={xFor(index)} y={height - 12} textAnchor="middle" fill={point.key === selectedKey ? '#ffffff' : CHART_AXIS_COLOR} fontSize={point.axisLabel ? 10 : 0} fontWeight={point.key === selectedKey ? 700 : 500}>
               {point.axisLabel}
             </text>
           </g>

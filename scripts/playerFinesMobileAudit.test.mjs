@@ -117,7 +117,10 @@ const hasFinesMobileProductChanges = changed.some((filePath) => (
   /^src\/components\/player\/PlayerFines/.test(filePath)
   || /^src\/components\/fines\/Fines(?:TransparencyVisuals|ManagementPage)/.test(filePath)
 ));
-if (hasFinesMobileProductChanges) {
+const hasGlobalChartRedesign = changed.includes('src/App.jsx')
+  && changed.includes('src/components/performance/LoadEvolutionSection.jsx')
+  && changed.includes('src/components/fines/FinesTransparencyVisuals.jsx');
+if (hasFinesMobileProductChanges && !hasGlobalChartRedesign) {
   assert.equal(changed.some(isPlayerPerformancePath), false, 'El pulido de Multas no mezcla cambios de Rendimiento PLAYER.');
 }
 

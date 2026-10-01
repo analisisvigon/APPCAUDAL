@@ -37,7 +37,7 @@ function CategoryRows({ title, rows }) {
               <span className="shrink-0 text-white">{row.count}</span>
             </div>
             <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full rounded-full bg-caudal-electric/75" style={{ width: `${(row.count / maximum) * 100}%` }} />
+              <div className="h-full rounded-full bg-[#5EA8FF] opacity-85" style={{ width: `${(row.count / maximum) * 100}%` }} />
             </div>
           </div>
         ))}

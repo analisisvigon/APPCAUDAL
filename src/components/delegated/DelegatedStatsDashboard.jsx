@@ -27,6 +27,15 @@ import {
 } from '../../utils/delegatedStats';
 import { DELEGATED_EVENT_CATALOG, getDelegatedRegistryQuality } from '../../utils/delegatedMatchValidation';
 import PlayerAvatar from '../player/PlayerAvatar';
+import {
+  CHART_AXIS_COLOR,
+  CHART_BAR_GAP,
+  CHART_BAR_RADIUS,
+  CHART_GRID_COLOR,
+  CHART_SERIES_COLORS,
+  getBarChartWidth,
+  getBarHeight,
+} from '../charts/chartTheme';
 
 const VIEWS = ['Resumen', 'Jugadores', 'Equipo', 'Evolución'];
 const RATE_FIELD = { key: 'shotAccuracy', label: '% tiros a puerta', short: 'TAP %' };
@@ -195,10 +204,10 @@ function TemporalChart({ temporal, metric }) {
         {temporal.rows.map((row) => (
           <div key={row.period} className="grid grid-cols-[52px_1fr_28px_1fr_28px] items-center gap-2 text-[10px]">
             <span className="font-black text-slate-500">{row.period}</span>
-            <span className="flex h-2 justify-end rounded-full bg-white/5"><span className="h-2 rounded-full bg-caudal-electric" style={{ width: `${(row.caudal / max) * 100}%` }} /></span>
-            <span className="text-right font-black text-caudal-electric">{temporal.hasCaudal ? formatDelegatedNumber(row.caudal, temporal.mode) : '—'}</span>
-            <span className="h-2 rounded-full bg-white/5"><span className="block h-2 rounded-full bg-red-300" style={{ width: `${(row.rival / max) * 100}%` }} /></span>
-            <span className="text-right font-black text-red-200">{temporal.hasRival ? formatDelegatedNumber(row.rival, temporal.mode) : '—'}</span>
+            <span className="flex h-2 justify-end rounded-full bg-white/5">{temporal.hasCaudal ? <span className="h-2 rounded-full bg-[#5EA8FF]" style={{ width: `${row.caudal === 0 ? 2 : (row.caudal / max) * 100}%` }} /> : null}</span>
+            <span className="text-right font-black text-[#5EA8FF]">{temporal.hasCaudal ? formatDelegatedNumber(row.caudal, temporal.mode) : '—'}</span>
+            <span className="h-2 rounded-full bg-white/5">{temporal.hasRival ? <span className="block h-2 rounded-full bg-[#22C7E8]" style={{ width: `${row.rival === 0 ? 2 : (row.rival / max) * 100}%` }} /> : null}</span>
+            <span className="text-right font-black text-[#22C7E8]">{temporal.hasRival ? formatDelegatedNumber(row.rival, temporal.mode) : '—'}</span>
           </div>
         ))}
       </div>
@@ -244,8 +253,8 @@ function HalfComparison({ comparison }) {
         <div key={row.key}>
           <div className="flex items-center justify-between text-[10px]"><span className="font-black text-slate-300">{row.label}</span><span className="text-slate-500">{row.first} · {row.second}</span></div>
           <div className="mt-1 grid grid-cols-2 gap-1">
-            <div className="flex h-5 justify-end overflow-hidden rounded-l-md bg-white/5"><span className="flex h-full items-center justify-end bg-caudal-electric/25 pr-1 text-[8px] font-black text-caudal-electric" style={{ width: `${row.firstPercent || 0}%` }}>{row.firstPercent == null ? '—' : `${formatDelegatedNumber(row.firstPercent, 'percent')}%`}</span></div>
-            <div className="h-5 overflow-hidden rounded-r-md bg-white/5"><span className="flex h-full items-center bg-sky-300/20 pl-1 text-[8px] font-black text-sky-200" style={{ width: `${row.secondPercent || 0}%` }}>{row.secondPercent == null ? '—' : `${formatDelegatedNumber(row.secondPercent, 'percent')}%`}</span></div>
+            <div className="flex h-5 justify-end overflow-hidden rounded-l-md bg-white/5">{row.firstPercent == null ? <span className="pr-1 text-[8px] font-black text-slate-500">—</span> : <span className="flex h-full items-center justify-end bg-[#5EA8FF]/25 pr-1 text-[8px] font-black text-[#5EA8FF]" style={{ width: `${row.firstPercent === 0 ? 2 : row.firstPercent}%` }}>{formatDelegatedNumber(row.firstPercent, 'percent')}%</span>}</div>
+            <div className="h-5 overflow-hidden rounded-r-md bg-white/5">{row.secondPercent == null ? <span className="pl-1 text-[8px] font-black text-slate-500">—</span> : <span className="flex h-full items-center bg-[#22C7E8]/20 pl-1 text-[8px] font-black text-[#22C7E8]" style={{ width: `${row.secondPercent === 0 ? 2 : row.secondPercent}%` }}>{formatDelegatedNumber(row.secondPercent, 'percent')}%</span>}</div>
           </div>
           <div className="mt-0.5 flex justify-between text-[8px] font-black uppercase text-slate-600"><span>1ª parte</span><span>2ª parte</span></div>
         </div>
@@ -306,9 +315,12 @@ function SelectedMatchComparison({ comparison }) {
   );
 }
 
-function EvolutionLineChart({ rows, compareSides, formatMatchDate, compact = false }) {
-  const width = 920;
-  const height = compact ? 180 : 270;
+function EvolutionBarChart({ rows, compareSides, formatMatchDate, compact = false }) {
+  const showsMovingAverage = rows.length >= 5;
+  const seriesCount = compareSides ? (showsMovingAverage ? 3 : 2) : (showsMovingAverage ? 2 : 1);
+  const barWidth = compact ? 18 : 14;
+  const width = getBarChartWidth({ categoryCount: rows.length, seriesCount, minimumWidth: 680, barWidth, categoryGap: 18 });
+  const height = compact ? 200 : 280;
   const padX = 42;
   const padY = 26;
   const valueSets = compareSides
@@ -316,45 +328,36 @@ function EvolutionLineChart({ rows, compareSides, formatMatchDate, compact = fal
     : [rows.map((row) => row.value), rows.map((row) => row.movingAverage)];
   const numeric = valueSets.flat().filter((value) => value != null && Number.isFinite(Number(value)));
   const max = Math.max(1, ...numeric.map(Number));
-  const point = (value, index) => {
-    const x = rows.length <= 1 ? width / 2 : padX + (index / (rows.length - 1)) * (width - padX * 2);
-    const y = height - padY - (Number(value) / max) * (height - padY * 2);
-    return `${x},${y}`;
-  };
-  const lineSegments = (values) => {
-    const segments = [];
-    let current = [];
-    values.forEach((value, index) => {
-      if (value == null || !Number.isFinite(Number(value))) {
-        if (current.length) segments.push(current);
-        current = [];
-      } else {
-        current.push(point(value, index));
-      }
-    });
-    if (current.length) segments.push(current);
-    return segments;
-  };
+  const plotWidth = width - padX * 2;
+  const plotHeight = height - padY * 2;
+  const slotWidth = plotWidth / Math.max(rows.length, 1);
+  const xFor = (index) => padX + (slotWidth * index) + (slotWidth / 2);
+  const baselineY = height - padY;
+  const groupWidth = (seriesCount * barWidth) + ((seriesCount - 1) * CHART_BAR_GAP);
   const labelStep = Math.max(1, Math.ceil(rows.length / 7));
+  const seriesFor = (row) => [
+    { key: 'caudal', label: 'Caudal', value: compareSides ? row.caudalValue : row.value, color: CHART_SERIES_COLORS[0] },
+    compareSides ? { key: 'rival', label: 'Rival', value: row.rivalValue, color: CHART_SERIES_COLORS[1] } : null,
+    showsMovingAverage ? { key: 'moving', label: 'Media móvil 5', value: compareSides ? row.caudalMovingAverage : row.movingAverage, color: CHART_SERIES_COLORS[compareSides ? 2 : 1] } : null,
+  ].filter(Boolean);
   return (
     <div className="overflow-x-auto rounded-2xl border border-white/5 bg-black/15 p-3">
-      <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[680px]" role="img" aria-label="Evolución partido a partido">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full" style={{ minWidth: `${width}px` }} role="img" aria-label="Evolución partido a partido en barras agrupadas">
         {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-          const y = height - padY - ratio * (height - padY * 2);
-          return <g key={ratio}><line x1={padX} x2={width - padX} y1={y} y2={y} stroke="rgba(255,255,255,.06)" /><text x={padX - 8} y={y + 3} textAnchor="end" fill="#64748b" fontSize="9">{formatDelegatedNumber(max * ratio, 'average')}</text></g>;
+          const y = baselineY - ratio * plotHeight;
+          return <g key={ratio}><line x1={padX} x2={width - padX} y1={y} y2={y} stroke={CHART_GRID_COLOR} /><text x={padX - 8} y={y + 3} textAnchor="end" fill={CHART_AXIS_COLOR} fontSize="9">{formatDelegatedNumber(max * ratio, 'average')}</text></g>;
         })}
-        {compareSides ? lineSegments(rows.map((row) => row.rivalValue)).map((points, index) => <polyline key={`rival-${index}`} points={points.join(' ')} fill="none" stroke="#fca5a5" strokeWidth="2" />) : null}
-        {lineSegments(rows.map((row) => compareSides ? row.caudalValue : row.value)).map((points, index) => <polyline key={`main-${index}`} points={points.join(' ')} fill="none" stroke="#2ee6a6" strokeWidth="2.5" />)}
-        {rows.length >= 5 ? lineSegments(rows.map((row) => compareSides ? row.caudalMovingAverage : row.movingAverage)).map((points, index) => <polyline key={`moving-${index}`} points={points.join(' ')} fill="none" stroke="#7dd3fc" strokeWidth="2" strokeDasharray="6 5" />) : null}
         {rows.map((row, index) => {
-          const value = compareSides ? row.caudalValue : row.value;
-          if (value == null) return null;
-          const [cx, cy] = point(value, index).split(',');
-          return <circle key={row.matchId} cx={cx} cy={cy} r="4" fill="#2ee6a6"><title>{`${row.match.round ? `${row.match.round} · ` : ''}${row.opponent}\n${formatMatchDate(row.date)}\nValor: ${formatDelegatedNumber(value, row.normalized ? 'per90' : 'average')}\nMedia móvil 5: ${formatDelegatedNumber(compareSides ? row.caudalMovingAverage : row.movingAverage, 'average')}`}</title></circle>;
+          const series = seriesFor(row);
+          return <g key={row.matchId}><title>{`${row.match.round ? `${row.match.round} · ` : ''}${row.opponent}\n${formatMatchDate(row.date)}\n${series.map((item) => `${item.label}: ${formatDelegatedNumber(item.value, item.key === 'caudal' && row.normalized ? 'per90' : 'average')}`).join('\n')}`}</title>{series.map((item, seriesIndex) => {
+            const barHeight = getBarHeight(item.value, max, plotHeight);
+            if (barHeight === null) return null;
+            return <rect key={item.key} x={xFor(index) - (groupWidth / 2) + seriesIndex * (barWidth + CHART_BAR_GAP)} y={baselineY - barHeight} width={barWidth} height={barHeight} rx={CHART_BAR_RADIUS} fill={item.color} opacity="0.84" className="transition-[opacity,filter] duration-200 hover:brightness-110 hover:opacity-100" />;
+          })}</g>;
         })}
-        {rows.map((row, index) => index % labelStep === 0 || index === rows.length - 1 ? <text key={row.matchId} x={rows.length <= 1 ? width / 2 : padX + (index / Math.max(1, rows.length - 1)) * (width - padX * 2)} y={height - 6} textAnchor="middle" fill="#64748b" fontSize="9">{row.match.round || row.opponent.slice(0, 8)}</text> : null)}
+        {rows.map((row, index) => index % labelStep === 0 || index === rows.length - 1 ? <text key={row.matchId} x={xFor(index)} y={height - 6} textAnchor="middle" fill={CHART_AXIS_COLOR} fontSize="9">{row.match.round || row.opponent.slice(0, 8)}</text> : null)}
       </svg>
-      <div className="mt-1 flex flex-wrap gap-4 px-2 text-[9px] font-black uppercase text-slate-500"><span><i className="mr-1 inline-block h-0.5 w-4 bg-caudal-electric align-middle" />Caudal</span>{compareSides ? <span><i className="mr-1 inline-block h-0.5 w-4 bg-red-300 align-middle" />Rival</span> : null}{rows.length >= 5 ? <span><i className="mr-1 inline-block w-4 border-t-2 border-dashed border-sky-300 align-middle" />Media móvil 5</span> : null}</div>
+      <div className="mt-1 flex flex-wrap gap-4 px-2 text-[9px] font-black uppercase text-slate-500"><span><i className="mr-1 inline-block h-2.5 w-4 rounded-[3px] bg-[#5EA8FF] align-middle" />Caudal</span>{compareSides ? <span><i className="mr-1 inline-block h-2.5 w-4 rounded-[3px] bg-[#22C7E8] align-middle" />Rival</span> : null}{showsMovingAverage ? <span><i className={`mr-1 inline-block h-2.5 w-4 rounded-[3px] ${compareSides ? 'bg-[#F4B942]' : 'bg-[#22C7E8]'} align-middle`} />Media móvil 5</span> : null}</div>
     </div>
   );
 }
@@ -561,7 +564,7 @@ export default function DelegatedStatsDashboard({
         <div className="mt-3 space-y-3">
           {singleMatchMode ? <SelectedMatchComparison comparison={selectedMatchComparison} /> : <>
             <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[10px] font-black uppercase tracking-[0.14em] text-white">Evolución partido a partido</p><p className="text-[9px] text-slate-600">Con 2–4 partidos se muestra una serie simple; la media móvil de 5 aparece desde el quinto.</p></div><div className="flex flex-wrap gap-2"><select value={evolutionMetric} onChange={(event) => setEvolutionMetric(event.target.value)} className={selectorClass}>{filters.playerId ? <option value="minutes">Minutos</option> : null}{(filters.playerId ? DELEGATED_PANEL_PLAYER_STAT_FIELDS : DELEGATED_PANEL_STAT_FIELDS).map((field) => <option key={field.key} value={field.key}>{field.label}{field.source === 'official' || field.key === 'goals' ? ' · oficial' : ''}</option>)}</select>{filters.playerId ? <Segmented label="Modo de evolución individual" value={evolutionMode} onChange={setEvolutionMode} options={[["total", "Total partido"], ["per90", "Por90"]]} /> : null}</div></div>
-            {!evolution.length ? <EmptyState>No hay partidos validados para esta muestra.</EmptyState> : evolution.length === 1 ? <article className="rounded-2xl border border-white/5 bg-black/15 px-4 py-3"><p className="text-[9px] font-black uppercase text-slate-500">Muestra actual: 1 partido · Las tendencias aparecerán a partir de 5 partidos</p><div className="mt-1 flex items-end justify-between gap-3"><span className="text-sm font-black text-white">{evolution[0].opponent} · {formatMatchDate(evolution[0].date)}</span><span className="text-2xl font-black text-caudal-electric">{formatDelegatedNumber(evolution[0].value, evolution[0].normalized ? 'per90' : 'average')}</span></div></article> : <><EvolutionLineChart rows={evolution} compareSides={compareEvolutionSides} formatMatchDate={formatMatchDate} compact={evolution.length < 5} />{evolution.length < 5 ? <p className="text-[10px] text-slate-500">{evolution.length} partidos registrados. Aún no existe muestra suficiente para media móvil 5.</p> : null}</>}
+            {!evolution.length ? <EmptyState>No hay partidos validados para esta muestra.</EmptyState> : evolution.length === 1 ? <article className="rounded-2xl border border-white/5 bg-black/15 px-4 py-3"><p className="text-[9px] font-black uppercase text-slate-500">Muestra actual: 1 partido · Las tendencias aparecerán a partir de 5 partidos</p><div className="mt-1 flex items-end justify-between gap-3"><span className="text-sm font-black text-white">{evolution[0].opponent} · {formatMatchDate(evolution[0].date)}</span><span className="text-2xl font-black text-caudal-electric">{formatDelegatedNumber(evolution[0].value, evolution[0].normalized ? 'per90' : 'average')}</span></div></article> : <><EvolutionBarChart rows={evolution} compareSides={compareEvolutionSides} formatMatchDate={formatMatchDate} compact={evolution.length < 5} />{evolution.length < 5 ? <p className="text-[10px] text-slate-500">{evolution.length} partidos registrados. Aún no existe muestra suficiente para media móvil 5.</p> : null}</>}
             {evolutionComparison.sufficient ? <section className="rounded-2xl border border-white/5 bg-black/15 p-3"><p className="text-[9px] font-black uppercase tracking-[0.14em] text-white">Tendencia reciente · temporada vs últimos 5</p><div className="mt-2 overflow-x-auto"><table className="w-full min-w-[620px] text-[10px]"><thead className="text-slate-600"><tr><th className="py-2 text-left">Métrica</th><th>Temporada</th><th>Últ. 5</th><th>Diferencia</th><th>Diferencia %</th></tr></thead><tbody>{trendRows.map((row) => <tr key={row.key} className="border-t border-white/5 text-center"><th className="py-2 text-left font-black text-slate-300">{fieldByKey.get(row.key)?.label}/p</th>{row.sufficient ? <><td>{formatDelegatedNumber(row.season, 'average')}</td><td className="font-black text-white">{formatDelegatedNumber(row.recent, 'average')}</td><td className="font-black text-caudal-electric">{getArrow(row.difference)} {signed(row.difference)}</td><td>{row.percentDifference == null ? '—' : `${signed(row.percentDifference, 'percent')}%`}</td></> : <td colSpan="4" className="text-slate-600">Muestra insuficiente</td>}</tr>)}</tbody></table></div></section> : null}
           </>}
           {filters.playerId ? <p className="text-[10px] text-slate-500">Evolución individual: los partidos sin participación real se muestran sin punto; Por90 solo aparece con minutos fiables.</p> : null}

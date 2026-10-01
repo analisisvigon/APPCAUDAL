@@ -31,6 +31,15 @@ import PhysioPage from './components/physio/PhysioPage';
 import AccordionSection from './components/shared/AccordionSection';
 import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
+import {
+  CHART_AXIS_COLOR,
+  CHART_BAR_GAP,
+  CHART_BAR_RADIUS,
+  CHART_GRID_COLOR,
+  CHART_SERIES_COLORS,
+  getBarChartWidth,
+  getBarHeight,
+} from './components/charts/chartTheme';
 import PlayerPositionUsageSummary from './components/player/PlayerPositionUsageSummary';
 import PlayerMatchPositionSummary from './components/player/PlayerMatchPositionSummary';
 import PlayerAvatar from './components/player/PlayerAvatar';
@@ -3950,32 +3959,23 @@ const PerformanceEvolutionChart = ({
   onSelect = null,
   emptyLabel = 'Sin respuestas suficientes para mostrar la evolución.',
 }) => {
-  const width = 700;
-  const height = 248;
+  const barWidth = period === 'week' ? 18 : 12;
+  const width = getBarChartWidth({
+    categoryCount: points.length,
+    seriesCount: 2,
+    minimumWidth: 560,
+    barWidth,
+    categoryGap: period === 'week' ? 18 : 8,
+  });
+  const height = 280;
   const plot = { left: 42, right: 18, top: 18, bottom: 42 };
   const plotWidth = width - plot.left - plot.right;
   const plotHeight = height - plot.top - plot.bottom;
-  const xFor = (index) => plot.left + ((plotWidth / Math.max(points.length - 1, 1)) * index);
+  const slotWidth = plotWidth / Math.max(points.length, 1);
+  const xFor = (index) => plot.left + (slotWidth * index) + (slotWidth / 2);
   const yFor = (value) => plot.top + ((10 - value) / 10) * plotHeight;
-  const buildSegments = (key) => {
-    const segments = [];
-    let current = [];
-    points.forEach((point, index) => {
-      const value = point[key];
-      if (Number.isFinite(value)) {
-        current.push(`${xFor(index)},${yFor(value)}`);
-      } else if (current.length) {
-        segments.push(current);
-        current = [];
-      }
-    });
-    if (current.length) segments.push(current);
-    return segments;
-  };
-  const rpeSegments = buildSegments('avgRpe');
-  const wellnessSegments = buildSegments('avgWellness');
-  const hasRpe = rpeSegments.length > 0;
-  const hasWellness = wellnessSegments.length > 0;
+  const hasRpe = points.some((point) => Number.isFinite(point.avgRpe));
+  const hasWellness = points.some((point) => Number.isFinite(point.avgWellness));
 
   if (!hasRpe && !hasWellness) {
     return (
@@ -3988,31 +3988,22 @@ const PerformanceEvolutionChart = ({
   return (
     <div>
       <div className="mb-4 flex flex-wrap gap-4 text-xs font-bold text-slate-400">
-        {hasRpe ? <span className="inline-flex items-center gap-2"><span className="h-0.5 w-6 bg-amber-300" />RPE medio</span> : null}
-        {hasWellness ? <span className="inline-flex items-center gap-2"><span className="w-6 border-t-2 border-dashed border-sky-300" />Wellness medio</span> : null}
+        {hasRpe ? <span className="inline-flex items-center gap-2"><span className="h-2.5 w-5 rounded-[4px] bg-[#5EA8FF]" />RPE medio</span> : null}
+        {hasWellness ? <span className="inline-flex items-center gap-2"><span className="h-2.5 w-5 rounded-[4px] bg-[#22C7E8]" />Wellness medio</span> : null}
       </div>
       <svg
         viewBox={`0 0 ${width} ${height}`}
         className="h-auto w-full overflow-visible"
+        style={{ minWidth: `${width}px` }}
         role="img"
-        aria-label={`Evolución de RPE y Wellness en vista ${period} y escala de cero a diez`}
+        aria-label={`Evolución de RPE y Wellness en barras agrupadas, vista ${period} y escala de cero a diez`}
       >
-        <defs>
-          <linearGradient id="performance-rpe-area" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#fcd34d" stopOpacity="0.16" />
-            <stop offset="100%" stopColor="#fcd34d" stopOpacity="0" />
-          </linearGradient>
-          <linearGradient id="performance-wellness-area" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#7dd3fc" stopOpacity="0.13" />
-            <stop offset="100%" stopColor="#7dd3fc" stopOpacity="0" />
-          </linearGradient>
-        </defs>
         {points.map((point, index) => point.key === selectedKey ? (
           <rect
             key={`selected-${point.key}`}
-            x={Math.max(plot.left, xFor(index) - 30)}
+            x={Math.max(plot.left, xFor(index) - (slotWidth * 0.42))}
             y={plot.top}
-            width="60"
+            width={slotWidth * 0.84}
             height={plotHeight}
             rx="14"
             fill="rgba(92,225,230,0.07)"
@@ -4026,31 +4017,11 @@ const PerformanceEvolutionChart = ({
               x2={width - plot.right}
               y1={yFor(value)}
               y2={yFor(value)}
-              stroke="rgba(148,163,184,0.14)"
+              stroke={CHART_GRID_COLOR}
               strokeWidth="1"
             />
-            <text x={plot.left - 10} y={yFor(value) + 4} textAnchor="end" fill="#64748b" fontSize="11">{value}</text>
+            <text x={plot.left - 10} y={yFor(value) + 4} textAnchor="end" fill={CHART_AXIS_COLOR} fontSize="11">{value}</text>
           </g>
-        ))}
-        {rpeSegments.map((points, index) => (
-          <polygon
-            key={`rpe-area-${index}`}
-            points={`${points.join(' ')} ${points[points.length - 1].split(',')[0]},${plot.top + plotHeight} ${points[0].split(',')[0]},${plot.top + plotHeight}`}
-            fill="url(#performance-rpe-area)"
-          />
-        ))}
-        {wellnessSegments.map((points, index) => (
-          <polygon
-            key={`wellness-area-${index}`}
-            points={`${points.join(' ')} ${points[points.length - 1].split(',')[0]},${plot.top + plotHeight} ${points[0].split(',')[0]},${plot.top + plotHeight}`}
-            fill="url(#performance-wellness-area)"
-          />
-        ))}
-        {rpeSegments.map((points, index) => (
-          <polyline key={`rpe-${index}`} points={points.join(' ')} fill="none" stroke="#fcd34d" strokeWidth="5.5" strokeLinecap="round" strokeLinejoin="round" className="transition-all duration-500" />
-        ))}
-        {wellnessSegments.map((points, index) => (
-          <polyline key={`wellness-${index}`} points={points.join(' ')} fill="none" stroke="#7dd3fc" strokeWidth="5" strokeDasharray="10 7" strokeLinecap="round" strokeLinejoin="round" className="transition-all duration-500" />
         ))}
         {points.map((point, index) => (
           <g
@@ -4067,8 +4038,8 @@ const PerformanceEvolutionChart = ({
             }}
           >
             <title>{point.tooltip || point.label}</title>
-            {Number.isFinite(point.avgRpe) ? <circle cx={xFor(index)} cy={yFor(point.avgRpe)} r={point.key === selectedKey ? 8 : 6.5} fill="#fcd34d" stroke="#091428" strokeWidth="3" className="transition-all duration-300" /> : null}
-            {Number.isFinite(point.avgWellness) ? <rect x={xFor(index) - (point.key === selectedKey ? 7 : 5.5)} y={yFor(point.avgWellness) - (point.key === selectedKey ? 7 : 5.5)} width={point.key === selectedKey ? 14 : 11} height={point.key === selectedKey ? 14 : 11} rx="3" fill="#7dd3fc" stroke="#091428" strokeWidth="2.5" className="transition-all duration-300" /> : null}
+            {Number.isFinite(point.avgRpe) ? <rect x={xFor(index) - CHART_BAR_GAP / 2 - barWidth} y={yFor(point.avgRpe) - (point.avgRpe === 0 ? 2 : 0)} width={barWidth} height={getBarHeight(point.avgRpe, 10, plotHeight)} rx={CHART_BAR_RADIUS} fill={CHART_SERIES_COLORS[0]} opacity={point.key === selectedKey ? 1 : 0.84} className="transition-[opacity,filter] duration-200 hover:brightness-110 hover:opacity-100" /> : null}
+            {Number.isFinite(point.avgWellness) ? <rect x={xFor(index) + CHART_BAR_GAP / 2} y={yFor(point.avgWellness) - (point.avgWellness === 0 ? 2 : 0)} width={barWidth} height={getBarHeight(point.avgWellness, 10, plotHeight)} rx={CHART_BAR_RADIUS} fill={CHART_SERIES_COLORS[1]} opacity={point.key === selectedKey ? 1 : 0.84} className="transition-[opacity,filter] duration-200 hover:brightness-110 hover:opacity-100" /> : null}
             {point.axisLabel ? <text x={xFor(index)} y={height - 14} textAnchor="middle" fill={point.key === selectedKey ? '#5ce1e6' : '#94a3b8'} fontSize={point.key === selectedKey ? '12' : '11'} fontWeight="800">
               {point.axisLabel}
             </text>
@@ -18519,13 +18490,13 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                         <div className="flex items-center gap-2">
                           <span className="w-7 text-[9px] font-black text-caudal-electric">CAU</span>
                           <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
-                            <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${Math.max(6, (Number(caudal || 0) / maxValue) * 100)}%` }} />
+                            <div className="h-full rounded-full bg-[#5EA8FF]" style={{ width: `${Math.max(6, (Number(caudal || 0) / maxValue) * 100)}%` }} />
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="w-7 text-[9px] font-black text-red-200">RIV</span>
                           <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
-                            <div className="h-full rounded-full bg-red-300" style={{ width: `${Math.max(6, (Number(rival || 0) / maxValue) * 100)}%` }} />
+                            <div className="h-full rounded-full bg-[#22C7E8]" style={{ width: `${Math.max(6, (Number(rival || 0) / maxValue) * 100)}%` }} />
                           </div>
                         </div>
                       </div>
@@ -18545,8 +18516,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                       <div key={range.range} className="rounded-xl bg-white/[0.045] px-2 py-2">
                         <p className="text-center text-[10px] font-black text-slate-500">{range.range}'</p>
                         <div className="mt-2 flex h-16 items-end justify-center gap-1">
-                          <div className="w-2 rounded-t bg-caudal-electric" style={{ height: `${Math.max(8, (range.caudal / maxRange) * 100)}%` }} />
-                          <div className="w-2 rounded-t bg-red-300" style={{ height: `${Math.max(8, (range.rival / maxRange) * 100)}%` }} />
+                          <div className="w-3 rounded-t-[5px] bg-[#5EA8FF]" style={{ height: `${Math.max(8, (range.caudal / maxRange) * 100)}%` }} />
+                          <div className="w-3 rounded-t-[5px] bg-[#22C7E8]" style={{ height: `${Math.max(8, (range.rival / maxRange) * 100)}%` }} />
                         </div>
                       </div>
                     );
@@ -29511,7 +29482,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                                 <div key={`${point.entry.id || point.entry.jugador_id}-${point.entry.entry_date}`} className="flex w-10 shrink-0 flex-col items-center justify-end gap-1">
                                   <span className="text-[10px] font-black text-amber-100">{point.value.toFixed(1)}</span>
                                   <span
-                                    className="w-5 rounded-t-md bg-amber-300"
+                                    className="w-5 rounded-t-[6px] bg-[#5EA8FF] opacity-85 transition-[filter,opacity] duration-200 hover:brightness-110 hover:opacity-100"
                                     style={{ height: `${Math.max(8, point.value * 7)}px` }}
                                     title={`${formatShortDate(point.entry.entry_date)} · RPE ${point.value.toFixed(1)}`}
                                   />
@@ -33657,14 +33628,14 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                               <div className="grid grid-cols-[80px_1fr_28px] items-center gap-2">
                                 <span className="text-[10px] font-black uppercase tracking-[0.12em] text-caudal-electric">A favor</span>
                                 <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
-                                  <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${(row.forCount / maxMinuteGoals) * 100}%` }} />
+                                  <div className="h-full rounded-full bg-[#5EA8FF]" style={{ width: `${(row.forCount / maxMinuteGoals) * 100}%` }} />
                                 </div>
                                 <span className="text-right text-xs font-black text-white">{row.forCount}</span>
                               </div>
                               <div className="grid grid-cols-[80px_1fr_28px] items-center gap-2">
                                 <span className="text-[10px] font-black uppercase tracking-[0.12em] text-red-200">En contra</span>
                                 <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
-                                  <div className="h-full rounded-full bg-red-400" style={{ width: `${(row.againstCount / maxMinuteGoals) * 100}%` }} />
+                                  <div className="h-full rounded-full bg-[#22C7E8]" style={{ width: `${(row.againstCount / maxMinuteGoals) * 100}%` }} />
                                 </div>
                                 <span className="text-right text-xs font-black text-white">{row.againstCount}</span>
                               </div>
@@ -33690,11 +33661,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                           <p className="text-sm font-black text-white">{row.context}</p>
                           <div>
                             <div className="flex justify-between text-xs font-bold uppercase text-slate-400"><span>A favor</span><span>{row.forCount}</span></div>
-                            <div className="mt-2 h-2 rounded-full bg-white/10"><div className="h-full rounded-full bg-caudal-electric" style={{ width: `${(row.forCount / maxType) * 100}%` }} /></div>
+                            <div className="mt-2 h-2 rounded-full bg-white/10"><div className="h-full rounded-full bg-[#5EA8FF]" style={{ width: `${(row.forCount / maxType) * 100}%` }} /></div>
                           </div>
                           <div>
                             <div className="flex justify-between text-xs font-bold uppercase text-slate-400"><span>En contra</span><span>{row.againstCount}</span></div>
-                            <div className="mt-2 h-2 rounded-full bg-white/10"><div className="h-full rounded-full bg-red-400" style={{ width: `${(row.againstCount / maxType) * 100}%` }} /></div>
+                            <div className="mt-2 h-2 rounded-full bg-white/10"><div className="h-full rounded-full bg-[#22C7E8]" style={{ width: `${(row.againstCount / maxType) * 100}%` }} /></div>
                           </div>
                         </div>
                       );
@@ -33784,7 +33755,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                             </div>
                           </div>
                           <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-                            <div className="h-full rounded-full bg-caudal-electric" style={{ width: `${totalSystemMinutes ? (row.minutes / totalSystemMinutes) * 100 : 0}%` }} />
+                            <div className="h-full rounded-full bg-[#5EA8FF]" style={{ width: `${totalSystemMinutes ? (row.minutes / totalSystemMinutes) * 100 : 0}%` }} />
                           </div>
                           <div className="mt-3 grid grid-cols-3 gap-2 text-center sm:grid-cols-6">
                             {[

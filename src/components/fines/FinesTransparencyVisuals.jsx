@@ -14,7 +14,7 @@ export function FinesHorizontalRanking({
   formatValue = formatFinesCurrency,
   emptyText = 'Sin datos suficientes.',
   limit = 5,
-  tone = 'bg-caudal-electric',
+  tone = 'bg-[#5EA8FF]',
 }) {
   const ranked = [...rows]
     .filter((row) => row?.[labelKey] && numberValue(row?.[valueKey]) > 0)
