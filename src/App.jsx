@@ -3959,13 +3959,18 @@ const PerformanceEvolutionChart = ({
   onSelect = null,
   emptyLabel = 'Sin respuestas suficientes para mostrar la evolución.',
 }) => {
-  const barWidth = period === 'week' ? 18 : 12;
+  const layout = {
+    week: { barWidth: 18, categoryGap: 18, minimumWidth: 560, scroll: false, labelSize: 11 },
+    month: { barWidth: 16, categoryGap: 18, minimumWidth: 560, scroll: true, labelSize: 10 },
+    season: { barWidth: 18, categoryGap: 20, minimumWidth: 560, scroll: true, labelSize: 9 },
+  }[period] || { barWidth: 18, categoryGap: 18, minimumWidth: 560, scroll: true, labelSize: 10 };
+  const { barWidth } = layout;
   const width = getBarChartWidth({
     categoryCount: points.length,
     seriesCount: 2,
-    minimumWidth: 560,
+    minimumWidth: layout.minimumWidth,
     barWidth,
-    categoryGap: period === 'week' ? 18 : 8,
+    categoryGap: layout.categoryGap,
   });
   const height = 280;
   const plot = { left: 42, right: 18, top: 18, bottom: 42 };
@@ -3974,8 +3979,20 @@ const PerformanceEvolutionChart = ({
   const slotWidth = plotWidth / Math.max(points.length, 1);
   const xFor = (index) => plot.left + (slotWidth * index) + (slotWidth / 2);
   const yFor = (value) => plot.top + ((10 - value) / 10) * plotHeight;
+  const groupWidth = (barWidth * 2) + CHART_BAR_GAP;
   const hasRpe = points.some((point) => Number.isFinite(point.avgRpe));
   const hasWellness = points.some((point) => Number.isFinite(point.avgWellness));
+  const [tooltipKey, setTooltipKey] = useState('');
+  const tooltipIndex = points.findIndex((point) => point.key === tooltipKey);
+  const tooltipPoint = tooltipIndex >= 0 ? points[tooltipIndex] : null;
+  const formatTooltipValue = (value) => Number.isFinite(value)
+    ? Number(value).toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+    : 'sin dato';
+  const getPointTooltip = (point) => [
+    point.label,
+    `RPE medio: ${formatTooltipValue(point.avgRpe)}`,
+    `Wellness medio: ${formatTooltipValue(point.avgWellness)}`,
+  ].join('\n');
 
   if (!hasRpe && !hasWellness) {
     return (
@@ -3994,20 +4011,19 @@ const PerformanceEvolutionChart = ({
       <svg
         viewBox={`0 0 ${width} ${height}`}
         className="h-auto w-full overflow-visible"
-        style={{ minWidth: `${width}px` }}
+        style={layout.scroll ? { minWidth: `${width}px` } : undefined}
         role="img"
         aria-label={`Evolución de RPE y Wellness en barras agrupadas, vista ${period} y escala de cero a diez`}
       >
         {points.map((point, index) => point.key === selectedKey ? (
           <rect
             key={`selected-${point.key}`}
-            x={Math.max(plot.left, xFor(index) - (slotWidth * 0.42))}
-            y={plot.top}
-            width={slotWidth * 0.84}
-            height={plotHeight}
-            rx="14"
-            fill="rgba(92,225,230,0.07)"
-            stroke="rgba(92,225,230,0.18)"
+            x={xFor(index) - (groupWidth / 2) - 4}
+            y={plot.top + plotHeight + 4}
+            width={groupWidth + 8}
+            height="3"
+            rx="1.5"
+            fill="rgba(94,168,255,0.72)"
           />
         ) : null)}
         {[0, 2.5, 5, 7.5, 10].map((value) => (
@@ -4029,23 +4045,47 @@ const PerformanceEvolutionChart = ({
             role={onSelect ? 'button' : undefined}
             tabIndex={onSelect && point.hasData ? 0 : undefined}
             className={onSelect && point.hasData ? 'cursor-pointer outline-none' : ''}
-            onClick={() => point.hasData && onSelect?.(point)}
+            onMouseEnter={() => point.hasData && setTooltipKey(point.key)}
+            onMouseLeave={() => setTooltipKey((current) => current === point.key ? '' : current)}
+            onFocus={() => point.hasData && setTooltipKey(point.key)}
+            onBlur={() => setTooltipKey((current) => current === point.key ? '' : current)}
+            onClick={() => {
+              if (!point.hasData) return;
+              setTooltipKey(point.key);
+              onSelect?.(point);
+            }}
             onKeyDown={(event) => {
               if (point.hasData && (event.key === 'Enter' || event.key === ' ')) {
                 event.preventDefault();
+                setTooltipKey(point.key);
                 onSelect?.(point);
               }
             }}
           >
-            <title>{point.tooltip || point.label}</title>
-            {Number.isFinite(point.avgRpe) ? <rect x={xFor(index) - CHART_BAR_GAP / 2 - barWidth} y={yFor(point.avgRpe) - (point.avgRpe === 0 ? 2 : 0)} width={barWidth} height={getBarHeight(point.avgRpe, 10, plotHeight)} rx={CHART_BAR_RADIUS} fill={CHART_SERIES_COLORS[0]} opacity={point.key === selectedKey ? 1 : 0.84} className="transition-[opacity,filter] duration-200 hover:brightness-110 hover:opacity-100" /> : null}
-            {Number.isFinite(point.avgWellness) ? <rect x={xFor(index) + CHART_BAR_GAP / 2} y={yFor(point.avgWellness) - (point.avgWellness === 0 ? 2 : 0)} width={barWidth} height={getBarHeight(point.avgWellness, 10, plotHeight)} rx={CHART_BAR_RADIUS} fill={CHART_SERIES_COLORS[1]} opacity={point.key === selectedKey ? 1 : 0.84} className="transition-[opacity,filter] duration-200 hover:brightness-110 hover:opacity-100" /> : null}
-            {point.axisLabel ? <text x={xFor(index)} y={height - 14} textAnchor="middle" fill={point.key === selectedKey ? '#5ce1e6' : '#94a3b8'} fontSize={point.key === selectedKey ? '12' : '11'} fontWeight="800">
+            <title>{getPointTooltip(point)}</title>
+            <rect x={xFor(index) - (slotWidth / 2)} y={plot.top} width={slotWidth} height={plotHeight + 10} fill="transparent" />
+            {Number.isFinite(point.avgRpe) ? <rect x={xFor(index) - CHART_BAR_GAP / 2 - barWidth} y={yFor(point.avgRpe) - (point.avgRpe === 0 ? 2 : 0)} width={barWidth} height={getBarHeight(point.avgRpe, 10, plotHeight)} rx={CHART_BAR_RADIUS} fill={CHART_SERIES_COLORS[0]} opacity={point.key === selectedKey || point.key === tooltipKey ? 1 : 0.84} className="transition-[opacity,filter] duration-200 hover:brightness-110 hover:opacity-100" /> : null}
+            {Number.isFinite(point.avgWellness) ? <rect x={xFor(index) + CHART_BAR_GAP / 2} y={yFor(point.avgWellness) - (point.avgWellness === 0 ? 2 : 0)} width={barWidth} height={getBarHeight(point.avgWellness, 10, plotHeight)} rx={CHART_BAR_RADIUS} fill={CHART_SERIES_COLORS[1]} opacity={point.key === selectedKey || point.key === tooltipKey ? 1 : 0.84} className="transition-[opacity,filter] duration-200 hover:brightness-110 hover:opacity-100" /> : null}
+            {point.axisLabel ? <text x={xFor(index)} y={height - 14} textAnchor="middle" fill={point.key === selectedKey ? '#5ce1e6' : '#94a3b8'} fontSize={point.key === selectedKey ? layout.labelSize + 1 : layout.labelSize} fontWeight="800">
               {point.axisLabel}
             </text>
               : null}
           </g>
         ))}
+        {tooltipPoint ? (() => {
+          const tooltipWidth = 188;
+          const tooltipHeight = 64;
+          const tooltipX = Math.max(plot.left + 4, Math.min(width - plot.right - tooltipWidth, xFor(tooltipIndex) - (tooltipWidth / 2)));
+          const tooltipY = plot.top + 6;
+          return (
+            <g pointerEvents="none" aria-hidden="true">
+              <rect x={tooltipX} y={tooltipY} width={tooltipWidth} height={tooltipHeight} rx="9" fill="#07111f" stroke="rgba(148,163,184,0.32)" />
+              <text x={tooltipX + 10} y={tooltipY + 17} fill="#f8fafc" fontSize="10" fontWeight="800">{tooltipPoint.label}</text>
+              <text x={tooltipX + 10} y={tooltipY + 35} fill={CHART_SERIES_COLORS[0]} fontSize="10" fontWeight="700">RPE medio: {formatTooltipValue(tooltipPoint.avgRpe)}</text>
+              <text x={tooltipX + 10} y={tooltipY + 52} fill={CHART_SERIES_COLORS[1]} fontSize="10" fontWeight="700">Wellness medio: {formatTooltipValue(tooltipPoint.avgWellness)}</text>
+            </g>
+          );
+        })() : null}
       </svg>
     </div>
   );
@@ -10060,16 +10100,13 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
       });
       weekStart = addDays(weekStart, 7);
     }
-    const labelStep = Math.max(1, Math.ceil(points.length / 10));
-    return points.map((point, index) => ({
+    return points.map((point) => ({
       ...point,
-      axisLabel: index % labelStep === 0 || index === points.length - 1 ? point.label : '',
+      axisLabel: point.label,
       tooltip: [
-        `Semana ${point.label}`,
-        `RPE medio: ${point.avgRpe === null ? 'sin dato' : point.avgRpe.toFixed(1)} · Wellness medio: ${point.avgWellness === null ? 'sin dato' : point.avgWellness.toFixed(1)}`,
-        `${point.responseCount} respuestas`,
-        `Estado físico: ${point.priorityCount} prioridad · ${point.watchCount} vigilancia`,
-        `Cumplimiento: ${point.bothFormPlayerCount} jugadores con ambos formularios`,
+        point.label,
+        `RPE medio: ${point.avgRpe === null ? 'sin dato' : point.avgRpe.toFixed(1)}`,
+        `Wellness medio: ${point.avgWellness === null ? 'sin dato' : point.avgWellness.toFixed(1)}`,
       ].join('\n'),
     }));
   };
