@@ -2,13 +2,28 @@
 -- Solo PostgreSQL/RLS: no prueba bytes, MIME ni signed URLs reales del Storage API.
 -- Requiere 5 usuarios auth y un jugador sin membership PLAYER activa.
 -- Todo termina en ROLLBACK.
+-- Todo se ejecuta dentro de una unica transaccion y termina en ROLLBACK.
+-- Si un error no capturado aborta el script antes del ROLLBACK final, la
+-- transaccion queda abortada: sus escrituras no pueden confirmarse y puede ser
+-- necesario ejecutar ROLLBACK manualmente en esa sesion.
 begin;
 
 create temporary table task_test_actors as
-select id, row_number() over (order by created_at, id) as n from auth.users limit 5;
+select account.id,
+       row_number() over (order by account.created_at, account.id) as n
+from auth.users account
+where not exists (
+  select 1
+  from public.club_memberships membership
+  where membership.user_id = account.id
+    and membership.is_active
+)
+order by account.created_at, account.id
+limit 5;
 do $$ begin
   if (select count(*) from task_test_actors) < 5 then
-    raise exception 'El verificador de Tareas necesita 5 usuarios auth de prueba';
+    raise exception 'training_tasks verifier requires 5 auth.users with zero active club memberships; found %',
+      (select count(*) from task_test_actors);
   end if;
 end $$;
 
