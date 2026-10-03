@@ -31363,7 +31363,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                         ].filter(Boolean);
                         return (
                         <PlayerNameTooltip key={player.id} player={player}>
-                        <article onClick={() => setSelectedPlayerProfileId(player.id)} className="group relative min-h-[112px] cursor-pointer rounded-[1rem] border border-white/10 bg-[#0a1425]/86 p-3 shadow-[0_10px_24px_rgba(0,0,0,0.13)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c] hover:shadow-[0_14px_34px_rgba(0,0,0,0.20)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/60 focus-within:border-caudal-electric/40">
+                        <article onClick={() => setSelectedPlayerProfileId(player.id)} data-player-roster-card="true" className="group relative min-h-[122px] cursor-pointer rounded-[1rem] border border-white/10 bg-[#0a1425]/86 p-3 shadow-[0_10px_24px_rgba(0,0,0,0.13)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/30 hover:bg-[#0d192c] hover:shadow-[0_14px_34px_rgba(0,0,0,0.20)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric/60 focus-within:border-caudal-electric/40">
                           <button
                             type="button"
                             onClick={(event) => openFloatingMenu(event, { id: `player-card-${player.id}`, type: 'player-card' })}
@@ -31380,11 +31380,16 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                               <button type="button" onClick={() => runMenuAction(() => handleDelete(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar</button>
                             </FloatingActionMenu>
                           ) : null}
-                          <div className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-start gap-3 pr-11">
-                            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.16),rgba(255,255,255,0.055)_42%,rgba(212,0,0,0.12))] text-sm font-black text-slate-100 shadow-[0_8px_18px_rgba(0,0,0,0.18)] transition duration-200 group-hover:scale-[1.02]">
-                              <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-xs" />
+                          <div className="grid grid-cols-[72px_minmax(0,1fr)] items-start gap-3 pr-11">
+                            <div className="relative flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-visible rounded-2xl border border-white/10 bg-[linear-gradient(135deg,rgba(61,217,255,0.16),rgba(255,255,255,0.055)_42%,rgba(212,0,0,0.12))] text-sm font-black text-slate-100 shadow-[0_8px_18px_rgba(0,0,0,0.18)] transition duration-200 group-hover:scale-[1.015]">
+                              <span className="absolute inset-0 overflow-hidden rounded-2xl">
+                                <PlayerPortrait player={player} className="h-full w-full" fallbackTextClassName="text-sm" />
+                              </span>
+                              <span className="absolute -bottom-2 -right-2 z-10 flex h-7 min-w-7 items-center justify-center rounded-full border-2 border-[#0a1425] bg-caudal-electric px-1.5 text-[10px] font-black leading-none text-slate-950 shadow-[0_4px_10px_rgba(0,0,0,0.25)]" title={player.number ? `Dorsal ${displayDorsal(player.number)}` : 'Dorsal no indicado'}>
+                                {player.number ? `#${displayDorsal(player.number)}` : '—'}
+                              </span>
                             </div>
-                            <div className="min-w-0 pr-1">
+                            <div className="min-w-0 pr-1 pt-0.5">
                               <h3 className="line-clamp-2 [overflow-wrap:normal] [word-break:normal] text-[17px] font-black leading-[1.12] text-white">{displayPlayerName(player)}</h3>
                               <p
                                 className="mt-1 line-clamp-1 [overflow-wrap:normal] [word-break:normal] text-[12px] font-bold leading-snug text-slate-300"
@@ -31394,9 +31399,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
                               </p>
                               <p className="mt-0.5 text-[10px] font-semibold text-slate-500" title={player.dob ? undefined : 'Falta indicar la fecha de nacimiento'}>{ageLabel}</p>
                             </div>
-                            <p className="mt-0.5 rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2.5 py-1 text-[12px] font-black text-caudal-electric">#{displayDorsal(player.number)}</p>
                           </div>
-                          <div className="mt-2 flex min-h-5 flex-wrap items-center gap-1">
+                          <div className="mt-2 flex min-h-5 flex-wrap items-center gap-1 pl-[84px] pr-1">
                             {statusLabel ? <span className={`rounded-lg border px-1.5 py-0.5 text-[9px] font-bold leading-none ${statusClass}`}>{statusLabel}</span> : null}
                             {tacticalChips.map(([label, className]) => (
                               <span key={label} className={`rounded-lg border px-1.5 py-0.5 text-[9px] font-bold leading-none ${className}`}>{label}</span>
