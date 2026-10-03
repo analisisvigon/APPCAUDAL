@@ -317,7 +317,7 @@ function AppAuthShell() {
   if (authState.status === 'staff') {
     return (
       <Suspense fallback={<LoadingScreen message="Cargando APPCAUDAL…" />}>
-        <StaffApp controlledSession={authState.session} onControlledSignOut={handleSignOut} />
+        <StaffApp controlledSession={authState.session} identity={authState.identity} onControlledSignOut={handleSignOut} />
       </Suspense>
     );
   }

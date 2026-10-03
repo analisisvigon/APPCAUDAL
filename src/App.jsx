@@ -8,6 +8,7 @@ import {
   runIndependentAuthenticatedLoaders,
 } from './utils/authenticatedDataLoad';
 import LibrarySection from './components/library/LibrarySection';
+import TrainingTasksSection from './components/training/TrainingTasksSection';
 import MatchVideoPlayer, { detectMatchVideoProvider } from './components/matches/MatchVideoPlayer';
 import MatchPrintTab from './components/print/MatchPrintTab';
 import FootballZoneMap from './components/visualization/FootballZoneMap';
@@ -5258,7 +5259,7 @@ const renderTacticalBlock = (block) => (
   </div>
 );
 
-function App({ controlledSession = undefined, onControlledSignOut = null }) {
+function App({ controlledSession = undefined, onControlledSignOut = null, identity = null }) {
   const hasControlledAuth = controlledSession !== undefined;
   const [activeTab, setActiveTab] = useState('Inicio');
   const [players, setPlayers] = useState([]);
@@ -29836,7 +29837,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
   };
 
   const authUser = session?.user ?? null;
-  const desktopTabs = ['Inicio', 'Plantilla', 'Perfiles', 'Equipos', 'Partidos', 'Biblioteca', 'Rendimiento', 'Fisio', 'Multas', 'Registro Delegado', 'Análisis Grupal'];
+  const desktopTabs = ['Inicio', 'Plantilla', 'Perfiles', 'Equipos', 'Partidos', 'Biblioteca', 'Tareas', 'Rendimiento', 'Fisio', 'Multas', 'Registro Delegado', 'Análisis Grupal'];
   const mobilePrimaryTabs = [
     ['Inicio', 'Inicio'],
     ['Partidos', 'Partidos'],
@@ -29844,7 +29845,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
     ['Registro Delegado', 'Deleg.'],
     ['Análisis Grupal', 'Análisis'],
   ];
-  const mobileMoreTabs = ['Perfiles', 'Equipos', 'Rendimiento', 'Fisio', 'Multas', 'Biblioteca'];
+  const mobileMoreTabs = ['Perfiles', 'Equipos', 'Biblioteca', 'Tareas', 'Rendimiento', 'Fisio', 'Multas'];
   const goToTab = (tab) => {
     if (tab === activeTab) {
       setIsMobileMoreOpen(false);
@@ -33205,6 +33206,9 @@ function App({ controlledSession = undefined, onControlledSignOut = null }) {
 
         {activeTab === 'Biblioteca' ? (
           <LibrarySection players={players} />
+        ) : null}
+        {activeTab === 'Tareas' ? (
+          <TrainingTasksSection membership={identity?.membership} userId={session?.user?.id || ''} />
         ) : null}
 
         {activeTab === 'Rendimiento' ? (
