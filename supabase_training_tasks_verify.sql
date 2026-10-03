@@ -8,6 +8,23 @@
 -- necesario ejecutar ROLLBACK manualmente en esa sesion.
 begin;
 
+create or replace function pg_temp.admin_context()
+returns void
+language plpgsql
+as $$
+begin
+  execute 'reset role';
+  perform set_config('request.jwt.claims', '{}'::jsonb::text, true);
+  perform set_config('request.jwt.claim.sub', '', true);
+  perform set_config('request.jwt.claim.role', '', true);
+  if auth.uid() is not null then
+    raise exception 'training_tasks verifier failed to clear administrative auth context';
+  end if;
+end;
+$$;
+
+select pg_temp.admin_context();
+
 create temporary table task_test_actors (
   n integer primary key,
   actor_key text not null unique,
@@ -25,6 +42,8 @@ insert into task_test_actors(n, actor_key, id, email) values
 create temporary table task_test_auth_config (
   instance_id uuid not null
 );
+
+grant execute on function pg_temp.admin_context() to authenticated;
 
 -- Core 25-31 usan INSERT SQL transaccional en auth.users. El repositorio no
 -- declara triggers propios sobre auth.users; por ello el conjunto conocido es
@@ -135,6 +154,7 @@ select
   null,
   null, null, null, null, null, null;
 
+select pg_temp.admin_context();
 insert into public.club_memberships (club_id,user_id,role,is_active)
 select club_a, author_a, 'staff', true from task_test_context
 union all select club_a, recipient_a, 'staff', true from task_test_context
@@ -274,19 +294,20 @@ select pg_temp.actor(viewer_a) from task_test_context;
 select pg_temp.assert_true((select count(*) = 0 from public.training_tasks where id = task_id), '18 VIEWER no lee') from task_test_context;
 
 -- 17,22: receptor pierde acceso al pasar a PLAYER con jugador_id válido.
-reset role;
+select pg_temp.admin_context();
 update public.club_memberships set role = 'player', jugador_id = (select player_jugador from task_test_context)
 where id = (select recipient_membership from task_test_context);
 set local role authenticated;
 select pg_temp.actor(recipient_a) from task_test_context;
 select pg_temp.assert_true((select count(*) = 0 from public.training_tasks where id = task_id), '17/22 receptor PLAYER pierde acceso') from task_test_context;
 select pg_temp.assert_true((select count(*) = 0 from public.training_task_shares where task_id = c.task_id), '22 receptor PLAYER pierde metadata share') from task_test_context c;
-reset role;
+select pg_temp.admin_context();
 update public.club_memberships set role = 'staff', jugador_id = null where id = (select recipient_membership from task_test_context);
 set local role authenticated;
+select pg_temp.actor(recipient_a) from task_test_context;
 
 -- 15-16: autor revocado conserva datos, pierde acceso y mutaciones.
-reset role;
+select pg_temp.admin_context();
 update public.club_memberships set is_active = false where club_id = (select club_a from task_test_context) and user_id = (select author_a from task_test_context);
 set local role authenticated;
 select pg_temp.actor(author_a) from task_test_context;
@@ -294,9 +315,10 @@ select pg_temp.assert_true((select count(*) = 0 from public.training_tasks where
 select pg_temp.denied(format('update public.training_tasks set name = %L where id = %L','Revocada',task_id), '16 autor revocado no edita') from task_test_context;
 select pg_temp.denied(format('delete from public.training_tasks where id = %L',task_id), '16 autor revocado no borra') from task_test_context;
 select pg_temp.denied(format('delete from public.training_task_shares where task_id = %L',task_id), '16 autor revocado no comparte') from task_test_context;
-reset role;
+select pg_temp.admin_context();
 update public.club_memberships set is_active = true where club_id = (select club_a from task_test_context) and user_id = (select author_a from task_test_context);
 set local role authenticated;
+select pg_temp.actor(author_a) from task_test_context;
 
 -- 19: grants ANON; no acceso a tablas públicas de Tareas.
 select pg_temp.assert_true(not has_table_privilege('anon','public.training_tasks','SELECT')
@@ -304,7 +326,7 @@ select pg_temp.assert_true(not has_table_privilege('anon','public.training_tasks
 
 -- 24-31: prueba PostgreSQL de helpers y RLS de metadatos storage.objects.
 -- NO prueba upload/download/remove HTTP ni emisión/expiración de signed URLs.
-reset role;
+select pg_temp.admin_context();
 update task_test_context c set path = format('%s/%s/%s/attachment-%s-ejercicio.png',club_a,task_id,author_a,gen_random_uuid());
 set local role authenticated;
 select pg_temp.actor(author_a) from task_test_context;
@@ -328,10 +350,11 @@ select pg_temp.actor(author_b) from task_test_context;
 select pg_temp.assert_true(not public.training_task_storage_allowed(path,'read'), '31 otro club no lee metadata') from task_test_context;
 select pg_temp.assert_true((select count(*) = 0 from storage.objects where bucket_id = 'training-task-files' and name = path), '31 SELECT Storage cross-club') from task_test_context;
 select pg_temp.actor(recipient_a) from task_test_context;
-reset role;
+select pg_temp.admin_context();
 update public.club_memberships set role = 'player', jugador_id = (select player_jugador from task_test_context)
 where id = (select recipient_membership from task_test_context);
 set local role authenticated;
+select pg_temp.actor(recipient_a) from task_test_context;
 select pg_temp.assert_true(not public.training_task_storage_allowed(path,'write'), '25 PLAYER no sube') from task_test_context;
 select pg_temp.denied(format(
   'insert into storage.objects(bucket_id,name) values (%L,%L)',
