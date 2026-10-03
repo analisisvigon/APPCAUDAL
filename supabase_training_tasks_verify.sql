@@ -1,6 +1,6 @@
 -- Ejecutar MANUALMENTE en una base de prueba DESPUÉS de supabase_training_tasks.sql.
 -- Solo PostgreSQL/RLS: no prueba bytes, MIME ni signed URLs reales del Storage API.
--- Requiere 5 usuarios auth y un jugador sin membership PLAYER activa.
+-- Crea 5 usuarios auth fixture y requiere un jugador sin membership PLAYER activa.
 -- Todo termina en ROLLBACK.
 -- Todo se ejecuta dentro de una unica transaccion y termina en ROLLBACK.
 -- Si un error no capturado aborta el script antes del ROLLBACK final, la
@@ -8,24 +8,109 @@
 -- necesario ejecutar ROLLBACK manualmente en esa sesion.
 begin;
 
-create temporary table task_test_actors as
-select account.id,
-       row_number() over (order by account.created_at, account.id) as n
-from auth.users account
-where not exists (
-  select 1
-  from public.club_memberships membership
-  where membership.user_id = account.id
-    and membership.is_active
-)
-order by account.created_at, account.id
-limit 5;
-do $$ begin
-  if (select count(*) from task_test_actors) < 5 then
-    raise exception 'training_tasks verifier requires 5 auth.users with zero active club memberships; found %',
-      (select count(*) from task_test_actors);
+create temporary table task_test_actors (
+  n integer primary key,
+  actor_key text not null unique,
+  id uuid not null unique,
+  email text not null unique
+);
+
+insert into task_test_actors(n, actor_key, id, email) values
+  (1, 'author_a',    'b4a50000-0000-4000-8000-000000000001', 'verify.training-tasks.author-a@appcaudal.invalid'),
+  (2, 'recipient_a', 'b4a50000-0000-4000-8000-000000000002', 'verify.training-tasks.recipient-a@appcaudal.invalid'),
+  (3, 'outsider_a',  'b4a50000-0000-4000-8000-000000000003', 'verify.training-tasks.outsider-a@appcaudal.invalid'),
+  (4, 'author_b',    'b4a50000-0000-4000-8000-000000000004', 'verify.training-tasks.author-b@appcaudal.invalid'),
+  (5, 'viewer_a',    'b4a50000-0000-4000-8000-000000000005', 'verify.training-tasks.viewer-a@appcaudal.invalid');
+
+create temporary table task_test_auth_config (
+  instance_id uuid not null
+);
+
+-- Core 25-31 usan INSERT SQL transaccional en auth.users. El repositorio no
+-- declara triggers propios sobre auth.users; por ello el conjunto conocido es
+-- vacio. Solo se bloquean triggers no internos que se ejecutarian en INSERT.
+do $$
+declare
+  collision_ids text;
+  collision_emails text;
+  collision_memberships text;
+  unknown_triggers text;
+  instance_count integer;
+begin
+  select string_agg(actor.actor_key || '=' || actor.id::text, ', ' order by actor.n)
+  into collision_ids
+  from task_test_actors actor
+  join auth.users account on account.id = actor.id;
+  if collision_ids is not null then
+    raise exception 'training_tasks verifier auth UUID collision: %', collision_ids;
   end if;
+
+  select string_agg(actor.actor_key || '=' || actor.email, ', ' order by actor.n)
+  into collision_emails
+  from task_test_actors actor
+  join auth.users account on lower(account.email) = lower(actor.email);
+  if collision_emails is not null then
+    raise exception 'training_tasks verifier auth email collision: %', collision_emails;
+  end if;
+
+  select string_agg(actor.actor_key || '=' || membership.id::text, ', ' order by actor.n)
+  into collision_memberships
+  from task_test_actors actor
+  join public.club_memberships membership on membership.user_id = actor.id;
+  if collision_memberships is not null then
+    raise exception 'training_tasks verifier membership collision: %', collision_memberships;
+  end if;
+
+  select string_agg(
+    trigger_row.tgname || ' -> ' || function_namespace.nspname || '.' || function_row.proname,
+    ', ' order by trigger_row.tgname
+  )
+  into unknown_triggers
+  from pg_catalog.pg_trigger trigger_row
+  join pg_catalog.pg_proc function_row on function_row.oid = trigger_row.tgfoid
+  join pg_catalog.pg_namespace function_namespace on function_namespace.oid = function_row.pronamespace
+  where trigger_row.tgrelid = 'auth.users'::regclass
+    and not trigger_row.tgisinternal
+    and trigger_row.tgenabled in ('O', 'A')
+    and (trigger_row.tgtype::integer & 4) = 4;
+  if unknown_triggers is not null then
+    raise exception 'training_tasks verifier found unknown auth.users INSERT trigger(s): %', unknown_triggers;
+  end if;
+
+  select count(distinct account.instance_id)
+  into instance_count
+  from auth.users account
+  where account.instance_id is not null;
+  if instance_count <> 1 then
+    raise exception 'training_tasks verifier requires exactly one non-null auth instance_id; found %', instance_count;
+  end if;
+
+  insert into task_test_auth_config(instance_id)
+  select min(account.instance_id::text)::uuid
+  from auth.users account
+  where account.instance_id is not null;
 end $$;
+
+insert into auth.users (
+  instance_id, id, aud, role, email, encrypted_password,
+  email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+  created_at, updated_at
+)
+select
+  config.instance_id,
+  actor.id,
+  'authenticated',
+  'authenticated',
+  actor.email,
+  '',
+  pg_catalog.now(),
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  '{}'::jsonb,
+  pg_catalog.now(),
+  pg_catalog.now()
+from task_test_actors actor
+cross join task_test_auth_config config
+order by actor.n;
 
 create temporary table task_test_context (
   club_a uuid, club_b uuid, author_a uuid, recipient_a uuid,
@@ -42,15 +127,12 @@ insert into task_test_context
 select
   (select id from public.clubs where name like 'Training Tasks Verify A %' order by created_at desc limit 1),
   (select id from public.clubs where name like 'Training Tasks Verify B %' order by created_at desc limit 1),
-  (select id from task_test_actors where n = 1),
-  (select id from task_test_actors where n = 2),
-  (select id from task_test_actors where n = 3),
-  (select id from task_test_actors where n = 4),
-  (select id from task_test_actors where n = 5),
-  (select jugador.id from public.jugadores jugador where not exists (
-    select 1 from public.club_memberships member
-    where member.jugador_id = jugador.id and member.role = 'player' and member.is_active
-  ) limit 1),
+  (select id from task_test_actors where actor_key = 'author_a'),
+  (select id from task_test_actors where actor_key = 'recipient_a'),
+  (select id from task_test_actors where actor_key = 'outsider_a'),
+  (select id from task_test_actors where actor_key = 'author_b'),
+  (select id from task_test_actors where actor_key = 'viewer_a'),
+  null,
   null, null, null, null, null, null;
 
 insert into public.club_memberships (club_id,user_id,role,is_active)
@@ -64,15 +146,48 @@ update task_test_context c set
   recipient_membership = (select id from public.club_memberships where club_id = c.club_a and user_id = c.recipient_a),
   outsider_membership = (select id from public.club_memberships where club_id = c.club_a and user_id = c.outsider_a),
   author_b_membership = (select id from public.club_memberships where club_id = c.club_b and user_id = c.author_b);
-do $$ begin
-  if (select player_jugador from task_test_context) is null then
-    raise exception 'Se necesita un jugador sin membership PLAYER activa para el verificador';
+do $$
+declare
+  selected_player uuid;
+begin
+  select player.id
+  into selected_player
+  from public.jugadores player
+  where not exists (
+    select 1
+    from public.club_memberships membership
+    where membership.jugador_id = player.id
+      and membership.role = 'player'
+      and membership.is_active
+  )
+  order by player.id
+  limit 1
+  for update of player;
+
+  if selected_player is null then
+    raise exception 'training_tasks verifier requires one player without an active PLAYER membership';
   end if;
+  if exists (
+    select 1
+    from public.club_memberships membership
+    where membership.jugador_id = selected_player
+      and membership.role = 'player'
+      and membership.is_active
+  ) then
+    raise exception 'training_tasks verifier selected player % acquired an active PLAYER membership', selected_player;
+  end if;
+
+  update task_test_context set player_jugador = selected_player;
 end $$;
 
 create or replace function pg_temp.actor(p_user uuid)
 returns void language plpgsql as $$
 begin
+  perform set_config(
+    'request.jwt.claims',
+    jsonb_build_object('sub', p_user, 'role', 'authenticated')::text,
+    true
+  );
   perform set_config('request.jwt.claim.sub', p_user::text, true);
   perform set_config('request.jwt.claim.role', 'authenticated', true);
 end $$;
