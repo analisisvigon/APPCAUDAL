@@ -22,11 +22,29 @@ export const TRAINING_TASK_PHASES = [
 ];
 
 export const TRAINING_TASK_MOMENTS = {
-  offensive: ['Inicio', 'Creación', 'Finalización'],
-  defensive: ['Bloque alto', 'Bloque medio', 'Bloque bajo'],
-  transition: ['Tras recuperación', 'Tras pérdida'],
-  set_piece: ['Ofensiva', 'Defensiva'],
+  offensive: [
+    { value: 'build_up', label: 'Inicio' },
+    { value: 'creation', label: 'Creación' },
+    { value: 'finishing', label: 'Finalización' },
+  ],
+  defensive: [
+    { value: 'high_block', label: 'Bloque alto' },
+    { value: 'mid_block', label: 'Bloque medio' },
+    { value: 'low_block', label: 'Bloque bajo' },
+  ],
+  transition: [
+    { value: 'offensive_transition', label: 'Tras recuperación' },
+    { value: 'defensive_transition', label: 'Tras pérdida' },
+  ],
+  set_piece: [
+    { value: 'offensive_set_piece', label: 'Ofensiva' },
+    { value: 'defensive_set_piece', label: 'Defensiva' },
+  ],
 };
+
+export const getTrainingTaskMomentLabel = (phase, moment) => (
+  TRAINING_TASK_MOMENTS[phase]?.find((option) => option.value === moment)?.label || ''
+);
 
 export const createTrainingTaskDraft = () => ({
   name: '',
@@ -144,7 +162,7 @@ export const buildTrainingTaskPayload = (draft, { clubId, authorUserId, existing
   editor_payload: existing?.editor_payload || {},
 });
 
-export const filterTrainingTasks = (tasks, filters = {}) => {
+export const filterTrainingTasks = (tasks, filters = {}, currentUserId = '') => {
   const search = String(filters.search || '').trim().toLocaleLowerCase('es');
   return tasks.filter((task) => {
     const haystack = [task.name, task.description, task.objective, task.taskType, task.tacticalContent, task.technicalContent]
@@ -152,8 +170,17 @@ export const filterTrainingTasks = (tasks, filters = {}) => {
     const matchesSearch = !search || haystack.includes(search);
     const matchesType = !filters.taskType || task.taskType === filters.taskType;
     const matchesPhase = !filters.gamePhase || task.gamePhase === filters.gamePhase;
-    const matchesOwnership = filters.scope === 'mine' ? !task.isShared : filters.scope === 'shared' ? task.isShared : true;
-    const matchesDuration = !filters.duration || (filters.duration === 'short' ? Number(task.durationMinutes) <= 15 : filters.duration === 'medium' ? Number(task.durationMinutes) > 15 && Number(task.durationMinutes) <= 30 : Number(task.durationMinutes) > 30);
+    const matchesOwnership = filters.scope === 'mine'
+      ? task.author_user_id === currentUserId
+      : filters.scope === 'shared'
+        ? task.author_user_id !== currentUserId && task.isShared
+        : true;
+    const hasDuration = task.durationMinutes !== '' && task.durationMinutes !== null && task.durationMinutes !== undefined;
+    const duration = Number(task.durationMinutes);
+    const matchesDuration = !filters.duration || (hasDuration && (
+      filters.duration === 'short' ? duration <= 15
+        : filters.duration === 'medium' ? duration > 15 && duration <= 30 : duration > 30
+    ));
     return matchesSearch && matchesType && matchesPhase && matchesOwnership && matchesDuration;
   });
 };

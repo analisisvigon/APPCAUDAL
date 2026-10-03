@@ -1,4 +1,4 @@
-import { buildTrainingTaskPayload, normalizeTrainingTask } from './trainingTasks';
+import { buildTrainingTaskPayload, normalizeTrainingTask } from './trainingTasks.js';
 
 export const loadTrainingTasks = async (client, clubId) => {
   const { data, error } = await client
@@ -12,6 +12,10 @@ export const loadTrainingTasks = async (client, clubId) => {
 
 export const saveTrainingTask = async (client, draft, context, existing = null) => {
   const payload = buildTrainingTaskPayload(draft, { ...context, existing });
+  if (existing) {
+    delete payload.club_id;
+    delete payload.author_user_id;
+  }
   const request = existing
     ? client.from('training_tasks').update(payload).eq('id', existing.id).select('*').single()
     : client.from('training_tasks').insert(payload).select('*').single();
@@ -35,8 +39,9 @@ export const duplicateTrainingTask = async (client, task, context) => {
 };
 
 export const deleteTrainingTask = async (client, id) => {
-  const { error } = await client.from('training_tasks').delete().eq('id', id);
+  const { data, error } = await client.from('training_tasks').delete().eq('id', id).select('id');
   if (error) throw error;
+  if (!data?.length) throw new Error('No se eliminó la tarea: comprueba tus permisos.');
 };
 
 export const shareTrainingTask = async (client, taskId, membershipIds, sharedByUserId) => {
