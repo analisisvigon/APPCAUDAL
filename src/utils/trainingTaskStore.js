@@ -1,13 +1,33 @@
 import { buildTrainingTaskPayload, normalizeTrainingTask } from './trainingTasks.js';
+import { summarizeTrainingTaskRatings } from './trainingTaskFeedback.js';
 
 export const loadTrainingTasks = async (client, clubId) => {
-  const { data, error } = await client
-    .from('training_tasks')
-    .select('*, training_task_shares(id)')
-    .eq('club_id', clubId)
-    .order('updated_at', { ascending: false });
-  if (error) throw error;
-  return (data || []).map((row) => normalizeTrainingTask({ ...row, is_shared: Array.isArray(row.training_task_shares) && row.training_task_shares.length > 0 }));
+  const [tasksResult, feedbackResult] = await Promise.all([
+    client
+      .from('training_tasks')
+      .select('*, training_task_shares(id)')
+      .eq('club_id', clubId)
+      .order('updated_at', { ascending: false }),
+    client
+      .from('training_task_feedback')
+      .select('task_id,rating')
+      .eq('club_id', clubId),
+  ]);
+  if (tasksResult.error) throw tasksResult.error;
+  if (feedbackResult.error) throw feedbackResult.error;
+
+  const feedbackByTask = new Map();
+  (feedbackResult.data || []).forEach((row) => {
+    const rows = feedbackByTask.get(row.task_id) || [];
+    rows.push(row);
+    feedbackByTask.set(row.task_id, rows);
+  });
+
+  return (tasksResult.data || []).map((row) => normalizeTrainingTask({
+    ...row,
+    ...summarizeTrainingTaskRatings(feedbackByTask.get(row.id) || []),
+    is_shared: Array.isArray(row.training_task_shares) && row.training_task_shares.length > 0,
+  }));
 };
 
 export const saveTrainingTask = async (client, draft, context, existing = null) => {

@@ -14,6 +14,24 @@ export const TRAINING_TASK_TYPES = [
   { key: 'position_specific', label: 'Puestos específicos', color: '#64748b' },
 ];
 
+export const TRAINING_TASK_STAGES = [
+  { key: 'prebenjamin', label: 'Prebenjamín' },
+  { key: 'benjamin', label: 'Benjamín' },
+  { key: 'alevin', label: 'Alevín' },
+  { key: 'infantil', label: 'Infantil' },
+  { key: 'cadete', label: 'Cadete' },
+  { key: 'juvenil', label: 'Juvenil' },
+  { key: 'senior', label: 'Sénior' },
+];
+
+const TRAINING_TASK_STAGE_BY_KEY = new Map(TRAINING_TASK_STAGES.map((stage) => [stage.key, stage]));
+
+export const normalizeTrainingTaskStages = (values) => [...new Set(
+  (Array.isArray(values) ? values : []).filter((value) => TRAINING_TASK_STAGE_BY_KEY.has(value))
+)];
+
+export const getTrainingTaskStageLabel = (key) => TRAINING_TASK_STAGE_BY_KEY.get(key)?.label || key;
+
 const TRAINING_TASK_TYPE_BY_KEY = new Map(TRAINING_TASK_TYPES.map((type) => [type.key, type]));
 const LEGACY_TRAINING_TASK_TYPE_KEYS = new Map([
   ['Calentamiento', 'warm_up'],
@@ -42,6 +60,8 @@ export const createTrainingTaskFilters = () => ({
   gamePhase: '',
   scope: '',
   duration: '',
+  stage: '',
+  ratingMin: '',
 });
 
 export const normalizeTrainingTaskSearch = (value) => String(value || '')
@@ -102,6 +122,8 @@ export const createTrainingTaskDraft = () => ({
   gamePhase: '',
   gameMoment: '',
   observations: '',
+  stageKeys: [],
+  variants: '',
   previewPath: '',
   attachmentPath: '',
   attachmentName: '',
@@ -114,6 +136,8 @@ export const normalizeTrainingTask = (row = {}) => ({
   name: row.name || '',
   taskCode: row.task_code || '',
   taskType: row.task_type || '',
+  stageKeys: normalizeTrainingTaskStages(row.stage_keys),
+  variants: row.variants || '',
   playersSpec: row.players_spec || '',
   playersMin: row.players_min ?? '',
   playersMax: row.players_max ?? '',
@@ -151,6 +175,8 @@ export const trainingTaskToDraft = (task) => ({
   gamePhase: task.gamePhase || '',
   gameMoment: task.gameMoment || '',
   observations: task.observations || '',
+  stageKeys: normalizeTrainingTaskStages(task.stageKeys || task.stage_keys),
+  variants: task.variants || '',
   previewPath: task.previewPath || '',
   attachmentPath: task.attachmentPath || '',
   attachmentName: task.attachmentName || '',
@@ -163,6 +189,7 @@ export const validateTrainingTaskDraft = (draft) => {
   if (!String(draft.name || '').trim()) errors.name = 'Indica un nombre.';
   if (!String(draft.objective || '').trim()) errors.objective = 'Indica el objetivo principal.';
   if (String(draft.taskCode || '').trim().length > 40) errors.taskCode = 'El código de tarea no puede superar 40 caracteres.';
+  if (String(draft.variants || '').trim().length > 10000) errors.variants = 'Las variantes no pueden superar 10000 caracteres.';
   const numericFields = [
     ['durationMinutes', 'La duración debe ser un número positivo.'],
     ['playersMin', 'El mínimo de jugadores no es válido.'],
@@ -199,6 +226,8 @@ export const buildTrainingTaskPayload = (draft, { clubId, authorUserId, existing
   game_phase: draft.gamePhase || null,
   game_moment: String(draft.gameMoment || '').trim() || null,
   observations: String(draft.observations || '').trim() || null,
+  stage_keys: normalizeTrainingTaskStages(draft.stageKeys),
+  variants: String(draft.variants || '').trim() || null,
   preview_path: draft.previewPath || null,
   attachment_path: draft.attachmentPath || null,
   attachment_name: draft.attachmentName || null,
@@ -224,11 +253,13 @@ export const filterTrainingTasks = (tasks, filters = {}, currentUserId = '') => 
       task.tacticalContent,
       task.material,
       task.observations,
+      task.variants,
     ].filter(Boolean).join(' '));
     const matchesSearch = !search || haystack.includes(search);
     const matchesType = !filters.taskType || getTrainingTaskTypeDefinition(task.taskType).key === filters.taskType;
     const matchesTaskCode = !taskCode || normalizeTrainingTaskSearch(task.taskCode).includes(taskCode);
     const matchesObjective = !objective || normalizeTrainingTaskSearch(task.objective).includes(objective);
+    const matchesStage = !filters.stage || normalizeTrainingTaskStages(task.stageKeys).includes(filters.stage);
     const matchesPhase = !filters.gamePhase || task.gamePhase === filters.gamePhase;
     const matchesOwnership = filters.scope === 'mine'
       ? task.author_user_id === currentUserId
@@ -250,8 +281,16 @@ export const filterTrainingTasks = (tasks, filters = {}, currentUserId = '') => 
       && (!hasMin || Number(task.playersMin) <= requestedPlayers)
       && (!hasMax || requestedPlayers <= Number(task.playersMax))
     );
+    const ratingMinimum = filters.ratingMin === '' || filters.ratingMin === null || filters.ratingMin === undefined
+      ? null
+      : Number(filters.ratingMin);
+    const matchesRating = ratingMinimum === null || (
+      Number.isFinite(Number(task.ratingAverage))
+      && Number(task.ratingCount) > 0
+      && Number(task.ratingAverage) >= ratingMinimum
+    );
     return matchesSearch && matchesType && matchesTaskCode && matchesObjective
-      && matchesPlayers && matchesPhase && matchesOwnership && matchesDuration;
+      && matchesStage && matchesPlayers && matchesRating && matchesPhase && matchesOwnership && matchesDuration;
   });
 };
 
