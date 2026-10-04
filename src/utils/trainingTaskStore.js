@@ -42,10 +42,11 @@ export const saveTrainingTask = async (client, draft, context, existing = null) 
       ? true
       : canEditResult?.data === false ? false : null;
 
-    ({ data, error } = await client.from('training_tasks').insert(payload).select('*').single());
+    ({ error } = await client.from('training_tasks').insert(payload));
 
     console.group('[TRAINING_TASK_RLS_DEBUG]');
     console.log({
+      testMode: 'insert-without-representation',
       payload: {
         club_id: payload.club_id,
         author_user_id: payload.author_user_id,
@@ -76,6 +77,13 @@ export const saveTrainingTask = async (client, draft, context, existing = null) 
     console.groupEnd();
   }
   if (error) throw error;
+  if (!existing) {
+    return {
+      success: true,
+      testMode: 'insert-without-representation',
+      task: null,
+    };
+  }
   return normalizeTrainingTask(data);
 };
 
