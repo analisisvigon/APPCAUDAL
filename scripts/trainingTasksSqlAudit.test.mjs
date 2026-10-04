@@ -3,6 +3,10 @@ import fs from 'node:fs';
 
 const sql = fs.readFileSync(new URL('../supabase_training_tasks.sql', import.meta.url), 'utf8');
 const verify = fs.readFileSync(new URL('../supabase_training_tasks_verify.sql', import.meta.url), 'utf8');
+const selectAuthorPatch = fs.readFileSync(new URL('../supabase_training_tasks_patch_select_author.sql', import.meta.url), 'utf8');
+const selectAuthorPostcheck = fs.readFileSync(new URL('../supabase_training_tasks_patch_select_author_postcheck.sql', import.meta.url), 'utf8');
+const store = fs.readFileSync(new URL('../src/utils/trainingTaskStore.js', import.meta.url), 'utf8');
+const trainingTasksSection = fs.readFileSync(new URL('../src/components/training/TrainingTasksSection.jsx', import.meta.url), 'utf8');
 
 assert.match(sql, /begin;[\s\S]*to_regclass\('public\.training_tasks'\)[\s\S]*raise exception 'Tareas V1: contrato previo detectado/i);
 assert.match(sql, /create table public\.training_tasks/i);
@@ -35,4 +39,15 @@ assert.match(verify, /set local role authenticated/i);
 assert.match(verify, /create or replace function pg_temp\.denied/i);
 assert.match(verify, /insert into storage\.objects/i);
 assert.match(verify, /NO prueba upload\/download\/remove HTTP/i);
+assert.match(verify, /with inserted_task as\s*\(\s*insert into public\.training_tasks[\s\S]*returning id\s*\)/i);
+assert.match(selectAuthorPatch, /alter policy training_tasks_select on public\.training_tasks[\s\S]*author_user_id\s*=\s*auth\.uid\(\)[\s\S]*can_edit_club_data\(club_id\)[\s\S]*training_task_authorized\(id,\s*'read'\)/i);
+assert.doesNotMatch(selectAuthorPatch, /create table|alter table|insert into|update public\.|delete from/i);
+assert.match(selectAuthorPostcheck, /set transaction read only/i);
+assert.match(selectAuthorPostcheck, /training_tasks_select/i);
+assert.match(selectAuthorPostcheck, /author_user_id\s*=\s*auth\.uid\(\)/i);
+assert.match(store, /from\('training_tasks'\)\.insert\(payload\)\.select\('\*'\)\.single\(\)/i);
+assert.doesNotMatch(store, /TRAINING_TASK_RLS_DEBUG|insert-without-representation|safeDiagnostic|current_membership|can_edit_club_data/i);
+assert.match(trainingTasksSection, /canManage\s*\?\s*<>[\s\S]*onDelete\(task\)[\s\S]*>Eliminar<\/button>/i);
+assert.match(trainingTasksSection, /canManage=\{task\.author_user_id\s*===\s*userId\}/i);
+assert.match(trainingTasksSection, /task\.author_user_id\s*!==\s*userId\s*\|\|\s*!window\.confirm\('¿Eliminar esta tarea\? Esta acción no se puede deshacer\.'/i);
 console.log('training tasks static SQL audit passed (not PostgreSQL execution)');

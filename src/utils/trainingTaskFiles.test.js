@@ -115,4 +115,22 @@ await assert.rejects(deleteTrainingTaskWithFiles({
 }, { id: 'task-id', attachmentPath: 'path' }), /remove failed/);
 assert.deepEqual(deleteCalls, ['remove']);
 
+const successfulDeleteCalls = [];
+await deleteTrainingTaskWithFiles({
+  storage: { from: () => ({ remove: async (paths) => { successfulDeleteCalls.push(['remove', paths]); return { error: null }; } }) },
+  from: (table) => {
+    assert.equal(table, 'training_tasks');
+    return { delete: () => ({ eq: (column, id) => ({
+      async select(selection) {
+        successfulDeleteCalls.push(['delete', column, id, selection]);
+        return { data: [{ id }], error: null };
+      },
+    }) }) };
+  },
+}, { id: 'own-task', previewPath: 'preview-path', attachmentPath: 'attachment-path' });
+assert.deepEqual(successfulDeleteCalls, [
+  ['remove', ['preview-path', 'attachment-path']],
+  ['delete', 'id', 'own-task', 'id'],
+], 'el borrado correcto limpia Storage antes de eliminar la fila');
+
 console.log('training task file lifecycle tests passed');

@@ -1,4 +1,6 @@
--- Ejecutar MANUALMENTE en una base de prueba DESPUÉS de supabase_training_tasks.sql.
+-- Ejecutar MANUALMENTE en una base de prueba DESPUÉS de:
+-- 1. supabase_training_tasks.sql
+-- 2. supabase_training_tasks_patch_select_author.sql
 -- Solo PostgreSQL/RLS: no prueba bytes, MIME ni signed URLs reales del Storage API.
 -- Crea 5 usuarios auth fixture y requiere un jugador sin membership PLAYER activa.
 -- Todo termina en ROLLBACK.
@@ -232,11 +234,12 @@ set local role authenticated;
 
 -- 1-4: autor STAFF crea, lee, edita; borrado se comprueba en una copia.
 select pg_temp.actor(author_a) from task_test_context;
-insert into public.training_tasks(club_id,author_user_id,name,objective,game_phase,game_moment)
-select club_a,author_a,'Tarea principal','Control del balón','offensive','creation' from task_test_context;
-update task_test_context c set task_id = (
-  select id from public.training_tasks where club_id = c.club_a and name = 'Tarea principal'
-);
+with inserted_task as (
+  insert into public.training_tasks(club_id,author_user_id,name,objective,game_phase,game_moment)
+  select club_a,author_a,'Tarea principal','Control del balón','offensive','creation' from task_test_context
+  returning id
+)
+update task_test_context set task_id = (select id from inserted_task);
 select pg_temp.assert_true((select count(*) = 1 from public.training_tasks where id = task_id), '1-2 autor crea y lee') from task_test_context;
 update public.training_tasks set description = 'Editada' where id = (select task_id from task_test_context);
 select pg_temp.assert_true((select description = 'Editada' from public.training_tasks where id = task_id), '3 autor edita') from task_test_context;
