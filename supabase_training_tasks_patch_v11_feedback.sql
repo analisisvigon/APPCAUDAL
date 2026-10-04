@@ -48,6 +48,14 @@ begin
           'cadete', 'juvenil', 'senior'
         ]::text[]
         and array_position(stage_keys, null) is null
+        and cardinality(stage_keys) =
+          (case when 'prebenjamin' = any(stage_keys) then 1 else 0 end)
+          + (case when 'benjamin' = any(stage_keys) then 1 else 0 end)
+          + (case when 'alevin' = any(stage_keys) then 1 else 0 end)
+          + (case when 'infantil' = any(stage_keys) then 1 else 0 end)
+          + (case when 'cadete' = any(stage_keys) then 1 else 0 end)
+          + (case when 'juvenil' = any(stage_keys) then 1 else 0 end)
+          + (case when 'senior' = any(stage_keys) then 1 else 0 end)
       );
   end if;
 
@@ -78,7 +86,10 @@ create table if not exists public.training_task_feedback (
   -- No existe FK porque Sesiones todavía no forma parte de este alcance.
   session_occurrence_id uuid,
   used_on date not null default current_date,
-  rating smallint check (rating is null or rating between 1 and 5),
+  rating numeric check (
+    rating is null
+    or (rating = trunc(rating) and rating between 1 and 5)
+  ),
   post_text text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -105,7 +116,7 @@ begin
     or bool_or(column_name = 'author_user_id' and udt_name <> 'uuid')
     or bool_or(column_name = 'session_occurrence_id' and udt_name <> 'uuid')
     or bool_or(column_name = 'used_on' and data_type <> 'date')
-    or bool_or(column_name = 'rating' and data_type <> 'smallint')
+    or bool_or(column_name = 'rating' and data_type <> 'numeric')
     or bool_or(column_name = 'post_text' and data_type <> 'text')
     or bool_or(column_name = 'created_at' and data_type <> 'timestamp with time zone')
     or bool_or(column_name = 'updated_at' and data_type <> 'timestamp with time zone')
@@ -134,7 +145,21 @@ returns trigger language plpgsql security definer set search_path = pg_catalog a
 declare
   task_club_id uuid;
 begin
-  if tg_op = 'UPDATE' and (
+  select task.club_id into task_club_id
+  from public.training_tasks task
+  where task.id = new.task_id;
+
+  if not found then
+    raise exception 'Feedback de tarea: task_id no existe';
+  end if;
+
+  if tg_op = 'INSERT' then
+    new.id := gen_random_uuid();
+    new.club_id := task_club_id;
+    new.author_user_id := auth.uid();
+    new.created_at := now();
+    new.updated_at := new.created_at;
+  elsif (
     new.id is distinct from old.id
     or new.task_id is distinct from old.task_id
     or new.club_id is distinct from old.club_id
@@ -144,11 +169,7 @@ begin
     raise exception 'Feedback de tarea: id, task_id, club_id, author_user_id y created_at son inmutables';
   end if;
 
-  select task.club_id into task_club_id
-  from public.training_tasks task
-  where task.id = new.task_id;
-
-  if not found or new.club_id is distinct from task_club_id then
+  if new.club_id is distinct from task_club_id then
     raise exception 'Feedback de tarea: task_id y club_id no corresponden';
   end if;
   return new;

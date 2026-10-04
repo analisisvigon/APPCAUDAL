@@ -12,6 +12,7 @@ assert.deepEqual(validateTrainingTaskFeedback(base), {}, 'rating 1 es válido');
 assert.deepEqual(validateTrainingTaskFeedback({ ...base, rating: 5 }), {}, 'rating 5 es válido');
 assert.ok(validateTrainingTaskFeedback({ ...base, rating: 0 }).rating, 'rating 0 es inválido');
 assert.ok(validateTrainingTaskFeedback({ ...base, rating: 6 }).rating, 'rating 6 es inválido');
+assert.ok(validateTrainingTaskFeedback({ ...base, rating: 3.5 }).rating, 'rating 3.5 es inválido y no se redondea');
 assert.deepEqual(validateTrainingTaskFeedback({ ...base, rating: null, post: 'Reducir espacio.' }), {}, 'rating null se permite con POST');
 assert.ok(validateTrainingTaskFeedback({ ...base, rating: null, post: '   ' }).post, 'una entrada no puede quedar totalmente vacía');
 

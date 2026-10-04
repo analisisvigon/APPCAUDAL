@@ -17,7 +17,7 @@ task_columns as (
 feedback_columns as (
   select count(*) = 10
     and bool_or(column_name = 'used_on' and data_type = 'date' and is_nullable = 'NO')
-    and bool_or(column_name = 'rating' and data_type = 'smallint' and is_nullable = 'YES')
+    and bool_or(column_name = 'rating' and data_type = 'numeric' and is_nullable = 'YES')
     and bool_or(column_name = 'post_text' and data_type = 'text' and is_nullable = 'YES')
     and bool_or(column_name = 'session_occurrence_id' and udt_name = 'uuid' and is_nullable = 'YES')
     as columns_ok
@@ -27,15 +27,33 @@ feedback_columns as (
 ),
 constraints_ok as (
   select
-    count(*) filter (where conname = 'training_tasks_stage_keys_canonical' and contype = 'c') = 1
+    count(*) filter (
+      where conrelid = 'public.training_tasks'::regclass
+        and conname = 'training_tasks_stage_keys_canonical' and contype = 'c'
+        and pg_get_constraintdef(oid) ~* 'prebenjamin.*benjamin.*alevin.*infantil.*cadete.*juvenil.*senior'
+        and pg_get_constraintdef(oid) ~* 'array_position'
+        and pg_get_constraintdef(oid) ~* 'cardinality'
+    ) = 1
       as stage_constraint_ok,
-    count(*) filter (where conname = 'training_tasks_variants_format' and contype = 'c') = 1
+    count(*) filter (
+      where conrelid = 'public.training_tasks'::regclass
+        and conname = 'training_tasks_variants_format' and contype = 'c'
+        and pg_get_constraintdef(oid) ~* 'btrim'
+        and pg_get_constraintdef(oid) ~* 'char_length.*1.*10000'
+    ) = 1
       as variants_constraint_ok,
-    count(*) filter (where conname = 'training_task_feedback_content' and contype = 'c') = 1
-      and count(*) filter (
-        where contype = 'c'
-          and pg_get_constraintdef(oid) ~* 'rating.*1.*5'
-      ) >= 1 as feedback_constraints_ok,
+    count(*) filter (
+      where conrelid = 'public.training_task_feedback'::regclass
+        and conname = 'training_task_feedback_content' and contype = 'c'
+        and pg_get_constraintdef(oid) ~* 'rating IS NOT NULL.*post_text IS NOT NULL'
+        and pg_get_constraintdef(oid) ~* 'btrim'
+        and pg_get_constraintdef(oid) ~* 'char_length.*1.*4000'
+    ) = 1 as feedback_constraints_ok,
+    count(*) filter (
+      where conrelid = 'public.training_task_feedback'::regclass
+        and contype = 'c'
+        and pg_get_constraintdef(oid) ~* 'rating.*trunc\(rating\).*1.*5'
+    ) = 1 as rating_contract_ok,
     count(*) filter (
       where contype = 'f'
         and confrelid = 'public.training_tasks'::regclass
@@ -113,6 +131,17 @@ guard_function_ok as (
       as guard_ok
   from pg_catalog.pg_proc
   where oid = to_regprocedure('public.training_task_feedback_guard()')
+),
+guard_insert_contract_ok as (
+  select count(*) = 1
+    and bool_and(pg_get_functiondef(oid) ~* 'new\.id\s*:=\s*gen_random_uuid\(\)')
+    and bool_and(pg_get_functiondef(oid) ~* 'new\.club_id\s*:=\s*task_club_id')
+    and bool_and(pg_get_functiondef(oid) ~* 'new\.author_user_id\s*:=\s*auth\.uid\(\)')
+    and bool_and(pg_get_functiondef(oid) ~* 'new\.created_at\s*:=\s*now\(\)')
+    and bool_and(pg_get_functiondef(oid) ~* 'new\.updated_at\s*:=\s*new\.created_at')
+    as insert_contract_ok
+  from pg_catalog.pg_proc
+  where oid = to_regprocedure('public.training_task_feedback_guard()')
 )
 select
   coalesce(task_columns.stage_keys_ok, false) as stage_keys_ok,
@@ -124,16 +153,19 @@ select
   constraints_ok.stage_constraint_ok,
   constraints_ok.variants_constraint_ok,
   constraints_ok.feedback_constraints_ok,
+  constraints_ok.rating_contract_ok,
   constraints_ok.task_fk_cascades,
   policies_ok.feedback_policies_ok,
   triggers_ok.feedback_triggers_ok,
   guard_function_ok.guard_ok as feedback_guard_ok,
+  guard_insert_contract_ok.insert_contract_ok as feedback_guard_insert_contract_ok,
   indexes_ok.feedback_indexes_ok,
   privileges_ok.grants_ok,
   existing_policies.task_policies_preserved,
   existing_policies.share_policies_preserved,
   existing_policies.storage_policies_preserved
 from task_columns, feedback_columns, constraints_ok, policies_ok,
-  existing_policies, triggers_ok, indexes_ok, privileges_ok, guard_function_ok;
+  existing_policies, triggers_ok, indexes_ok, privileges_ok, guard_function_ok,
+  guard_insert_contract_ok;
 
 rollback;
