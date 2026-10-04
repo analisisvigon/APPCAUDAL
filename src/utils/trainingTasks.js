@@ -1,17 +1,55 @@
 export const TRAINING_TASK_TYPES = [
-  'Calentamiento',
-  'Rondo',
-  'Posesión',
-  'Juego de posición',
-  'Conservación',
-  'Finalización',
-  'Partido condicionado',
-  'Tarea táctica',
-  'ABP',
-  'Física',
-  'Técnica',
-  'Otro',
+  { key: 'warm_up', label: 'Calentamiento', color: '#f59e0b' },
+  { key: 'passing_patterns', label: 'Ruedas de pase', color: '#38bdf8' },
+  { key: 'rondos', label: 'Rondos', color: '#22c55e' },
+  { key: 'possession_games', label: 'Mantenimientos', color: '#14b8a6' },
+  { key: 'positional_games', label: 'Juegos posicionales', color: '#8b5cf6' },
+  { key: 'directed_actions', label: 'Acciones dirigidas', color: '#ec4899' },
+  { key: 'attack_defense', label: 'Ataque-defensa', color: '#ef4444' },
+  { key: 'finishing', label: 'Finalizaciones', color: '#f97316' },
+  { key: 'small_sided_games', label: 'Partidos reducidos', color: '#06b6d4' },
+  { key: 'double_boxes', label: 'Dobles áreas', color: '#a855f7' },
+  { key: 'conditioned_games', label: 'Partidos condicionados', color: '#eab308' },
+  { key: 'set_pieces', label: 'ABP', color: '#dc2626' },
+  { key: 'position_specific', label: 'Puestos específicos', color: '#64748b' },
 ];
+
+const TRAINING_TASK_TYPE_BY_KEY = new Map(TRAINING_TASK_TYPES.map((type) => [type.key, type]));
+const LEGACY_TRAINING_TASK_TYPE_KEYS = new Map([
+  ['Calentamiento', 'warm_up'],
+  ['Rondo', 'rondos'],
+  ['Juego de posición', 'positional_games'],
+  ['Finalización', 'finishing'],
+  ['Partido condicionado', 'conditioned_games'],
+  ['ABP', 'set_pieces'],
+]);
+const LEGACY_TASK_COLOR = '#64748b';
+
+export const getTrainingTaskTypeDefinition = (value) => {
+  const canonical = TRAINING_TASK_TYPE_BY_KEY.get(value);
+  if (canonical) return { ...canonical, legacy: false };
+  const legacyKey = LEGACY_TRAINING_TASK_TYPE_KEYS.get(value);
+  const legacyColor = TRAINING_TASK_TYPE_BY_KEY.get(legacyKey)?.color || LEGACY_TASK_COLOR;
+  return { key: legacyKey || '', label: String(value || 'Sin tipo'), color: legacyColor, legacy: true };
+};
+
+export const createTrainingTaskFilters = () => ({
+  search: '',
+  taskType: '',
+  taskCode: '',
+  players: '',
+  objective: '',
+  gamePhase: '',
+  scope: '',
+  duration: '',
+});
+
+export const normalizeTrainingTaskSearch = (value) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLocaleLowerCase('es')
+  .trim()
+  .replace(/\s+/g, ' ');
 
 export const TRAINING_TASK_PHASES = [
   { value: '', label: 'Sin fase' },
@@ -48,9 +86,10 @@ export const getTrainingTaskMomentLabel = (phase, moment) => (
 
 export const createTrainingTaskDraft = () => ({
   name: '',
+  taskCode: '',
   description: '',
   objective: '',
-  taskType: 'Tarea táctica',
+  taskType: TRAINING_TASK_TYPES[0].key,
   playersSpec: '',
   playersMin: '',
   playersMax: '',
@@ -73,6 +112,7 @@ export const createTrainingTaskDraft = () => ({
 export const normalizeTrainingTask = (row = {}) => ({
   ...row,
   name: row.name || '',
+  taskCode: row.task_code || '',
   taskType: row.task_type || '',
   playersSpec: row.players_spec || '',
   playersMin: row.players_min ?? '',
@@ -95,9 +135,10 @@ export const normalizeTrainingTask = (row = {}) => ({
 export const trainingTaskToDraft = (task) => ({
   ...createTrainingTaskDraft(),
   name: task.name || '',
+  taskCode: task.taskCode || task.task_code || '',
   description: task.description || '',
   objective: task.objective || '',
-  taskType: task.taskType || 'Tarea táctica',
+  taskType: task.taskType || TRAINING_TASK_TYPES[0].key,
   playersSpec: task.playersSpec || '',
   playersMin: task.playersMin ?? '',
   playersMax: task.playersMax ?? '',
@@ -121,16 +162,19 @@ export const validateTrainingTaskDraft = (draft) => {
   const errors = {};
   if (!String(draft.name || '').trim()) errors.name = 'Indica un nombre.';
   if (!String(draft.objective || '').trim()) errors.objective = 'Indica el objetivo principal.';
+  if (String(draft.taskCode || '').trim().length > 40) errors.taskCode = 'El código de tarea no puede superar 40 caracteres.';
   const numericFields = [
     ['durationMinutes', 'La duración debe ser un número positivo.'],
     ['playersMin', 'El mínimo de jugadores no es válido.'],
     ['playersMax', 'El máximo de jugadores no es válido.'],
-    ['spaceWidthM', 'El ancho debe ser un número positivo.'],
-    ['spaceLengthM', 'El largo debe ser un número positivo.'],
   ];
   numericFields.forEach(([field, message]) => {
     if (draft[field] !== '' && (!Number.isFinite(Number(draft[field])) || Number(draft[field]) < 0)) errors[field] = message;
   });
+  [['spaceWidthM', 'El ancho debe ser un número natural positivo.'], ['spaceLengthM', 'El largo debe ser un número natural positivo.']]
+    .forEach(([field, message]) => {
+      if (draft[field] !== '' && (!Number.isInteger(Number(draft[field])) || Number(draft[field]) <= 0)) errors[field] = message;
+    });
   if (draft.playersMin !== '' && draft.playersMax !== '' && Number(draft.playersMin) > Number(draft.playersMax)) errors.playersMax = 'El máximo no puede ser menor que el mínimo.';
   return errors;
 };
@@ -139,9 +183,10 @@ export const buildTrainingTaskPayload = (draft, { clubId, authorUserId, existing
   club_id: clubId,
   author_user_id: authorUserId,
   name: String(draft.name || '').trim(),
+  task_code: String(draft.taskCode || '').trim() || null,
   description: String(draft.description || '').trim() || null,
   objective: String(draft.objective || '').trim(),
-  task_type: String(draft.taskType || '').trim() || 'Otro',
+  task_type: String(draft.taskType || '').trim() || TRAINING_TASK_TYPES[0].key,
   players_spec: String(draft.playersSpec || '').trim() || null,
   players_min: draft.playersMin === '' ? null : Number(draft.playersMin),
   players_max: draft.playersMax === '' ? null : Number(draft.playersMax),
@@ -163,12 +208,27 @@ export const buildTrainingTaskPayload = (draft, { clubId, authorUserId, existing
 });
 
 export const filterTrainingTasks = (tasks, filters = {}, currentUserId = '') => {
-  const search = String(filters.search || '').trim().toLocaleLowerCase('es');
+  const search = normalizeTrainingTaskSearch(filters.search);
+  const taskCode = normalizeTrainingTaskSearch(filters.taskCode);
+  const objective = normalizeTrainingTaskSearch(filters.objective);
+  const requestedPlayers = filters.players === '' || filters.players === null || filters.players === undefined
+    ? null
+    : Number(filters.players);
   return tasks.filter((task) => {
-    const haystack = [task.name, task.description, task.objective, task.taskType, task.tacticalContent, task.technicalContent]
-      .filter(Boolean).join(' ').toLocaleLowerCase('es');
+    const haystack = normalizeTrainingTaskSearch([
+      task.name,
+      task.taskCode,
+      task.objective,
+      task.description,
+      task.technicalContent,
+      task.tacticalContent,
+      task.material,
+      task.observations,
+    ].filter(Boolean).join(' '));
     const matchesSearch = !search || haystack.includes(search);
-    const matchesType = !filters.taskType || task.taskType === filters.taskType;
+    const matchesType = !filters.taskType || getTrainingTaskTypeDefinition(task.taskType).key === filters.taskType;
+    const matchesTaskCode = !taskCode || normalizeTrainingTaskSearch(task.taskCode).includes(taskCode);
+    const matchesObjective = !objective || normalizeTrainingTaskSearch(task.objective).includes(objective);
     const matchesPhase = !filters.gamePhase || task.gamePhase === filters.gamePhase;
     const matchesOwnership = filters.scope === 'mine'
       ? task.author_user_id === currentUserId
@@ -181,7 +241,17 @@ export const filterTrainingTasks = (tasks, filters = {}, currentUserId = '') => 
       filters.duration === 'short' ? duration <= 15
         : filters.duration === 'medium' ? duration > 15 && duration <= 30 : duration > 30
     ));
-    return matchesSearch && matchesType && matchesPhase && matchesOwnership && matchesDuration;
+    const hasMin = task.playersMin !== '' && task.playersMin !== null && task.playersMin !== undefined;
+    const hasMax = task.playersMax !== '' && task.playersMax !== null && task.playersMax !== undefined;
+    const matchesPlayers = requestedPlayers === null || (
+      Number.isInteger(requestedPlayers)
+      && requestedPlayers > 0
+      && (hasMin || hasMax)
+      && (!hasMin || Number(task.playersMin) <= requestedPlayers)
+      && (!hasMax || requestedPlayers <= Number(task.playersMax))
+    );
+    return matchesSearch && matchesType && matchesTaskCode && matchesObjective
+      && matchesPlayers && matchesPhase && matchesOwnership && matchesDuration;
   });
 };
 

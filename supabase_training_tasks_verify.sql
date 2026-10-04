@@ -1,6 +1,7 @@
 -- Ejecutar MANUALMENTE en una base de prueba DESPUÉS de:
 -- 1. supabase_training_tasks.sql
 -- 2. supabase_training_tasks_patch_select_author.sql
+-- 3. supabase_training_tasks_patch_task_code.sql
 -- Solo PostgreSQL/RLS: no prueba bytes, MIME ni signed URLs reales del Storage API.
 -- Crea 5 usuarios auth fixture y requiere un jugador sin membership PLAYER activa.
 -- Todo termina en ROLLBACK.
@@ -235,14 +236,15 @@ set local role authenticated;
 -- 1-4: autor STAFF crea, lee, edita; borrado se comprueba en una copia.
 select pg_temp.actor(author_a) from task_test_context;
 with inserted_task as (
-  insert into public.training_tasks(club_id,author_user_id,name,objective,game_phase,game_moment)
-  select club_a,author_a,'Tarea principal','Control del balón','offensive','creation' from task_test_context
-  returning id
+  insert into public.training_tasks(club_id,author_user_id,name,task_code,objective,game_phase,game_moment)
+  select club_a,author_a,'Tarea principal','Vigón','Control del balón','offensive','creation' from task_test_context
+  returning id, task_code
 )
-update task_test_context set task_id = (select id from inserted_task);
+update task_test_context set task_id = (select id from inserted_task where task_code = 'Vigón');
 select pg_temp.assert_true((select count(*) = 1 from public.training_tasks where id = task_id), '1-2 autor crea y lee') from task_test_context;
-update public.training_tasks set description = 'Editada' where id = (select task_id from task_test_context);
-select pg_temp.assert_true((select description = 'Editada' from public.training_tasks where id = task_id), '3 autor edita') from task_test_context;
+select pg_temp.assert_true((select task_code = 'Vigón' from public.training_tasks where id = task_id), '32 task_code crea, retorna y lee') from task_test_context;
+update public.training_tasks set description = 'Editada', task_code = 'Vigón editado' where id = (select task_id from task_test_context);
+select pg_temp.assert_true((select description = 'Editada' and task_code = 'Vigón editado' from public.training_tasks where id = task_id), '3-33 autor edita y conserva task_code') from task_test_context;
 insert into public.training_tasks(club_id,author_user_id,name,objective)
 select club_a,author_a,'Temporal','Borrado' from task_test_context;
 delete from public.training_tasks where name = 'Temporal' and club_id = (select club_a from task_test_context);
