@@ -37580,14 +37580,15 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
                 <details className="rounded-2xl border border-white/10 bg-white/[0.025] px-4 py-3">
                   <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-slate-500">Estado especial</summary>
                   <label className="mt-3 block space-y-2 text-sm text-slate-300">
-                    <span className="text-xs font-semibold text-slate-500">Solo para incidencias excepcionales; el estado deportivo se calcula automáticamente.</span>
+                    <span className="text-xs font-semibold text-slate-500">Marca Finalizado para confirmar el cierre; el resto del estado deportivo se calcula automáticamente.</span>
                     <select
                       name="status"
-                      value={['Aplazado', 'Suspendido', 'Cancelado'].includes(matchFormState.status) ? matchFormState.status : 'Previa'}
+                      value={['Finalizado', 'Aplazado', 'Suspendido', 'Cancelado'].includes(matchFormState.status) ? matchFormState.status : 'Previa'}
                       onChange={handleMatchChange}
                       className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white"
                     >
                       <option value="Previa">Normal</option>
+                      <option value="Finalizado">Finalizado</option>
                       <option value="Aplazado">Aplazado</option>
                       <option value="Suspendido">Suspendido</option>
                       <option value="Cancelado">Cancelado</option>
