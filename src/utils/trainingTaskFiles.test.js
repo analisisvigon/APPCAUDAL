@@ -11,6 +11,7 @@ const context = { clubId: 'club-id', authorUserId: 'my-user' };
 const original = {
   id: 'task-id', club_id: 'club-id', author_user_id: 'other-user',
   name: 'Rondo', taskCode: 'Vigón', objective: 'Control', taskType: 'rondos', gamePhase: 'offensive', gameMoment: 'creation',
+  stageKeys: ['juvenil', 'senior'], variants: 'Limitar a dos contactos.',
   previewPath: 'old-preview', attachmentPath: 'old-attachment', attachmentName: 'old.png',
   attachmentMime: 'image/png', attachmentSize: 100, editor_payload: { shapes: [1] },
 };
@@ -28,6 +29,9 @@ assert.equal(copy.id, 'new-task');
 assert.equal(inserted.author_user_id, 'my-user');
 assert.equal(inserted.club_id, 'club-id');
 assert.equal(inserted.task_code, 'Vigón', 'duplicar conserva el código de tarea');
+assert.deepEqual(inserted.stage_keys, ['juvenil', 'senior'], 'duplicar conserva las etapas');
+assert.equal(inserted.variants, 'Limitar a dos contactos.', 'duplicar conserva variantes');
+assert.equal(inserted.training_task_feedback, undefined, 'duplicar no copia historial ni valoraciones');
 assert.equal(inserted.preview_path, null);
 assert.equal(inserted.attachment_path, null);
 assert.equal(inserted.attachment_name, null);

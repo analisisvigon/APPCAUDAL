@@ -49,11 +49,26 @@ constraints_ok as (
 ),
 policies_ok as (
   select count(*) = 4
-    and count(*) filter (where policyname = 'training_task_feedback_select' and cmd = 'SELECT' and roles = '{authenticated}') = 1
-    and count(*) filter (where policyname = 'training_task_feedback_insert' and cmd = 'INSERT' and roles = '{authenticated}') = 1
-    and count(*) filter (where policyname = 'training_task_feedback_update' and cmd = 'UPDATE' and roles = '{authenticated}') = 1
-    and count(*) filter (where policyname = 'training_task_feedback_delete' and cmd = 'DELETE' and roles = '{authenticated}') = 1
-    and bool_and(coalesce(qual, with_check, '') ~ 'training_task_authorized')
+    and count(*) filter (
+      where policyname = 'training_task_feedback_select' and cmd = 'SELECT'
+        and roles = '{authenticated}' and qual ~ 'training_task_authorized'
+    ) = 1
+    and count(*) filter (
+      where policyname = 'training_task_feedback_insert' and cmd = 'INSERT'
+        and roles = '{authenticated}' and with_check ~ 'author_user_id = auth.uid'
+        and with_check ~ 'can_edit_club_data' and with_check ~ 'training_task_authorized'
+    ) = 1
+    and count(*) filter (
+      where policyname = 'training_task_feedback_update' and cmd = 'UPDATE'
+        and roles = '{authenticated}' and qual ~ 'author_user_id = auth.uid'
+        and qual ~ 'training_task_authorized' and with_check ~ 'author_user_id = auth.uid'
+        and with_check ~ 'training_task_authorized'
+    ) = 1
+    and count(*) filter (
+      where policyname = 'training_task_feedback_delete' and cmd = 'DELETE'
+        and roles = '{authenticated}' and qual ~ 'author_user_id = auth.uid'
+        and qual ~ 'training_task_authorized'
+    ) = 1
     as feedback_policies_ok
   from pg_catalog.pg_policies
   where schemaname = 'public' and tablename = 'training_task_feedback'
@@ -71,8 +86,8 @@ existing_policies as (
      or (schemaname = 'storage' and tablename = 'objects' and policyname like 'training_task_files_%')
 ),
 triggers_ok as (
-  select count(*) filter (where trigger_name = 'training_task_feedback_guard') = 1
-    and count(*) filter (where trigger_name = 'training_task_feedback_touch') = 1
+  select count(distinct trigger_name) filter (where trigger_name = 'training_task_feedback_guard') = 1
+    and count(distinct trigger_name) filter (where trigger_name = 'training_task_feedback_touch') = 1
     as feedback_triggers_ok
   from information_schema.triggers
   where event_object_schema = 'public'
@@ -90,6 +105,14 @@ privileges_ok as (
     has_table_privilege('authenticated', 'public.training_task_feedback', 'SELECT,INSERT,UPDATE,DELETE')
       and not has_table_privilege('anon', 'public.training_task_feedback', 'SELECT,INSERT,UPDATE,DELETE')
       as grants_ok
+),
+guard_function_ok as (
+  select coalesce(bool_and(prosecdef), false)
+      and not coalesce(has_function_privilege('authenticated', to_regprocedure('public.training_task_feedback_guard()'), 'EXECUTE'), true)
+      and not coalesce(has_function_privilege('anon', to_regprocedure('public.training_task_feedback_guard()'), 'EXECUTE'), true)
+      as guard_ok
+  from pg_catalog.pg_proc
+  where oid = to_regprocedure('public.training_task_feedback_guard()')
 )
 select
   coalesce(task_columns.stage_keys_ok, false) as stage_keys_ok,
@@ -104,12 +127,13 @@ select
   constraints_ok.task_fk_cascades,
   policies_ok.feedback_policies_ok,
   triggers_ok.feedback_triggers_ok,
+  guard_function_ok.guard_ok as feedback_guard_ok,
   indexes_ok.feedback_indexes_ok,
   privileges_ok.grants_ok,
   existing_policies.task_policies_preserved,
   existing_policies.share_policies_preserved,
   existing_policies.storage_policies_preserved
 from task_columns, feedback_columns, constraints_ok, policies_ok,
-  existing_policies, triggers_ok, indexes_ok, privileges_ok;
+  existing_policies, triggers_ok, indexes_ok, privileges_ok, guard_function_ok;
 
 rollback;

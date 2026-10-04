@@ -7,6 +7,8 @@ const selectAuthorPatch = fs.readFileSync(new URL('../supabase_training_tasks_pa
 const selectAuthorPostcheck = fs.readFileSync(new URL('../supabase_training_tasks_patch_select_author_postcheck.sql', import.meta.url), 'utf8');
 const taskCodePatch = fs.readFileSync(new URL('../supabase_training_tasks_patch_task_code.sql', import.meta.url), 'utf8');
 const taskCodePostcheck = fs.readFileSync(new URL('../supabase_training_tasks_patch_task_code_postcheck.sql', import.meta.url), 'utf8');
+const v11Patch = fs.readFileSync(new URL('../supabase_training_tasks_patch_v11_feedback.sql', import.meta.url), 'utf8');
+const v11Postcheck = fs.readFileSync(new URL('../supabase_training_tasks_patch_v11_feedback_postcheck.sql', import.meta.url), 'utf8');
 const store = fs.readFileSync(new URL('../src/utils/trainingTaskStore.js', import.meta.url), 'utf8');
 const trainingTasksSection = fs.readFileSync(new URL('../src/components/training/TrainingTasksSection.jsx', import.meta.url), 'utf8');
 
@@ -53,7 +55,26 @@ assert.match(taskCodePatch, /training_tasks_task_code_format[\s\S]*btrim\(task_c
 assert.doesNotMatch(taskCodePatch, /create policy|alter policy|drop policy|enable row level security|storage\.objects/i);
 assert.match(taskCodePostcheck, /set transaction read only/i);
 assert.match(taskCodePostcheck, /column_exists[\s\S]*type_is_text[\s\S]*is_nullable[\s\S]*has_no_default[\s\S]*has_no_unique_index[\s\S]*format_constraint_present/i);
+assert.match(v11Patch, /add column if not exists stage_keys text\[\] not null default '\{\}'::text\[\]/i);
+assert.match(v11Patch, /add column if not exists variants text/i);
+assert.match(v11Patch, /training_tasks_stage_keys_canonical[\s\S]*prebenjamin[\s\S]*senior/i);
+assert.match(v11Patch, /create table if not exists public\.training_task_feedback/i);
+assert.match(v11Patch, /task_id uuid not null references public\.training_tasks\(id\) on delete cascade/i);
+assert.match(v11Patch, /session_occurrence_id uuid/i);
+assert.match(v11Patch, /rating smallint check \(rating is null or rating between 1 and 5\)/i);
+assert.match(v11Patch, /training_task_feedback_content[\s\S]*rating is not null or post_text is not null/i);
+assert.match(v11Patch, /training_task_feedback_select[\s\S]*training_task_authorized\(task_id, 'read'\)/i);
+assert.match(v11Patch, /training_task_feedback_insert[\s\S]*author_user_id = auth\.uid\(\)[\s\S]*can_edit_club_data\(club_id\)[\s\S]*training_task_authorized\(task_id, 'read'\)/i);
+assert.match(v11Patch, /training_task_feedback_update[\s\S]*author_user_id = auth\.uid\(\)[\s\S]*training_task_feedback_delete[\s\S]*author_user_id = auth\.uid\(\)/i);
+assert.match(v11Patch, /revoke all on table public\.training_task_feedback from public, anon, authenticated/i);
+assert.doesNotMatch(v11Patch, /alter policy training_tasks_|drop policy if exists training_tasks_|training_task_files_(select|insert|update|delete) on/i);
+assert.match(v11Postcheck, /set transaction read only/i);
+assert.match(v11Postcheck, /task_policies_preserved[\s\S]*share_policies_preserved[\s\S]*storage_policies_preserved/i);
+assert.match(v11Postcheck, /select[\s\S]*stage_keys_ok[\s\S]*feedback_policies_ok[\s\S]*rollback;/i);
+assert.match(v11Postcheck, /has_function_privilege[\s\S]*feedback_guard_ok/i);
+assert.match(verify, /STAFF no compartido no crea feedback[\s\S]*receptor crea y edita su propio feedback[\s\S]*cross-club no crea feedback[\s\S]*VIEWER no crea feedback[\s\S]*PLAYER no crea feedback[\s\S]*autor revocado no crea feedback[\s\S]*ON DELETE CASCADE elimina feedback/i);
 assert.match(store, /from\('training_tasks'\)\.insert\(payload\)\.select\('\*'\)\.single\(\)/i);
+assert.match(store, /from\('training_task_feedback'\)[\s\S]*select\('task_id,rating'\)/i);
 assert.doesNotMatch(store, /TRAINING_TASK_RLS_DEBUG|insert-without-representation|safeDiagnostic|current_membership|can_edit_club_data/i);
 assert.match(trainingTasksSection, /canManage\s*\?\s*<>[\s\S]*onDelete\(task\)[\s\S]*>Eliminar<\/button>/i);
 assert.match(trainingTasksSection, /canManage=\{task\.author_user_id\s*===\s*userId\}/i);
@@ -61,4 +82,7 @@ assert.match(trainingTasksSection, /task\.author_user_id\s*!==\s*userId\s*\|\|\s
 assert.match(trainingTasksSection, /label="Código tarea"[\s\S]*placeholder="Ej\. Vigón"/i);
 assert.match(trainingTasksSection, /placeholder="Nº jugadores"[\s\S]*placeholder="Objetivo"[\s\S]*Limpiar filtros/i);
 assert.match(trainingTasksSection, /borderTopColor:\s*type\.color[\s\S]*Código:\s*\{task\.taskCode\}/i);
+assert.match(trainingTasksSection, /TRAINING_TASK_STAGES[\s\S]*filters\.stage[\s\S]*filters\.ratingMin/i);
+assert.match(trainingTasksSection, /POST · Después de realizarla/i);
+assert.match(trainingTasksSection, /aria-label=\{`\$\{star\} de 5 estrellas`\}/i);
 console.log('training tasks static SQL audit passed (not PostgreSQL execution)');

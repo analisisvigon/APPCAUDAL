@@ -6,10 +6,13 @@ import {
   filterTrainingTasks,
   formatTrainingTaskPlayers,
   getTrainingTaskMomentLabel,
+  getTrainingTaskStageLabel,
   getTrainingTaskTypeDefinition,
+  normalizeTrainingTaskStages,
   normalizeTrainingTask,
   trainingTaskToDraft,
   TRAINING_TASK_MOMENTS,
+  TRAINING_TASK_STAGES,
   TRAINING_TASK_TYPES,
   validateTrainingTaskDraft,
 } from './trainingTasks.js';
@@ -22,6 +25,8 @@ draft.playersSpec = '4v4+3';
 draft.durationMinutes = '12';
 draft.gamePhase = 'offensive';
 draft.gameMoment = 'creation';
+draft.stageKeys = ['juvenil', 'senior'];
+draft.variants = 'Limitar a dos contactos.';
 
 assert.deepEqual(validateTrainingTaskDraft(draft), {}, 'una tarea mínima válida no genera errores');
 assert.equal(formatTrainingTaskPlayers(draft), '4v4+3', 'se conserva el formato flexible de jugadores');
@@ -35,14 +40,23 @@ assert.equal(buildTrainingTaskPayload(editedDraft, { clubId: 'club-1', authorUse
 assert.equal(validateTrainingTaskDraft({ ...draft, name: '' }).name, 'Indica un nombre.');
 assert.equal(validateTrainingTaskDraft({ ...draft, playersMin: '8', playersMax: '4' }).playersMax, 'El máximo no puede ser menor que el mínimo.');
 assert.equal(buildTrainingTaskPayload(draft, { clubId: 'club-1', authorUserId: 'user-1' }).game_moment, 'creation');
+assert.deepEqual(buildTrainingTaskPayload(draft, { clubId: 'club-1', authorUserId: 'user-1' }).stage_keys, ['juvenil', 'senior'], 'CREATE persiste varias etapas canónicas');
+assert.equal(buildTrainingTaskPayload(draft, { clubId: 'club-1', authorUserId: 'user-1' }).variants, 'Limitar a dos contactos.', 'CREATE persiste variantes');
+assert.deepEqual(normalizeTrainingTask({ stage_keys: ['juvenil', 'senior'], variants: 'Dos contactos' }).stageKeys, ['juvenil', 'senior'], 'READ normaliza etapas múltiples');
+assert.deepEqual(trainingTaskToDraft({ stageKeys: ['cadete'], variants: 'Reducir espacio' }).stageKeys, ['cadete'], 'EDIT carga las etapas');
+assert.equal(trainingTaskToDraft({ variants: 'Reducir espacio' }).variants, 'Reducir espacio', 'EDIT carga variantes');
 assert.equal(getTrainingTaskMomentLabel('offensive', 'creation'), 'Creación');
 assert.equal(TRAINING_TASK_MOMENTS.transition[0].value, 'offensive_transition');
+assert.equal(TRAINING_TASK_STAGES.length, 7, 'el catálogo contiene las siete etapas canónicas');
+assert.equal(getTrainingTaskStageLabel('senior'), 'Sénior');
+assert.deepEqual(normalizeTrainingTaskStages(['juvenil', 'juvenil', 'desconocida', 'senior']), ['juvenil', 'senior'], 'etapas se deduplican y rechazan claves no canónicas');
 assert.deepEqual(validateTrainingTaskDraft({ ...draft, spaceWidthM: '20', spaceLengthM: '35' }), {}, '20 y 35 son dimensiones naturales válidas');
 assert.equal(buildTrainingTaskPayload({ ...draft, spaceWidthM: '20' }, { clubId: 'club-1', authorUserId: 'user-1' }).space_width_m, 20, 'el ancho se normaliza a número antes de persistir');
 assert.ok(validateTrainingTaskDraft({ ...draft, spaceWidthM: '20.5' }).spaceWidthM, 'un ancho decimal es inválido');
 assert.ok(validateTrainingTaskDraft({ ...draft, spaceLengthM: '-10' }).spaceLengthM, 'un largo negativo es inválido');
 assert.ok(validateTrainingTaskDraft({ ...draft, spaceWidthM: 'texto' }).spaceWidthM, 'un ancho textual es inválido');
 assert.ok(validateTrainingTaskDraft({ ...draft, taskCode: 'x'.repeat(41) }).taskCode, 'el código respeta el máximo persistente de 40 caracteres');
+assert.ok(validateTrainingTaskDraft({ ...draft, variants: 'x'.repeat(10001) }).variants, 'variantes respeta el máximo persistente');
 
 assert.equal(TRAINING_TASK_TYPES.length, 13, 'el catálogo ofrece exactamente 13 tipos');
 assert.equal(new Set(TRAINING_TASK_TYPES.map((type) => type.key)).size, 13, 'las claves de tipo son únicas');
@@ -57,9 +71,9 @@ assert.deepEqual(getTrainingTaskTypeDefinition('Rondo'), { key: 'rondos', label:
 assert.equal(getTrainingTaskTypeDefinition('Tipo histórico').label, 'Tipo histórico', 'un legacy desconocido no rompe presentación');
 
 const tasks = [
-  { name: 'Rondo de tercer hombre', taskCode: 'Vigón', objective: 'Presión tras pérdida', description: 'Tres equipos', technicalContent: 'Pase', tacticalContent: 'Conservación', material: 'Petos', observations: 'Alta intensidad', taskType: 'rondos', playersMin: 8, playersMax: 12, gamePhase: 'offensive', durationMinutes: 12, author_user_id: 'me', isShared: true },
-  { name: 'Bloque medio', taskCode: 'DEF', objective: 'Defender área', taskType: 'Tarea táctica', playersMin: null, playersMax: 10, gamePhase: 'defensive', durationMinutes: 25, author_user_id: 'other', isShared: true },
-  { name: 'Sin tiempo', taskCode: '', objective: 'Libre', taskType: 'Otro', playersMin: null, playersMax: null, gamePhase: '', durationMinutes: null, author_user_id: 'me', isShared: false },
+  { name: 'Rondo de tercer hombre', taskCode: 'Vigón', objective: 'Presión tras pérdida', description: 'Tres equipos', technicalContent: 'Pase', tacticalContent: 'Conservación', material: 'Petos', observations: 'Alta intensidad', variants: 'Dos contactos', stageKeys: ['juvenil', 'senior'], ratingAverage: 4.25, ratingCount: 4, taskType: 'rondos', playersMin: 8, playersMax: 12, gamePhase: 'offensive', durationMinutes: 12, author_user_id: 'me', isShared: true },
+  { name: 'Bloque medio', taskCode: 'DEF', objective: 'Defender área', stageKeys: ['cadete'], ratingAverage: 3, ratingCount: 1, taskType: 'Tarea táctica', playersMin: null, playersMax: 10, gamePhase: 'defensive', durationMinutes: 25, author_user_id: 'other', isShared: true },
+  { name: 'Sin tiempo', taskCode: '', objective: 'Libre', stageKeys: [], ratingAverage: null, ratingCount: 0, taskType: 'Otro', playersMin: null, playersMax: null, gamePhase: '', durationMinutes: null, author_user_id: 'me', isShared: false },
 ];
 assert.equal(filterTrainingTasks(tasks, { search: 'presión' }).length, 1, 'la búsqueda incluye objetivo y tildes');
 assert.equal(filterTrainingTasks(tasks, { search: 'presion   tras' }).length, 1, 'la búsqueda ignora tildes, mayúsculas y espacios repetidos');
@@ -67,6 +81,11 @@ assert.equal(filterTrainingTasks(tasks, { search: 'vIgÓn' }).length, 1, 'la bú
 for (const query of ['tres equipos', 'pase', 'conservacion', 'petos', 'alta intensidad']) {
   assert.equal(filterTrainingTasks(tasks, { search: query }).length, 1, `la búsqueda general incluye "${query}"`);
 }
+assert.equal(filterTrainingTasks(tasks, { search: 'dos contactos' }).length, 1, 'la búsqueda general incluye variantes');
+assert.equal(filterTrainingTasks(tasks, { stage: 'senior' }).length, 1, 'el filtro incluye tareas con la etapa entre varias');
+assert.equal(filterTrainingTasks(tasks, { stage: 'juvenil', taskType: 'rondos', players: '10', objective: 'presion' }).length, 1, 'etapa se combina mediante AND');
+assert.equal(filterTrainingTasks(tasks, { ratingMin: '4' }).length, 1, '4+ usa la media real');
+assert.equal(filterTrainingTasks(tasks, { ratingMin: '1' }).length, 2, 'sin valoraciones no pasa ni siquiera 1+');
 assert.equal(filterTrainingTasks(tasks, { taskCode: 'vigon' }).length, 1, 'el filtro específico de código es case-insensitive');
 assert.equal(filterTrainingTasks(tasks, { objective: 'PERDIDA' }).length, 1, 'el objetivo tiene filtro específico');
 assert.equal(filterTrainingTasks(tasks, { taskType: 'rondos' }).length, 1, 'filtra por clave canónica de tipo');
@@ -81,6 +100,6 @@ assert.equal(filterTrainingTasks(tasks, { scope: 'shared' }, 'me').length, 1, 'C
 assert.equal(filterTrainingTasks(tasks, { taskCode: 'def', scope: 'mine' }, 'me').length, 0, 'el código no altera ownership');
 assert.equal(filterTrainingTasks(tasks, { duration: 'short' }, 'me').length, 1, 'duración nula no equivale a cero');
 assert.equal(filterTrainingTasks(tasks, { gamePhase: 'defensive', duration: 'medium' }).length, 1, 'fase y duración se combinan');
-assert.deepEqual(createTrainingTaskFilters(), { search: '', taskType: '', taskCode: '', players: '', objective: '', gamePhase: '', scope: '', duration: '' }, 'limpiar filtros restaura el estado inicial');
+assert.deepEqual(createTrainingTaskFilters(), { search: '', taskType: '', taskCode: '', players: '', objective: '', gamePhase: '', scope: '', duration: '', stage: '', ratingMin: '' }, 'limpiar filtros restaura también etapa y valoración');
 
 console.log('training task tests passed');

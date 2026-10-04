@@ -2,6 +2,7 @@
 -- 1. supabase_training_tasks.sql
 -- 2. supabase_training_tasks_patch_select_author.sql
 -- 3. supabase_training_tasks_patch_task_code.sql
+-- 4. supabase_training_tasks_patch_v11_feedback.sql
 -- Solo PostgreSQL/RLS: no prueba bytes, MIME ni signed URLs reales del Storage API.
 -- Crea 5 usuarios auth fixture y requiere un jugador sin membership PLAYER activa.
 -- Todo termina en ROLLBACK.
@@ -138,6 +139,7 @@ create temporary table task_test_context (
   club_a uuid, club_b uuid, author_a uuid, recipient_a uuid,
   outsider_a uuid, author_b uuid, viewer_a uuid, player_jugador uuid,
   recipient_membership uuid, outsider_membership uuid, author_b_membership uuid, task_id uuid, sibling_task_id uuid,
+  feedback_id uuid, recipient_feedback_id uuid,
   path text
 );
 
@@ -155,7 +157,7 @@ select
   (select id from task_test_actors where actor_key = 'author_b'),
   (select id from task_test_actors where actor_key = 'viewer_a'),
   null,
-  null, null, null, null, null, null;
+  null, null, null, null, null, null, null, null;
 
 select pg_temp.admin_context();
 insert into public.club_memberships (club_id,user_id,role,is_active)
@@ -236,15 +238,16 @@ set local role authenticated;
 -- 1-4: autor STAFF crea, lee, edita; borrado se comprueba en una copia.
 select pg_temp.actor(author_a) from task_test_context;
 with inserted_task as (
-  insert into public.training_tasks(club_id,author_user_id,name,task_code,objective,game_phase,game_moment)
-  select club_a,author_a,'Tarea principal','Vigón','Control del balón','offensive','creation' from task_test_context
+  insert into public.training_tasks(club_id,author_user_id,name,task_code,objective,game_phase,game_moment,stage_keys,variants)
+  select club_a,author_a,'Tarea principal','Vigón','Control del balón','offensive','creation',array['juvenil','senior']::text[],'Limitar a dos contactos' from task_test_context
   returning id, task_code
 )
 update task_test_context set task_id = (select id from inserted_task where task_code = 'Vigón');
 select pg_temp.assert_true((select count(*) = 1 from public.training_tasks where id = task_id), '1-2 autor crea y lee') from task_test_context;
 select pg_temp.assert_true((select task_code = 'Vigón' from public.training_tasks where id = task_id), '32 task_code crea, retorna y lee') from task_test_context;
-update public.training_tasks set description = 'Editada', task_code = 'Vigón editado' where id = (select task_id from task_test_context);
-select pg_temp.assert_true((select description = 'Editada' and task_code = 'Vigón editado' from public.training_tasks where id = task_id), '3-33 autor edita y conserva task_code') from task_test_context;
+select pg_temp.assert_true((select stage_keys = array['juvenil','senior']::text[] and variants = 'Limitar a dos contactos' from public.training_tasks where id = task_id), '34 etapas y variantes se crean y leen') from task_test_context;
+update public.training_tasks set description = 'Editada', task_code = 'Vigón editado', stage_keys = array['cadete','juvenil']::text[], variants = 'Reducir espacio' where id = (select task_id from task_test_context);
+select pg_temp.assert_true((select description = 'Editada' and task_code = 'Vigón editado' and stage_keys = array['cadete','juvenil']::text[] and variants = 'Reducir espacio' from public.training_tasks where id = task_id), '3-35 autor edita ficha maestra') from task_test_context;
 insert into public.training_tasks(club_id,author_user_id,name,objective)
 select club_a,author_a,'Temporal','Borrado' from task_test_context;
 delete from public.training_tasks where name = 'Temporal' and club_id = (select club_a from task_test_context);
@@ -254,6 +257,30 @@ select club_a,author_a,'Tarea hermana','Control' from task_test_context;
 update task_test_context c set sibling_task_id = (
   select id from public.training_tasks where club_id = c.club_a and name = 'Tarea hermana'
 );
+
+-- 36-41: historial propio, rating opcional y límites 1-5.
+with inserted_feedback as (
+  insert into public.training_task_feedback(task_id,club_id,author_user_id,used_on,rating,post_text)
+  select task_id,club_a,author_a,date '2026-10-10',3,'Espacio demasiado grande' from task_test_context
+  returning id
+)
+update task_test_context set feedback_id = (select id from inserted_feedback);
+update public.training_task_feedback set rating = 4, post_text = 'Ajustado por su autor'
+where id = (select feedback_id from task_test_context);
+select pg_temp.assert_true((select rating = 4 from public.training_task_feedback where id = feedback_id), '36 autor edita su feedback') from task_test_context;
+insert into public.training_task_feedback(task_id,club_id,author_user_id,used_on,rating,post_text)
+select task_id,club_a,author_a,date '2026-11-05',null,'Anotación sin puntuación' from task_test_context;
+select pg_temp.assert_true((select count(*) = 2 from public.training_task_feedback where task_id = c.task_id), '36 varias entradas conviven y rating null es válido') from task_test_context c;
+delete from public.training_task_feedback where task_id = (select task_id from task_test_context) and post_text = 'Anotación sin puntuación';
+select pg_temp.assert_true((select count(*) = 1 from public.training_task_feedback where task_id = c.task_id), '37 autor elimina su entrada sin afectar otra') from task_test_context c;
+select pg_temp.denied(format(
+  'insert into public.training_task_feedback(task_id,club_id,author_user_id,used_on,rating) values (%L,%L,%L,current_date,0)',
+  task_id,club_a,author_a
+), '38 rating 0 denegado') from task_test_context;
+select pg_temp.denied(format(
+  'insert into public.training_task_feedback(task_id,club_id,author_user_id,used_on,rating) values (%L,%L,%L,current_date,6)',
+  task_id,club_a,author_a
+), '39 rating 6 denegado') from task_test_context;
 
 -- 13-14: identidad inmutable, incluso si el actor tuviera ambos clubes.
 select pg_temp.denied(format('update public.training_tasks set club_id = %L where id = %L',club_b,task_id), '13 club_id inmutable') from task_test_context;
@@ -266,6 +293,11 @@ select pg_temp.denied(format(
 -- 5: STAFF sin share. 6: luego receptor explícito. 12,20,21: inserts inválidos.
 select pg_temp.actor(outsider_a) from task_test_context;
 select pg_temp.assert_true((select count(*) = 0 from public.training_tasks where id = task_id), '5 STAFF no compartido no lee') from task_test_context;
+select pg_temp.assert_true((select count(*) = 0 from public.training_task_feedback where task_id = c.task_id), '40 STAFF no compartido no lee feedback') from task_test_context c;
+select pg_temp.denied(format(
+  'insert into public.training_task_feedback(task_id,club_id,author_user_id,used_on,rating) values (%L,%L,%L,current_date,4)',
+  task_id,club_a,outsider_a
+), '41 STAFF no compartido no crea feedback') from task_test_context;
 select pg_temp.actor(author_a) from task_test_context;
 select pg_temp.denied(format(
   'insert into public.training_task_shares(task_id,membership_id,shared_by_user_id) values (%L,%L,%L)',
@@ -285,18 +317,43 @@ select task_id,recipient_membership,author_a from task_test_context;
 select pg_temp.actor(recipient_a) from task_test_context;
 select pg_temp.assert_true((select count(*) = 1 from public.training_tasks where id = task_id), '6-23 receptor lee sin recursión') from task_test_context;
 select pg_temp.assert_true((select count(*) = 1 from public.training_task_shares where task_id = c.task_id), '6 receptor ve su share') from task_test_context c;
+select pg_temp.assert_true((select count(*) = 1 from public.training_task_feedback where task_id = c.task_id), '42 receptor compartido lee historial') from task_test_context c;
+with inserted_feedback as (
+  insert into public.training_task_feedback(task_id,club_id,author_user_id,used_on,rating,post_text)
+  select task_id,club_a,recipient_a,date '2026-11-05',4,'Mejor con menos espacio' from task_test_context
+  returning id
+)
+update task_test_context set recipient_feedback_id = (select id from inserted_feedback);
+update public.training_task_feedback set rating = 5, post_text = 'Editado por su autor'
+where id = (select recipient_feedback_id from task_test_context);
+select pg_temp.assert_true((select rating = 5 from public.training_task_feedback where id = recipient_feedback_id), '43 receptor crea y edita su propio feedback') from task_test_context;
+delete from public.training_task_feedback where id = (select recipient_feedback_id from task_test_context);
+select pg_temp.assert_true((select count(*) = 0 from public.training_task_feedback where id = recipient_feedback_id), '43 receptor elimina su propio feedback') from task_test_context;
+with inserted_feedback as (
+  insert into public.training_task_feedback(task_id,club_id,author_user_id,used_on,rating,post_text)
+  select task_id,club_a,recipient_a,date '2027-01-20',5,'Nueva entrada independiente' from task_test_context
+  returning id
+)
+update task_test_context set recipient_feedback_id = (select id from inserted_feedback);
+select pg_temp.denied(format('update public.training_task_feedback set rating = 1 where id = %L',feedback_id), '44 receptor no edita feedback ajeno') from task_test_context;
+select pg_temp.denied(format('delete from public.training_task_feedback where id = %L',feedback_id), '45 receptor no elimina feedback ajeno') from task_test_context;
 select pg_temp.denied(format('update public.training_tasks set name = %L where id = %L','Ataque',task_id), '7 receptor no edita') from task_test_context;
 select pg_temp.denied(format('delete from public.training_tasks where id = %L',task_id), '8 receptor no borra') from task_test_context;
 select pg_temp.denied(format('delete from public.training_task_shares where task_id = %L',task_id), '9 receptor no gestiona shares') from task_test_context;
-insert into public.training_tasks(club_id,author_user_id,name,objective,game_phase,game_moment)
-select club_a,recipient_a,'Copia propia','Control del balón','offensive','creation' from task_test_context;
-select pg_temp.assert_true((select count(*) = 1 from public.training_tasks where author_user_id = recipient_a and name = 'Copia propia'), '10 receptor duplica como propia') from task_test_context;
+insert into public.training_tasks(club_id,author_user_id,name,task_code,objective,game_phase,game_moment,stage_keys,variants)
+select club_a,recipient_a,'Copia propia','Vigón editado','Control del balón','offensive','creation',array['cadete','juvenil']::text[],'Reducir espacio' from task_test_context;
+select pg_temp.assert_true((select count(*) = 1 from public.training_tasks where author_user_id = recipient_a and name = 'Copia propia' and stage_keys = array['cadete','juvenil']::text[] and variants = 'Reducir espacio'), '10-46 duplicate conserva ficha maestra') from task_test_context;
+select pg_temp.assert_true((select count(*) = 0 from public.training_task_feedback where task_id = (select id from public.training_tasks where author_user_id = recipient_a and name = 'Copia propia')), '47 duplicate empieza sin feedback') from task_test_context;
 
 -- 11,18: otro club y VIEWER no leen.
 select pg_temp.actor(author_b) from task_test_context;
 select pg_temp.assert_true((select count(*) = 0 from public.training_tasks where id = task_id), '11 otro club no lee') from task_test_context;
+select pg_temp.assert_true((select count(*) = 0 from public.training_task_feedback where task_id = c.task_id), '48 cross-club no lee feedback') from task_test_context c;
+select pg_temp.denied(format('insert into public.training_task_feedback(task_id,club_id,author_user_id,used_on,rating) values (%L,%L,%L,current_date,4)',task_id,club_a,author_b), '49 cross-club no crea feedback') from task_test_context;
 select pg_temp.actor(viewer_a) from task_test_context;
 select pg_temp.assert_true((select count(*) = 0 from public.training_tasks where id = task_id), '18 VIEWER no lee') from task_test_context;
+select pg_temp.assert_true((select count(*) = 0 from public.training_task_feedback where task_id = c.task_id), '50 VIEWER no lee feedback') from task_test_context c;
+select pg_temp.denied(format('insert into public.training_task_feedback(task_id,club_id,author_user_id,used_on,rating) values (%L,%L,%L,current_date,4)',task_id,club_a,viewer_a), '51 VIEWER no crea feedback') from task_test_context;
 
 -- 17,22: receptor pierde acceso al pasar a PLAYER con jugador_id válido.
 select pg_temp.admin_context();
@@ -306,6 +363,8 @@ set local role authenticated;
 select pg_temp.actor(recipient_a) from task_test_context;
 select pg_temp.assert_true((select count(*) = 0 from public.training_tasks where id = task_id), '17/22 receptor PLAYER pierde acceso') from task_test_context;
 select pg_temp.assert_true((select count(*) = 0 from public.training_task_shares where task_id = c.task_id), '22 receptor PLAYER pierde metadata share') from task_test_context c;
+select pg_temp.assert_true((select count(*) = 0 from public.training_task_feedback where task_id = c.task_id), '52 PLAYER no lee feedback') from task_test_context c;
+select pg_temp.denied(format('insert into public.training_task_feedback(task_id,club_id,author_user_id,used_on,rating) values (%L,%L,%L,current_date,4)',task_id,club_a,recipient_a), '53 PLAYER no crea feedback') from task_test_context;
 select pg_temp.admin_context();
 update public.club_memberships set role = 'staff', jugador_id = null where id = (select recipient_membership from task_test_context);
 set local role authenticated;
@@ -320,6 +379,10 @@ select pg_temp.assert_true((select count(*) = 0 from public.training_tasks where
 select pg_temp.denied(format('update public.training_tasks set name = %L where id = %L','Revocada',task_id), '16 autor revocado no edita') from task_test_context;
 select pg_temp.denied(format('delete from public.training_tasks where id = %L',task_id), '16 autor revocado no borra') from task_test_context;
 select pg_temp.denied(format('delete from public.training_task_shares where task_id = %L',task_id), '16 autor revocado no comparte') from task_test_context;
+select pg_temp.assert_true((select count(*) = 0 from public.training_task_feedback where task_id = c.task_id), '54 autor revocado no lee feedback') from task_test_context c;
+select pg_temp.denied(format('insert into public.training_task_feedback(task_id,club_id,author_user_id,used_on,rating) values (%L,%L,%L,current_date,4)',task_id,club_a,author_a), '55 autor revocado no crea feedback') from task_test_context;
+select pg_temp.denied(format('update public.training_task_feedback set rating = 2 where id = %L',feedback_id), '56 autor revocado no edita su feedback') from task_test_context;
+select pg_temp.denied(format('delete from public.training_task_feedback where id = %L',feedback_id), '57 autor revocado no elimina su feedback') from task_test_context;
 select pg_temp.admin_context();
 update public.club_memberships set is_active = true where club_id = (select club_a from task_test_context) and user_id = (select author_a from task_test_context);
 set local role authenticated;
@@ -327,7 +390,17 @@ select pg_temp.actor(author_a) from task_test_context;
 
 -- 19: grants ANON; no acceso a tablas públicas de Tareas.
 select pg_temp.assert_true(not has_table_privilege('anon','public.training_tasks','SELECT')
-  and not has_table_privilege('anon','public.training_task_shares','SELECT'), '19 ANON sin grants');
+  and not has_table_privilege('anon','public.training_task_shares','SELECT')
+  and not has_table_privilege('anon','public.training_task_feedback','SELECT,INSERT,UPDATE,DELETE'), '19-58 ANON sin grants');
+
+-- 59: eliminar la tarea elimina su historial mediante la FK, sin huérfanos.
+insert into public.training_task_feedback(task_id,club_id,author_user_id,used_on,rating)
+select sibling_task_id,club_a,author_a,current_date,5 from task_test_context;
+delete from public.training_tasks where id = (select sibling_task_id from task_test_context);
+select pg_temp.admin_context();
+select pg_temp.assert_true((select count(*) = 0 from public.training_task_feedback where task_id = c.sibling_task_id), '59 ON DELETE CASCADE elimina feedback') from task_test_context c;
+set local role authenticated;
+select pg_temp.actor(author_a) from task_test_context;
 
 -- 24-31: prueba PostgreSQL de helpers y RLS de metadatos storage.objects.
 -- NO prueba upload/download/remove HTTP ni emisión/expiración de signed URLs.

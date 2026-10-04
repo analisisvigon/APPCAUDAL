@@ -23,6 +23,19 @@ alter table public.training_tasks
 do $$
 begin
   if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'training_tasks'
+      and column_name = 'stage_keys' and udt_name = '_text'
+      and is_nullable = 'NO' and column_default like '%{}%'
+  ) or not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'training_tasks'
+      and column_name = 'variants' and data_type = 'text' and is_nullable = 'YES'
+  ) then
+    raise exception 'Tareas V1.1: stage_keys o variants tienen un contrato incompatible';
+  end if;
+
+  if not exists (
     select 1 from pg_catalog.pg_constraint
     where conrelid = 'public.training_tasks'::regclass
       and conname = 'training_tasks_stage_keys_canonical'
