@@ -1,3 +1,11 @@
+import {
+  getTrainingTaskEditorPayloadSize,
+  readTrainingTaskEditorPayload,
+  serializeTrainingTaskEditorScene,
+} from './trainingTaskEditorPayload.js';
+
+const cloneJson = (value) => JSON.parse(JSON.stringify(value ?? {}));
+
 export const TRAINING_TASK_TYPES = [
   { key: 'warm_up', label: 'Calentamiento', color: '#f59e0b' },
   { key: 'passing_patterns', label: 'Ruedas de pase', color: '#38bdf8' },
@@ -129,6 +137,7 @@ export const createTrainingTaskDraft = () => ({
   attachmentName: '',
   attachmentMime: '',
   attachmentSize: null,
+  editorPayload: {},
 });
 
 export const normalizeTrainingTask = (row = {}) => ({
@@ -154,6 +163,7 @@ export const normalizeTrainingTask = (row = {}) => ({
   attachmentMime: row.attachment_mime || '',
   attachmentSize: row.attachment_size ?? null,
   isShared: Boolean(row.is_shared),
+  editorPayload: cloneJson(row.editor_payload),
 });
 
 export const trainingTaskToDraft = (task) => ({
@@ -182,7 +192,29 @@ export const trainingTaskToDraft = (task) => ({
   attachmentName: task.attachmentName || '',
   attachmentMime: task.attachmentMime || '',
   attachmentSize: task.attachmentSize ?? null,
+  editorPayload: cloneJson(task.editorPayload ?? task.editor_payload),
 });
+
+const jsonEquals = (left, right) => JSON.stringify(left ?? {}) === JSON.stringify(right ?? {});
+
+export const prepareTrainingTaskEditorPayload = (draft = {}, existing = null) => {
+  const candidate = cloneJson(draft.editorPayload ?? existing?.editorPayload ?? existing?.editor_payload ?? {});
+  const result = readTrainingTaskEditorPayload(candidate);
+  if (result.kind === 'empty') return {};
+  if (result.kind === 'v1') {
+    const payload = serializeTrainingTaskEditorScene(result.scene);
+    const size = getTrainingTaskEditorPayloadSize(payload);
+    if (size.exceedsLimit) {
+      throw new Error(`La pizarra ocupa ${size.bytes.toLocaleString('es-ES')} bytes y supera el limite de 256 KiB.`);
+    }
+    return payload;
+  }
+  const original = existing?.editorPayload ?? existing?.editor_payload;
+  if (existing && jsonEquals(candidate, original)) return cloneJson(original);
+  throw new Error(result.kind === 'unsupported'
+    ? 'La pizarra usa una version no compatible y no puede sustituirse desde este editor.'
+    : `La pizarra no es valida: ${result.error || 'payload desconocido'}`);
+};
 
 export const validateTrainingTaskDraft = (draft) => {
   const errors = {};
@@ -233,7 +265,7 @@ export const buildTrainingTaskPayload = (draft, { clubId, authorUserId, existing
   attachment_name: draft.attachmentName || null,
   attachment_mime: draft.attachmentMime || null,
   attachment_size: draft.attachmentSize || null,
-  editor_payload: existing?.editor_payload || {},
+  editor_payload: prepareTrainingTaskEditorPayload(draft, existing),
 });
 
 export const filterTrainingTasks = (tasks, filters = {}, currentUserId = '') => {

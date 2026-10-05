@@ -122,7 +122,7 @@ const BallIcon = ({ x, y, selected, radius }) => (
   </g>
 );
 
-export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, printOptimized = false, optimizeLabels = false, preparedForPrint = false, visibleLayers = {}, identityConvention = 'default', renderMode = 'default' }) {
+export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, printOptimized = false, optimizeLabels = false, preparedForPrint = false, visibleLayers = {}, identityConvention = 'default', renderMode = 'default', ariaLabel = '' }) {
   const markerScope = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const arrowMarkerId = `diagram-arrow-${markerScope}`;
   const arrowStartMarkerId = `diagram-arrow-start-${markerScope}`;
@@ -281,7 +281,7 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
       renderMode={tokenMode}
       pitchType={resolveLegacySetPiecePitchType(fullField)}
       overflow={printOptimized ? 'visible' : undefined}
-      aria-label={readOnly ? 'Diagrama táctico ABP' : 'Editor táctico ABP'}
+      aria-label={ariaLabel || (readOnly ? 'Diagrama táctico ABP' : 'Editor táctico ABP')}
       data-interaction-mode={readOnly ? 'readonly' : 'navigate'}
       onPointerMove={handlePointerMove}
       onPointerUp={stopDrag}

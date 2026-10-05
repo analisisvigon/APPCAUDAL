@@ -1,4 +1,5 @@
 import { deleteTrainingTask, saveTrainingTask } from './trainingTaskStore.js';
+import { prepareTrainingTaskEditorPayload } from './trainingTasks.js';
 
 export const TRAINING_TASK_BUCKET = 'training-task-files';
 export const TRAINING_TASK_MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -38,15 +39,19 @@ const withCleanupDetail = (error, cleanupError, path) => {
 };
 
 export const saveTrainingTaskWithFile = async (client, draft, context, existing = null) => {
-  if (!draft.file) return { task: await saveTrainingTask(client, draft, context, existing), cleanupPending: [] };
+  const safeDraft = {
+    ...draft,
+    editorPayload: prepareTrainingTaskEditorPayload(draft, existing),
+  };
+  if (!safeDraft.file) return { task: await saveTrainingTask(client, safeDraft, context, existing), cleanupPending: [] };
 
   // El objeto necesita una tarea existente para que Storage autorice el upload.
-  const task = existing || await saveTrainingTask(client, { ...draft, previewPath: '', attachmentPath: '', attachmentName: '', attachmentMime: '', attachmentSize: null }, context);
+  const task = existing || await saveTrainingTask(client, { ...safeDraft, previewPath: '', attachmentPath: '', attachmentName: '', attachmentMime: '', attachmentSize: null }, context);
   let uploaded;
   try {
-    uploaded = await uploadTrainingTaskFile(client, task, draft.file);
+    uploaded = await uploadTrainingTaskFile(client, task, safeDraft.file);
     const taskWithFile = await saveTrainingTask(client, {
-      ...draft,
+      ...safeDraft,
       previewPath: uploaded.isImage ? uploaded.path : (existing?.previewPath || ''),
       attachmentPath: uploaded.path,
       attachmentName: uploaded.name,

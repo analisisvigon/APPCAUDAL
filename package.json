@@ -23,7 +23,7 @@
     "test:player-fines-management": "node src/auth/resolveAppIdentity.test.js && node src/utils/playerCapabilities.test.js && node src/data/finesManagementStore.test.js && node scripts/playerAppIsolation.test.mjs && node scripts/playerFlowAudit.test.mjs && node scripts/playerFinesManagementAudit.test.mjs",
     "test:player-build": "node scripts/playerBuildIsolationAudit.test.mjs",
     "test:player-avatar": "node scripts/playerAvatarPresentation.test.mjs",
-    "test:training-tasks": "node src/utils/trainingTasks.test.js && node src/utils/trainingTaskEditorPayload.test.js && node src/utils/trainingTaskFeedback.test.js && node src/utils/trainingTaskFeedbackStore.test.js && node src/utils/trainingTaskFiles.test.js && node scripts/trainingTasksSqlAudit.test.mjs",
+    "test:training-tasks": "node src/utils/trainingTasks.test.js && node src/utils/trainingTaskEditorPayload.test.js && node src/utils/diagramEditorState.test.js && node src/utils/trainingTaskBoardIntegration.test.js && node src/utils/trainingTaskFeedback.test.js && node src/utils/trainingTaskFeedbackStore.test.js && node src/utils/trainingTaskFiles.test.js && node scripts/trainingTasksSqlAudit.test.mjs",
     "test:pwa": "node scripts/playerPdfPwaBuildAudit.test.mjs",
     "test:performance-load": "node src/utils/performanceRpe.test.js && node src/utils/performanceLoad.test.js && node src/utils/performanceLoadStore.test.js && node scripts/trainingLoadSqlAudit.test.mjs && node scripts/performanceLoadUiAudit.test.mjs && node scripts/playerTeamLoadEvolutionUiAudit.test.mjs && node scripts/performanceLoadRuntime.test.mjs",
     "test:league-results": "node src/utils/leagueResults.test.js",

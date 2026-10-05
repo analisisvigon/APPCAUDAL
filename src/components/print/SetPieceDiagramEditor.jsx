@@ -4,16 +4,15 @@ import { getPlayerDisplayName } from '../../utils/playerDisplayName';
 import {
   getSetPieceDimensionRange,
   normalizeSetPieceDimensionValue,
-  normalizeSetPieceElementDimensions,
 } from '../../utils/setPieceElementDimensions';
 import {
   applySetPieceArrowStyle,
   deleteSetPieceElement,
-  ensureSetPieceCurveGeometry,
   getSetPieceArrowStyle,
   getSetPieceDeleteAction,
   getSetPieceHistoryAction,
 } from '../../utils/setPieceEditorInteractions';
+import { createDiagramElement, duplicateDiagramElement } from '../../utils/diagramEditorState';
 import {
   SET_PIECE_PRINT_IDENTITY_MODES,
   createDefaultSetPieceDisplayLayers,
@@ -35,23 +34,9 @@ import SetPieceDiagramToolbar from './SetPieceDiagramToolbar';
 import { findCrowdedSetPieceParticipants } from '../../utils/setPieceRenderLayout';
 import { buildSetPieceLinkedPlayerOptions } from '../../utils/setPieceLinkedPlayers';
 
-const createId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const clone = (value) => JSON.parse(JSON.stringify(value || []));
 const isArrow = (element) => ['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow'].includes(element?.type);
 const isResizableBox = (element) => ['zone', 'block', 'text_box'].includes(element?.type);
-
-const createElement = (type) => {
-  if (type === 'ball') return { id: createId(), type, x: 8, y: 8 };
-  if (isArrow({ type }) || type === 'curved_dashed_arrow') {
-    return applySetPieceArrowStyle({ id: createId(), type: 'arrow', x1: 20, y1: 46, x2: 44, y2: 26 }, type);
-  }
-  if (type === 'zone') return { id: createId(), type, x: 34, y: 18, width: 22, height: 12, label: 'Zona' };
-  if (type === 'text') return { id: createId(), type, x: 42, y: 40, label: 'Texto' };
-  if (type === 'block') return { id: createId(), type, x: 42, y: 34, width: 5, label: 'BLOQUEO' };
-  if (type === 'text_box') return { id: createId(), type, x: 58, y: 10, width: 32, height: 24, label: 'TEXTO' };
-  if (type === 'opponent') return { id: createId(), type, x: 50, y: 17, label: 'R' };
-  return { id: createId(), type: 'player', x: 50, y: 35, label: '1', player_id: '', roles: [], sequenceOrder: null };
-};
 
 const fieldClass = 'w-full rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-sm text-white outline-none placeholder:text-slate-600 focus:border-caudal-electric/60 focus:ring-2 focus:ring-caudal-electric/20';
 const labelClass = 'text-[9px] font-black uppercase tracking-[0.16em] text-slate-500';
@@ -312,7 +297,7 @@ export default function SetPieceDiagramEditor({
   }, [selectedElement, drawableElements]);
 
   const addElement = (type) => {
-    const element = createElement(type);
+    const element = createDiagramElement(type);
     if (roleOnly && type === 'player') {
       element.label = String(drawableElements.filter((entry) => entry.type === 'player').length + 1);
     }
@@ -354,19 +339,9 @@ export default function SetPieceDiagramEditor({
   };
   const duplicateSelected = () => {
     if (!selectedElement) return;
-    const copy = { ...clone([selectedElement])[0], id: createId() };
-    if (isArrow(copy)) {
-      const curvedCopy = copy.type === 'curved_arrow' ? ensureSetPieceCurveGeometry(copy) : null;
-      copy.x1 = Math.min(100, Number(copy.x1 || 0) + 4); copy.y1 = Math.min(72, Number(copy.y1 || 0) + 4);
-      copy.x2 = Math.min(100, Number(copy.x2 || 0) + 4); copy.y2 = Math.min(72, Number(copy.y2 || 0) + 4);
-      if (curvedCopy) {
-        copy.controlX = Math.min(100, Number(curvedCopy.controlX || 0) + 4);
-        copy.controlY = Math.min(72, Number(curvedCopy.controlY || 0) + 4);
-      }
-    } else { copy.x = Math.min(100, Number(copy.x || 0) + 4); copy.y = Math.min(72, Number(copy.y || 0) + 4); }
-    const normalized = normalizeSetPieceElementDimensions(copy);
-    updateElements([...drawableElements, normalized]);
-    setSelectedId(normalized.id);
+    const copy = duplicateDiagramElement(selectedElement);
+    updateElements([...drawableElements, copy]);
+    setSelectedId(copy.id);
   };
   const deleteSelected = () => {
     if (!selectedElement) return;
