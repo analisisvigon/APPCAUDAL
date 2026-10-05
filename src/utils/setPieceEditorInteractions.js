@@ -89,7 +89,7 @@ export const moveSetPieceCurveControlPoint = (element = {}, point = {}) => {
 export const translateSetPieceElement = (element = {}, dx = 0, dy = 0) => {
   const offsetX = finiteCoordinate(dx);
   const offsetY = finiteCoordinate(dy);
-  if (!['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow'].includes(element.type)) {
+  if (!['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow', 'line', 'dashed_line'].includes(element.type)) {
     return {
       ...element,
       x: finiteCoordinate(element.x) + offsetX,

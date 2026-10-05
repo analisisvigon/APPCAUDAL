@@ -78,7 +78,7 @@ const sectionSource = await readFile(new URL('../components/training/TrainingTas
 const boardSource = await readFile(new URL('../components/training/TrainingTaskBoardEditor.jsx', import.meta.url), 'utf8');
 assert.match(sectionSource, /task\.author_user_id !== userId/, 'solo el autor abre edición');
 assert.match(sectionSource, /TrainingTaskBoardEditor[^>]+readOnly/, 'el detalle, incluida una compartida, renderiza la pizarra readonly');
-assert.match(boardSource, /\{!readOnly \? <div className="mt-3"><SetPieceDiagramToolbar/, 'los controles solo aparecen en modo editable');
+assert.match(boardSource, /\{!readOnly \? <div className="mt-3"><TrainingTaskBoardToolbar/, 'los controles solo aparecen en modo editable');
 assert.match(boardSource, /Pizarra de ejercicio/);
 assert.doesNotMatch(boardSource, /cronolog|dossier|impresi[oó]n|metadata de jugada/i, 'la UI de Tareas no expone conceptos ABP');
 

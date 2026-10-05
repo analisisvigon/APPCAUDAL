@@ -18,9 +18,18 @@ export const TRAINING_TASK_EDITOR_ELEMENT_TYPES = Object.freeze([
   'block',
   'text',
   'text_box',
+  'participant',
+  'cone',
+  'pole',
+  'mannequin',
+  'hoop',
+  'goal',
+  'mini_goal',
+  'line',
+  'dashed_line',
 ]);
 
-const ARROW_ELEMENT_TYPES = new Set(['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow']);
+const ARROW_ELEMENT_TYPES = new Set(['arrow', 'dashed_arrow', 'curved_arrow', 'double_arrow', 'line', 'dashed_line']);
 const EPHEMERAL_EDITOR_KEYS = new Set([
   'selectedId', 'hover', 'hoverId', 'zoom', 'undo', 'redo', 'history', 'drag', 'clipboard',
 ]);

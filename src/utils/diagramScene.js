@@ -2,6 +2,8 @@ export const DIAGRAM_VIEWBOX = Object.freeze({ width: 100, height: 72 });
 
 export const DIAGRAM_PITCH_TYPES = Object.freeze({
   FULL: 'full',
+  HALF: 'half',
+  BLANK: 'blank',
   PENALTY_AREA: 'penalty-area',
 });
 
@@ -9,6 +11,14 @@ export const DIAGRAM_PITCH_CATALOG = Object.freeze({
   [DIAGRAM_PITCH_TYPES.FULL]: Object.freeze({
     key: DIAGRAM_PITCH_TYPES.FULL,
     label: 'Campo completo',
+  }),
+  [DIAGRAM_PITCH_TYPES.HALF]: Object.freeze({
+    key: DIAGRAM_PITCH_TYPES.HALF,
+    label: 'Medio campo',
+  }),
+  [DIAGRAM_PITCH_TYPES.BLANK]: Object.freeze({
+    key: DIAGRAM_PITCH_TYPES.BLANK,
+    label: 'Terreno sin lineas',
   }),
   [DIAGRAM_PITCH_TYPES.PENALTY_AREA]: Object.freeze({
     key: DIAGRAM_PITCH_TYPES.PENALTY_AREA,
@@ -30,4 +40,3 @@ export const clampDiagramCoordinate = (value, axis = 'x') => {
   const maximum = axis === 'y' ? DIAGRAM_VIEWBOX.height : DIAGRAM_VIEWBOX.width;
   return Math.max(0, Math.min(maximum, numericValue));
 };
-
