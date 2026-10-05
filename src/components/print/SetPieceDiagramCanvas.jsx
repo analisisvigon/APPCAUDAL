@@ -1,5 +1,7 @@
 import { useId, useMemo, useRef, useState } from 'react';
+import DiagramCanvasSurface from '../diagram/DiagramCanvasSurface';
 import { getPlayerDisplayName } from '../../utils/playerDisplayName';
+import { resolveLegacySetPiecePitchType } from '../../utils/diagramScene';
 import {
   normalizeSetPieceDimensionValue,
   normalizeSetPieceElementDimensions,
@@ -119,35 +121,6 @@ const BallIcon = ({ x, y, selected, radius }) => (
     })}
   </g>
 );
-
-function PitchLines({ fullField = false }) {
-  if (fullField) {
-    return (
-      <>
-        <rect x="1" y="1" width="98" height="70" fill="white" stroke="currentColor" strokeWidth="0.8" />
-        <line x1="50" y1="1" x2="50" y2="71" stroke="currentColor" strokeWidth="0.55" />
-        <circle cx="50" cy="36" r="9" fill="none" stroke="currentColor" strokeWidth="0.55" />
-        <rect x="1" y="18" width="18" height="36" fill="none" stroke="currentColor" strokeWidth="0.7" />
-        <rect x="1" y="27" width="7" height="18" fill="none" stroke="currentColor" strokeWidth="0.7" />
-        <rect x="81" y="18" width="18" height="36" fill="none" stroke="currentColor" strokeWidth="0.7" />
-        <rect x="92" y="27" width="7" height="18" fill="none" stroke="currentColor" strokeWidth="0.7" />
-        <rect x="0.5" y="31" width="2.5" height="10" fill="none" stroke="currentColor" strokeWidth="0.75" />
-        <rect x="97" y="31" width="2.5" height="10" fill="none" stroke="currentColor" strokeWidth="0.75" />
-      </>
-    );
-  }
-  return (
-    <>
-      <rect x="1" y="1" width="98" height="70" fill="white" stroke="currentColor" strokeWidth="0.8" />
-      <rect x="22" y="1" width="56" height="21" fill="none" stroke="currentColor" strokeWidth="0.7" />
-      <rect x="36" y="1" width="28" height="9" fill="none" stroke="currentColor" strokeWidth="0.7" />
-      <rect x="42" y="1" width="16" height="2.5" fill="none" stroke="currentColor" strokeWidth="0.9" />
-      <path d="M38 22 Q50 30 62 22" fill="none" stroke="currentColor" strokeWidth="0.6" />
-      <path d="M1 1 Q7 7 1 13" fill="none" stroke="currentColor" strokeWidth="0.6" />
-      <path d="M99 1 Q93 7 99 13" fill="none" stroke="currentColor" strokeWidth="0.6" />
-    </>
-  );
-}
 
 export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSelect, onChange, readOnly = false, players = [], snap = false, fullField = false, printOptimized = false, optimizeLabels = false, preparedForPrint = false, visibleLayers = {}, identityConvention = 'default', renderMode = 'default' }) {
   const markerScope = useId().replace(/[^a-zA-Z0-9_-]/g, '');
@@ -302,13 +275,12 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
   };
 
   return (
-    <svg
+    <DiagramCanvasSurface
       ref={svgRef}
       className={`set-piece-diagram-canvas ${readOnly ? 'set-piece-diagram-preview-canvas' : 'set-piece-diagram-editor-canvas'}`}
-      data-render-mode={tokenMode}
-      viewBox="0 0 100 72"
+      renderMode={tokenMode}
+      pitchType={resolveLegacySetPiecePitchType(fullField)}
       overflow={printOptimized ? 'visible' : undefined}
-      role="img"
       aria-label={readOnly ? 'Diagrama táctico ABP' : 'Editor táctico ABP'}
       data-interaction-mode={readOnly ? 'readonly' : 'navigate'}
       onPointerMove={handlePointerMove}
@@ -326,8 +298,6 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           <path d="M 10 0 L 0 5 L 10 10 z" fill="currentColor" />
         </marker>
       </defs>
-      <PitchLines fullField={fullField} />
-
       {renderedElements.map((element) => {
         const selected = selectedId === element.id;
         const renderedElement = normalizeSetPieceElementDimensions(element);
@@ -470,6 +440,6 @@ export default function SetPieceDiagramCanvas({ elements = [], selectedId, onSel
           </g>
         );
       })}
-    </svg>
+    </DiagramCanvasSurface>
   );
 }
