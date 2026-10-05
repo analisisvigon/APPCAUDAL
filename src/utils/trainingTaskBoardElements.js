@@ -91,10 +91,24 @@ export const sortTrainingBoardElements = (elements = []) => elements
   .sort((left, right) => getTrainingBoardElementLayer(left.element) - getTrainingBoardElementLayer(right.element) || left.index - right.index)
   .map(({ element }) => element);
 
+const finiteNumber = (value, fallback) => (
+  Number.isFinite(Number(value)) ? Number(value) : fallback
+);
+
+export const resizeTrainingBoardZone = (element, deltaX = 0, deltaY = 0) => {
+  const x = Math.max(0, Math.min(96, finiteNumber(element?.x, 0)));
+  const y = Math.max(0, Math.min(68, finiteNumber(element?.y, 0)));
+  const width = finiteNumber(element?.width, 22) + finiteNumber(deltaX, 0);
+  const height = finiteNumber(element?.height, 12) + finiteNumber(deltaY, 0);
+  return {
+    width: Math.max(4, Math.min(100 - x, width)),
+    height: Math.max(4, Math.min(72 - y, height)),
+  };
+};
+
 export const adaptLegacyTrainingBoardElement = (element) => {
   if (element?.type === 'player') return { ...element, type: 'participant', role: 'player', teamKey: element.teamKey || 'team-1', colorKey: element.colorKey || 'blue' };
   if (element?.type === 'opponent') return { ...element, type: 'participant', role: 'player', teamKey: element.teamKey || 'team-2', colorKey: element.colorKey || 'red' };
   if (element?.type === 'zone') return { colorKey: 'blue', opacity: 0.22, label: '', ...element };
   return element;
 };
-

@@ -5,6 +5,7 @@ import {
   adaptLegacyTrainingBoardElement,
   createTrainingTaskBoardElement,
   getTrainingBoardElementLayer,
+  resizeTrainingBoardZone,
   sortTrainingBoardElements,
   TRAINING_BOARD_PALETTE,
   TRAINING_BOARD_TEAM_OPTIONS,
@@ -41,6 +42,8 @@ assert.equal(duplicatedLine.x2, elements[16].x2 + 4);
 assert.equal(elements[18].label, '', 'una zona no impone label');
 assert.equal(elements[18].opacity, 0.22);
 assert.ok(Number(elements[18].width) > 0 && Number(elements[18].height) > 0, 'zona preparada para resize');
+assert.deepEqual(resizeTrainingBoardZone({ x: 90, y: 65, width: 8, height: 6 }, 20, 20), { width: 10, height: 7 }, 'resize no sale del terreno');
+assert.deepEqual(resizeTrainingBoardZone({ x: 20, y: 20, width: 8, height: 6 }, -20, -20), { width: 4, height: 4 }, 'resize conserva un tamano minimo');
 
 const ordered = sortTrainingBoardElements([elements[0], elements[6], elements[13], elements[19], elements[18]]);
 assert.deepEqual(ordered.map(getTrainingBoardElementLayer), [1, 2, 3, 4, 5], 'z-order: zona, trazado, material, participante, texto');

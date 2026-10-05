@@ -1,9 +1,10 @@
-import { useId, useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useRef } from 'react';
 import { clampDiagramCoordinate } from '../../utils/diagramScene';
 import { getSetPieceCurveControlPoint } from '../../utils/setPieceEditorInteractions';
 import {
   adaptLegacyTrainingBoardElement,
   getTrainingBoardColor,
+  resizeTrainingBoardZone,
   sortTrainingBoardElements,
 } from '../../utils/trainingTaskBoardElements';
 
@@ -61,7 +62,7 @@ function Material({ element, color }) {
 
 export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = 'full', selectedId = '', onSelect, onChange, readOnly = false, snap = false }) {
   const svgRef = useRef(null);
-  const [drag, setDrag] = useState(null);
+  const dragRef = useRef(null);
   const markerId = `training-arrow-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const rendered = useMemo(() => sortTrainingBoardElements(elements), [elements]);
   const selected = elements.find((element) => element.id === selectedId) || null;
@@ -70,15 +71,23 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
     const rect = svgRef.current.getBoundingClientRect();
     return { x: clamp(((event.clientX - rect.left) / rect.width) * 100, 'x'), y: clamp(((event.clientY - rect.top) / rect.height) * 72, 'y') };
   };
-  const updateElement = (id, fields) => onChange(elements.map((element) => element.id === id ? { ...element, ...fields } : element));
+  const updateElement = (id, fields) => {
+    const nextElements = elements.map((element) => element.id === id ? { ...element, ...fields } : element);
+    if (dragRef.current) {
+      dragRef.current.moved = true;
+      dragRef.current.latestElements = nextElements;
+    }
+    onChange(nextElements, { recordHistory: false });
+  };
   const startDrag = (event, element, mode = 'move') => {
     if (readOnly) return;
     event.stopPropagation(); event.preventDefault(); onSelect(element.id);
     event.currentTarget.setPointerCapture?.(event.pointerId);
     const control = element.type === 'curved_arrow' ? getSetPieceCurveControlPoint(element) : null;
-    setDrag({ element, mode, start: pointFromEvent(event), origin: control ? { ...element, controlX: control.x, controlY: control.y } : { ...element } });
+    dragRef.current = { element, mode, start: pointFromEvent(event), origin: control ? { ...element, controlX: control.x, controlY: control.y } : { ...element }, moved: false, latestElements: elements };
   };
   const move = (event) => {
+    const drag = dragRef.current;
     if (!drag || readOnly) return;
     const point = pointFromEvent(event);
     const dx = point.x - drag.start.x; const dy = point.y - drag.start.y;
@@ -87,7 +96,7 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
     if (drag.mode === 'start') return updateElement(drag.element.id, { x1: x(drag.origin.x1), y1: y(drag.origin.y1) });
     if (drag.mode === 'end') return updateElement(drag.element.id, { x2: x(drag.origin.x2), y2: y(drag.origin.y2) });
     if (drag.mode === 'control') return updateElement(drag.element.id, { controlX: x(drag.origin.controlX), controlY: y(drag.origin.controlY) });
-    if (drag.mode === 'resize') return updateElement(drag.element.id, { width: Math.max(4, Number(drag.origin.width || 20) + dx), height: Math.max(4, Number(drag.origin.height || 12) + dy) });
+    if (drag.mode === 'resize') return updateElement(drag.element.id, resizeTrainingBoardZone(drag.origin, dx, dy));
     if (TRACE_TYPES.has(drag.element.type)) {
       const fields = { x1: x(drag.origin.x1), y1: y(drag.origin.y1), x2: x(drag.origin.x2), y2: y(drag.origin.y2) };
       if (drag.element.type === 'curved_arrow') { fields.controlX = x(drag.origin.controlX); fields.controlY = y(drag.origin.controlY); }
@@ -95,7 +104,11 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
     }
     return updateElement(drag.element.id, { x: x(drag.origin.x), y: y(drag.origin.y) });
   };
-  const stop = () => setDrag(null);
+  const stop = () => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    if (drag?.moved) onChange(drag.latestElements, { recordHistory: true });
+  };
 
   const renderElement = (raw) => {
     const element = adaptLegacyTrainingBoardElement(raw);

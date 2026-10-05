@@ -79,7 +79,7 @@ const boardSource = await readFile(new URL('../components/training/TrainingTaskB
 assert.match(sectionSource, /task\.author_user_id !== userId/, 'solo el autor abre edición');
 assert.match(sectionSource, /TrainingTaskBoardEditor[^>]+readOnly/, 'el detalle, incluida una compartida, renderiza la pizarra readonly');
 assert.match(boardSource, /\{!readOnly \? <div className="mt-3"><TrainingTaskBoardToolbar/, 'los controles solo aparecen en modo editable');
-assert.match(boardSource, /Pizarra de ejercicio/);
+assert.match(boardSource, /Pizarra profesional de entrenamiento/);
 assert.doesNotMatch(boardSource, /cronolog|dossier|impresi[oó]n|metadata de jugada/i, 'la UI de Tareas no expone conceptos ABP');
 
 console.log('training task board integration tests passed');
