@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { TRAINING_BOARD_TOOL_GROUPS } from '../../utils/trainingTaskBoardElements';
 
 const participantLabels = {
@@ -40,15 +39,15 @@ function ToolIcon({ tool }) {
   return <svg viewBox="0 0 24 24"><path d={curved ? 'M5 18Q8 6 18 8' : 'M4 17 19 7'} strokeDasharray={dashed ? '3 3' : undefined} {...common} />{arrow ? <path d="m14 6 5 1-1 5" {...common} /> : null}</svg>;
 }
 
-export default function TrainingTaskBoardToolbar({ onAdd }) {
-  const [activeGroup, setActiveGroup] = useState('participants');
-  const group = TRAINING_BOARD_TOOL_GROUPS.find((entry) => entry.key === activeGroup);
-  return <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#071526]" aria-label="Herramientas de entrenamiento">
-    <div className="flex overflow-x-auto border-b border-white/[0.07] p-1.5">
-      {TRAINING_BOARD_TOOL_GROUPS.map((entry) => <button key={entry.key} type="button" aria-pressed={activeGroup === entry.key} onClick={() => setActiveGroup(entry.key)} className={`min-h-10 shrink-0 rounded-xl px-3 text-[10px] font-black uppercase tracking-[0.12em] ${activeGroup === entry.key ? 'bg-caudal-electric text-slate-950' : 'text-slate-400 hover:bg-white/[0.06]'}`}>{entry.label}</button>)}
-    </div>
-    <div className="flex gap-1.5 overflow-x-auto p-2">
-      {group.tools.map(([tool, label]) => <button key={tool} type="button" onClick={() => onAdd(tool)} className="flex min-h-12 shrink-0 items-center gap-2 rounded-xl bg-white/[0.055] px-3 text-[11px] font-bold text-slate-200 hover:bg-caudal-electric/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/20 p-1.5 text-caudal-electric [&>svg]:h-full [&>svg]:w-full" aria-hidden="true"><ToolIcon tool={tool} /></span>{label}</button>)}
-    </div>
+export default function TrainingTaskBoardToolbar({ activeTool = 'select', onToolChange }) {
+  const toolClass = (active) => `flex h-9 w-9 shrink-0 items-center justify-center rounded-lg outline-none transition ${active ? 'bg-caudal-electric text-slate-950 shadow-[0_0_0_2px_rgba(56,189,248,.2)]' : 'text-slate-300 hover:bg-white/[0.08] hover:text-white'} focus-visible:ring-2 focus-visible:ring-caudal-electric`;
+  return <section className="flex max-w-full items-stretch gap-1 overflow-x-auto rounded-xl bg-[#071526]/95 p-1.5 shadow-lg shadow-black/20" aria-label="Herramientas de entrenamiento">
+    <button type="button" title="Seleccionar (Escape)" aria-label="Seleccionar" aria-pressed={activeTool === 'select'} onClick={() => onToolChange('select')} className={toolClass(activeTool === 'select')}>
+      <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true"><path d="m6 4 12 8-6 1-3 6L6 4Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg>
+    </button>
+    {TRAINING_BOARD_TOOL_GROUPS.map((group) => <div key={group.key} className="flex shrink-0 items-center gap-0.5 border-l border-white/10 pl-1" aria-label={group.label}>
+      <span className="hidden px-1 text-[8px] font-black uppercase tracking-[0.12em] text-slate-600 2xl:block">{group.label}</span>
+      {group.tools.map(([tool, label]) => <button key={tool} type="button" title={label} aria-label={label} aria-pressed={activeTool === tool} onClick={() => onToolChange(tool)} className={toolClass(activeTool === tool)}><span className="h-5 w-5 [&>svg]:h-full [&>svg]:w-full" aria-hidden="true"><ToolIcon tool={tool} /></span></button>)}
+    </div>)}
   </section>;
 }

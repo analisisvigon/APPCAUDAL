@@ -63,14 +63,45 @@ export const createTrainingTaskBoardElement = (tool, createId = createDiagramEle
   if (tool === 'pole') return { id, type: 'pole', x: 50, y: 36, colorKey: 'yellow', rotation: 0 };
   if (tool === 'mannequin') return { id, type: 'mannequin', x: 50, y: 36, colorKey: 'yellow', rotation: 0 };
   if (tool === 'hoop') return { id, type: 'hoop', x: 50, y: 36, colorKey: 'red' };
-  if (tool === 'goal') return { id, type: 'goal', x: 50, y: 36, colorKey: 'white', rotation: 0, width: 14, height: 6 };
-  if (tool === 'mini_goal') return { id, type: 'mini_goal', x: 50, y: 36, colorKey: 'white', rotation: 0, width: 8, height: 4 };
+  if (tool === 'goal') return { id, type: 'goal', x: 50, y: 36, colorKey: 'white', rotation: 0, width: 10, height: 4.5 };
+  if (tool === 'mini_goal') return { id, type: 'mini_goal', x: 50, y: 36, colorKey: 'white', rotation: 0, width: 6, height: 3 };
   if (['arrow', 'curved_arrow', 'dashed_arrow', 'line', 'dashed_line'].includes(tool)) {
     const base = { id, type: tool, x1: 34, y1: 44, x2: 62, y2: 25, colorKey: 'blue' };
     return tool === 'curved_arrow' ? { ...base, controlX: 43, controlY: 22 } : base;
   }
-  if (tool === 'zone') return { id, type: 'zone', x: 34, y: 22, width: 26, height: 18, colorKey: 'blue', opacity: 0.22, label: '' };
+  if (tool === 'zone') return { id, type: 'zone', x: 34, y: 22, width: 26, height: 18, colorKey: 'blue', opacity: 0.18, borderStyle: 'solid', label: '' };
   return { id, type: 'text', x: 50, y: 36, colorKey: 'white', label: 'Texto' };
+};
+
+export const placeTrainingTaskBoardElement = (tool, point, createId = createDiagramElementId) => {
+  const element = createTrainingTaskBoardElement(tool, createId);
+  return {
+    ...element,
+    x: Math.max(0, Math.min(100, finiteNumber(point?.x, element.x))),
+    y: Math.max(0, Math.min(72, finiteNumber(point?.y, element.y))),
+  };
+};
+
+export const drawTrainingTaskBoardElement = (tool, start, end, createId = createDiagramElementId) => {
+  const element = createTrainingTaskBoardElement(tool, createId);
+  const x1 = Math.max(0, Math.min(100, finiteNumber(start?.x, 0)));
+  const y1 = Math.max(0, Math.min(72, finiteNumber(start?.y, 0)));
+  const x2 = Math.max(0, Math.min(100, finiteNumber(end?.x, x1)));
+  const y2 = Math.max(0, Math.min(72, finiteNumber(end?.y, y1)));
+  if (tool === 'zone') {
+    const x = Math.min(96, Math.min(x1, x2));
+    const y = Math.min(68, Math.min(y1, y2));
+    return {
+      ...element,
+      x,
+      y,
+      width: Math.min(100 - x, Math.max(4, Math.abs(x2 - x1))),
+      height: Math.min(72 - y, Math.max(4, Math.abs(y2 - y1))),
+    };
+  }
+  const trace = { ...element, x1, y1, x2, y2 };
+  if (tool !== 'curved_arrow') return trace;
+  return { ...trace, controlX: (x1 + x2) / 2, controlY: Math.max(0, Math.min(72, (y1 + y2) / 2 - 10)) };
 };
 
 export const getTrainingBoardColor = (element, fallback = 'blue') => {
@@ -109,6 +140,6 @@ export const resizeTrainingBoardZone = (element, deltaX = 0, deltaY = 0) => {
 export const adaptLegacyTrainingBoardElement = (element) => {
   if (element?.type === 'player') return { ...element, type: 'participant', role: 'player', teamKey: element.teamKey || 'team-1', colorKey: element.colorKey || 'blue' };
   if (element?.type === 'opponent') return { ...element, type: 'participant', role: 'player', teamKey: element.teamKey || 'team-2', colorKey: element.colorKey || 'red' };
-  if (element?.type === 'zone') return { colorKey: 'blue', opacity: 0.22, label: '', ...element };
+  if (element?.type === 'zone') return { colorKey: 'blue', opacity: 0.18, borderStyle: 'solid', label: '', ...element };
   return element;
 };
