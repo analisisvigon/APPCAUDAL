@@ -5,6 +5,7 @@ const canvas = await readFile(new URL('../components/training/TrainingTaskDiagra
 const editor = await readFile(new URL('../components/training/TrainingTaskBoardEditor.jsx', import.meta.url), 'utf8');
 const toolbar = await readFile(new URL('../components/training/TrainingTaskBoardToolbar.jsx', import.meta.url), 'utf8');
 const elements = await readFile(new URL('./trainingTaskBoardElements.js', import.meta.url), 'utf8');
+const css = await readFile(new URL('../index.css', import.meta.url), 'utf8');
 
 assert.match(canvas, /fill="#176b3a"/, 'terreno con cesped propio');
 assert.match(canvas, /pitchType === 'blank'/);
@@ -12,7 +13,7 @@ assert.match(canvas, /pitchType === 'half'/);
 for (const type of ['cone', 'pole', 'mannequin', 'hoop', 'goal', 'mini_goal']) assert.match(canvas, new RegExp(`type === '${type}'|includes\\(type\\)`));
 assert.match(canvas, /fillOpacity/);
 assert.match(canvas, /r="1\.85"/, 'el participante usa una ficha visual reducida');
-assert.match(canvas, /r="4\.5" fill="transparent"/, 'el hit area tactil permanece mayor que la ficha visible');
+assert.match(canvas, /r="3\.2" fill="transparent"/, 'el hit area tactil permanece mayor que la ficha visible sin bloquear vecinos en exceso');
 assert.match(canvas, /goal.*mini_goal|mini_goal.*goal/, 'porterias grande y pequena comparten renderer especializado');
 assert.match(canvas, /netLines/, 'las porterias incluyen profundidad y lineas de red');
 assert.match(canvas, /borderStyle === 'dashed'/, 'la zona admite borde continuo o discontinuo');
@@ -22,6 +23,13 @@ assert.match(canvas, /onPointerMove=\{move\}/, 'el renderer conserva Pointer Eve
 assert.match(canvas, /drag\.mode === 'resize'/, 'zonas redimensionables');
 assert.match(canvas, /recordHistory: false/, 'el movimiento no crea una entrada de historial por cada pixel');
 assert.match(canvas, /recordHistory: true/, 'el final del gesto crea un unico checkpoint de historial');
+assert.match(canvas, /svgRef\.current\?\.setPointerCapture/, 'el drag captura el puntero sobre el SVG raiz estable');
+assert.doesNotMatch(canvas, /onPointerLeave=\{stop\}/, 'salir del hit area no corta prematuramente el drag');
+assert.match(canvas, /strokeWidth="\.55"/, 'flechas y lineas usan stroke visual fino');
+assert.match(canvas, /stroke="transparent" strokeWidth="3\.5"/, 'los trazados conservan hit area independiente');
+assert.match(canvas, /function TraceHandle/, 'los handles separan tamano visual y tactil');
+assert.match(canvas, /backLeft.*backRight/, 'la red de porteria tiene frente y fondo asimetricos');
+assert.match(canvas, /data-interaction-mode=\{readOnly/, 'readonly se declara explicitamente en el canvas');
 assert.doesNotMatch(editor, /SetPieceDiagramCanvas|SetPieceDiagramToolbar/, 'Tareas no usa renderer ni toolbar visual ABP');
 assert.doesNotMatch(canvas, /training_library|ABP|dossier|cronolog/i);
 assert.match(editor, /Propiedades del elemento seleccionado/);
@@ -30,6 +38,8 @@ assert.match(toolbar, /function ToolIcon/, 'la toolbar usa iconografia SVG propi
 assert.doesNotMatch(toolbar, /const icons =/, 'la toolbar no depende de glifos o emojis');
 assert.match(toolbar, /activeTool === tool/, 'la herramienta activa tiene estado visual');
 assert.match(toolbar, /title=\{label\}/, 'cada icono expone tooltip y nombre accesible');
+assert.match(toolbar, /participantColors/, 'los participantes muestran su color asociado');
+assert.match(css, /training-task-diagram-canvas[\s\S]*touch-action: none/, 'Tareas define su interaccion tactil sin depender de estilos ABP');
 assert.match(elements, /label: 'Participantes'/);
 assert.match(elements, /label: 'Material'/);
 assert.match(elements, /label: 'Dibujo'/);

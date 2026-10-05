@@ -80,6 +80,8 @@ assert.match(sectionSource, /task\.author_user_id !== userId/, 'solo el autor ab
 assert.match(sectionSource, /TrainingTaskBoardEditor[^>]+readOnly/, 'el detalle, incluida una compartida, renderiza la pizarra readonly');
 assert.match(boardSource, /\{!readOnly \? <div className="mt-2"><TrainingTaskBoardToolbar/, 'los controles solo aparecen en modo editable');
 assert.match(boardSource, /setActiveTool\('select'\)/, 'Escape vuelve al modo seleccion');
+assert.match(boardSource, /event\.key === 'Escape' && selectedElement[\s\S]*setSelectedId\(''\)/, 'un segundo Escape deselecciona');
+assert.match(boardSource, /rotateTrainingBoardElement/, 'la rotacion rapida persiste mediante el mismo update del inspector');
 assert.match(boardSource, /placeTrainingTaskBoardElement/, 'la insercion por click usa coordenadas del campo');
 assert.match(boardSource, /drawTrainingTaskBoardElement/, 'trazados y zonas se crean por arrastre');
 assert.match(boardSource, /Ampliar pizarra/, 'el editor ofrece una vista ampliada con el mismo estado');

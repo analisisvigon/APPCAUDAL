@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
-import { duplicateDiagramElement } from './diagramEditorState.js';
+import { createDiagramHistory, duplicateDiagramElement, moveDiagramHistory, pushDiagramHistory } from './diagramEditorState.js';
 import { deleteSetPieceElement } from './setPieceEditorInteractions.js';
 import {
   adaptLegacyTrainingBoardElement,
   createTrainingTaskBoardElement,
   drawTrainingTaskBoardElement,
   getTrainingBoardElementLayer,
+  moveTrainingBoardElement,
   resizeTrainingBoardZone,
   placeTrainingTaskBoardElement,
+  rotateTrainingBoardElement,
   sortTrainingBoardElements,
   TRAINING_BOARD_PALETTE,
   TRAINING_BOARD_TEAM_OPTIONS,
@@ -60,6 +62,35 @@ const drawnZone = drawTrainingTaskBoardElement('zone', { x: 70, y: 50 }, { x: 30
 assert.deepEqual({ x: drawnZone.x, y: drawnZone.y, width: drawnZone.width, height: drawnZone.height }, { x: 30, y: 20, width: 40, height: 30 }, 'la zona se dibuja por arrastre en cualquier direccion');
 const drawnArrow = drawTrainingTaskBoardElement('arrow', { x: 9, y: 11 }, { x: 41, y: 35 }, id);
 assert.deepEqual({ x1: drawnArrow.x1, y1: drawnArrow.y1, x2: drawnArrow.x2, y2: drawnArrow.y2 }, { x1: 9, y1: 11, x2: 41, y2: 35 });
+
+const movableTools = ['team-1', 'team-2', 'team-3', 'neutral', 'goalkeeper', 'coach', 'ball', 'cone', 'pole', 'mannequin', 'hoop', 'goal', 'mini_goal', 'text', 'zone'];
+for (const tool of movableTools) {
+  const original = createTrainingTaskBoardElement(tool, id);
+  const moved = moveTrainingBoardElement(original, 7, -3);
+  assert.equal(moved.x, original.x + 7, `${tool} se desplaza en x`);
+  assert.equal(moved.y, original.y - 3, `${tool} se desplaza en y`);
+  assert.equal(moved.rotation, original.rotation, `${tool} conserva rotacion durante drag`);
+}
+const movedCurve = moveTrainingBoardElement(elements[14], 5, 6);
+assert.deepEqual({ x1: movedCurve.x1, y1: movedCurve.y1, controlX: movedCurve.controlX, controlY: movedCurve.controlY }, { x1: elements[14].x1 + 5, y1: elements[14].y1 + 6, controlX: elements[14].controlX + 5, controlY: elements[14].controlY + 6 }, 'mover curva conserva toda su geometria');
+
+const goal = createTrainingTaskBoardElement('goal', id);
+const rotations = [goal];
+for (let index = 0; index < 4; index += 1) rotations.push(rotateTrainingBoardElement(rotations.at(-1)));
+assert.deepEqual(rotations.map((entry) => entry.rotation), [0, 90, 180, 270, 0], 'rotacion rapida recorre las cuatro orientaciones');
+
+let dragHistory = createDiagramHistory([goal]);
+const movedGoal = moveTrainingBoardElement(goal, 12, 4);
+dragHistory = pushDiagramHistory(dragHistory, [movedGoal]);
+assert.equal(dragHistory.entries.length, 2, 'un drag completo crea un unico checkpoint');
+const undoneGoal = moveDiagramHistory(dragHistory, 'undo');
+assert.deepEqual(undoneGoal.elements[0], goal, 'undo restaura exactamente el origen del drag');
+const redoneGoal = moveDiagramHistory(undoneGoal.history, 'redo');
+assert.deepEqual(redoneGoal.elements[0], movedGoal, 'redo restaura exactamente el destino del drag');
+let rotationHistory = createDiagramHistory([goal]);
+rotationHistory = pushDiagramHistory(rotationHistory, [rotateTrainingBoardElement(goal)]);
+assert.equal(moveDiagramHistory(rotationHistory, 'undo').elements[0].rotation, 0);
+assert.equal(moveDiagramHistory(moveDiagramHistory(rotationHistory, 'undo').history, 'redo').elements[0].rotation, 90);
 
 const ordered = sortTrainingBoardElements([elements[0], elements[6], elements[13], elements[19], elements[18]]);
 assert.deepEqual(ordered.map(getTrainingBoardElementLayer), [1, 2, 3, 4, 5], 'z-order: zona, trazado, material, participante, texto');

@@ -24,6 +24,7 @@ import {
   drawTrainingTaskBoardElement,
   getTrainingBoardColor,
   placeTrainingTaskBoardElement,
+  rotateTrainingBoardElement,
   PARTICIPANT_ROLES,
   TRAINING_BOARD_PALETTE,
   TRAINING_BOARD_TEAM_OPTIONS,
@@ -48,6 +49,7 @@ function ElementProperties({ element, onChange, onDuplicate, onDelete }) {
       {TRACE_TYPES.has(element.type) ? <label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Trazado<select value={element.type} onChange={(event) => onChange({ type: event.target.value, ...(event.target.value === 'curved_arrow' ? { controlX: element.controlX ?? 45, controlY: element.controlY ?? 20 } : {}) })} className={inputClass}><option value="arrow">Flecha</option><option value="curved_arrow">Curva</option><option value="dashed_arrow">Flecha discontinua</option><option value="line">Línea</option><option value="dashed_line">Línea discontinua</option></select></label> : null}
       {element.type === 'zone' ? <><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Opacidad<select value={element.opacity ?? .18} onChange={(event) => onChange({ opacity: Number(event.target.value) })} className={inputClass}><option value="0.1">10%</option><option value="0.18">18%</option><option value="0.28">28%</option></select></label><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Borde<select value={element.borderStyle || 'solid'} onChange={(event) => onChange({ borderStyle: event.target.value })} className={inputClass}><option value="solid">Continuo</option><option value="dashed">Discontinuo</option></select></label></> : null}
       {ROTATABLE_TYPES.has(element.type) ? <label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Orientación<select value={Number(element.rotation) || 0} onChange={(event) => onChange({ rotation: Number(event.target.value) })} className={inputClass}>{[0, 90, 180, 270].map((rotation) => <option key={rotation} value={rotation}>{rotation}°</option>)}</select></label> : null}
+      {['goal', 'mini_goal'].includes(element.type) ? <button type="button" onClick={() => onChange(rotateTrainingBoardElement(element))} className={buttonClass}>Rotar 90°</button> : null}
       {['goal', 'mini_goal'].includes(element.type) ? <><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Ancho<input type="number" min="4" max="30" value={element.width || (element.type === 'goal' ? 10 : 6)} onChange={(event) => onChange({ width: Math.max(4, Math.min(30, Number(event.target.value))) })} className={inputClass} /></label><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Fondo<input type="number" min="2" max="14" value={element.height || (element.type === 'goal' ? 4.5 : 3)} onChange={(event) => onChange({ height: Math.max(2, Math.min(14, Number(event.target.value))) })} className={inputClass} /></label></> : null}
     </div>
     {COLOR_TYPES.has(element.type) ? <div className="mt-3"><p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Color</p><div className="mt-1.5 flex flex-wrap gap-2">{Object.values(TRAINING_BOARD_PALETTE).map((color) => <button key={color.key} type="button" title={color.label} aria-label={`Color ${color.label}`} aria-pressed={selectedColor === color.key} onClick={() => onChange({ colorKey: color.key })} className={`h-9 w-9 rounded-full border-2 shadow-sm ${selectedColor === color.key ? 'scale-110 border-caudal-electric ring-2 ring-caudal-electric/30' : 'border-white/40'}`} style={{ backgroundColor: color.value }} />)}</div></div> : null}
@@ -125,6 +127,11 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
       if (event.key === 'Escape' && activeTool !== 'select') {
         event.preventDefault();
         setActiveTool('select');
+        return;
+      }
+      if (event.key === 'Escape' && selectedElement) {
+        event.preventDefault();
+        setSelectedId('');
         return;
       }
       const historyAction = getSetPieceHistoryAction(event);

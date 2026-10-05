@@ -309,6 +309,23 @@ table {
   touch-action: none;
 }
 
+.training-task-diagram-canvas[data-interaction-mode='readonly'] {
+  touch-action: auto;
+}
+
+.training-task-diagram-canvas:not([data-interaction-mode='readonly']),
+.training-task-diagram-canvas .diagram-draggable {
+  touch-action: none;
+}
+
+.training-task-diagram-canvas[data-interaction-mode='select'] .diagram-draggable {
+  cursor: grab;
+}
+
+.training-task-diagram-canvas[data-interaction-mode='select'] .diagram-draggable:active {
+  cursor: grabbing;
+}
+
 @media (max-width: 768px) and (pointer: coarse) {
   .facing-systems-abp-editor-mobile-safe {
     padding-bottom: calc(5rem + var(--app-safe-area-bottom));

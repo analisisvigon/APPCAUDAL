@@ -9,8 +9,17 @@ const participantLabels = {
   coach: 'DT',
 };
 
+const participantColors = {
+  'team-1': '#2563eb',
+  'team-2': '#dc2626',
+  'team-3': '#facc15',
+  neutral: '#16a34a',
+  goalkeeper: '#f97316',
+  coach: '#111827',
+};
+
 function ToolIcon({ tool }) {
-  if (participantLabels[tool]) return <span className="text-[10px] font-black">{participantLabels[tool]}</span>;
+  if (participantLabels[tool]) return <span className={`flex h-5 w-5 items-center justify-center rounded-full border border-white/80 text-[8px] font-black ${['team-3', 'goalkeeper'].includes(tool) ? 'text-slate-950' : 'text-white'} ${tool === 'goalkeeper' ? 'ring-1 ring-white/65 ring-offset-1 ring-offset-[#071526]' : ''}`} style={{ backgroundColor: participantColors[tool] }}>{participantLabels[tool]}</span>;
 
   const common = {
     fill: 'none',

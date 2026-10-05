@@ -126,6 +126,50 @@ const finiteNumber = (value, fallback) => (
   Number.isFinite(Number(value)) ? Number(value) : fallback
 );
 
+const clampRange = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
+
+export const rotateTrainingBoardElement = (element, step = 90) => ({
+  ...element,
+  rotation: ((finiteNumber(element?.rotation, 0) + finiteNumber(step, 90)) % 360 + 360) % 360,
+});
+
+export const moveTrainingBoardElement = (element, deltaX = 0, deltaY = 0) => {
+  const dx = finiteNumber(deltaX, 0);
+  const dy = finiteNumber(deltaY, 0);
+  if (['arrow', 'curved_arrow', 'dashed_arrow', 'double_arrow', 'line', 'dashed_line'].includes(element?.type)) {
+    const xValues = [element.x1, element.x2, ...(element.type === 'curved_arrow' ? [element.controlX] : [])].map((value) => finiteNumber(value, 0));
+    const yValues = [element.y1, element.y2, ...(element.type === 'curved_arrow' ? [element.controlY] : [])].map((value) => finiteNumber(value, 0));
+    const boundedDx = clampRange(dx, -Math.min(...xValues), 100 - Math.max(...xValues));
+    const boundedDy = clampRange(dy, -Math.min(...yValues), 72 - Math.max(...yValues));
+    const moved = {
+      ...element,
+      x1: finiteNumber(element.x1, 0) + boundedDx,
+      y1: finiteNumber(element.y1, 0) + boundedDy,
+      x2: finiteNumber(element.x2, 0) + boundedDx,
+      y2: finiteNumber(element.y2, 0) + boundedDy,
+    };
+    return element.type === 'curved_arrow' ? {
+      ...moved,
+      controlX: finiteNumber(element.controlX, (finiteNumber(element.x1, 0) + finiteNumber(element.x2, 0)) / 2) + boundedDx,
+      controlY: finiteNumber(element.controlY, (finiteNumber(element.y1, 0) + finiteNumber(element.y2, 0)) / 2) + boundedDy,
+    } : moved;
+  }
+  if (element?.type === 'zone') {
+    const width = Math.max(4, finiteNumber(element.width, 22));
+    const height = Math.max(4, finiteNumber(element.height, 12));
+    return { ...element, x: clampRange(finiteNumber(element.x, 0) + dx, 0, 100 - width), y: clampRange(finiteNumber(element.y, 0) + dy, 0, 72 - height) };
+  }
+  const goal = ['goal', 'mini_goal'].includes(element?.type);
+  const quarterTurn = Math.abs(finiteNumber(element?.rotation, 0) % 180) === 90;
+  const halfWidth = goal ? (quarterTurn ? finiteNumber(element.height, 3) : finiteNumber(element.width, 8)) / 2 : 0;
+  const halfHeight = goal ? (quarterTurn ? finiteNumber(element.width, 8) : finiteNumber(element.height, 3)) / 2 : 0;
+  return {
+    ...element,
+    x: clampRange(finiteNumber(element?.x, 0) + dx, halfWidth, 100 - halfWidth),
+    y: clampRange(finiteNumber(element?.y, 0) + dy, halfHeight, 72 - halfHeight),
+  };
+};
+
 export const resizeTrainingBoardZone = (element, deltaX = 0, deltaY = 0) => {
   const x = Math.max(0, Math.min(96, finiteNumber(element?.x, 0)));
   const y = Math.max(0, Math.min(68, finiteNumber(element?.y, 0)));
