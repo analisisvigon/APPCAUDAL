@@ -326,7 +326,7 @@ export const filterTrainingTasks = (tasks, filters = {}, currentUserId = '') => 
   });
 };
 
-export const formatTrainingTaskPlayers = (task) => task.playersSpec || (
+export const formatTrainingTaskPlayers = (task) => String(task.playersSpec || '').trim() || (
   task.playersMin !== '' && task.playersMin !== null && task.playersMin !== undefined
     ? task.playersMax !== '' && task.playersMax !== null && task.playersMax !== undefined && task.playersMax !== task.playersMin
       ? `${task.playersMin}-${task.playersMax}`

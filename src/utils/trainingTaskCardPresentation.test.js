@@ -14,4 +14,7 @@ assert.equal(card.rating, '4,3 (4)');
 assert.equal(card.feedback, '5 registros POST');
 assert.equal(card.ownership, 'Mía');
 assert.equal(buildTrainingTaskCardPresentation({ description: 'Descripción', taskType: 'warm_up' }, 'u1').summary, 'Descripción');
+assert.equal(buildTrainingTaskCardPresentation({ playersSpec: '8v8+2', playersMin: 5, playersMax: 30 }, 'u1').players, '8v8+2', 'players_spec prevalece sobre min/max');
+assert.equal(buildTrainingTaskCardPresentation({ playersSpec: '', playersMin: 10, playersMax: 14 }, 'u1').players, '10-14', 'sin players_spec usa el rango estructurado');
+assert.equal(buildTrainingTaskCardPresentation({ playersSpec: '   ', playersMin: 12, playersMax: 12 }, 'u1').players, '12', 'players_spec vacío no bloquea el fallback');
 console.log('training task card presentation tests passed');
