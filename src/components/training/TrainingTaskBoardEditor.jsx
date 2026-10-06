@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import TrainingTaskDiagramCanvas from './TrainingTaskDiagramCanvas';
 import TrainingTaskBoardToolbar from './TrainingTaskBoardToolbar';
+import TrainingTaskTeamsPanel, { TrainingTaskRosterToolbar } from './TrainingTaskTeamsPanel';
 import {
   cloneDiagramElements,
   createDiagramHistory,
@@ -29,6 +30,12 @@ import {
   TRAINING_BOARD_PALETTE,
   TRAINING_BOARD_TEAM_OPTIONS,
 } from '../../utils/trainingTaskBoardElements';
+import {
+  assignTrainingTaskPlayer, createTrainingTaskRosterParticipant, getTrainingTaskAssignment,
+  getTrainingTaskPlayerRefKey, isTrainingTaskPlayerPlaced, normalizeTrainingTaskAssignments,
+  removeTrainingTaskAssignment, removeTrainingTaskPlayerFromBoard, resolveTrainingTaskPlayerRef,
+  setTrainingTaskTeamColor, syncTrainingTaskPlacedPlayers,
+} from '../../utils/trainingTaskRoster';
 
 const buttonClass = 'min-h-10 rounded-xl bg-white/[0.07] px-3 text-[11px] font-black text-slate-200 outline-none hover:bg-white/[0.12] focus-visible:ring-2 focus-visible:ring-caudal-electric disabled:opacity-35';
 const inputClass = 'min-h-10 rounded-xl border border-white/10 bg-white px-3 text-xs font-bold text-slate-950 outline-none focus:ring-2 focus:ring-caudal-electric';
@@ -36,12 +43,14 @@ const TRACE_TYPES = new Set(['arrow', 'curved_arrow', 'dashed_arrow', 'double_ar
 const ROTATABLE_TYPES = new Set(['pole', 'mannequin', 'goal', 'mini_goal']);
 const COLOR_TYPES = new Set(['participant', 'player', 'opponent', 'cone', 'pole', 'mannequin', 'hoop', 'goal', 'mini_goal', 'arrow', 'curved_arrow', 'dashed_arrow', 'double_arrow', 'line', 'dashed_line', 'zone', 'text']);
 
-function ElementProperties({ element, onChange, onDuplicate, onDelete }) {
+function ElementProperties({ element, players = [], onChange, onDuplicate, onDelete }) {
   const participant = ['participant', 'player', 'opponent'].includes(element.type);
   const labelEditable = participant || ['zone', 'text', 'text_box'].includes(element.type);
   const selectedColor = getTrainingBoardColor(element, element.type === 'text' ? 'white' : 'blue').key;
+  const realPlayer = element.playerRef ? resolveTrainingTaskPlayerRef(element.playerRef, players) : null;
   return <aside className="mt-2 w-full shrink-0 rounded-xl bg-[#071526]/90 p-3 xl:mt-0 xl:w-72" aria-label="Propiedades del elemento seleccionado">
-    <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[9px] font-black uppercase tracking-[0.16em] text-caudal-electric">Elemento seleccionado</p><p className="mt-0.5 text-sm font-black capitalize text-white">{element.role || element.type.replaceAll('_', ' ')}</p></div><div className="flex gap-1.5"><button type="button" onClick={onDuplicate} className={buttonClass}>Duplicar</button><button type="button" onClick={onDelete} className={`${buttonClass} text-red-200`}>Borrar</button></div></div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[9px] font-black uppercase tracking-[0.16em] text-caudal-electric">Elemento seleccionado</p><p className="mt-0.5 text-sm font-black capitalize text-white">{element.role || element.type.replaceAll('_', ' ')}</p></div><div className="flex gap-1.5"><button type="button" disabled={!onDuplicate} onClick={onDuplicate} className={buttonClass}>Duplicar</button><button type="button" onClick={onDelete} className={`${buttonClass} text-red-200`}>Borrar</button></div></div>
+    {realPlayer ? <div className="mt-3 flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-2">{realPlayer.display.image ? <img src={realPlayer.display.image} alt="" className="h-10 w-10 rounded-full object-cover" /> : null}<div className="min-w-0"><p className="truncate text-xs font-black text-white">{realPlayer.display.name}</p><p className="truncate text-[10px] text-slate-500">{realPlayer.display.number ? `#${realPlayer.display.number} · ` : ''}{realPlayer.display.specificPosition || realPlayer.display.position}{realPlayer.unavailable ? ' · no disponible' : ''}</p></div></div> : null}
     <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
       {participant && element.role !== 'coach' && element.role !== 'neutral' ? <label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Equipo<select value={element.teamKey || 'team-1'} onChange={(event) => onChange({ teamKey: event.target.value })} className={inputClass}>{TRAINING_BOARD_TEAM_OPTIONS.map((team) => <option key={team.key} value={team.key}>{team.label}</option>)}</select></label> : null}
       {participant ? <label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Rol<select value={element.role || 'player'} onChange={(event) => onChange({ role: event.target.value })} className={inputClass}>{PARTICIPANT_ROLES.map((role) => <option key={role.key} value={role.key}>{role.label}</option>)}</select></label> : null}
@@ -63,7 +72,7 @@ const initialEditorState = (payload) => {
   return { parsed, scene: null };
 };
 
-export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange = null, readOnly = false, showEmpty = true }) {
+export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange = null, readOnly = false, showEmpty = true, players = [] }) {
   const [{ parsed, scene: initialScene }] = useState(() => initialEditorState(payload));
   const [scene, setScene] = useState(initialScene);
   const [hasPayload, setHasPayload] = useState(parsed.kind === 'v1');
@@ -71,9 +80,11 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
   const [snap, setSnap] = useState(false);
   const [activeTool, setActiveTool] = useState('select');
   const [expanded, setExpanded] = useState(false);
+  const [view, setView] = useState('board');
   const [history, setHistory] = useState(() => createDiagramHistory(initialScene?.board.elements || []));
   const editable = !readOnly && parsed.kind !== 'unsupported' && parsed.kind !== 'invalid';
   const elements = scene?.board.elements || [];
+  const assignments = normalizeTrainingTaskAssignments(scene?.assignments);
   const selectedElement = elements.find((element) => element.id === selectedId) || null;
   const selectedView = selectedElement ? adaptLegacyTrainingBoardElement(selectedElement) : null;
 
@@ -109,17 +120,48 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
 
   const updateSelected = (fields) => {
     if (!selectedElement) return;
-    updateElements(elements.map((element) => element.id === selectedId ? { ...element, ...fields } : element));
+    let nextAssignments = assignments;
+    let nextFields = fields;
+    if (selectedElement.playerRef) {
+      const current = getTrainingTaskAssignment(assignments, selectedElement.playerRef);
+      if (current) {
+        const teamKey = fields.teamKey || current.teamKey;
+        const colorKey = fields.colorKey || assignments.teamColors[teamKey] || current.colorKey;
+        nextAssignments = { ...assignments, players: assignments.players.map((entry) => entry === current ? { ...entry, ...fields, teamKey, colorKey } : entry) };
+        nextFields = { ...fields, colorKey };
+      }
+    }
+    commitScene({ ...scene, assignments: nextAssignments, board: { ...scene.board, elements: elements.map((element) => element.id === selectedId ? { ...element, ...nextFields } : element) } });
   };
 
   const insertElement = (tool, geometry) => {
     if (!editable) return;
+    if (tool.startsWith('roster:')) {
+      const key = tool.slice(7);
+      const assignment = assignments.players.find((entry) => getTrainingTaskPlayerRefKey(entry.playerRef) === key);
+      if (!assignment) return;
+      const existing = elements.find((element) => element.playerRef && getTrainingTaskPlayerRefKey(element.playerRef) === key);
+      if (existing) { setSelectedId(existing.id); setActiveTool('select'); return; }
+      const rosterElement = createTrainingTaskRosterParticipant(assignment, geometry?.point);
+      updateElements([...elements, rosterElement]);
+      setSelectedId(rosterElement.id); setActiveTool('select'); return;
+    }
     const element = geometry?.point
       ? placeTrainingTaskBoardElement(tool, geometry.point)
       : drawTrainingTaskBoardElement(tool, geometry?.start, geometry?.end);
     updateElements([...elements, element]);
     setSelectedId(element.id);
   };
+
+  const updateAssignments = (nextAssignments) => commitScene({ ...scene, assignments: nextAssignments, board: { ...scene.board, elements: syncTrainingTaskPlacedPlayers(elements, nextAssignments) } });
+  const assignPlayer = (player, teamKey) => updateAssignments(assignTrainingTaskPlayer(assignments, player, teamKey));
+  const removeAssignment = (assignment) => {
+    if (isTrainingTaskPlayerPlaced(elements, assignment.playerRef) && !window.confirm('Este jugador está colocado en el campo. Al desasignarlo también se quitará su ficha. ¿Continuar?')) return;
+    const nextAssignments = removeTrainingTaskAssignment(assignments, assignment.playerRef);
+    commitScene({ ...scene, assignments: nextAssignments, board: { ...scene.board, elements: removeTrainingTaskPlayerFromBoard(elements, assignment.playerRef) } });
+    if (selectedElement?.playerRef && getTrainingTaskPlayerRefKey(selectedElement.playerRef) === getTrainingTaskPlayerRefKey(assignment.playerRef)) setSelectedId('');
+  };
+  const changeTeamColor = (teamKey, colorKey) => updateAssignments(setTrainingTaskTeamColor(assignments, teamKey, colorKey));
 
   useEffect(() => {
     if (!editable) return undefined;
@@ -176,18 +218,20 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
         <div className="flex items-end gap-2">{!readOnly ? <label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Terreno<select value={scene.board.pitchType === 'penalty-area' ? 'half' : scene.board.pitchType} onChange={(event) => commitScene({ ...scene, board: { ...scene.board, pitchType: event.target.value } })} className="min-h-10 rounded-xl border border-white/10 bg-white px-3 text-xs font-bold text-slate-950"><option value="full">Campo completo</option><option value="half">Medio campo</option><option value="blank">Terreno sin líneas</option></select></label> : null}<button type="button" className={buttonClass} onClick={() => setExpanded((current) => !current)}>{expanded ? 'Cerrar vista' : 'Ampliar pizarra'}</button></div>
       </div>
 
-      {!readOnly ? <div className="mt-2"><TrainingTaskBoardToolbar activeTool={activeTool} onToolChange={(tool) => { setActiveTool(tool); if (tool !== 'select') setSelectedId(''); }} /></div> : null}
-      {!readOnly ? <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Acciones de la pizarra">
+      <div className="mt-3 flex gap-1 rounded-xl bg-black/20 p-1" role="tablist" aria-label="Vista del diseño"><button type="button" role="tab" aria-selected={view === 'board'} onClick={() => setView('board')} className={`${buttonClass} flex-1 ${view === 'board' ? 'bg-caudal-electric text-slate-950' : ''}`}>Pizarra</button><button type="button" role="tab" aria-selected={view === 'teams'} onClick={() => setView('teams')} className={`${buttonClass} flex-1 ${view === 'teams' ? 'bg-caudal-electric text-slate-950' : ''}`}>Equipos · {assignments.players.length}</button></div>
+      {view === 'teams' ? <TrainingTaskTeamsPanel players={players} assignments={assignments} elements={elements} readOnly={readOnly} onAssign={assignPlayer} onRemove={removeAssignment} onTeamColor={changeTeamColor} /> : null}
+      {view === 'board' && !readOnly ? <div className="mt-2"><TrainingTaskBoardToolbar activeTool={activeTool} onToolChange={(tool) => { setActiveTool(tool); if (tool !== 'select') setSelectedId(''); }} /><TrainingTaskRosterToolbar assignments={assignments} players={players} elements={elements} activeTool={activeTool} onToolChange={(tool) => { setActiveTool(tool); setSelectedId(''); }} /></div> : null}
+      {view === 'board' && !readOnly ? <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Acciones de la pizarra">
         <button type="button" className={buttonClass} disabled={history.index <= 0} onClick={() => moveHistory('undo')}>Deshacer</button>
         <button type="button" className={buttonClass} disabled={history.index >= history.entries.length - 1} onClick={() => moveHistory('redo')}>Rehacer</button>
         <button type="button" className={buttonClass} aria-pressed={snap} onClick={() => setSnap((current) => !current)}>Imán</button>
-        <button type="button" className={buttonClass} disabled={!selectedElement} onClick={() => { const copy = duplicateDiagramElement(selectedElement); updateElements([...elements, copy]); setSelectedId(copy.id); }}>Duplicar</button>
+        <button type="button" className={buttonClass} disabled={!selectedElement || Boolean(selectedElement?.playerRef)} onClick={() => { const copy = duplicateDiagramElement(selectedElement); updateElements([...elements, copy]); setSelectedId(copy.id); }}>Duplicar</button>
         <button type="button" className={`${buttonClass} text-amber-100`} disabled={!selectedElement} onClick={deleteSelected}>Borrar</button>
         <button type="button" className={`${buttonClass} text-red-200`} disabled={!elements.length} onClick={() => { updateElements([]); setSelectedId(''); }}>Limpiar</button>
       </div> : null}
 
-      {!readOnly && activeTool !== 'select' ? <p className="mt-1.5 text-center text-[10px] font-bold text-caudal-electric">{activeTool === 'zone' || TRACE_TYPES.has(activeTool) ? 'Arrastra sobre el campo para dibujar' : 'Haz clic en el campo para colocar · Escape para seleccionar'}</p> : null}
-      <div className="mt-2 min-w-0 gap-2 xl:flex">
+      {view === 'board' && !readOnly && activeTool !== 'select' ? <p className="mt-1.5 text-center text-[10px] font-bold text-caudal-electric">{activeTool === 'zone' || TRACE_TYPES.has(activeTool) ? 'Arrastra sobre el campo para dibujar' : 'Haz clic en el campo para colocar · Escape para seleccionar'}</p> : null}
+      {view === 'board' ? <div className="mt-2 min-w-0 gap-2 xl:flex">
         <div className="w-full min-w-0 flex-1 overflow-auto rounded-xl bg-[#0b1e16] p-1 shadow-[0_18px_45px_rgba(0,0,0,.25)]">
           <div className="min-w-[520px] overflow-hidden rounded-lg">
           <TrainingTaskDiagramCanvas
@@ -200,11 +244,12 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
             onInsert={insertElement}
             readOnly={!editable}
             snap={snap}
+            players={players}
           />
           </div>
         </div>
-        {!readOnly && selectedView ? <ElementProperties element={selectedView} onChange={updateSelected} onDuplicate={() => { const copy = duplicateDiagramElement(selectedElement); updateElements([...elements, copy]); setSelectedId(copy.id); }} onDelete={deleteSelected} /> : null}
-      </div>
+        {!readOnly && selectedView ? <ElementProperties element={selectedView} players={players} onChange={updateSelected} onDuplicate={selectedElement.playerRef ? null : () => { const copy = duplicateDiagramElement(selectedElement); updateElements([...elements, copy]); setSelectedId(copy.id); }} onDelete={deleteSelected} /> : null}
+      </div> : null}
       {!readOnly ? <p className={`mt-2 text-right text-[10px] font-bold ${size.exceedsLimit ? 'text-red-200' : 'text-slate-600'}`}>{size.bytes.toLocaleString('es-ES')} / 262.144 bytes</p> : null}
     </section>
   );

@@ -33208,7 +33208,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
           <LibrarySection players={players} />
         ) : null}
         {activeTab === 'Tareas' ? (
-          <TrainingTasksSection membership={identity?.membership} userId={session?.user?.id || ''} />
+          <TrainingTasksSection membership={identity?.membership} userId={session?.user?.id || ''} players={players} />
         ) : null}
 
         {activeTab === 'Rendimiento' ? (

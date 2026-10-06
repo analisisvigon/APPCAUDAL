@@ -8,6 +8,7 @@ import {
   resizeTrainingBoardZone,
   sortTrainingBoardElements,
 } from '../../utils/trainingTaskBoardElements';
+import { resolveTrainingTaskPlayerRef } from '../../utils/trainingTaskRoster';
 
 const TRACE_TYPES = new Set(['arrow', 'curved_arrow', 'dashed_arrow', 'double_arrow', 'line', 'dashed_line']);
 const DRAW_TOOLS = new Set(['arrow', 'curved_arrow', 'dashed_arrow', 'line', 'dashed_line', 'zone']);
@@ -69,7 +70,7 @@ function Material({ element, color }) {
   return null;
 }
 
-export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = 'full', selectedId = '', activeTool = 'select', onSelect, onChange, onInsert, readOnly = false, snap = false }) {
+export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = 'full', selectedId = '', activeTool = 'select', onSelect, onChange, onInsert, readOnly = false, snap = false, players = [] }) {
   const svgRef = useRef(null);
   const dragRef = useRef(null);
   const insertionRef = useRef(null);
@@ -170,9 +171,12 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
     }
     if (element.type === 'participant') {
       const role = element.role || 'player';
+      const resolvedPlayer = element.playerRef ? resolveTrainingTaskPlayerRef(element.playerRef, players) : null;
+      const participantLabel = resolvedPlayer?.display.number || element.label || (role === 'goalkeeper' ? 'P' : role === 'neutral' ? 'C' : '');
+      const participantTitle = resolvedPlayer ? `${resolvedPlayer.display.name}${resolvedPlayer.unavailable ? ' · no disponible' : ''}` : '';
       if (role === 'coach') return <g key={element.id} onPointerDown={(event) => startDrag(event, raw)} className={readOnly ? '' : 'diagram-draggable'}><circle cx={element.x} cy={element.y} r="3.4" fill="transparent" /><rect x={element.x - 2.1} y={element.y - 1.7} width="4.2" height="3.4" rx=".7" fill={color} stroke="rgba(255,255,255,.85)" strokeWidth=".35" pointerEvents="none" /><text x={element.x} y={element.y + .55} textAnchor="middle" fontSize="1.55" fontWeight="900" fill={palette.contrast} pointerEvents="none">{element.label || 'E'}</text></g>;
       const goalkeeper = role === 'goalkeeper';
-      return <g key={element.id} onPointerDown={(event) => startDrag(event, raw)} className={readOnly ? '' : 'diagram-draggable'}><circle cx={element.x} cy={element.y} r="3.2" fill="transparent" /><circle cx={element.x} cy={element.y} r="1.85" fill={color} stroke="rgba(255,255,255,.9)" strokeWidth=".38" pointerEvents="none" /><circle cx={element.x} cy={element.y} r="2.25" fill="none" stroke={goalkeeper ? '#fef08a' : 'transparent'} strokeWidth=".35" pointerEvents="none" /><text x={element.x} y={element.y + .52} textAnchor="middle" fontSize="1.65" fontWeight="900" fill={palette.contrast} pointerEvents="none">{element.label || (goalkeeper ? 'P' : role === 'neutral' ? 'C' : '')}</text></g>;
+      return <g key={element.id} onPointerDown={(event) => startDrag(event, raw)} className={readOnly ? '' : 'diagram-draggable'}>{participantTitle ? <title>{participantTitle}</title> : null}<circle cx={element.x} cy={element.y} r="3.2" fill="transparent" /><circle cx={element.x} cy={element.y} r="1.85" fill={color} stroke="rgba(255,255,255,.9)" strokeWidth=".38" pointerEvents="none" /><circle cx={element.x} cy={element.y} r="2.25" fill="none" stroke={goalkeeper ? '#fef08a' : 'transparent'} strokeWidth=".35" pointerEvents="none" /><text x={element.x} y={element.y + .52} textAnchor="middle" fontSize="1.65" fontWeight="900" fill={palette.contrast} pointerEvents="none">{participantLabel}</text></g>;
     }
     if (['ball', 'cone', 'pole', 'mannequin', 'hoop', 'goal', 'mini_goal', 'block'].includes(element.type)) {
       const goal = ['goal', 'mini_goal'].includes(element.type);

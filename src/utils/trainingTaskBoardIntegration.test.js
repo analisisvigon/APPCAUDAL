@@ -15,10 +15,10 @@ const context = { clubId: 'club-1', authorUserId: 'author-1' };
 const validDraft = { ...createTrainingTaskDraft(), name: 'Posesión', objective: 'Conservar' };
 assert.deepEqual(buildTrainingTaskPayload(validDraft, context).editor_payload, {}, 'crear sin tocar la pizarra persiste el contrato vacio');
 
-const initialScene = createTrainingTaskEditorSceneV1({
+const initialScene = { ...createTrainingTaskEditorSceneV1({
   pitchType: 'full',
   elements: [{ id: 'player-1', type: 'player', x: 20, y: 30, label: '1' }],
-});
+}), assignments: { teamColors: { 'team-1': 'blue' }, players: [{ playerRef: { globalPlayerId: 'global-1', legacyPlayerId: 'legacy-1', snapshot: { name: 'Ada', number: '8', position: 'Centrocampista', specificPosition: 'Interior' } }, teamKey: 'team-1', role: 'player', colorKey: 'blue' }] } };
 const createPayload = buildTrainingTaskPayload({ ...validDraft, editorPayload: initialScene }, context);
 assert.deepEqual(createPayload.editor_payload, initialScene, 'crear con pizarra persiste V1');
 
@@ -70,15 +70,24 @@ const duplicateClient = { from: () => ({ insert(payload) {
 const copy = await duplicateTrainingTask(duplicateClient, task, context);
 assert.deepEqual(inserted.editor_payload, initialScene, 'duplicar conserva la escena');
 inserted.editor_payload.board.elements[0].x = 77;
+inserted.editor_payload.assignments.players[0].playerRef.snapshot.name = 'Mutada';
 assert.equal(task.editorPayload.board.elements[0].x, 20, 'la copia no comparte referencias con la original');
+assert.equal(task.editorPayload.assignments.players[0].playerRef.snapshot.name, 'Ada', 'duplicar desacopla profundamente identidades y snapshots');
 assert.equal(copy.previewPath, '', 'duplicar sigue sin copiar preview');
 assert.equal(copy.isShared, false, 'duplicar sigue sin copiar sharing');
 
 const sectionSource = await readFile(new URL('../components/training/TrainingTasksSection.jsx', import.meta.url), 'utf8');
 const boardSource = await readFile(new URL('../components/training/TrainingTaskBoardEditor.jsx', import.meta.url), 'utf8');
+const teamsSource = await readFile(new URL('../components/training/TrainingTaskTeamsPanel.jsx', import.meta.url), 'utf8');
+const appSource = await readFile(new URL('../App.jsx', import.meta.url), 'utf8');
 assert.match(sectionSource, /task\.author_user_id !== userId/, 'solo el autor abre edición');
 assert.match(sectionSource, /TrainingTaskBoardEditor[^>]+readOnly/, 'el detalle, incluida una compartida, renderiza la pizarra readonly');
-assert.match(boardSource, /\{!readOnly \? <div className="mt-2"><TrainingTaskBoardToolbar/, 'los controles solo aparecen en modo editable');
+assert.match(boardSource, /view === 'board' && !readOnly \? <div className="mt-2"><TrainingTaskBoardToolbar/, 'los controles solo aparecen en modo editable');
+assert.match(appSource, /<TrainingTasksSection[^>]+players=\{players\}/, 'Tareas recibe la plantilla ya cargada por App');
+assert.match(sectionSource, /TrainingTaskBoardEditor players=\{players\}/, 'la misma plantilla llega a edición y lectura');
+assert.doesNotMatch(teamsSource, /supabase|\.from\(/, 'Equipos no crea una fuente ni consulta adicional');
+assert.match(boardSource, /removeTrainingTaskPlayerFromBoard/, 'quitar una ficha del campo se mantiene separado de la asignación');
+assert.match(boardSource, /selectedElement\.playerRef \? null/, 'un jugador real no se puede duplicar');
 assert.match(boardSource, /setActiveTool\('select'\)/, 'Escape vuelve al modo seleccion');
 assert.match(boardSource, /event\.key === 'Escape' && selectedElement[\s\S]*setSelectedId\(''\)/, 'un segundo Escape deselecciona');
 assert.match(boardSource, /rotateTrainingBoardElement/, 'la rotacion rapida persiste mediante el mismo update del inspector');
