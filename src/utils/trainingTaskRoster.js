@@ -34,11 +34,17 @@ export const trainingTaskPlayerRefsMatch = (left = {}, right = {}) => {
   return Boolean(leftLegacy && rightLegacy && leftLegacy === rightLegacy);
 };
 
+export const createTrainingTaskPlayerLookup = (players = []) => ({
+  byGlobal: new Map(players.map((player) => [clean(player.globalPlayerId ?? player.global_player_id), player]).filter(([key]) => key)),
+  byLegacy: new Map(players.map((player) => [clean(player.id), player]).filter(([key]) => key)),
+});
+
 export const resolveTrainingTaskPlayerRef = (ref = {}, players = []) => {
   const globalId = nullable(ref.globalPlayerId);
   const legacyId = clean(ref.legacyPlayerId);
-  const player = (globalId && players.find((entry) => clean(entry.globalPlayerId ?? entry.global_player_id) === globalId))
-    || (legacyId && players.find((entry) => clean(entry.id) === legacyId)) || null;
+  const lookup = Array.isArray(players) ? null : players;
+  const player = (globalId && (lookup?.byGlobal?.get(globalId) || players.find?.((entry) => clean(entry.globalPlayerId ?? entry.global_player_id) === globalId)))
+    || (legacyId && (lookup?.byLegacy?.get(legacyId) || players.find?.((entry) => clean(entry.id) === legacyId))) || null;
   const source = player || ref.snapshot || {};
   return {
     player,

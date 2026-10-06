@@ -86,7 +86,7 @@ assert.match(trainingTasksSection, /canManage=\{task\.author_user_id\s*===\s*use
 assert.match(trainingTasksSection, /task\.author_user_id\s*!==\s*userId\s*\|\|\s*!window\.confirm\('¿Eliminar esta tarea\? Esta acción no se puede deshacer\.'/i);
 assert.match(trainingTasksSection, /label="Código tarea"[\s\S]*placeholder="Ej\. Vigón"/i);
 assert.match(trainingTasksSection, /placeholder="Nº jugadores"[\s\S]*placeholder="Objetivo"[\s\S]*Limpiar filtros/i);
-assert.match(trainingTasksSection, /borderTopColor:\s*type\.color[\s\S]*Código:\s*\{task\.taskCode\}/i);
+assert.match(trainingTasksSection, /borderTopColor:\s*card\.type\.color[\s\S]*task\.taskCode\s*\?/i);
 assert.match(trainingTasksSection, /TRAINING_TASK_STAGES[\s\S]*filters\.stage[\s\S]*filters\.ratingMin/i);
 assert.match(trainingTasksSection, /POST · Después de realizarla/i);
 assert.match(trainingTasksSection, /aria-label=\{`\$\{star\} de 5 estrellas`\}/i);

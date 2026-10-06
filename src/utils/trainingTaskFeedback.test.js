@@ -25,8 +25,8 @@ assert.deepEqual(payload, {
   used_on: '2026-10-10', rating: null, post_text: 'Reducir espacio.',
 });
 
-assert.deepEqual(summarizeTrainingTaskRatings([]), { ratingAverage: null, ratingCount: 0 }, 'sin valoraciones no inventa 0/5');
-assert.deepEqual(summarizeTrainingTaskRatings([{ rating: 3 }, { rating: null }, { rating: 5 }, { rating: 6 }]), { ratingAverage: 4, ratingCount: 2 }, 'la media usa solo ratings válidos');
+assert.deepEqual(summarizeTrainingTaskRatings([]), { ratingAverage: null, ratingCount: 0, feedbackCount: 0 }, 'sin valoraciones no inventa 0/5');
+assert.deepEqual(summarizeTrainingTaskRatings([{ rating: 3 }, { rating: null }, { rating: 5 }, { rating: 6 }]), { ratingAverage: 4, ratingCount: 2, feedbackCount: 4 }, 'la media usa solo ratings válidos y el contador POST incluye todos los registros');
 
 const history = sortTrainingTaskFeedback([
   { id: 'old', usedOn: '2026-10-10', created_at: '2026-10-11T10:00:00Z' },

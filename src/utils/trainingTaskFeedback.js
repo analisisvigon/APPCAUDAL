@@ -48,10 +48,11 @@ export const summarizeTrainingTaskRatings = (feedbackRows = []) => {
   const ratings = feedbackRows
     .map((row) => Number(row.rating))
     .filter((rating) => Number.isInteger(rating) && rating >= 1 && rating <= 5);
-  if (!ratings.length) return { ratingAverage: null, ratingCount: 0 };
+  if (!ratings.length) return { ratingAverage: null, ratingCount: 0, feedbackCount: feedbackRows.length };
   return {
     ratingAverage: ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length,
     ratingCount: ratings.length,
+    feedbackCount: feedbackRows.length,
   };
 };
 

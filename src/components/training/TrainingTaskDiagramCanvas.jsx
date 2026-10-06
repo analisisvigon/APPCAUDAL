@@ -70,7 +70,8 @@ function Material({ element, color }) {
   return null;
 }
 
-export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = 'full', selectedId = '', activeTool = 'select', onSelect, onChange, onInsert, readOnly = false, snap = false, players = [] }) {
+export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = 'full', selectedId = '', activeTool = 'select', onSelect, onChange, onInsert, readOnly = false, snap = false, players = [], renderMode = 'editor' }) {
+  const preview = renderMode === 'preview';
   const svgRef = useRef(null);
   const dragRef = useRef(null);
   const insertionRef = useRef(null);
@@ -164,7 +165,7 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
       const path = curved ? `M${element.x1} ${element.y1} Q${control.x} ${control.y} ${element.x2} ${element.y2}` : `M${element.x1} ${element.y1} L${element.x2} ${element.y2}`;
       const arrow = !['line', 'dashed_line'].includes(element.type);
       const dashed = ['dashed_arrow', 'dashed_line'].includes(element.type) || element.dashed;
-      return <g key={element.id} className={readOnly ? '' : 'diagram-draggable'} onPointerDown={(event) => startDrag(event, raw)}><path d={path} fill="none" stroke="transparent" strokeWidth="3.5" /><path d={path} fill="none" stroke={color} strokeWidth=".55" strokeDasharray={dashed ? '2 1.6' : undefined} markerEnd={arrow ? `url(#${markerId})` : undefined} pointerEvents="none" /></g>;
+      return <g key={element.id} className={readOnly ? '' : 'diagram-draggable'} onPointerDown={preview ? undefined : (event) => startDrag(event, raw)}>{preview ? null : <path d={path} fill="none" stroke="transparent" strokeWidth="3.5" />}<path d={path} fill="none" stroke={color} strokeWidth={preview ? '.72' : '.55'} strokeDasharray={dashed ? '2 1.6' : undefined} markerEnd={arrow ? `url(#${markerId})` : undefined} pointerEvents="none" /></g>;
     }
     if (element.type === 'zone') {
       return <g key={element.id} onPointerDown={(event) => startDrag(event, raw)} className={readOnly ? '' : 'diagram-draggable'}><rect x={element.x} y={element.y} width={element.width || 22} height={element.height || 12} rx=".8" fill={color} fillOpacity={Number(element.opacity) || .18} stroke={color} strokeWidth=".38" strokeDasharray={element.borderStyle === 'dashed' ? '2 1.5' : undefined} />{element.label ? <text x={Number(element.x) + 1.4} y={Number(element.y) + 3} fontSize="1.8" fontWeight="700" fill="#fff" paintOrder="stroke" stroke="#123522" strokeWidth=".35">{element.label}</text> : null}</g>;
@@ -202,7 +203,8 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
     width: Math.abs(insertionDraft.end.x - insertionDraft.start.x),
     height: Math.abs(insertionDraft.end.y - insertionDraft.start.y),
   } : null;
-  return <svg ref={svgRef} viewBox="0 0 100 72" role="img" aria-label={readOnly ? 'Pizarra de entrenamiento' : 'Editor de pizarra de entrenamiento'} data-interaction-mode={readOnly ? 'readonly' : activeTool === 'select' ? 'select' : 'insert'} className={`training-task-diagram-canvas block h-auto w-full select-none ${activeTool !== 'select' ? 'cursor-crosshair' : ''}`} onPointerMove={move} onPointerUp={stop} onPointerCancel={stop} onPointerDown={onBoardPointerDown}>
+  const interactionProps = preview ? {} : { onPointerMove: move, onPointerUp: stop, onPointerCancel: stop, onPointerDown: onBoardPointerDown };
+  return <svg ref={preview ? null : svgRef} viewBox="0 0 100 72" role={preview ? undefined : 'img'} aria-label={preview ? undefined : readOnly ? 'Pizarra de entrenamiento' : 'Editor de pizarra de entrenamiento'} aria-hidden={preview ? true : undefined} data-interaction-mode={preview ? 'preview' : readOnly ? 'readonly' : activeTool === 'select' ? 'select' : 'insert'} className={`training-task-diagram-canvas block h-auto w-full select-none ${preview ? 'pointer-events-none' : activeTool !== 'select' ? 'cursor-crosshair' : ''}`} {...interactionProps}>
     <defs><marker id={markerId} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="2.7" markerHeight="2.7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="context-stroke" /></marker></defs>
     <TrainingPitch pitchType={pitchType} />
     {rendered.map(renderElement)}
