@@ -38,12 +38,58 @@ policies_ok as (
   from pg_catalog.pg_policies
   where schemaname = 'public' and tablename = 'training_task_media'
 ),
+index_contracts as (
+  select
+    index_relation.relname as indexname,
+    index_catalog.indisunique,
+    index_catalog.indisprimary,
+    index_catalog.indisvalid,
+    index_catalog.indisready,
+    access_method.amname as access_method,
+    index_catalog.indnatts = index_catalog.indnkeyatts as has_no_included_columns,
+    array(
+      select attribute_entry.attname
+      from unnest(index_catalog.indkey::smallint[]) with ordinality
+        as index_key(attnum, key_position)
+      join pg_catalog.pg_attribute attribute_entry
+        on attribute_entry.attrelid = table_relation.oid
+       and attribute_entry.attnum = index_key.attnum
+      where index_key.key_position <= index_catalog.indnkeyatts
+      order by index_key.key_position
+    ) as key_columns,
+    pg_get_expr(index_catalog.indpred, index_catalog.indrelid, true) as predicate
+  from pg_catalog.pg_class table_relation
+  join pg_catalog.pg_namespace table_namespace
+    on table_namespace.oid = table_relation.relnamespace
+  join pg_catalog.pg_index index_catalog
+    on index_catalog.indrelid = table_relation.oid
+  join pg_catalog.pg_class index_relation
+    on index_relation.oid = index_catalog.indexrelid
+  join pg_catalog.pg_am access_method
+    on access_method.oid = index_relation.relam
+  where table_namespace.nspname = 'public'
+    and table_relation.relname = 'training_task_media'
+),
 indexes_ok as (
-  select count(*) filter (where indexname = 'training_task_media_task_order_idx') = 1
-    and count(*) filter (where indexname = 'training_task_media_one_primary_idx'
-      and indexdef ~* 'unique' and indexdef ~* 'where \(is_primary\)') = 1 as value
-  from pg_catalog.pg_indexes
-  where schemaname = 'public' and tablename = 'training_task_media'
+  select count(*) filter (
+    where indexname = 'training_task_media_task_order_idx'
+      and not indisunique and not indisprimary
+      and indisvalid and indisready
+      and access_method = 'btree'
+      and has_no_included_columns
+      and key_columns = array['task_id','sort_order','created_at','id']::name[]
+      and predicate is null
+  ) = 1
+    and count(*) filter (
+      where indexname = 'training_task_media_one_primary_idx'
+        and indisunique and not indisprimary
+        and indisvalid and indisready
+        and access_method = 'btree'
+        and has_no_included_columns
+        and key_columns = array['task_id']::name[]
+        and predicate = 'is_primary'
+    ) = 1 as value
+  from index_contracts
 ),
 bucket_ok as (
   select count(*) = 1 and bool_and(public = false) and bool_and(file_size_limit = 10485760)

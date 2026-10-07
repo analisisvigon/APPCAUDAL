@@ -154,6 +154,17 @@ assert.match(multimediaPatch, /task\.preview_path = p_path or task\.attachment_p
 assert.doesNotMatch(multimediaPatch, /create policy training_task_files_|drop policy if exists training_task_files_/i);
 assert.match(multimediaPatch, /file_size_limit = 10485760[\s\S]*array\['image\/jpeg','image\/png','image\/webp','application\/pdf'\]/i);
 assert.match(multimediaPostcheck, /set transaction read only[\s\S]*legacy_attachment_authorization_preserved[\s\S]*private_10_mib_current_mime_bucket_ok[\s\S]*rollback;/i);
+for (const structuralIndexContract of [
+  /index_contracts as/i,
+  /pg_catalog\.pg_index/i,
+  /unnest\(index_catalog\.indkey::smallint\[\]\)/i,
+  /pg_catalog\.pg_attribute/i,
+  /pg_get_expr\(index_catalog\.indpred/i,
+]) assert.match(multimediaPostcheck, structuralIndexContract);
+assert.match(multimediaPostcheck, /training_task_media_task_order_idx[\s\S]*not indisunique[\s\S]*key_columns = array\['task_id','sort_order','created_at','id'\]::name\[\][\s\S]*predicate is null/i);
+assert.match(multimediaPostcheck, /training_task_media_one_primary_idx[\s\S]*indisunique and not indisprimary[\s\S]*key_columns = array\['task_id'\]::name\[\][\s\S]*predicate = 'is_primary'/i);
+assert.doesNotMatch(multimediaPostcheck, /indexdef\s*~\*/i);
+assert.ok(!multimediaPostcheck.includes("where \\(is_primary\\)"), 'postcheck must not depend on rendered predicate parentheses');
 for (const contract of [
   /autor crea y lee media/i,
   /receptor compartido lee media/i,
