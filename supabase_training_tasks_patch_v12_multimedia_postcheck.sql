@@ -5,7 +5,7 @@ set transaction read only;
 
 with
 columns_ok as (
-  select count(*) = 17
+  select count(*) = 19
     and count(*) filter (where is_nullable = 'NO') = 10
     and bool_or(column_name = 'size_bytes' and data_type = 'bigint')
     and bool_or(column_name = 'sort_order' and data_type = 'integer' and column_default = '10')

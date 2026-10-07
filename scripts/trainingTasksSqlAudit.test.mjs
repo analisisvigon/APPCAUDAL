@@ -14,6 +14,68 @@ const multimediaPostcheck = fs.readFileSync(new URL('../supabase_training_tasks_
 const store = fs.readFileSync(new URL('../src/utils/trainingTaskStore.js', import.meta.url), 'utf8');
 const trainingTasksSection = fs.readFileSync(new URL('../src/components/training/TrainingTasksSection.jsx', import.meta.url), 'utf8');
 
+const tableColumnNames = (source, tableName) => {
+  const escapedTableName = tableName.replaceAll('.', '\\.');
+  const startPattern = new RegExp(`create\\s+table\\s+if\\s+not\\s+exists\\s+${escapedTableName}\\s*\\(`, 'i');
+  const start = startPattern.exec(source);
+  assert.ok(start, `missing CREATE TABLE for ${tableName}`);
+
+  const definitions = [];
+  let current = '';
+  let depth = 1;
+  let inString = false;
+  for (let index = start.index + start[0].length; index < source.length; index += 1) {
+    const character = source[index];
+    const nextCharacter = source[index + 1];
+    if (character === "'") {
+      current += character;
+      if (inString && nextCharacter === "'") {
+        current += nextCharacter;
+        index += 1;
+      } else {
+        inString = !inString;
+      }
+      continue;
+    }
+    if (!inString && character === '(') depth += 1;
+    if (!inString && character === ')') {
+      depth -= 1;
+      if (depth === 0) {
+        if (current.trim()) definitions.push(current.trim());
+        break;
+      }
+    }
+    if (!inString && character === ',' && depth === 1) {
+      definitions.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += character;
+  }
+
+  return definitions
+    .filter((definition) => !/^constraint\s/i.test(definition))
+    .map((definition) => definition.match(/^([a-z_][a-z0-9_]*)\s/i)?.[1])
+    .filter(Boolean);
+};
+
+const multimediaColumns = tableColumnNames(multimediaPatch, 'public.training_task_media');
+const canonicalMultimediaColumns = [
+  'id', 'task_id', 'club_id', 'author_user_id', 'kind', 'source',
+  'storage_path', 'original_url', 'provider', 'provider_key', 'original_name',
+  'mime_type', 'size_bytes', 'title', 'caption', 'sort_order', 'is_primary',
+  'created_at', 'updated_at',
+];
+assert.deepEqual(multimediaColumns, canonicalMultimediaColumns, 'training_task_media must keep its canonical 19-column contract');
+const multimediaDetectorCount = Number(multimediaPatch.match(
+  /select\s+count\(\*\)\s*<>\s*(\d+)[\s\S]*?table_name\s*=\s*'training_task_media'/i,
+)?.[1]);
+const multimediaPostcheckCount = Number(multimediaPostcheck.match(
+  /columns_ok\s+as\s*\([\s\S]*?select\s+count\(\*\)\s*=\s*(\d+)/i,
+)?.[1]);
+assert.equal(multimediaDetectorCount, multimediaColumns.length, 'compatibility detector must match CREATE TABLE column count');
+assert.equal(multimediaPostcheckCount, multimediaColumns.length, 'postcheck must match CREATE TABLE column count');
+
 assert.match(sql, /begin;[\s\S]*to_regclass\('public\.training_tasks'\)[\s\S]*raise exception 'Tareas V1: contrato previo detectado/i);
 assert.match(sql, /create table public\.training_tasks/i);
 assert.match(sql, /create table public\.training_task_shares/i);

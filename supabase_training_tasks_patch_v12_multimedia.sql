@@ -96,7 +96,7 @@ do $$
 declare
   incompatible boolean;
 begin
-  select count(*) <> 17
+  select count(*) <> 19
     or bool_or(column_name = 'id' and udt_name <> 'uuid')
     or bool_or(column_name = 'task_id' and udt_name <> 'uuid')
     or bool_or(column_name = 'club_id' and udt_name <> 'uuid')
