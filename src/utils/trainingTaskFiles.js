@@ -52,7 +52,8 @@ export const saveTrainingTaskWithFile = async (client, draft, context, existing 
     uploaded = await uploadTrainingTaskFile(client, task, safeDraft.file);
     const taskWithFile = await saveTrainingTask(client, {
       ...safeDraft,
-      previewPath: uploaded.isImage ? uploaded.path : (existing?.previewPath || ''),
+      // Un PDF no puede conservar un preview_path cuyo objeto legacy se elimina debajo.
+      previewPath: uploaded.isImage ? uploaded.path : '',
       attachmentPath: uploaded.path,
       attachmentName: uploaded.name,
       attachmentMime: uploaded.mime,

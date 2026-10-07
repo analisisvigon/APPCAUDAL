@@ -112,6 +112,21 @@ assert.deepEqual(replacementCalls, ['upload', 'db-update', 'remove-old'], 'el ar
 assert.deepEqual(replacement.cleanupPending, ['old-preview', 'old-attachment']);
 assert.match(replacement.cleanupError.message, /Cleanup denied/);
 
+const pdfUpdates = [];
+await saveTrainingTaskWithFile({
+  from: () => ({ update(payload) {
+    pdfUpdates.push(payload);
+    return { eq: () => ({ select: () => ({ single: async () => ({
+      data: { ...payload, id: ownTask.id, club_id: ownTask.club_id, author_user_id: ownTask.author_user_id }, error: null,
+    }) }) }) };
+  } }),
+  storage: { from: () => ({
+    upload: async () => ({ error: null }),
+    remove: async () => ({ error: null }),
+  }) },
+}, { name: 'Rondo', objective: 'Control', file: { name: 'ficha.pdf', type: 'application/pdf', size: 256 } }, context, ownTask);
+assert.equal(pdfUpdates[0].preview_path, null, 'reemplazar una imagen por PDF limpia preview_path antes de borrar el objeto anterior');
+
 await assert.rejects(removeTrainingTaskFiles({ storage: { from: () => ({ remove: async () => ({ error: new Error('Storage denied') }) }) } }, ['path']), /Storage denied/);
 const deleteCalls = [];
 await assert.rejects(deleteTrainingTaskWithFiles({

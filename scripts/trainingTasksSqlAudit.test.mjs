@@ -9,6 +9,8 @@ const taskCodePatch = fs.readFileSync(new URL('../supabase_training_tasks_patch_
 const taskCodePostcheck = fs.readFileSync(new URL('../supabase_training_tasks_patch_task_code_postcheck.sql', import.meta.url), 'utf8');
 const v11Patch = fs.readFileSync(new URL('../supabase_training_tasks_patch_v11_feedback.sql', import.meta.url), 'utf8');
 const v11Postcheck = fs.readFileSync(new URL('../supabase_training_tasks_patch_v11_feedback_postcheck.sql', import.meta.url), 'utf8');
+const multimediaPatch = fs.readFileSync(new URL('../supabase_training_tasks_patch_v12_multimedia.sql', import.meta.url), 'utf8');
+const multimediaPostcheck = fs.readFileSync(new URL('../supabase_training_tasks_patch_v12_multimedia_postcheck.sql', import.meta.url), 'utf8');
 const store = fs.readFileSync(new URL('../src/utils/trainingTaskStore.js', import.meta.url), 'utf8');
 const trainingTasksSection = fs.readFileSync(new URL('../src/components/training/TrainingTasksSection.jsx', import.meta.url), 'utf8');
 
@@ -75,6 +77,37 @@ assert.match(v11Postcheck, /task_policies_preserved[\s\S]*share_policies_preserv
 assert.match(v11Postcheck, /select[\s\S]*stage_keys_ok[\s\S]*feedback_policies_ok[\s\S]*rollback;/i);
 assert.match(v11Postcheck, /has_function_privilege[\s\S]*feedback_guard_ok/i);
 assert.match(v11Postcheck, /rating_contract_ok[\s\S]*feedback_guard_insert_contract_ok/i);
+assert.match(multimediaPatch, /create table if not exists public\.training_task_media[\s\S]*task_id uuid not null references public\.training_tasks\(id\) on delete cascade/i);
+assert.match(multimediaPatch, /kind in \('image','document','video','link'\)[\s\S]*source in \('upload','url'\)/i);
+assert.match(multimediaPatch, /mime_type in \('image\/jpeg','image\/png','image\/webp','application\/pdf'\)/i);
+assert.doesNotMatch(multimediaPatch, /allowed_mime_types[\s\S]*video\/(mp4|webm)/i);
+assert.match(multimediaPatch, /size_bytes between 1 and 10485760/i);
+assert.match(multimediaPatch, /lower\(original_url\) !~ '\/embed\/'/i);
+assert.match(multimediaPatch, /training_task_media_one_primary_idx[\s\S]*where is_primary/i);
+assert.match(multimediaPatch, /media-' \|\| p_media_id::text[\s\S]*training_task_media_guard/i);
+assert.match(multimediaPatch, /new\.club_id := task_club_id[\s\S]*new\.author_user_id := task_author_user_id[\s\S]*new\.created_at := now\(\)/i);
+assert.match(multimediaPatch, /training_task_media_select[\s\S]*training_task_authorized\(task_id, 'read'\)/i);
+assert.match(multimediaPatch, /training_task_media_insert[\s\S]*training_task_authorized\(task_id, 'write'\)[\s\S]*training_task_media_delete/i);
+assert.match(multimediaPatch, /task\.preview_path = p_path or task\.attachment_path = p_path[\s\S]*media\.storage_path = p_path/i);
+assert.doesNotMatch(multimediaPatch, /create policy training_task_files_|drop policy if exists training_task_files_/i);
+assert.match(multimediaPatch, /file_size_limit = 10485760[\s\S]*array\['image\/jpeg','image\/png','image\/webp','application\/pdf'\]/i);
+assert.match(multimediaPostcheck, /set transaction read only[\s\S]*legacy_attachment_authorization_preserved[\s\S]*private_10_mib_current_mime_bucket_ok[\s\S]*rollback;/i);
+for (const contract of [
+  /autor crea y lee media/i,
+  /receptor compartido lee media/i,
+  /STAFF no compartido no lee media/i,
+  /cross-club no lee media/i,
+  /VIEWER no lee media/i,
+  /PLAYER no lee media/i,
+  /autor revocado no lee media/i,
+  /ANON sin grants/i,
+]) assert.match(verify, contract);
+for (const contract of [
+  /autor puede escribir ruta media exacta/i,
+  /receptor lee Storage media/i,
+  /receptor no escribe Storage media/i,
+  /ruta media no exacta rechazada/i,
+]) assert.match(verify, contract);
 assert.match(verify, /STAFF no compartido no crea feedback[\s\S]*receptor crea y edita su propio feedback[\s\S]*cross-club no crea feedback[\s\S]*VIEWER no crea feedback[\s\S]*PLAYER no crea feedback[\s\S]*autor revocado no crea feedback[\s\S]*ON DELETE CASCADE elimina feedback/i);
 assert.match(verify, /INSERT ignora id falsificado[\s\S]*INSERT deriva club_id[\s\S]*INSERT fija author_user_id[\s\S]*INSERT fija created_at[\s\S]*INSERT fija updated_at/i);
 assert.match(verify, /rating 3\.5 denegado[\s\S]*share revocado impide SELECT feedback[\s\S]*share revocado impide INSERT feedback[\s\S]*share revocado impide UPDATE feedback[\s\S]*share revocado impide DELETE feedback/i);
