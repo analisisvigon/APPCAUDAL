@@ -5,14 +5,9 @@ import {
   getPostEventTypeMarkerClass,
   getPostEventTypeValue,
 } from '../../constants/postEventTypes';
+import { detectVideoProvider } from '../../utils/videoProvider';
 
-const IFRAME_PROVIDERS = {
-  youtube: ['www.youtube-nocookie.com'],
-  vimeo: ['player.vimeo.com'],
-};
-
-const DIRECT_VIDEO_EXTENSIONS = ['.mp4', '.webm', '.m3u8'];
-const SUPABASE_STORAGE_HOST_PATTERN = /(?:^|\.)supabase\.co$/;
+export const detectMatchVideoProvider = detectVideoProvider;
 
 const TIMELINE_FILTERS = [
   { id: 'all', label: 'Todos', match: () => true },
@@ -22,56 +17,6 @@ const TIMELINE_FILTERS = [
     match: (event) => getPostEventTypeValue(event.type) === eventType.value,
   })),
 ];
-
-const normalizeHost = (hostname) => hostname.replace(/^www\./, '').toLowerCase();
-
-const isHttpsUrl = (url) => url.protocol === 'https:';
-
-const hasAllowedIframeHost = (url, provider) => {
-  const allowedHosts = IFRAME_PROVIDERS[provider] || [];
-  return allowedHosts.includes(url.hostname.toLowerCase());
-};
-
-const getYouTubeId = (url) => {
-  const host = normalizeHost(url.hostname);
-  if (host === 'youtu.be') return url.pathname.split('/').filter(Boolean)[0] || '';
-  if (!['youtube.com', 'youtube-nocookie.com'].includes(host)) return '';
-  if (url.pathname === '/watch') return url.searchParams.get('v') || '';
-  const pathParts = url.pathname.split('/').filter(Boolean);
-  if (['embed', 'v', 'shorts'].includes(pathParts[0])) return pathParts[1] || '';
-  return '';
-};
-
-const getYouTubeStartSeconds = (url) => {
-  const rawStart = url.searchParams.get('start') || url.searchParams.get('t') || '';
-  const numericStart = rawStart.match(/^\d+$/) ? Number(rawStart) : null;
-  if (Number.isFinite(numericStart)) return numericStart;
-
-  const timeMatch = rawStart.match(/(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/i);
-  if (!timeMatch || !rawStart) return 0;
-  const hours = Number(timeMatch[1] || 0);
-  const minutes = Number(timeMatch[2] || 0);
-  const seconds = Number(timeMatch[3] || 0);
-  return (hours * 3600) + (minutes * 60) + seconds;
-};
-
-const getVimeoId = (url) => {
-  const host = normalizeHost(url.hostname);
-  if (!['vimeo.com', 'player.vimeo.com'].includes(host)) return '';
-  const pathParts = url.pathname.split('/').filter(Boolean);
-  if (host === 'player.vimeo.com' && pathParts[0] === 'video') return pathParts[1] || '';
-  return pathParts[0] || '';
-};
-
-const getVideoExtension = (url) => {
-  const pathname = url.pathname.toLowerCase();
-  return DIRECT_VIDEO_EXTENSIONS.find((extension) => pathname.endsWith(extension)) || '';
-};
-
-const isSupabaseStorageUrl = (url) => (
-  SUPABASE_STORAGE_HOST_PATTERN.test(url.hostname.toLowerCase())
-  && url.pathname.toLowerCase().includes('/storage/v1/object/')
-);
 
 const formatTimelineTime = (seconds) => {
   const total = Math.max(0, Math.round(Number(seconds || 0)));
@@ -95,98 +40,6 @@ const getFilteredEvents = (events, activeFilter) => {
 const isKeyEvent = (event) => /^\[Evento clave\]/i.test(String(event?.description || ''));
 
 const cleanEventDescription = (event) => String(event?.description || '').replace(/^\[Evento clave\]\s*/i, '');
-
-export function detectMatchVideoProvider(videoUrl) {
-  const rawUrl = String(videoUrl || '').trim();
-  if (!rawUrl) {
-    return {
-      kind: 'empty',
-      playable: false,
-      message: 'No hay video asociado a este partido.',
-    };
-  }
-
-  let parsedUrl;
-  try {
-    parsedUrl = new URL(rawUrl);
-  } catch {
-    return {
-      kind: 'invalid',
-      playable: false,
-      message: 'El enlace del video no es valido.',
-    };
-  }
-
-  if (!isHttpsUrl(parsedUrl)) {
-    return {
-      kind: 'invalid',
-      playable: false,
-      message: 'El enlace del video no es valido.',
-    };
-  }
-
-  const host = normalizeHost(parsedUrl.hostname);
-  const youtubeId = getYouTubeId(parsedUrl);
-  if (youtubeId && /^[A-Za-z0-9_-]{11}$/.test(youtubeId)) {
-    const startSeconds = getYouTubeStartSeconds(parsedUrl);
-    const embedUrl = new URL(`https://www.youtube-nocookie.com/embed/${youtubeId}`);
-    embedUrl.searchParams.set('rel', '0');
-    embedUrl.searchParams.set('modestbranding', '1');
-    embedUrl.searchParams.set('enablejsapi', '1');
-    if (typeof window !== 'undefined') embedUrl.searchParams.set('origin', window.location.origin);
-    if (startSeconds > 0) embedUrl.searchParams.set('start', String(Math.floor(startSeconds)));
-    return {
-      kind: 'iframe',
-      provider: 'YouTube',
-      playable: hasAllowedIframeHost(embedUrl, 'youtube'),
-      embedUrl: embedUrl.toString(),
-      originalUrl: rawUrl,
-    };
-  }
-
-  const vimeoId = getVimeoId(parsedUrl);
-  if (vimeoId && /^\d+$/.test(vimeoId)) {
-    const embedUrl = new URL(`https://player.vimeo.com/video/${vimeoId}`);
-    return {
-      kind: 'iframe',
-      provider: 'Vimeo',
-      playable: hasAllowedIframeHost(embedUrl, 'vimeo'),
-      embedUrl: embedUrl.toString(),
-      originalUrl: rawUrl,
-    };
-  }
-
-  if (host === 'play.asturfutbol.es') {
-    return {
-      kind: 'external',
-      provider: 'AsturFutbol',
-      playable: false,
-      originalUrl: rawUrl,
-      message: 'Este proveedor no permite reproducir el video dentro de la aplicacion.',
-      detail: 'El video esta guardado, pero este proveedor solo permite abrirlo externamente.',
-    };
-  }
-
-  const extension = getVideoExtension(parsedUrl);
-  if (extension || isSupabaseStorageUrl(parsedUrl)) {
-    return {
-      kind: 'video',
-      provider: isSupabaseStorageUrl(parsedUrl) ? 'Supabase Storage' : extension.replace('.', '').toUpperCase(),
-      playable: true,
-      directVideoUrl: rawUrl,
-      originalUrl: rawUrl,
-      type: extension === '.webm' ? 'video/webm' : extension === '.m3u8' ? 'application/vnd.apple.mpegurl' : 'video/mp4',
-    };
-  }
-
-  return {
-    kind: 'external',
-    provider: 'Enlace externo',
-    playable: false,
-    originalUrl: rawUrl,
-    message: 'El video esta guardado, pero este proveedor solo permite abrirlo externamente.',
-  };
-}
 
 function MatchVideoFallback({ analysis }) {
   return (
