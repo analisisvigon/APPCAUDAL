@@ -1,11 +1,12 @@
 import { buildTrainingTaskPayload, normalizeTrainingTask } from './trainingTasks.js';
 import { summarizeTrainingTaskRatings } from './trainingTaskFeedback.js';
+import { duplicateUrlMedia, sortTrainingTaskMedia } from './trainingTaskMedia.js';
 
 export const loadTrainingTasks = async (client, clubId) => {
   const [tasksResult, feedbackResult] = await Promise.all([
     client
       .from('training_tasks')
-      .select('*, training_task_shares(id)')
+      .select('*, training_task_shares(id), training_task_media(*)')
       .eq('club_id', clubId)
       .order('updated_at', { ascending: false }),
     client
@@ -23,10 +24,13 @@ export const loadTrainingTasks = async (client, clubId) => {
     feedbackByTask.set(row.task_id, rows);
   });
 
-  return (tasksResult.data || []).map((row) => normalizeTrainingTask({
-    ...row,
-    ...summarizeTrainingTaskRatings(feedbackByTask.get(row.id) || []),
-    is_shared: Array.isArray(row.training_task_shares) && row.training_task_shares.length > 0,
+  return (tasksResult.data || []).map((row) => ({
+    ...normalizeTrainingTask({
+      ...row,
+      ...summarizeTrainingTaskRatings(feedbackByTask.get(row.id) || []),
+      is_shared: Array.isArray(row.training_task_shares) && row.training_task_shares.length > 0,
+    }),
+    media: sortTrainingTaskMedia(row.training_task_media || []),
   }));
 };
 
@@ -58,7 +62,15 @@ export const duplicateTrainingTask = async (client, task, context) => {
   payload.attachment_size = null;
   const { data, error } = await client.from('training_tasks').insert(payload).select('*').single();
   if (error) throw error;
-  return normalizeTrainingTask(data);
+  const copy = normalizeTrainingTask(data);
+  try {
+    const media = await duplicateUrlMedia(client, task.id, copy, context.authorUserId);
+    return { ...copy, media };
+  } catch (mediaError) {
+    const { error: cleanupError } = await client.from('training_tasks').delete().eq('id', copy.id);
+    if (cleanupError) throw new Error(`No se pudo copiar Multimedia y quedó una copia incompleta (${copy.id}): ${mediaError.message || 'error desconocido'}.`);
+    throw new Error(`No se pudo duplicar la tarea con su Multimedia: ${mediaError.message || 'error desconocido'}.`);
+  }
 };
 
 export const deleteTrainingTask = async (client, id) => {

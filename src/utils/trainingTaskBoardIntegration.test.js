@@ -63,10 +63,16 @@ await assert.rejects(saveTrainingTaskWithFile({
 assert.equal(externalCalls, 0, 'el limite se comprueba antes de DB y Storage aunque exista un archivo');
 
 let inserted;
-const duplicateClient = { from: () => ({ insert(payload) {
-  inserted = payload;
-  return { select: () => ({ single: async () => ({ data: { ...payload, id: 'copy-1' }, error: null }) }) };
-} }) };
+const duplicateClient = { from(table) {
+  if (table === 'training_task_media') return {
+    select: () => ({ eq: () => ({ order: () => ({ order: async () => ({ data: [], error: null }) }) }) }),
+  };
+  assert.equal(table, 'training_tasks');
+  return { insert(payload) {
+    inserted = payload;
+    return { select: () => ({ single: async () => ({ data: { ...payload, id: 'copy-1' }, error: null }) }) };
+  } };
+} };
 const copy = await duplicateTrainingTask(duplicateClient, task, context);
 assert.deepEqual(inserted.editor_payload, initialScene, 'duplicar conserva la escena');
 inserted.editor_payload.board.elements[0].x = 77;

@@ -34,6 +34,7 @@ export const sortTrainingTaskMedia = (rows = []) => [...rows]
 
 export const validateTrainingTaskMediaFile = (file) => {
   if (!file || !MIME_TYPES.has(file.type)) throw new Error('Formato no permitido. Usa JPG, PNG, WEBP o PDF.');
+  if (!cleanText(file.name) || cleanText(file.name).length > 255) throw new Error('El nombre del archivo debe tener entre 1 y 255 caracteres.');
   if (!Number.isFinite(Number(file.size)) || file.size <= 0 || file.size > TRAINING_TASK_MEDIA_MAX_FILE_SIZE) {
     throw new Error('El archivo debe pesar entre 1 byte y 10 MB.');
   }
@@ -49,12 +50,13 @@ export const analyzeTrainingTaskMediaUrl = (value) => {
   if (!originalUrl || /[<>"']/.test(originalUrl) || /\/embed\//i.test(originalUrl) || /^https:\/\/player\.vimeo\.com\//i.test(originalUrl)) {
     throw new Error('Pega una URL HTTPS original, no HTML ni una URL embed.');
   }
+  if (originalUrl.length > 2048) throw new Error('La URL no puede superar 2048 caracteres.');
   let parsed;
   try { parsed = new URL(originalUrl); } catch { throw new Error('La URL no es válida.'); }
   if (parsed.protocol !== 'https:') throw new Error('La URL debe usar HTTPS.');
   const analysis = detectVideoProvider(originalUrl);
   const host = parsed.hostname.replace(/^www\./, '').toLowerCase();
-  const knownVideoHost = ['youtube.com', 'youtu.be', 'vimeo.com'].includes(host);
+  const knownVideoHost = /(^|\.)(youtube\.com|youtu\.be|vimeo\.com)$/.test(host);
   if (analysis.kind === 'invalid' || analysis.kind === 'empty' || (knownVideoHost && analysis.kind === 'external')) {
     throw new Error('El enlace de vídeo no contiene un identificador válido.');
   }
@@ -135,9 +137,15 @@ export const reorderTaskMedia = async (client, rows, fromIndex, toIndex) => {
   const [moved] = ordered.splice(fromIndex, 1);
   ordered.splice(toIndex, 0, moved);
   const normalized = ordered.map((row, index) => ({ ...row, sortOrder: index, sort_order: index }));
+  const originalOrders = new Map(ordered.map((row) => [row.id, Number(row.sort_order ?? row.sortOrder) || 0]));
+  const updatedIds = [];
   for (const row of normalized) {
     const { error } = await client.from('training_task_media').update({ sort_order: row.sortOrder }).eq('id', row.id);
-    if (error) throw error;
+    if (error) {
+      await Promise.allSettled(updatedIds.map((id) => client.from('training_task_media').update({ sort_order: originalOrders.get(id) }).eq('id', id)));
+      throw error;
+    }
+    updatedIds.push(row.id);
   }
   return normalized;
 };

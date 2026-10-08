@@ -18,6 +18,9 @@ const original = {
 
 let inserted;
 const duplicateClient = { from(table) {
+  if (table === 'training_task_media') return {
+    select: () => ({ eq: () => ({ order: () => ({ order: async () => ({ data: [], error: null }) }) }) }),
+  };
   assert.equal(table, 'training_tasks');
   return { insert(payload) {
     inserted = payload;
@@ -131,14 +134,23 @@ await assert.rejects(removeTrainingTaskFiles({ storage: { from: () => ({ remove:
 const deleteCalls = [];
 await assert.rejects(deleteTrainingTaskWithFiles({
   storage: { from: () => ({ remove: async () => { deleteCalls.push('remove'); return { error: new Error('remove failed') }; } }) },
-  from: () => { deleteCalls.push('db'); throw new Error('DB should not be reached'); },
+  from: (table) => {
+    assert.equal(table, 'training_task_media');
+    return { select: () => ({ eq: () => ({ eq: async () => {
+      deleteCalls.push('media-query');
+      return { data: [{ storage_path: 'media-path' }], error: null };
+    } }) }) };
+  },
 }, { id: 'task-id', attachmentPath: 'path' }), /remove failed/);
-assert.deepEqual(deleteCalls, ['remove']);
+assert.deepEqual(deleteCalls, ['media-query', 'remove']);
 
 const successfulDeleteCalls = [];
 await deleteTrainingTaskWithFiles({
   storage: { from: () => ({ remove: async (paths) => { successfulDeleteCalls.push(['remove', paths]); return { error: null }; } }) },
   from: (table) => {
+    if (table === 'training_task_media') return { select: () => ({ eq: () => ({ eq: async () => ({
+      data: [{ storage_path: 'media-path' }], error: null,
+    }) }) }) };
     assert.equal(table, 'training_tasks');
     return { delete: () => ({ eq: (column, id) => ({
       async select(selection) {
@@ -149,7 +161,7 @@ await deleteTrainingTaskWithFiles({
   },
 }, { id: 'own-task', previewPath: 'preview-path', attachmentPath: 'attachment-path' });
 assert.deepEqual(successfulDeleteCalls, [
-  ['remove', ['preview-path', 'attachment-path']],
+  ['remove', ['preview-path', 'attachment-path', 'media-path']],
   ['delete', 'id', 'own-task', 'id'],
 ], 'el borrado correcto limpia Storage antes de eliminar la fila');
 

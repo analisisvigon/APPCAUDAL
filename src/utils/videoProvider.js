@@ -7,12 +7,13 @@ const DIRECT_VIDEO_EXTENSIONS = ['.mp4', '.webm', '.m3u8'];
 const SUPABASE_STORAGE_HOST_PATTERN = /(?:^|\.)supabase\.co$/;
 
 const normalizeHost = (hostname) => hostname.replace(/^www\./, '').toLowerCase();
+const isHostOrSubdomain = (host, domain) => host === domain || host.endsWith(`.${domain}`);
 const hasAllowedIframeHost = (url, provider) => (IFRAME_PROVIDERS[provider] || []).includes(url.hostname.toLowerCase());
 
 const getYouTubeId = (url) => {
   const host = normalizeHost(url.hostname);
   if (host === 'youtu.be') return url.pathname.split('/').filter(Boolean)[0] || '';
-  if (!['youtube.com', 'youtube-nocookie.com'].includes(host)) return '';
+  if (!isHostOrSubdomain(host, 'youtube.com') && !isHostOrSubdomain(host, 'youtube-nocookie.com')) return '';
   if (url.pathname === '/watch') return url.searchParams.get('v') || '';
   const pathParts = url.pathname.split('/').filter(Boolean);
   if (['embed', 'v', 'shorts'].includes(pathParts[0])) return pathParts[1] || '';
@@ -28,7 +29,7 @@ const getYouTubeStartSeconds = (url) => {
 
 const getVimeoId = (url) => {
   const host = normalizeHost(url.hostname);
-  if (!['vimeo.com', 'player.vimeo.com'].includes(host)) return '';
+  if (!isHostOrSubdomain(host, 'vimeo.com')) return '';
   const parts = url.pathname.split('/').filter(Boolean);
   return host === 'player.vimeo.com' && parts[0] === 'video' ? parts[1] || '' : parts[0] || '';
 };
