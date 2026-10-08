@@ -78,6 +78,11 @@ begin
       'Fase 0A abortada: no existe public.is_app_staff()';
   end if;
 
+  if pg_catalog.to_regprocedure('public.current_membership()') is null then
+    raise exception
+      'Fase 0A abortada: no existe public.current_membership()';
+  end if;
+
   if not exists (
     select 1
     from pg_catalog.pg_proc procedure
@@ -88,6 +93,20 @@ begin
   ) then
     raise exception
       'Fase 0A abortada: public.is_app_staff() no conserva la firma booleana STABLE esperada';
+  end if;
+
+  if not pg_catalog.has_function_privilege(
+       'authenticated',
+       'public.is_app_staff()'::pg_catalog.regprocedure,
+       'EXECUTE'
+     )
+     or not pg_catalog.has_function_privilege(
+       'authenticated',
+       'public.current_membership()'::pg_catalog.regprocedure,
+       'EXECUTE'
+     ) then
+    raise exception
+      'Fase 0A abortada: authenticated no puede ejecutar is_app_staff() o current_membership()';
   end if;
 
   select pg_catalog.array_agg(
@@ -324,6 +343,9 @@ declare
   authenticated_oid oid;
   anon_oid oid;
   actual_authenticated_privileges text[];
+  staff_function_oid oid := pg_catalog.to_regprocedure(
+    'public.is_app_staff()'
+  );
   expected_authenticated_privileges constant text[] := array[
     'DELETE', 'INSERT', 'SELECT', 'UPDATE'
   ]::text[];
@@ -344,9 +366,10 @@ begin
 
   if target_relation is null
      or authenticated_oid is null
-     or anon_oid is null then
+     or anon_oid is null
+     or staff_function_oid is null then
     raise exception
-      'Fase 0A postcheck: faltan tabla o roles requeridos';
+      'Fase 0A postcheck: faltan tabla, roles o public.is_app_staff()';
   end if;
 
   if not exists (
@@ -512,24 +535,34 @@ begin
      or policy.polroles <> array[authenticated_oid]::oid[]
      or case
        when expected.needs_using then
-         pg_catalog.regexp_replace(
-           coalesce(pg_catalog.pg_get_expr(policy.polqual, policy.polrelid), ''),
-           '[[:space:]()]',
-           '',
-           'g'
-         ) not in ('is_app_staff', 'public.is_app_staff')
+         policy.polqual is null
        else policy.polqual is not null
      end
      or case
        when expected.needs_check then
-         pg_catalog.regexp_replace(
-           coalesce(pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid), ''),
-           '[[:space:]()]',
-           '',
-           'g'
-         ) not in ('is_app_staff', 'public.is_app_staff')
+         policy.polwithcheck is null
        else policy.polwithcheck is not null
-     end;
+     end
+     or (
+       expected.command = 'w'::"char"
+       and policy.polqual is distinct from policy.polwithcheck
+     )
+     or not exists (
+       select 1
+       from pg_catalog.pg_depend dependency
+       where dependency.classid = 'pg_catalog.pg_policy'::pg_catalog.regclass
+         and dependency.objid = policy.oid
+         and dependency.refclassid = 'pg_catalog.pg_proc'::pg_catalog.regclass
+         and dependency.refobjid = staff_function_oid
+     )
+     or exists (
+       select 1
+       from pg_catalog.pg_depend dependency
+       where dependency.classid = 'pg_catalog.pg_policy'::pg_catalog.regclass
+         and dependency.objid = policy.oid
+         and dependency.refclassid = 'pg_catalog.pg_proc'::pg_catalog.regclass
+         and dependency.refobjid <> staff_function_oid
+     );
 
   select pg_catalog.count(*)
     into unexpected_policy_count
@@ -547,6 +580,20 @@ begin
       'Fase 0A postcheck: policies invalidas %; policies inesperadas %',
       invalid_policy_count,
       unexpected_policy_count;
+  end if;
+
+  if not pg_catalog.has_function_privilege(
+       'authenticated',
+       staff_function_oid,
+       'EXECUTE'
+     )
+     or not pg_catalog.has_function_privilege(
+       'authenticated',
+       'public.current_membership()'::pg_catalog.regprocedure,
+       'EXECUTE'
+     ) then
+    raise exception
+      'Fase 0A postcheck: authenticated no puede resolver la identidad STAFF';
   end if;
 
   select pg_catalog.count(*),
