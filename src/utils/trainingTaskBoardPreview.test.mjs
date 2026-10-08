@@ -5,6 +5,7 @@ import { readTrainingTaskEditorPayload } from './trainingTaskEditorPayload.js';
 const preview = await readFile(new URL('../components/training/TrainingTaskBoardPreview.jsx', import.meta.url), 'utf8');
 const canvas = await readFile(new URL('../components/training/TrainingTaskDiagramCanvas.jsx', import.meta.url), 'utf8');
 const section = await readFile(new URL('../components/training/TrainingTasksSection.jsx', import.meta.url), 'utf8');
+const cardPreview = await readFile(new URL('../components/training/TrainingTaskCardPreview.jsx', import.meta.url), 'utf8');
 
 assert.match(preview, /readTrainingTaskEditorPayload/);
 assert.match(preview, /parsed\.kind === 'empty'/);
@@ -15,7 +16,8 @@ assert.match(preview, /renderMode="preview"/);
 assert.doesNotMatch(preview, /TrainingTaskBoardEditor|useState|useEffect|addEventListener|supabase|storage/i);
 assert.match(canvas, /preview \? \{\} : \{ onPointerMove:/, 'preview no conecta listeners pointer del editor');
 assert.match(canvas, /pointer-events-none/);
-assert.match(section, /TrainingTaskBoardPreview/);
+assert.match(section, /TrainingTaskCardPreview/);
+assert.match(cardPreview, /TrainingTaskBoardPreview/, 'la tarjeta mantiene la pizarra como preview prioritario');
 assert.doesNotMatch(section, /task\.previewUrl|task\.previewPath &&|createSignedUrl\(task\.previewPath/, 'la biblioteca no usa previews de Storage');
 
 for (const pitchType of ['full', 'half', 'blank']) {
