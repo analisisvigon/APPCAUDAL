@@ -20,9 +20,13 @@ const rows = (value) => Array.isArray(value) ? value : [];
 const normalizeName = (value) => clean(value).toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const filenameSlug = (value) => clean(value).toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const outputDirectory = path.resolve(process.env.PLAYER_PDF_QA_OUTPUT || 'artifacts/player-pdf-final-qa');
-const playerId = clean(process.env.PLAYER_PDF_QA_PLAYER_ID) || 'f7f5aaeb-e82b-4e6b-8920-694bc32cb6c7';
-const competitionKey = 'copa_rfef';
-const competitionLabel = 'Copa RFEF';
+const supabaseUrl = clean(process.env.VITE_SUPABASE_URL);
+const supabaseAnonKey = clean(process.env.VITE_SUPABASE_ANON_KEY);
+const staffEmail = clean(process.env.SUPABASE_QA_STAFF_EMAIL);
+const staffPassword = String(process.env.SUPABASE_QA_STAFF_PASSWORD || '');
+const playerId = clean(process.env.PLAYER_PDF_QA_PLAYER_ID);
+const competitionKey = clean(process.env.PLAYER_PDF_QA_COMPETITION_KEY);
+const competitionLabel = clean(process.env.PLAYER_PDF_QA_COMPETITION_LABEL) || competitionKey;
 const fieldZones = [
   ['finalizacion_izquierda', 'F. Finalización izquierda'], ['finalizacion_centro', 'F. Finalización centro'], ['finalizacion_derecha', 'F. Finalización derecha'],
   ['creacion_izquierda', 'F. Creación izquierda'], ['creacion_centro', 'F. Creación centro'], ['creacion_derecha', 'F. Creación derecha'],
@@ -34,7 +38,40 @@ const targetZones = [
   ['baja_izquierda', 'Baja izquierda'], ['baja_centro', 'Baja centro'], ['baja_derecha', 'Baja derecha'],
 ].map(([value, label]) => ({ value, label, shortLabel: label.replace(' ', '\n') }));
 
-const client = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
+const validateConfiguration = () => {
+  const missing = [
+    ['VITE_SUPABASE_URL', supabaseUrl],
+    ['VITE_SUPABASE_ANON_KEY', supabaseAnonKey],
+    ['SUPABASE_QA_STAFF_EMAIL', staffEmail],
+    ['SUPABASE_QA_STAFF_PASSWORD', staffPassword],
+    ['PLAYER_PDF_QA_PLAYER_ID', playerId],
+    ['PLAYER_PDF_QA_COMPETITION_KEY', competitionKey],
+  ].filter(([, value]) => !String(value || '').trim()).map(([name]) => name);
+
+  if (missing.length) {
+    throw new Error(`Faltan variables de entorno requeridas: ${missing.join(', ')}.`);
+  }
+};
+
+const authenticateStaff = async (client) => {
+  const { data, error } = await client.auth.signInWithPassword({
+    email: staffEmail,
+    password: staffPassword,
+  });
+  if (error || !data?.session) {
+    throw new Error(`No se pudo autenticar la cuenta QA STAFF${error?.message ? `: ${error.message}` : '.'}`);
+  }
+
+  const { data: isStaff, error: staffError } = await client.rpc('is_app_staff');
+  if (staffError) {
+    throw new Error(`No se pudo verificar is_app_staff(): ${staffError.message}`);
+  }
+  if (isStaff !== true) {
+    throw new Error('La cuenta QA autenticada no está autorizada como STAFF.');
+  }
+};
+
+const generatePlayerPdfQa = async (client) => {
 const [playerResponse, statsResponse, goalsResponse, ownTeamResponse, competitionResponse, rosterResponse] = await Promise.all([
   client.from('jugadores').select('*').eq('id', playerId).single(),
   client.from('partido_estadisticas_jugador').select('*').eq('jugador_id', playerId),
@@ -284,3 +321,33 @@ await fs.writeFile(auditPath, JSON.stringify({
   pages: result.pages, pageSections: result.pageSections, linkAudit: result.audit, presentationAudit: result.presentationAudit,
 }, null, 2));
 console.log(JSON.stringify({ pdfPath, auditPath, pages: result.pages, pageSections: result.pageSections, linkAnnotations: result.audit.linkAnnotations, urls: result.audit.urls, invariant, positionUsage }, null, 2));
+};
+
+const main = async () => {
+  let client;
+  let failed = false;
+
+  try {
+    validateConfiguration();
+    client = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+    await authenticateStaff(client);
+    await generatePlayerPdfQa(client);
+  } catch (error) {
+    console.error(`Player PDF QA failed: ${error?.message || 'error desconocido'}`);
+    failed = true;
+  } finally {
+    if (client) {
+      const { error: signOutError } = await client.auth.signOut();
+      if (signOutError) {
+        console.error(`No se pudo cerrar la sesión QA: ${signOutError.message}`);
+        failed = true;
+      }
+    }
+  }
+
+  if (failed) process.exitCode = 1;
+};
+
+await main();

@@ -22,13 +22,8 @@ const readLocalEnv = () => {
 const env = { ...readLocalEnv(), ...process.env };
 const supabaseUrl = env.VITE_SUPABASE_URL;
 const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY.');
-  process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const staffEmail = process.env.SUPABASE_QA_STAFF_EMAIL;
+const staffPassword = process.env.SUPABASE_QA_STAFF_PASSWORD;
 
 const checks = [
   'partidos',
@@ -41,33 +36,96 @@ const checks = [
   'training_library',
 ];
 
-const tableErrors = [];
-const hits = [];
+const validateConfiguration = () => {
+  const missing = [
+    ['VITE_SUPABASE_URL', supabaseUrl],
+    ['VITE_SUPABASE_ANON_KEY', supabaseAnonKey],
+    ['SUPABASE_QA_STAFF_EMAIL', staffEmail],
+    ['SUPABASE_QA_STAFF_PASSWORD', staffPassword],
+  ].filter(([, value]) => !String(value || '').trim()).map(([name]) => name);
 
-for (const table of checks) {
-  const { data, error } = await supabase.from(table).select('*').limit(1000);
-  if (error) {
-    tableErrors.push({ table, error: error.message });
-    continue;
+  if (missing.length) {
+    throw new Error(`Faltan variables de entorno requeridas: ${missing.join(', ')}.`);
+  }
+};
+
+const authenticateStaff = async (client) => {
+  const { data, error } = await client.auth.signInWithPassword({
+    email: staffEmail,
+    password: staffPassword,
+  });
+  if (error || !data?.session) {
+    throw new Error(`No se pudo autenticar la cuenta QA STAFF${error?.message ? `: ${error.message}` : '.'}`);
   }
 
-  for (const row of data || []) {
-    if (BROKEN_ENCODING_PATTERN.test(JSON.stringify(row))) {
-      hits.push({ table, id: row.id });
+  const { data: isStaff, error: staffError } = await client.rpc('is_app_staff');
+  if (staffError) {
+    throw new Error(`No se pudo verificar is_app_staff(): ${staffError.message}`);
+  }
+  if (isStaff !== true) {
+    throw new Error('La cuenta QA autenticada no está autorizada como STAFF.');
+  }
+};
+
+const runAudit = async (client) => {
+  const tableErrors = [];
+  const hits = [];
+
+  for (const table of checks) {
+    const { data, error } = await client.from(table).select('*').limit(1000);
+    if (error) {
+      tableErrors.push({ table, error: error.message });
+      continue;
+    }
+
+    for (const row of data || []) {
+      if (BROKEN_ENCODING_PATTERN.test(JSON.stringify(row))) {
+        hits.push({ table, id: row.id });
+      }
     }
   }
-}
 
-if (tableErrors.length) {
-  console.warn('Some tables could not be audited:');
-  tableErrors.forEach(({ table, error }) => console.warn(`${table}: ${error}`));
-  process.exit(2);
-}
+  if (tableErrors.length) {
+    console.warn('Some tables could not be audited:');
+    tableErrors.forEach(({ table, error }) => console.warn(`${table}: ${error}`));
+    return 2;
+  }
 
-if (hits.length) {
-  console.error('Broken encoding patterns found in Supabase rows:');
-  hits.forEach(({ table, id }) => console.error(`${table}:${id}`));
-  process.exit(1);
-}
+  if (hits.length) {
+    console.error('Broken encoding patterns found in Supabase rows:');
+    hits.forEach(({ table, id }) => console.error(`${table}:${id}`));
+    return 1;
+  }
 
-console.log(`Supabase encoding audit passed for ${checks.length - tableErrors.length}/${checks.length} table checks.`);
+  console.log(`Supabase encoding audit passed for ${checks.length} table checks.`);
+  return 0;
+};
+
+const main = async () => {
+  let client;
+  let exitCode = 0;
+
+  try {
+    validateConfiguration();
+    client = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+    await authenticateStaff(client);
+    exitCode = await runAudit(client);
+  } catch (error) {
+    console.error(`Supabase encoding audit failed: ${error?.message || 'error desconocido'}`);
+    exitCode = 1;
+  } finally {
+    if (client) {
+      const { error: signOutError } = await client.auth.signOut();
+      if (signOutError) {
+        console.error(`No se pudo cerrar la sesión QA: ${signOutError.message}`);
+        if (exitCode === 0) exitCode = 1;
+      }
+    }
+  }
+
+  process.exitCode = exitCode;
+};
+
+await main();
