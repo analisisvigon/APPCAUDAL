@@ -104,6 +104,7 @@ begin
      or pg_catalog.has_table_privilege('anon', target_relation, 'INSERT')
      or pg_catalog.has_table_privilege('anon', target_relation, 'UPDATE')
      or pg_catalog.has_table_privilege('anon', target_relation, 'DELETE')
+     or pg_catalog.has_table_privilege('anon', target_relation, 'MAINTAIN')
      or pg_catalog.has_table_privilege('anon', target_relation, 'TRUNCATE')
      or pg_catalog.has_table_privilege('anon', target_relation, 'REFERENCES')
      or pg_catalog.has_table_privilege('anon', target_relation, 'TRIGGER') then
@@ -149,6 +150,9 @@ begin
      )
      or not pg_catalog.has_table_privilege(
        'authenticated', target_relation, 'DELETE'
+     )
+     or pg_catalog.has_table_privilege(
+       'authenticated', target_relation, 'MAINTAIN'
      )
      or pg_catalog.has_table_privilege(
        'authenticated', target_relation, 'TRUNCATE'
@@ -383,6 +387,7 @@ begin
      or pg_catalog.has_table_privilege('anon', target_relation, 'INSERT')
      or pg_catalog.has_table_privilege('anon', target_relation, 'UPDATE')
      or pg_catalog.has_table_privilege('anon', target_relation, 'DELETE')
+     or pg_catalog.has_table_privilege('anon', target_relation, 'MAINTAIN')
      or pg_catalog.has_table_privilege('anon', target_relation, 'TRUNCATE')
      or pg_catalog.has_table_privilege('anon', target_relation, 'REFERENCES')
      or pg_catalog.has_table_privilege('anon', target_relation, 'TRIGGER') then
@@ -416,7 +421,10 @@ begin
     and privilege.grantee = authenticated_oid;
 
   if actual_authenticated_privileges
-     is distinct from expected_authenticated_privileges then
+     is distinct from expected_authenticated_privileges
+     or pg_catalog.has_table_privilege(
+       'authenticated', target_relation, 'MAINTAIN'
+     ) then
     raise exception
       'Contingencia Fase 0A postcheck: grants de authenticated cambiaron: %',
       actual_authenticated_privileges;

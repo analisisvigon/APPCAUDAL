@@ -22,7 +22,8 @@ declare
   actual_anon_privileges text[];
   actual_authenticated_privileges text[];
   expected_full_privileges constant text[] := array[
-    'DELETE', 'INSERT', 'REFERENCES', 'SELECT', 'TRIGGER', 'TRUNCATE', 'UPDATE'
+    'DELETE', 'INSERT', 'MAINTAIN', 'REFERENCES', 'SELECT', 'TRIGGER',
+    'TRUNCATE', 'UPDATE'
   ]::text[];
   function_count integer;
   invalid_function_count integer;
@@ -293,7 +294,7 @@ end
 $precheck$;
 
 -- GRANTS. La revocacion previa evita conservar privilegios amplios como
--- TRUNCATE, REFERENCES o TRIGGER en authenticated.
+-- MAINTAIN, TRUNCATE, REFERENCES o TRIGGER en authenticated.
 revoke all privileges on table public.equipos_rivales from anon;
 revoke all privileges on table public.equipos_rivales from authenticated;
 
@@ -386,6 +387,7 @@ begin
      or pg_catalog.has_table_privilege('anon', target_relation, 'INSERT')
      or pg_catalog.has_table_privilege('anon', target_relation, 'UPDATE')
      or pg_catalog.has_table_privilege('anon', target_relation, 'DELETE')
+     or pg_catalog.has_table_privilege('anon', target_relation, 'MAINTAIN')
      or pg_catalog.has_table_privilege('anon', target_relation, 'TRUNCATE')
      or pg_catalog.has_table_privilege('anon', target_relation, 'REFERENCES')
      or pg_catalog.has_table_privilege('anon', target_relation, 'TRIGGER') then
@@ -426,6 +428,9 @@ begin
      )
      or not pg_catalog.has_table_privilege(
        'authenticated', target_relation, 'DELETE'
+     )
+     or pg_catalog.has_table_privilege(
+       'authenticated', target_relation, 'MAINTAIN'
      )
      or pg_catalog.has_table_privilege(
        'authenticated', target_relation, 'TRUNCATE'

@@ -19,12 +19,12 @@ with target as (
 ), requested(role_name, privilege_name) as (
   values
     ('anon', 'SELECT'), ('anon', 'INSERT'), ('anon', 'UPDATE'),
-    ('anon', 'DELETE'), ('anon', 'TRUNCATE'), ('anon', 'REFERENCES'),
-    ('anon', 'TRIGGER'),
+    ('anon', 'DELETE'), ('anon', 'MAINTAIN'), ('anon', 'TRUNCATE'),
+    ('anon', 'REFERENCES'), ('anon', 'TRIGGER'),
     ('authenticated', 'SELECT'), ('authenticated', 'INSERT'),
     ('authenticated', 'UPDATE'), ('authenticated', 'DELETE'),
-    ('authenticated', 'TRUNCATE'), ('authenticated', 'REFERENCES'),
-    ('authenticated', 'TRIGGER')
+    ('authenticated', 'MAINTAIN'), ('authenticated', 'TRUNCATE'),
+    ('authenticated', 'REFERENCES'), ('authenticated', 'TRIGGER')
 )
 select
   requested.role_name,
