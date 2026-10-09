@@ -56,15 +56,35 @@ begin
     select 1
     from pg_catalog.pg_proc procedure
     where procedure.oid = membership_function_oid
+      and procedure.prokind = 'f'
       and procedure.pronargs = 0
       and procedure.proretset
+      and procedure.prorettype = 'pg_catalog.record'::pg_catalog.regtype
       and procedure.provolatile = 's'
       and procedure.prosecdef
       and procedure.proowner = pg_catalog.to_regrole('postgres')
       and coalesce(procedure.proconfig, array[]::text[])
           @> array['search_path=pg_catalog']::text[]
-      and pg_catalog.pg_get_function_result(procedure.oid) =
-          'TABLE(membership_id uuid, club_id uuid, user_id uuid, role text, jugador_id uuid, is_active boolean)'
+      and procedure.proallargtypes = array[
+        'pg_catalog.uuid'::pg_catalog.regtype::oid,
+        'pg_catalog.uuid'::pg_catalog.regtype::oid,
+        'pg_catalog.uuid'::pg_catalog.regtype::oid,
+        'pg_catalog.text'::pg_catalog.regtype::oid,
+        'pg_catalog.uuid'::pg_catalog.regtype::oid,
+        'pg_catalog.bool'::pg_catalog.regtype::oid
+      ]::oid[]
+      and procedure.proargmodes = array[
+        't'::"char", 't'::"char", 't'::"char",
+        't'::"char", 't'::"char", 't'::"char"
+      ]::"char"[]
+      and procedure.proargnames = array[
+        'membership_id',
+        'club_id',
+        'user_id',
+        'role',
+        'jugador_id',
+        'is_active'
+      ]::text[]
   ) then
     raise exception
       'Contingencia Fase 0A abortada: current_membership() no conserva su contrato seguro';
