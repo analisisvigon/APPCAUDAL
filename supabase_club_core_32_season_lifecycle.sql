@@ -83,13 +83,16 @@ begin
   into seasons_is_active_fingerprint
   from public.club_seasons season;
 
-  select pg_catalog.md5(
-    relation.relrowsecurity::text
+  select pg_catalog.md5(pg_catalog.string_agg(
+    relation.relname
+    || ':' || relation.relowner::text
+    || ':' || relation.relrowsecurity::text
     || ':' || relation.relforcerowsecurity::text
     || ':' || coalesce(relation.relacl::text, '')
     || ':' || coalesce((
       select pg_catalog.string_agg(
         policy.polname
+        || ':' || policy.polpermissive::text
         || ':' || policy.polcmd
         || ':' || coalesce(policy.polroles::text, '')
         || ':' || coalesce(pg_catalog.pg_get_expr(policy.polqual, policy.polrelid), '')
@@ -98,11 +101,15 @@ begin
       )
       from pg_catalog.pg_policy policy
       where policy.polrelid = relation.oid
-    ), '')
-  )
+    ), ''),
+    '||' order by relation.relname
+  ))
   into seasons_security_fingerprint
   from pg_catalog.pg_class relation
-  where relation.oid = 'public.club_seasons'::regclass;
+  where relation.oid in (
+    'public.club_seasons'::regclass,
+    'public.club_memberships'::regclass
+  );
 
   perform pg_catalog.set_config(
     'appcaudal.block_5_1_is_active_before',
@@ -359,15 +366,16 @@ begin
       and constraint_row.conname = 'club_seasons_status_check'
       and constraint_row.contype = 'c'
       and constraint_row.convalidated
+      and not constraint_row.connoinherit
       and constraint_row.conkey = array[season_status_attnum]::smallint[]
-      and pg_catalog.strpos(
-        pg_catalog.pg_get_expr(constraint_row.conbin, constraint_row.conrelid),
-        '''open''::text'
-      ) > 0
-      and pg_catalog.strpos(
-        pg_catalog.pg_get_expr(constraint_row.conbin, constraint_row.conrelid),
-        '''closed''::text'
-      ) > 0
+      and pg_catalog.regexp_replace(
+        pg_catalog.lower(
+          pg_catalog.pg_get_expr(constraint_row.conbin, constraint_row.conrelid)
+        ),
+        '[[:space:]()]',
+        '',
+        'g'
+      ) = 'status=anyarray[''open''::text,''closed''::text]'
   ) then
     raise exception 'Bloque 5.1: club_seasons_status_check incompatible';
   end if;
@@ -379,19 +387,25 @@ begin
       and constraint_row.conname = 'club_seasons_lifecycle_consistency_check'
       and constraint_row.contype = 'c'
       and constraint_row.convalidated
+      and not constraint_row.connoinherit
       and constraint_row.conkey @> array[
         season_status_attnum,
         season_closed_at_attnum,
         season_closed_by_attnum
       ]::smallint[]
-      and pg_catalog.strpos(
-        pg_catalog.pg_get_expr(constraint_row.conbin, constraint_row.conrelid),
-        'closed_at'
-      ) > 0
-      and pg_catalog.strpos(
-        pg_catalog.pg_get_expr(constraint_row.conbin, constraint_row.conrelid),
-        'closed_by_membership_id'
-      ) > 0
+      and constraint_row.conkey <@ array[
+        season_status_attnum,
+        season_closed_at_attnum,
+        season_closed_by_attnum
+      ]::smallint[]
+      and pg_catalog.regexp_replace(
+        pg_catalog.lower(
+          pg_catalog.pg_get_expr(constraint_row.conbin, constraint_row.conrelid)
+        ),
+        '[[:space:]()]',
+        '',
+        'g'
+      ) = 'status=''open''::textandclosed_atisnullandclosed_by_membership_idisnullorstatus=''closed''::textandclosed_atisnotnullandclosed_by_membership_idisnotnull'
   ) then
     raise exception 'Bloque 5.1: club_seasons_lifecycle_consistency_check incompatible';
   end if;
@@ -403,6 +417,8 @@ begin
       and constraint_row.conname = 'club_seasons_id_club_key'
       and constraint_row.contype = 'u'
       and constraint_row.convalidated
+      and not constraint_row.condeferrable
+      and not constraint_row.condeferred
       and constraint_row.conkey = array[
         season_id_attnum,
         season_club_id_attnum
@@ -418,6 +434,8 @@ begin
       and constraint_row.conname = 'club_memberships_id_club_key'
       and constraint_row.contype = 'u'
       and constraint_row.convalidated
+      and not constraint_row.condeferrable
+      and not constraint_row.condeferred
       and constraint_row.conkey = array[
         membership_id_attnum,
         membership_club_id_attnum
@@ -433,6 +451,8 @@ begin
       and constraint_row.conname = 'club_seasons_closed_by_membership_club_fkey'
       and constraint_row.contype = 'f'
       and constraint_row.convalidated
+      and not constraint_row.condeferrable
+      and not constraint_row.condeferred
       and constraint_row.confrelid = 'public.club_memberships'::regclass
       and constraint_row.conkey = array[
         season_closed_by_attnum,
@@ -442,6 +462,8 @@ begin
         membership_id_attnum,
         membership_club_id_attnum
       ]::smallint[]
+      and constraint_row.confmatchtype = 's'
+      and constraint_row.confupdtype = 'a'
       and constraint_row.confdeltype = 'r'
   ) then
     raise exception 'Bloque 5.1: FK de responsable y club incompatible';
@@ -466,13 +488,16 @@ begin
     raise exception 'Bloque 5.1: is_active fue alterado inesperadamente';
   end if;
 
-  select pg_catalog.md5(
-    relation.relrowsecurity::text
+  select pg_catalog.md5(pg_catalog.string_agg(
+    relation.relname
+    || ':' || relation.relowner::text
+    || ':' || relation.relrowsecurity::text
     || ':' || relation.relforcerowsecurity::text
     || ':' || coalesce(relation.relacl::text, '')
     || ':' || coalesce((
       select pg_catalog.string_agg(
         policy.polname
+        || ':' || policy.polpermissive::text
         || ':' || policy.polcmd
         || ':' || coalesce(policy.polroles::text, '')
         || ':' || coalesce(pg_catalog.pg_get_expr(policy.polqual, policy.polrelid), '')
@@ -481,17 +506,21 @@ begin
       )
       from pg_catalog.pg_policy policy
       where policy.polrelid = relation.oid
-    ), '')
-  )
+    ), ''),
+    '||' order by relation.relname
+  ))
   into seasons_security_fingerprint
   from pg_catalog.pg_class relation
-  where relation.oid = 'public.club_seasons'::regclass;
+  where relation.oid in (
+    'public.club_seasons'::regclass,
+    'public.club_memberships'::regclass
+  );
 
   if seasons_security_fingerprint is distinct from pg_catalog.current_setting(
     'appcaudal.block_5_1_security_before',
     true
   ) then
-    raise exception 'Bloque 5.1: RLS, policies o grants de club_seasons cambiaron';
+    raise exception 'Bloque 5.1: RLS, policies o grants heredados cambiaron';
   end if;
 end;
 $postconditions$;
