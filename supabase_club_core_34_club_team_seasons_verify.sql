@@ -31,6 +31,8 @@ where relation.club_id = 'ca0da100-0000-4000-8000-000000000001'::uuid
 -- Expected: all columns true and relation_count = 1. Save relation_id and
 -- created_at, execute the migration again, then confirm they remain unchanged.
 select
+  (select count(*) from public.equipos_rivales where team_kind = 'own') = 1
+    as exactly_one_legacy_own_team,
   count(*) = 1 as exactly_one_initial_link,
   bool_and(team.code = 'caudal') as canonical_team_code_ok,
   bool_and(season.code = '2026' and season.label = '2026/2027') as season_identity_ok,
@@ -308,7 +310,8 @@ from pg_class class_row
 where class_row.oid = 'public.club_team_seasons'::regclass;
 
 -- 7. Client privileges. Expected: authenticated can SELECT/INSERT only; anon
--- has no data privilege. service_role is intentionally backend-only.
+-- has no data privilege. service_role is backend-only and has DELETE for
+-- controlled correction, but no UPDATE of identity/linkage keys.
 select
   role_name,
   has_table_privilege(role_name, 'public.club_team_seasons', 'SELECT') as can_select,

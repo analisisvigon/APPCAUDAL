@@ -84,6 +84,17 @@ begin
   -- legacy bootstrap check only; it is not a permanent club_teams invariant.
   select count(*)
   into v_count
+  from public.equipos_rivales legacy_team
+  where legacy_team.team_kind = 'own';
+
+  if v_count <> 1 then
+    raise exception
+      'Expected exactly one legacy team_kind=own row before Change 34; found %',
+      v_count;
+  end if;
+
+  select count(*)
+  into v_count
   from public.club_teams team
   join public.equipos_rivales legacy_team on legacy_team.id = team.id
   where team.club_id = v_club_id
@@ -215,8 +226,10 @@ begin
   revoke all on table public.club_team_seasons from authenticated;
   revoke all on table public.club_team_seasons from service_role;
 
+  -- The relation has no mutable business fields: clients and service_role get
+  -- no UPDATE privilege, so identity and linkage keys cannot be rewritten.
   grant select, insert on table public.club_team_seasons to authenticated;
-  grant select, insert, update, delete on table public.club_team_seasons to service_role;
+  grant select, insert, delete on table public.club_team_seasons to service_role;
 
   insert into public.club_team_seasons (club_id, team_id, season_id)
   values (v_club_id, v_team_id, v_season_id)
@@ -372,13 +385,23 @@ begin
      or has_table_privilege('anon', 'public.club_team_seasons', 'INSERT')
      or has_table_privilege('anon', 'public.club_team_seasons', 'UPDATE')
      or has_table_privilege('anon', 'public.club_team_seasons', 'DELETE')
+     or has_table_privilege('anon', 'public.club_team_seasons', 'TRUNCATE')
+     or has_table_privilege('anon', 'public.club_team_seasons', 'REFERENCES')
+     or has_table_privilege('anon', 'public.club_team_seasons', 'TRIGGER')
      or not has_table_privilege('authenticated', 'public.club_team_seasons', 'SELECT')
      or not has_table_privilege('authenticated', 'public.club_team_seasons', 'INSERT')
      or has_table_privilege('authenticated', 'public.club_team_seasons', 'UPDATE')
      or has_table_privilege('authenticated', 'public.club_team_seasons', 'DELETE')
      or has_table_privilege('authenticated', 'public.club_team_seasons', 'TRUNCATE')
      or has_table_privilege('authenticated', 'public.club_team_seasons', 'REFERENCES')
-     or has_table_privilege('authenticated', 'public.club_team_seasons', 'TRIGGER') then
+     or has_table_privilege('authenticated', 'public.club_team_seasons', 'TRIGGER')
+     or not has_table_privilege('service_role', 'public.club_team_seasons', 'SELECT')
+     or not has_table_privilege('service_role', 'public.club_team_seasons', 'INSERT')
+     or has_table_privilege('service_role', 'public.club_team_seasons', 'UPDATE')
+     or not has_table_privilege('service_role', 'public.club_team_seasons', 'DELETE')
+     or has_table_privilege('service_role', 'public.club_team_seasons', 'TRUNCATE')
+     or has_table_privilege('service_role', 'public.club_team_seasons', 'REFERENCES')
+     or has_table_privilege('service_role', 'public.club_team_seasons', 'TRIGGER') then
     raise exception 'public.club_team_seasons client privileges are incompatible with Change 34';
   end if;
 
