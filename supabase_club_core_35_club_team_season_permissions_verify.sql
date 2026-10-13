@@ -141,16 +141,49 @@ integrity_checks as (
     ) as no_duplicate_rows
   from integrity_counts i
 ),
-normalized_policies as (
+policy_text as (
   select p.polname, p.polcmd, p.polpermissive, p.polroles,
     p.polqual, p.polwithcheck,
-    regexp_replace(replace(replace(replace(
-      lower(pg_get_expr(p.polqual, p.polrelid)), 'public.', ''),
-      '::text[]', ''), '::text', ''), '[[:space:]()]', '', 'g') as using_expr,
-    regexp_replace(replace(lower(pg_get_expr(p.polwithcheck, p.polrelid)),
-      'public.', ''), '[[:space:]()]', '', 'g') as check_expr
+    regexp_replace(lower(pg_get_expr(p.polqual, p.polrelid)),
+      '[[:space:]()]', '', 'g') as using_compact,
+    regexp_replace(lower(pg_get_expr(p.polwithcheck, p.polrelid)),
+      '[[:space:]()]', '', 'g') as check_compact
   from pg_policy p
   where p.polrelid = to_regclass('public.club_team_season_permissions')
+),
+policy_qualified as (
+  select polname, polcmd, polpermissive, polroles, polqual, polwithcheck,
+    regexp_replace(replace(replace(replace(replace(using_compact,
+      'public.club_team_season_permissions.club_id', 'club_id'),
+      'club_team_season_permissions.club_id', 'club_id'),
+      'public.club_team_season_permissions.membership_id', 'membership_id'),
+      'club_team_season_permissions.membership_id', 'membership_id'),
+      '^public[.]', '') as using_qualified,
+    regexp_replace(replace(replace(replace(replace(check_compact,
+      'public.club_team_season_permissions.club_id', 'club_id'),
+      'club_team_season_permissions.club_id', 'club_id'),
+      'public.club_team_season_permissions.membership_id', 'membership_id'),
+      'club_team_season_permissions.membership_id', 'membership_id'),
+      '^public[.]', '') as check_qualified
+  from policy_text
+),
+normalized_policies as (
+  select polname, polcmd, polpermissive, polroles, polqual, polwithcheck,
+    -- Remove only casts after known columns, a closing quote or a closing
+    -- array bracket. Do not rewrite text inside the owner-role literal.
+    replace(replace(replace(replace(replace(replace(replace(replace(
+      using_qualified,
+      'club_id::uuid', 'club_id'), 'membership_id::uuid', 'membership_id'),
+      '''::pg_catalog.text[]', ''''), '''::text[]', ''''),
+      '''::pg_catalog.text', ''''), '''::text', ''''),
+      ']::pg_catalog.text[]', ']'), ']::text[]', ']') as using_expr,
+    replace(replace(replace(replace(replace(replace(replace(replace(
+      check_qualified,
+      'club_id::uuid', 'club_id'), 'membership_id::uuid', 'membership_id'),
+      '''::pg_catalog.text[]', ''''), '''::text[]', ''''),
+      '''::pg_catalog.text', ''''), '''::text', ''''),
+      ']::pg_catalog.text[]', ']'), ']::text[]', ']') as check_expr
+  from policy_qualified
 ),
 policy_checks as (
   select
@@ -160,7 +193,9 @@ policy_checks as (
       where polname = 'club_team_season_permissions_manager_select'
         and polcmd = 'r' and polpermissive
         and polroles = array[(select oid from pg_roles where rolname = 'authenticated')]::oid[]
-        and using_expr = 'has_club_roleclub_id,array[''owner'']'
+        and using_expr in (
+          'has_club_roleclub_id,array[''owner'']',
+          'has_club_roleclub_id,''{owner}''')
         and check_expr is null
     ) as manager_select_ok,
     exists (
@@ -176,7 +211,9 @@ policy_checks as (
       where polname = 'club_team_season_permissions_manager_delete'
         and polcmd = 'd' and polpermissive
         and polroles = array[(select oid from pg_roles where rolname = 'authenticated')]::oid[]
-        and using_expr = 'has_club_roleclub_id,array[''owner'']'
+        and using_expr in (
+          'has_club_roleclub_id,array[''owner'']',
+          'has_club_roleclub_id,''{owner}''')
         and check_expr is null
     ) as manager_delete_ok,
     not exists (select 1 from normalized_policies where polcmd in ('w', '*'))
@@ -188,7 +225,9 @@ owner_contract as (
      where polname in (
        'club_team_season_permissions_manager_select',
        'club_team_season_permissions_manager_delete')
-       and using_expr = 'has_club_roleclub_id,array[''owner'']') = 2
+       and using_expr in (
+         'has_club_roleclub_id,array[''owner'']',
+         'has_club_roleclub_id,''{owner}''')) = 2
       as select_and_delete_owner_only,
     position('public.has_club_role(target_club_id, array[''owner'']::text[])'
       in lower(pg_get_functiondef(to_regprocedure(
@@ -610,10 +649,10 @@ all_results as (
 ),
 global_result as (
   select 'GLOBAL'::text as control,
-    count(*) filter (where obligatoria) > 0
+    (count(*) filter (where obligatoria)) = 69
       and coalesce(bool_and(ok) filter (where obligatoria), false)
       as ok,
-    'Obligatorias: ' || (count(*) filter (where obligatoria))::text ||
+    'Obligatorias: ' || (count(*) filter (where obligatoria))::text || '/69' ||
     '; PASS: ' || (count(*) filter (where obligatoria and ok))::text ||
     '; FAIL: ' || (count(*) filter (where obligatoria and not ok))::text ||
     '. Los inventarios son informativos; la prueba con identidades reales es independiente.'
