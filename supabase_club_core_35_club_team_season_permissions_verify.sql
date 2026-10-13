@@ -459,8 +459,10 @@ select
     'public.can_read_club_team_season(uuid)'::regprocedure
   ))) = 0 as player_not_granted;
 
--- 8. Table privileges. authenticated is constrained by owner-only RLS;
--- service_role has no direct table privileges and cannot bypass those policies.
+-- 8. Table privileges and role attributes. authenticated is constrained by
+-- owner-only RLS. Revoking direct grants from service_role restricts direct
+-- access to this table; it does not remove BYPASSRLS or other administrative
+-- paths (for example, authorized SECURITY DEFINER functions or SQL Editor).
 select
   role_name,
   has_table_privilege(role_name, 'public.club_team_season_permissions', 'SELECT') as can_select,
@@ -472,6 +474,11 @@ select
   has_table_privilege(role_name, 'public.club_team_season_permissions', 'TRIGGER') as can_trigger
 from (values ('anon'), ('authenticated'), ('service_role')) roles(role_name)
 order by role_name;
+
+select rolname, rolbypassrls, rolsuper
+from pg_roles
+where rolname in ('authenticated', 'service_role')
+order by rolname;
 
 select
   pg_get_userbyid(relation.relowner) = 'postgres' as owner_is_postgres,
