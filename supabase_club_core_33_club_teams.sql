@@ -139,6 +139,9 @@ create table if not exists public.club_teams (
 alter table public.club_teams owner to postgres;
 alter table public.club_teams enable row level security;
 
+-- club_teams es el registro canonico de equipos propios. team_kind solo se
+-- emplea para identificar al Caudal en la carga inicial, no para autorizar
+-- futuras filas. La FK exige que el UUID deportivo exista.
 do $policies$
 begin
   if not exists (
@@ -158,14 +161,7 @@ begin
   ) then
     create policy club_teams_manager_insert
     on public.club_teams for insert to authenticated
-    with check (
-      public.can_manage_club(club_id)
-      and exists (
-        select 1 from public.equipos_rivales legacy_team
-        where legacy_team.id = club_teams.id
-          and legacy_team.team_kind = 'own'
-      )
-    );
+    with check (public.can_manage_club(club_id));
   end if;
 
   if not exists (
@@ -176,17 +172,21 @@ begin
     create policy club_teams_manager_update
     on public.club_teams for update to authenticated
     using (public.can_manage_club(club_id))
-    with check (
-      public.can_manage_club(club_id)
-      and exists (
-        select 1 from public.equipos_rivales legacy_team
-        where legacy_team.id = club_teams.id
-          and legacy_team.team_kind = 'own'
-      )
-    );
+    with check (public.can_manage_club(club_id));
   end if;
 end;
 $policies$;
+
+-- Una repeticion tambien corrige las policies si se aplico una version previa
+-- del Cambio 2 que aun exigia team_kind = 'own'.
+alter policy club_teams_manager_insert on public.club_teams
+  to authenticated
+  with check (public.can_manage_club(club_id));
+
+alter policy club_teams_manager_update on public.club_teams
+  to authenticated
+  using (public.can_manage_club(club_id))
+  with check (public.can_manage_club(club_id));
 
 -- UPDATE a clientes solo de codigo/actividad. id y club_id son identidad fija.
 -- No se concede DELETE ni se define policy DELETE.
@@ -252,14 +252,6 @@ begin
         and team.club_id = caudal_club_id
         and team.code = 'caudal') <> 1 then
     raise exception 'Cambio 2: el equipo propio no conserva identidad, club y codigo esperados';
-  end if;
-
-  if exists (
-    select 1 from public.club_teams club_team
-    join public.equipos_rivales legacy_team on legacy_team.id = club_team.id
-    where legacy_team.team_kind <> 'own'
-  ) then
-    raise exception 'Cambio 2: club_teams contiene un equipo legacy rival';
   end if;
 
   if (select pg_catalog.count(*) from pg_catalog.pg_attribute attribute
@@ -387,6 +379,40 @@ begin
              or (policy.polname = 'club_teams_manager_update' and policy.polcmd = 'w')
            )) <> 3 then
     raise exception 'Cambio 2: RLS o conjunto de policies incompatible';
+  end if;
+
+  if not exists (
+    select 1 from pg_catalog.pg_policy policy
+    where policy.polrelid = 'public.club_teams'::regclass
+      and policy.polname = 'club_teams_staff_select'
+      and pg_catalog.regexp_replace(pg_catalog.replace(
+        pg_catalog.lower(pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)),
+        'public.', ''
+      ), '[[:space:]()]', '', 'g') = 'can_edit_club_dataclub_id'
+      and policy.polwithcheck is null
+  ) or not exists (
+    select 1 from pg_catalog.pg_policy policy
+    where policy.polrelid = 'public.club_teams'::regclass
+      and policy.polname = 'club_teams_manager_insert'
+      and policy.polqual is null
+      and pg_catalog.regexp_replace(pg_catalog.replace(
+        pg_catalog.lower(pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid)),
+        'public.', ''
+      ), '[[:space:]()]', '', 'g') = 'can_manage_clubclub_id'
+  ) or not exists (
+    select 1 from pg_catalog.pg_policy policy
+    where policy.polrelid = 'public.club_teams'::regclass
+      and policy.polname = 'club_teams_manager_update'
+      and pg_catalog.regexp_replace(pg_catalog.replace(
+        pg_catalog.lower(pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)),
+        'public.', ''
+      ), '[[:space:]()]', '', 'g') = 'can_manage_clubclub_id'
+      and pg_catalog.regexp_replace(pg_catalog.replace(
+        pg_catalog.lower(pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid)),
+        'public.', ''
+      ), '[[:space:]()]', '', 'g') = 'can_manage_clubclub_id'
+  ) then
+    raise exception 'Cambio 2: expresiones RLS de club_teams incompatibles';
   end if;
 
   if not exists (

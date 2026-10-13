@@ -177,7 +177,8 @@ select
      and index_row.indislive
      and index_row.indnatts = index_row.indnkeyatts) = 3 as ok;
 
--- 4. Datos: ningun equipo propio registrado apunta a un rival o a otro club.
+-- 4. Datos: referencias, club y codigos coherentes. team_kind es legacy;
+-- club_teams determina cuales equipos son propios.
 select
   'club_team_rows_consistent' as check_name,
   not exists (
@@ -185,7 +186,6 @@ select
     left join public.equipos_rivales legacy_team on legacy_team.id = club_team.id
     left join public.clubs club on club.id = club_team.club_id
     where legacy_team.id is null
-       or legacy_team.team_kind <> 'own'
        or club.id is null
        or club_team.code <> pg_catalog.btrim(club_team.code)
        or club_team.code = ''
@@ -199,6 +199,42 @@ from pg_catalog.pg_policies policy
 where policy.schemaname = 'public'
   and policy.tablename = 'club_teams'
 order by policy.policyname;
+
+with predicates as (
+  select
+    policy.polname,
+    pg_catalog.regexp_replace(pg_catalog.replace(
+      pg_catalog.lower(pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)),
+      'public.', ''
+    ), '[[:space:]()]', '', 'g') as using_expr,
+    pg_catalog.regexp_replace(pg_catalog.replace(
+      pg_catalog.lower(pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid)),
+      'public.', ''
+    ), '[[:space:]()]', '', 'g') as check_expr
+  from pg_catalog.pg_policy policy
+  where policy.polrelid = 'public.club_teams'::regclass
+)
+select
+  'club_teams_policy_predicates' as check_name,
+  (select pg_catalog.count(*) from predicates) = 3
+  and exists (
+    select 1 from predicates
+    where polname = 'club_teams_staff_select'
+      and using_expr = 'can_edit_club_dataclub_id'
+      and check_expr is null
+  )
+  and exists (
+    select 1 from predicates
+    where polname = 'club_teams_manager_insert'
+      and using_expr is null
+      and check_expr = 'can_manage_clubclub_id'
+  )
+  and exists (
+    select 1 from predicates
+    where polname = 'club_teams_manager_update'
+      and using_expr = 'can_manage_clubclub_id'
+      and check_expr = 'can_manage_clubclub_id'
+  ) as ok;
 
 select
   'club_teams_security_contract' as check_name,
@@ -237,8 +273,8 @@ select
 from pg_catalog.pg_class relation
 where relation.oid = 'public.club_teams'::regclass;
 
--- Revisar en el inventario que SELECT llama a can_edit_club_data(club_id),
--- INSERT/UPDATE a can_manage_club(club_id) y sus WITH CHECK comprueban own.
+-- SELECT llama a can_edit_club_data(club_id); INSERT/UPDATE llaman a
+-- can_manage_club(club_id). Ningun predicado depende de team_kind.
 
 -- 6. Trigger de updated_at.
 select
