@@ -179,6 +179,10 @@ $policies$;
 
 -- Una repeticion tambien corrige las policies si se aplico una version previa
 -- del Cambio 2 que aun exigia team_kind = 'own'.
+alter policy club_teams_staff_select on public.club_teams
+  to authenticated
+  using (public.can_edit_club_data(club_id));
+
 alter policy club_teams_manager_insert on public.club_teams
   to authenticated
   with check (public.can_manage_club(club_id));
