@@ -201,7 +201,7 @@ with attributes as (
 select exists (
   select 1
   from pg_index index_row, attributes
-  where index_row.indexrelid = 'public.club_team_seasons_club_season_idx'::regclass
+  where index_row.indexrelid = to_regclass('public.club_team_seasons_club_season_idx')
     and index_row.indrelid = 'public.club_team_seasons'::regclass
     and index_row.indisvalid
     and index_row.indisready

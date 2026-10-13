@@ -13,6 +13,7 @@ declare
   v_columns_ok boolean;
   v_constraint_count integer;
   v_policy_count integer;
+  v_existing_relation_oid oid;
 begin
   if auth.uid() is not null then
     raise exception 'Change 34 must run without an application JWT identity';
@@ -142,11 +143,14 @@ begin
       'Season 2026/2027 does not match the expected club, identity, dates and active/open state';
   end if;
 
-  if to_regclass('public.club_team_seasons') is not null
-     and obj_description('public.club_team_seasons'::regclass, 'pg_class') is distinct from
+  v_existing_relation_oid := to_regclass('public.club_team_seasons')::oid;
+
+  if v_existing_relation_oid is not null then
+    if obj_description(v_existing_relation_oid, 'pg_class') is distinct from
        'APPCAUDAL canonical links between club teams and club seasons (change 34)' then
-    raise exception
-      'public.club_team_seasons already exists but is not identified as the Change 34 table';
+      raise exception
+        'public.club_team_seasons already exists but is not identified as the Change 34 table';
+    end if;
   end if;
 
   create table if not exists public.club_team_seasons (
