@@ -21,16 +21,12 @@ begin
       'Change 35 requires public.clubs, public.club_memberships and public.club_team_seasons';
   end if;
 
-  if to_regprocedure('public.can_manage_club(uuid)') is null
-     or to_regprocedure('public.has_club_role(uuid,text[])') is null then
+  if to_regprocedure('public.has_club_role(uuid,text[])') is null then
     raise exception
-      'Change 35 requires public.can_manage_club(uuid) and public.has_club_role(uuid,text[])';
+      'Change 35 requires public.has_club_role(uuid,text[])';
   end if;
 
   if not has_function_privilege(
-       'authenticated', 'public.can_manage_club(uuid)', 'EXECUTE'
-     )
-     or not has_function_privilege(
        'authenticated', 'public.has_club_role(uuid,text[])', 'EXECUTE'
      ) then
     raise exception 'authenticated cannot execute the required club authorization helpers';
@@ -229,7 +225,7 @@ set search_path = pg_catalog
 as $function$
   select
     auth.uid() is not null
-    and public.can_manage_club(target_club_id)
+    and public.has_club_role(target_club_id, array['owner']::text[])
     and exists (
       select 1
       from public.club_memberships target
@@ -295,7 +291,7 @@ begin
       using errcode = '23514';
   end if;
 
-  if public.can_manage_club(new.club_id) is not true then
+  if public.has_club_role(new.club_id, array['owner']::text[]) is not true then
     raise exception 'Not authorized to assign this team-season permission'
       using errcode = '42501';
   end if;
@@ -422,7 +418,7 @@ begin
     create policy club_team_season_permissions_manager_select
       on public.club_team_season_permissions
       for select to authenticated
-      using (public.can_manage_club(club_id));
+      using (public.has_club_role(club_id, array['owner']::text[]));
   end if;
 
   if not exists (
@@ -446,7 +442,7 @@ begin
     create policy club_team_season_permissions_manager_delete
       on public.club_team_season_permissions
       for delete to authenticated
-      using (public.can_manage_club(club_id));
+      using (public.has_club_role(club_id, array['owner']::text[]));
   end if;
 end
 $policies$;
@@ -456,7 +452,7 @@ $policies$;
 alter policy club_team_season_permissions_manager_select
   on public.club_team_season_permissions
   to authenticated
-  using (public.can_manage_club(club_id));
+  using (public.has_club_role(club_id, array['owner']::text[]));
 
 alter policy club_team_season_permissions_manager_insert
   on public.club_team_season_permissions
@@ -468,14 +464,12 @@ alter policy club_team_season_permissions_manager_insert
 alter policy club_team_season_permissions_manager_delete
   on public.club_team_season_permissions
   to authenticated
-  using (public.can_manage_club(club_id));
+  using (public.has_club_role(club_id, array['owner']::text[]));
 
 revoke all on table public.club_team_season_permissions
   from public, anon, authenticated, service_role;
 grant select, insert, delete on table public.club_team_season_permissions
   to authenticated;
-grant select, insert, delete on table public.club_team_season_permissions
-  to service_role;
 
 do $postconditions$
 declare
@@ -612,7 +606,7 @@ begin
     and (
       (policy.polname = 'club_team_season_permissions_manager_select' and policy.polcmd = 'r'
        and policy.polwithcheck is null
-       and regexp_replace(replace(lower(pg_get_expr(policy.polqual, policy.polrelid)), 'public.', ''), '[[:space:]()]', '', 'g') = 'can_manage_clubclub_id')
+       and regexp_replace(replace(replace(replace(lower(pg_get_expr(policy.polqual, policy.polrelid)), 'public.', ''), '::text[]', ''), '::text', ''), '[[:space:]()]', '', 'g') = 'has_club_roleclub_id,array[''owner'']')
       or
       (policy.polname = 'club_team_season_permissions_manager_insert' and policy.polcmd = 'a'
        and policy.polqual is null
@@ -620,7 +614,7 @@ begin
       or
       (policy.polname = 'club_team_season_permissions_manager_delete' and policy.polcmd = 'd'
        and policy.polwithcheck is null
-       and regexp_replace(replace(lower(pg_get_expr(policy.polqual, policy.polrelid)), 'public.', ''), '[[:space:]()]', '', 'g') = 'can_manage_clubclub_id')
+       and regexp_replace(replace(replace(replace(lower(pg_get_expr(policy.polqual, policy.polrelid)), 'public.', ''), '::text[]', ''), '::text', ''), '[[:space:]()]', '', 'g') = 'has_club_roleclub_id,array[''owner'']')
     );
 
   if v_policy_count <> 3
@@ -652,10 +646,10 @@ begin
      or has_table_privilege('authenticated', 'public.club_team_season_permissions', 'TRUNCATE')
      or has_table_privilege('authenticated', 'public.club_team_season_permissions', 'REFERENCES')
      or has_table_privilege('authenticated', 'public.club_team_season_permissions', 'TRIGGER')
-     or not has_table_privilege('service_role', 'public.club_team_season_permissions', 'SELECT')
-     or not has_table_privilege('service_role', 'public.club_team_season_permissions', 'INSERT')
+     or has_table_privilege('service_role', 'public.club_team_season_permissions', 'SELECT')
+     or has_table_privilege('service_role', 'public.club_team_season_permissions', 'INSERT')
      or has_table_privilege('service_role', 'public.club_team_season_permissions', 'UPDATE')
-     or not has_table_privilege('service_role', 'public.club_team_season_permissions', 'DELETE')
+     or has_table_privilege('service_role', 'public.club_team_season_permissions', 'DELETE')
      or has_table_privilege('service_role', 'public.club_team_season_permissions', 'TRUNCATE')
      or has_table_privilege('service_role', 'public.club_team_season_permissions', 'REFERENCES')
      or has_table_privilege('service_role', 'public.club_team_season_permissions', 'TRIGGER') then

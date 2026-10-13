@@ -248,7 +248,7 @@ with normalized as (
     policy.polcmd,
     policy.polpermissive,
     policy.polroles,
-    regexp_replace(replace(lower(pg_get_expr(policy.polqual, policy.polrelid)), 'public.', ''), '[[:space:]()]', '', 'g') as using_expr,
+    regexp_replace(replace(replace(replace(lower(pg_get_expr(policy.polqual, policy.polrelid)), 'public.', ''), '::text[]', ''), '::text', ''), '[[:space:]()]', '', 'g') as using_expr,
     regexp_replace(replace(lower(pg_get_expr(policy.polwithcheck, policy.polrelid)), 'public.', ''), '[[:space:]()]', '', 'g') as check_expr
   from pg_policy policy
   where policy.polrelid = 'public.club_team_season_permissions'::regclass
@@ -260,7 +260,7 @@ select
     where polname = 'club_team_season_permissions_manager_select'
       and polcmd = 'r' and polpermissive
       and polroles = array[(select oid from pg_roles where rolname = 'authenticated')]::oid[]
-      and using_expr = 'can_manage_clubclub_id' and check_expr is null
+      and using_expr = 'has_club_roleclub_id,array[''owner'']' and check_expr is null
   ) as manager_select_ok,
   exists (
     select 1 from normalized
@@ -275,10 +275,38 @@ select
     where polname = 'club_team_season_permissions_manager_delete'
       and polcmd = 'd' and polpermissive
       and polroles = array[(select oid from pg_roles where rolname = 'authenticated')]::oid[]
-      and using_expr = 'can_manage_clubclub_id' and check_expr is null
+      and using_expr = 'has_club_roleclub_id,array[''owner'']' and check_expr is null
   ) as manager_delete_ok,
   not exists (select 1 from normalized where polcmd in ('w', '*'))
     as no_update_or_all_policy;
+
+-- Owner-only administrative contract (static catalog check, not a JWT/RLS
+-- impersonation test). Both management policies must call the owner-only
+-- helper; the grant helper and INSERT guard must do the same.
+with owner_policies as (
+  select count(*) = 2 as select_and_delete_owner_only
+  from pg_policy policy
+  where policy.polrelid = 'public.club_team_season_permissions'::regclass
+    and policy.polname in (
+      'club_team_season_permissions_manager_select',
+      'club_team_season_permissions_manager_delete'
+    )
+    and regexp_replace(replace(replace(replace(lower(pg_get_expr(policy.polqual, policy.polrelid)), 'public.', ''), '::text[]', ''), '::text', ''), '[[:space:]()]', '', 'g') = 'has_club_roleclub_id,array[''owner'']'
+), owner_functions as (
+  select
+    position('public.has_club_role(target_club_id, array[''owner'']::text[])' in lower(pg_get_functiondef('public.can_assign_club_team_season_permission(uuid,uuid)'::regprocedure))) > 0 as grant_owner_only,
+    position('public.has_club_role(new.club_id, array[''owner'']::text[]) is not true' in lower(pg_get_functiondef('public.guard_club_team_season_permission_mutation()'::regprocedure))) > 0 as insertion_guard_owner_only,
+    position('membership.is_active' in lower(pg_get_functiondef('public.has_club_role(uuid,text[])'::regprocedure))) > 0 as active_membership_required,
+    position('membership.role = any(allowed_roles)' in lower(pg_get_functiondef('public.has_club_role(uuid,text[])'::regprocedure))) > 0 as role_list_enforced
+)
+select
+  select_and_delete_owner_only and grant_owner_only
+    and insertion_guard_owner_only and active_membership_required
+    and role_list_enforced as active_owner_can_manage_assignments,
+  select_and_delete_owner_only and grant_owner_only
+    and insertion_guard_owner_only and active_membership_required
+    and role_list_enforced as admin_cannot_manage_assignments
+from owner_policies cross join owner_functions;
 
 -- 7. Trigger and helper-function security. The read helper has no season-status
 -- condition: a closed season remains readable, but the helper grants no edit.
@@ -387,9 +415,9 @@ select
 -- Expected: all true. Assignment creation locks the target membership row,
 -- so a concurrent deactivation cannot leave a permission behind.
 select
-  position('public.can_manage_club(new.club_id) is not true' in lower(pg_get_functiondef(
+  position('public.has_club_role(new.club_id, array[''owner'']::text[]) is not true' in lower(pg_get_functiondef(
     'public.guard_club_team_season_permission_mutation()'::regprocedure
-  ))) > 0 as manager_checked_before_row_lock,
+  ))) > 0 as active_owner_checked_before_row_lock,
   position('for update' in lower(pg_get_functiondef(
     'public.guard_club_team_season_permission_mutation()'::regprocedure
   ))) > 0 as insertion_locks_membership_row,
@@ -404,9 +432,9 @@ select
   ))) > 0 as no_backend_identity_bypass;
 
 select
-  position('public.can_manage_club(target_club_id)' in lower(pg_get_functiondef(
+  position('public.has_club_role(target_club_id, array[''owner'']::text[])' in lower(pg_get_functiondef(
     'public.can_assign_club_team_season_permission(uuid,uuid)'::regprocedure
-  ))) > 0 as owner_admin_manager_check,
+  ))) > 0 as active_owner_only_assignment_check,
   position('target.role = ''staff''' in lower(pg_get_functiondef(
     'public.can_assign_club_team_season_permission(uuid,uuid)'::regprocedure
   ))) > 0 as grant_only_to_staff,
@@ -431,8 +459,8 @@ select
     'public.can_read_club_team_season(uuid)'::regprocedure
   ))) = 0 as player_not_granted;
 
--- 8. Table privileges. authenticated can manage through SELECT/INSERT/DELETE
--- plus RLS, but neither clients nor service_role can UPDATE identity keys.
+-- 8. Table privileges. authenticated is constrained by owner-only RLS;
+-- service_role has no direct table privileges and cannot bypass those policies.
 select
   role_name,
   has_table_privilege(role_name, 'public.club_team_season_permissions', 'SELECT') as can_select,
