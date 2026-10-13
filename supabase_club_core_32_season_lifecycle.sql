@@ -93,7 +93,7 @@ begin
       select pg_catalog.string_agg(
         policy.polname
         || ':' || policy.polpermissive::text
-        || ':' || policy.polcmd
+        || ':' || policy.polcmd::text
         || ':' || coalesce(policy.polroles::text, '')
         || ':' || coalesce(pg_catalog.pg_get_expr(policy.polqual, policy.polrelid), '')
         || ':' || coalesce(pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid), ''),
@@ -498,7 +498,7 @@ begin
       select pg_catalog.string_agg(
         policy.polname
         || ':' || policy.polpermissive::text
-        || ':' || policy.polcmd
+        || ':' || policy.polcmd::text
         || ':' || coalesce(policy.polroles::text, '')
         || ':' || coalesce(pg_catalog.pg_get_expr(policy.polqual, policy.polrelid), '')
         || ':' || coalesce(pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid), ''),
