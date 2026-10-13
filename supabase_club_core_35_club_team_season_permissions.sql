@@ -54,6 +54,22 @@ begin
       'public.club_memberships must have one validated, non-deferrable UNIQUE (id, club_id) constraint';
   end if;
 
+  if not exists (
+    select 1
+    from pg_trigger trigger_row
+    where trigger_row.tgrelid = 'public.club_memberships'::regclass
+      and trigger_row.tgname = 'guard_club_membership_mutation'
+      and trigger_row.tgfoid = to_regprocedure(
+        'public.guard_club_membership_mutation()'
+      )
+      and trigger_row.tgenabled = 'O'
+      and (trigger_row.tgtype & 2) = 2
+      and (trigger_row.tgtype & 16) = 16
+      and not trigger_row.tgisinternal
+  ) then
+    raise exception 'The existing club_memberships BEFORE UPDATE guard must remain active';
+  end if;
+
   -- Verify the Change 3 identity and club columns before adding its composite
   -- lookup key. The existing team/season link and its data are not modified.
   if not exists (
@@ -123,6 +139,17 @@ begin
        'APPCAUDAL Change 35 guard: STAFF-only assignments and immutable keys.' then
       raise exception
         'guard_club_team_season_permission_mutation() exists without the Change 35 contract';
+    end if;
+  end if;
+
+  v_existing_function_oid := to_regprocedure(
+    'public.revoke_ineligible_club_team_season_permissions()'
+  )::oid;
+  if v_existing_function_oid is not null then
+    if obj_description(v_existing_function_oid, 'pg_proc') is distinct from
+       'APPCAUDAL Change 35: revoke team-season assignments when STAFF loses eligibility.' then
+      raise exception
+        'revoke_ineligible_club_team_season_permissions() exists without the Change 35 contract';
     end if;
   end if;
 end
@@ -268,23 +295,31 @@ begin
       using errcode = '23514';
   end if;
 
-  if not exists (
-    select 1
-    from public.club_memberships target
-    where target.id = new.membership_id
-      and target.club_id = new.club_id
-      and target.is_active
-      and target.role = 'staff'
-  ) then
+  if public.can_manage_club(new.club_id) is not true then
+    raise exception 'Not authorized to assign this team-season permission'
+      using errcode = '42501';
+  end if;
+
+  -- Lock only the target membership. A concurrent role/is_active UPDATE
+  -- either waits and revokes this INSERT, or finishes first and makes this
+  -- INSERT fail. The membership guard retains its own existing club lock.
+  perform 1
+  from public.club_memberships target
+  where target.id = new.membership_id
+    and target.club_id = new.club_id
+    and target.is_active
+    and target.role = 'staff'
+  for update;
+
+  if not found then
     raise exception 'Team-season permissions can only be assigned to active STAFF memberships'
       using errcode = '23514';
   end if;
 
-  if auth.uid() is not null
-     and not public.can_assign_club_team_season_permission(
+  if public.can_assign_club_team_season_permission(
        new.club_id,
        new.membership_id
-     ) then
+     ) is not true then
     raise exception 'Not authorized to assign this team-season permission'
       using errcode = '42501';
   end if;
@@ -296,15 +331,43 @@ $function$;
 comment on function public.guard_club_team_season_permission_mutation() is
   'APPCAUDAL Change 35 guard: STAFF-only assignments and immutable keys.';
 
+-- Runs after the existing BEFORE UPDATE membership guard has accepted the
+-- change. The DELETE uses the function owner's privileges and is atomic with
+-- the membership UPDATE, regardless of whether it came from the API or a
+-- trusted administrative process. Reactivation performs no INSERT.
+create or replace function public.revoke_ineligible_club_team_season_permissions()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $function$
+begin
+  if old.role = 'staff'
+     and (new.role <> 'staff' or not new.is_active) then
+    delete from public.club_team_season_permissions permission
+    where permission.membership_id = old.id
+      and permission.club_id = old.club_id;
+  end if;
+
+  return new;
+end;
+$function$;
+
+comment on function public.revoke_ineligible_club_team_season_permissions() is
+  'APPCAUDAL Change 35: revoke team-season assignments when STAFF loses eligibility.';
+
 alter function public.can_assign_club_team_season_permission(uuid, uuid) owner to postgres;
 alter function public.can_read_club_team_season(uuid) owner to postgres;
 alter function public.guard_club_team_season_permission_mutation() owner to postgres;
+alter function public.revoke_ineligible_club_team_season_permissions() owner to postgres;
 
 revoke all on function public.can_assign_club_team_season_permission(uuid, uuid)
   from public, anon;
 revoke all on function public.can_read_club_team_season(uuid)
   from public, anon;
 revoke all on function public.guard_club_team_season_permission_mutation()
+  from public, anon, authenticated;
+revoke all on function public.revoke_ineligible_club_team_season_permissions()
   from public, anon, authenticated;
 
 grant execute on function public.can_assign_club_team_season_permission(uuid, uuid)
@@ -328,6 +391,23 @@ begin
   end if;
 end
 $trigger$;
+
+do $membership_revocation_trigger$
+begin
+  if not exists (
+    select 1
+    from pg_trigger trigger_row
+    where trigger_row.tgrelid = 'public.club_memberships'::regclass
+      and trigger_row.tgname = 'revoke_ineligible_club_team_season_permissions'
+      and not trigger_row.tgisinternal
+  ) then
+    create trigger revoke_ineligible_club_team_season_permissions
+      after update on public.club_memberships
+      for each row
+      execute function public.revoke_ineligible_club_team_season_permissions();
+  end if;
+end
+$membership_revocation_trigger$;
 
 alter table public.club_team_season_permissions owner to postgres;
 alter table public.club_team_season_permissions enable row level security;
@@ -509,6 +589,21 @@ begin
     raise exception 'club_team_season_permissions mutation guard is missing or incompatible';
   end if;
 
+  if not exists (
+    select 1
+    from pg_trigger trigger_row
+    where trigger_row.tgrelid = 'public.club_memberships'::regclass
+      and trigger_row.tgname = 'revoke_ineligible_club_team_season_permissions'
+      and trigger_row.tgfoid = 'public.revoke_ineligible_club_team_season_permissions()'::regprocedure
+      and trigger_row.tgenabled = 'O'
+      and trigger_row.tgtype = 17
+      and trigger_row.tgqual is null
+      and trigger_row.tgattr::text = ''
+      and not trigger_row.tgisinternal
+  ) then
+    raise exception 'club_memberships revocation trigger is missing or incompatible';
+  end if;
+
   select count(*) into v_policy_count
   from pg_policy policy
   where policy.polrelid = 'public.club_team_season_permissions'::regclass
@@ -575,6 +670,9 @@ begin
      )
      or has_function_privilege(
        'authenticated', 'public.guard_club_team_season_permission_mutation()', 'EXECUTE'
+     )
+     or has_function_privilege(
+       'authenticated', 'public.revoke_ineligible_club_team_season_permissions()', 'EXECUTE'
      ) then
     raise exception 'Change 35 function privileges are incompatible';
   end if;
@@ -597,8 +695,25 @@ begin
       and routine.proowner = 'postgres'::regrole
       and routine.prosecdef and routine.provolatile = 'v'
       and routine.proconfig = array['search_path=pg_catalog']::text[]
+  ) or not exists (
+    select 1 from pg_proc routine
+    where routine.oid = 'public.revoke_ineligible_club_team_season_permissions()'::regprocedure
+      and routine.proowner = 'postgres'::regrole
+      and routine.prosecdef and routine.provolatile = 'v'
+      and routine.proconfig = array['search_path=pg_catalog']::text[]
   ) then
     raise exception 'Change 35 function security attributes are incompatible';
+  end if;
+
+  if exists (
+    select 1
+    from public.club_team_season_permissions permission
+    join public.club_memberships membership
+      on membership.id = permission.membership_id
+     and membership.club_id = permission.club_id
+    where membership.role <> 'staff' or not membership.is_active
+  ) then
+    raise exception 'Ineligible membership retains team-season assignments';
   end if;
 end
 $postconditions$;

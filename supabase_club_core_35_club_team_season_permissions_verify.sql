@@ -202,8 +202,8 @@ select exists (
       attributes.membership_attnum::text
 ) as permission_lookup_index_ok;
 
--- 5. Integrity and current eligibility. Stale assignments can remain after a
--- role/deactivation change, but can_read_club_team_season() ignores them.
+-- 5. Integrity and current eligibility. All counts must be zero after the
+-- migration and after any staff deactivation or role change.
 select
   count(*) filter (
     where relation.id is null or membership.id is null
@@ -212,7 +212,7 @@ select
   ) as invalid_or_cross_club_assignments,
   count(*) filter (where membership.role = 'player') as player_rows,
   count(*) filter (where membership.role <> 'staff' or not membership.is_active)
-    as currently_ineligible_rows
+    as ineligible_assignments_that_should_have_been_revoked
 from public.club_team_season_permissions permission
 left join public.club_team_seasons relation
   on relation.id = permission.club_team_season_id
@@ -292,6 +292,58 @@ from pg_trigger trigger_row
 where trigger_row.tgrelid = 'public.club_team_season_permissions'::regclass
 order by trigger_row.tgname;
 
+-- Expected: all true. The pre-existing membership guard must still run BEFORE
+-- UPDATE, and the new trigger must run AFTER every membership UPDATE in the
+-- same transaction. Its function deletes assignments only when STAFF becomes
+-- inactive or leaves the STAFF role; reactivation does not insert anything.
+select
+  exists (
+    select 1 from pg_trigger trigger_row
+    where trigger_row.tgrelid = 'public.club_memberships'::regclass
+      and trigger_row.tgname = 'guard_club_membership_mutation'
+      and trigger_row.tgfoid = 'public.guard_club_membership_mutation()'::regprocedure
+      and trigger_row.tgenabled = 'O'
+      and (trigger_row.tgtype & 2) = 2
+      and (trigger_row.tgtype & 16) = 16
+      and not trigger_row.tgisinternal
+  ) as existing_before_update_guard_preserved,
+  exists (
+    select 1 from pg_trigger trigger_row
+    where trigger_row.tgrelid = 'public.club_memberships'::regclass
+      and trigger_row.tgname = 'revoke_ineligible_club_team_season_permissions'
+      and trigger_row.tgfoid = 'public.revoke_ineligible_club_team_season_permissions()'::regprocedure
+      and trigger_row.tgenabled = 'O'
+      and trigger_row.tgtype = 17
+      and trigger_row.tgqual is null
+      and trigger_row.tgattr::text = ''
+      and not trigger_row.tgisinternal
+  ) as after_every_update_revocation_trigger_ok,
+  (select count(*) from pg_trigger trigger_row
+   where trigger_row.tgrelid = 'public.club_memberships'::regclass
+     and trigger_row.tgname = 'revoke_ineligible_club_team_season_permissions'
+     and not trigger_row.tgisinternal) = 1
+    as no_duplicate_revocation_trigger;
+
+select
+  position('old.role = ''staff''' in lower(pg_get_functiondef(
+    'public.revoke_ineligible_club_team_season_permissions()'::regprocedure
+  ))) > 0 as revokes_only_prior_staff,
+  position('new.role <> ''staff''' in lower(pg_get_functiondef(
+    'public.revoke_ineligible_club_team_season_permissions()'::regprocedure
+  ))) > 0 as revokes_on_role_change,
+  position('not new.is_active' in lower(pg_get_functiondef(
+    'public.revoke_ineligible_club_team_season_permissions()'::regprocedure
+  ))) > 0 as revokes_on_deactivation,
+  position('delete from public.club_team_season_permissions' in lower(pg_get_functiondef(
+    'public.revoke_ineligible_club_team_season_permissions()'::regprocedure
+  ))) > 0 as deletes_assignments,
+  position('permission.membership_id = old.id' in lower(pg_get_functiondef(
+    'public.revoke_ineligible_club_team_season_permissions()'::regprocedure
+  ))) > 0 as limits_delete_to_membership,
+  position('insert into' in lower(pg_get_functiondef(
+    'public.revoke_ineligible_club_team_season_permissions()'::regprocedure
+  ))) = 0 as never_restores_assignments;
+
 select
   routine.oid::regprocedure as function_signature,
   pg_get_userbyid(routine.proowner) as owner,
@@ -305,9 +357,62 @@ from pg_proc routine
 where routine.oid in (
   'public.can_assign_club_team_season_permission(uuid,uuid)'::regprocedure,
   'public.can_read_club_team_season(uuid)'::regprocedure,
-  'public.guard_club_team_season_permission_mutation()'::regprocedure
+  'public.guard_club_team_season_permission_mutation()'::regprocedure,
+  'public.revoke_ineligible_club_team_season_permissions()'::regprocedure
 )
 order by routine.oid::regprocedure::text;
+
+-- Expected: all true. The revocation function executes as postgres with a
+-- fixed search path, while application roles cannot invoke it directly.
+select
+  exists (
+    select 1 from pg_proc routine
+    where routine.oid = 'public.revoke_ineligible_club_team_season_permissions()'::regprocedure
+      and routine.proowner = 'postgres'::regrole
+      and routine.prosecdef
+      and routine.provolatile = 'v'
+      and routine.proconfig = array['search_path=pg_catalog']::text[]
+  ) as revocation_function_security_ok,
+  not has_function_privilege(
+    'authenticated',
+    'public.revoke_ineligible_club_team_season_permissions()',
+    'EXECUTE'
+  ) as clients_cannot_invoke_revocation_function,
+  not has_function_privilege(
+    'anon',
+    'public.revoke_ineligible_club_team_season_permissions()',
+    'EXECUTE'
+  ) as anon_cannot_invoke_revocation_function;
+
+-- Expected: all true. Assignment creation locks the target membership row,
+-- so a concurrent deactivation cannot leave a permission behind.
+select
+  position('public.can_manage_club(new.club_id) is not true' in lower(pg_get_functiondef(
+    'public.guard_club_team_season_permission_mutation()'::regprocedure
+  ))) > 0 as manager_checked_before_row_lock,
+  position('for update' in lower(pg_get_functiondef(
+    'public.guard_club_team_season_permission_mutation()'::regprocedure
+  ))) > 0 as insertion_locks_membership_row,
+  position('target.is_active' in lower(pg_get_functiondef(
+    'public.guard_club_team_season_permission_mutation()'::regprocedure
+  ))) > 0 as insertion_checks_active,
+  position('target.role = ''staff''' in lower(pg_get_functiondef(
+    'public.guard_club_team_season_permission_mutation()'::regprocedure
+  ))) > 0 as insertion_checks_staff,
+  position(') is not true' in lower(pg_get_functiondef(
+    'public.guard_club_team_season_permission_mutation()'::regprocedure
+  ))) > 0 as no_backend_identity_bypass;
+
+select
+  position('public.can_manage_club(target_club_id)' in lower(pg_get_functiondef(
+    'public.can_assign_club_team_season_permission(uuid,uuid)'::regprocedure
+  ))) > 0 as owner_admin_manager_check,
+  position('target.role = ''staff''' in lower(pg_get_functiondef(
+    'public.can_assign_club_team_season_permission(uuid,uuid)'::regprocedure
+  ))) > 0 as grant_only_to_staff,
+  position('target.user_id <> auth.uid()' in lower(pg_get_functiondef(
+    'public.can_assign_club_team_season_permission(uuid,uuid)'::regprocedure
+  ))) > 0 as self_grant_blocked;
 
 select
   position('actor.role in (''owner'', ''admin'')' in lower(pg_get_functiondef(
