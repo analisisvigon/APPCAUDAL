@@ -171,17 +171,23 @@ normalized_policies as (
   select polname, polcmd, polpermissive, polroles, polqual, polwithcheck,
     -- Remove only casts after known columns, a closing quote or a closing
     -- array bracket. Do not rewrite text inside the owner-role literal.
-    replace(replace(replace(replace(replace(replace(replace(replace(
+    replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(
       using_qualified,
       'club_id::uuid', 'club_id'), 'membership_id::uuid', 'membership_id'),
+      'club_id::pg_catalog.uuid', 'club_id'),
+      'membership_id::pg_catalog.uuid', 'membership_id'),
       '''::pg_catalog.text[]', ''''), '''::text[]', ''''),
       '''::pg_catalog.text', ''''), '''::text', ''''),
+      '''::charactervarying', ''''), '''::varchar', ''''),
       ']::pg_catalog.text[]', ']'), ']::text[]', ']') as using_expr,
-    replace(replace(replace(replace(replace(replace(replace(replace(
+    replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(
       check_qualified,
       'club_id::uuid', 'club_id'), 'membership_id::uuid', 'membership_id'),
+      'club_id::pg_catalog.uuid', 'club_id'),
+      'membership_id::pg_catalog.uuid', 'membership_id'),
       '''::pg_catalog.text[]', ''''), '''::text[]', ''''),
       '''::pg_catalog.text', ''''), '''::text', ''''),
+      '''::charactervarying', ''''), '''::varchar', ''''),
       ']::pg_catalog.text[]', ']'), ']::text[]', ']') as check_expr
   from policy_qualified
 ),
