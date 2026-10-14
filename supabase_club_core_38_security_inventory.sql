@@ -75,6 +75,19 @@ expected_player_functions(function_name, purpose) as (
     ('get_my_player_match_history', 'historial_partidos'),
     ('get_my_player_analysis_match_stats', 'estadisticas_por_partido')
 ),
+expected_sports_functions(function_name, purpose) as (
+  values
+    ('get_match_substitution_events', 'lectura_sustituciones'),
+    ('mutate_match_substitution_atomic', 'escritura_sustituciones'),
+    ('save_match_squad_lineup_atomic', 'convocatoria_y_alineacion'),
+    ('mutate_match_goal_atomic', 'eventos_de_gol'),
+    ('save_match_print_plan_atomic', 'plan_de_impresion'),
+    ('save_match_tactical_snapshot', 'snapshot_tactico'),
+    ('save_match_system_change_with_snapshot', 'cambio_sistema_tactico'),
+    ('set_delegated_match_status', 'estado_delegado_partido'),
+    ('set_player_availability', 'disponibilidad_jugador'),
+    ('consume_player_suspensions_for_match', 'consumo_sanciones')
+),
 partidos_root as (
   select pg_catalog.to_regclass('public.partidos') as relation_oid
 ),
@@ -87,11 +100,11 @@ match_tree(relation_oid, depth, path) as (
   select fk.conrelid, tree.depth + 1, tree.path || fk.conrelid
   from match_tree tree
   join pg_catalog.pg_constraint fk
-    on fk.contype = 'f' and fk.confrelid = tree.relation_oid
+    on fk.contype::text = 'f' and fk.confrelid = tree.relation_oid
   join pg_catalog.pg_class child on child.oid = fk.conrelid
   join pg_catalog.pg_namespace child_ns on child_ns.oid = child.relnamespace
   where child_ns.nspname = 'public'
-    and child.relkind in ('r', 'p')
+    and child.relkind::text in ('r', 'p')
     and not fk.conrelid = any(tree.path)
 ),
 target_names as (
@@ -106,12 +119,58 @@ target_names as (
 targets as (
   select names.table_name,
          pg_catalog.string_agg(distinct names.area, ', ' order by names.area) as area,
-         pg_catalog.to_regclass(pg_catalog.format('public.%I', names.table_name)) as relation_oid
+         pg_catalog.to_regclass(pg_catalog.format('public.%I', names.table_name))::oid as relation_oid
   from target_names names
   group by names.table_name
 ),
 target_oids as (
   select relation_oid from targets where relation_oid is not null
+),
+audit_actor as (
+  select role_row.oid as role_oid,
+         role_row.rolname,
+         role_row.rolsuper,
+         role_row.rolbypassrls
+  from pg_catalog.pg_roles role_row
+  where role_row.rolname = current_user
+),
+relation_access as (
+  select
+    t.relation_oid,
+    pg_catalog.has_table_privilege(current_user, t.relation_oid, 'SELECT') as can_select,
+    (
+      pg_catalog.has_table_privilege(current_user, t.relation_oid, 'SELECT')
+      and c.relkind::text in ('r', 'p')
+      and (
+        not c.relrowsecurity
+        or actor.rolsuper
+        or actor.rolbypassrls
+        or (c.relowner = actor.role_oid and not c.relforcerowsecurity)
+      )
+    ) as has_full_row_visibility
+  from targets t
+  join pg_catalog.pg_class c on c.oid = t.relation_oid
+  cross join audit_actor actor
+),
+audit_context_rows as (
+  select
+    '00A CONTEXTO_EJECUCION'::text as section,
+    'TABLE_VISIBILITY'::text as object_type,
+    access.relation_oid::pg_catalog.regclass::text as object_name,
+    'visibilidad_para_recuentos'::text as check_name,
+    case when access.has_full_row_visibility then 'PASS' else 'NOT_CHECKED' end::text as status,
+    case when access.has_full_row_visibility then 'INFO' else 'HIGH' end::text as severity,
+    case when access.has_full_row_visibility
+      then 'El ejecutor puede obtener recuentos completos sin filtrado RLS.'
+      else 'Los recuentos de integridad que dependan de esta tabla se omitiran para evitar falsos PASS.'
+    end::text as finding,
+    pg_catalog.format(
+      'current_user=%s; can_select=%s; full_row_visibility=%s',
+      current_user,
+      access.can_select,
+      access.has_full_row_visibility
+    )::text as evidence
+  from relation_access access
 ),
 table_state_rows as (
   select
@@ -121,16 +180,19 @@ table_state_rows as (
     'existencia_y_estado_rls'::text as check_name,
     case
       when c.oid is null then 'NOT_FOUND'
+      when c.relkind::text not in ('r', 'p') then 'FAIL'
       when not c.relrowsecurity then 'FAIL'
       else 'PASS'
     end::text as status,
     case
       when c.oid is null then 'HIGH'
+      when c.relkind::text not in ('r', 'p') then 'CRITICAL'
       when not c.relrowsecurity then 'CRITICAL'
       else 'INFO'
     end::text as severity,
     case
       when c.oid is null then 'Objeto esperado por el repositorio no encontrado.'
+      when c.relkind::text not in ('r', 'p') then 'El nombre esperado no corresponde a una tabla ordinaria o particionada.'
       when not c.relrowsecurity then 'RLS no esta activada en una tabla del alcance.'
       else 'RLS activada; revisar las politicas y privilegios de las secciones siguientes.'
     end::text as finding,
@@ -142,6 +204,19 @@ table_state_rows as (
     end::text as evidence
   from targets t
   left join pg_catalog.pg_class c on c.oid = t.relation_oid
+),
+requested_client_roles(role_name) as (
+  values ('authenticated'::text), ('anon'::text)
+),
+client_roles as (
+  select requested.role_name, role_row.oid as role_oid
+  from requested_client_roles requested
+  left join pg_catalog.pg_roles role_row on role_row.rolname = requested.role_name
+),
+client_role_oids as (
+  select
+    (select role_oid from client_roles where role_name = 'authenticated') as authenticated_oid,
+    (select role_oid from client_roles where role_name = 'anon') as anon_oid
 ),
 policy_source as (
   select
@@ -157,50 +232,107 @@ policy_source as (
   from targets t
   join pg_catalog.pg_policy p on p.polrelid = t.relation_oid
 ),
+policy_coverage_rows as (
+  select
+    '01A COBERTURA_POLITICAS'::text as section,
+    'TABLE_POLICY_SET'::text as object_type,
+    pg_catalog.format('public.%I', t.table_name)::text as object_name,
+    'numero_de_politicas_efectivas'::text as check_name,
+    case when pg_catalog.count(p.policy_oid) = 0 then 'WARN' else 'REVIEW' end::text as status,
+    case when pg_catalog.count(p.policy_oid) = 0 then 'MEDIUM' else 'INFO' end::text as severity,
+    case when pg_catalog.count(p.policy_oid) = 0
+      then 'La tabla no tiene politicas locales; con RLS activa el acceso ordinario queda denegado, pero debe revisarse la compatibilidad funcional.'
+      else 'Conjunto de politicas localizado; cada definicion se muestra en la seccion 02.'
+    end::text as finding,
+    pg_catalog.format(
+      'total=%s; permissive=%s; restrictive=%s',
+      pg_catalog.count(p.policy_oid),
+      pg_catalog.count(p.policy_oid) filter (where p.polpermissive),
+      pg_catalog.count(p.policy_oid) filter (where not p.polpermissive)
+    )::text as evidence
+  from targets t
+  left join policy_source p on p.table_name = t.table_name
+  where t.relation_oid is not null
+  group by t.table_name
+),
 policy_analysis as (
   select p.*,
+         pg_catalog.lower(coalesce(p.using_expr, '')) as using_expr_lower,
+         pg_catalog.lower(coalesce(p.check_expr, '')) as check_expr_lower,
          pg_catalog.lower(
-           pg_catalog.coalesce(p.using_expr, '') || ' ' ||
-           pg_catalog.coalesce(p.check_expr, '')
+           coalesce(p.using_expr, '') || ' ' ||
+           coalesce(p.check_expr, '')
          ) as combined_expr,
          pg_catalog.regexp_replace(
-           pg_catalog.lower(pg_catalog.coalesce(p.using_expr, '')),
+           pg_catalog.lower(coalesce(p.using_expr, '')),
            '[[:space:]()]', '', 'g') as normalized_using,
          pg_catalog.regexp_replace(
-           pg_catalog.lower(pg_catalog.coalesce(p.check_expr, '')),
+           pg_catalog.lower(coalesce(p.check_expr, '')),
            '[[:space:]()]', '', 'g') as normalized_check
   from policy_source p
 ),
-policy_flags as (
+policy_markers as (
   select p.*,
          not (
            pg_catalog.strpos(p.area, 'catalogo') > 0
            or pg_catalog.strpos(p.area, 'ambito') > 0
          ) as scope_required,
-         p.polcmd in ('a', 'w', 'd', '*') as is_write_policy,
+         p.polcmd::text in ('a', 'w', 'd', '*') as is_write_policy,
          exists (
            select 1
            from pg_catalog.unnest(p.polroles) as policy_role(role_oid)
+           cross join client_role_oids client_oid
            where case
              when role_oid = 0::oid then true
-             else pg_catalog.pg_has_role('authenticated', role_oid, 'USAGE')
-               or pg_catalog.pg_has_role('anon', role_oid, 'USAGE')
+             else (
+               client_oid.authenticated_oid is not null
+               and pg_catalog.pg_has_role(client_oid.authenticated_oid, role_oid, 'USAGE')
+             ) or (
+               client_oid.anon_oid is not null
+               and pg_catalog.pg_has_role(client_oid.anon_oid, role_oid, 'USAGE')
+             )
            end
          ) as applies_client_role,
          p.combined_expr like '%is_app_staff%' as uses_is_app_staff,
          (
-           p.combined_expr like '%can_read_club_team_season%'
-           or p.combined_expr like '%can_write_club_team_season%'
-           or p.combined_expr like '%can_read_match%'
-           or p.combined_expr like '%can_write_match%'
-           or p.combined_expr like '%club_team_season_id%'
-           or p.combined_expr like '%club_team_season_permissions%'
-         ) as has_team_season_scope,
+           p.using_expr_lower like '%can_read_club_team_season%'
+           or p.using_expr_lower like '%can_write_club_team_season%'
+           or p.using_expr_lower like '%can_read_match%'
+           or p.using_expr_lower like '%can_write_match%'
+           or p.using_expr_lower like '%club_team_season_id%'
+           or p.using_expr_lower like '%club_team_season_permissions%'
+         ) as using_has_team_season_marker,
+         (
+           p.check_expr_lower like '%can_read_club_team_season%'
+           or p.check_expr_lower like '%can_write_club_team_season%'
+           or p.check_expr_lower like '%can_read_match%'
+           or p.check_expr_lower like '%can_write_match%'
+           or p.check_expr_lower like '%club_team_season_id%'
+           or p.check_expr_lower like '%club_team_season_permissions%'
+         ) as check_has_team_season_marker,
          (
            p.normalized_using in ('true', 'true::boolean')
            or p.normalized_check in ('true', 'true::boolean')
          ) as has_true_predicate
   from policy_analysis p
+),
+policy_flags as (
+  select p.*,
+         case p.polcmd::text
+           when 'r' then p.using_has_team_season_marker
+           when 'd' then p.using_has_team_season_marker
+           when 'a' then p.check_has_team_season_marker
+           when 'w' then p.using_has_team_season_marker and (
+             p.check_has_team_season_marker
+             or (p.check_expr is null and p.using_has_team_season_marker)
+           )
+           when '*' then p.using_has_team_season_marker and (
+             p.check_has_team_season_marker
+             or (p.check_expr is null and p.using_has_team_season_marker)
+           )
+           else false
+         end as has_team_season_scope
+  from policy_markers p
 ),
 policy_rows as (
   select
@@ -216,7 +348,7 @@ policy_rows as (
       when p.polpermissive and p.applies_client_role and p.scope_required
        and not p.has_team_season_scope then 'WARN'
       when p.polpermissive and p.applies_client_role and p.has_true_predicate then 'WARN'
-      else 'PASS'
+      else 'REVIEW'
     end::text as status,
     case
       when p.polpermissive and p.applies_client_role and p.has_true_predicate
@@ -245,24 +377,27 @@ policy_rows as (
       else 'No se detecta el patron abierto auditado.'
     end::text as finding,
     pg_catalog.format(
-      'area=%s; scope_required=%s; command=%s; mode=%s; roles=%s; USING=%s; WITH CHECK=%s',
+      'area=%s; scope_required=%s; using_scope_marker=%s; check_scope_marker=%s; check_falls_back_to_using=%s; command=%s; mode=%s; roles=%s; USING=%s; WITH CHECK=%s',
       p.area,
       p.scope_required,
-      case p.polcmd
+      p.using_has_team_season_marker,
+      p.check_has_team_season_marker,
+      p.polcmd::text in ('w', '*') and p.check_expr is null,
+      case p.polcmd::text
         when 'r' then 'SELECT' when 'a' then 'INSERT'
         when 'w' then 'UPDATE' when 'd' then 'DELETE' else 'ALL'
       end,
       case when p.polpermissive then 'PERMISSIVE' else 'RESTRICTIVE' end,
-      pg_catalog.coalesce((
+      coalesce((
         select pg_catalog.string_agg(
           case when role_oid = 0::oid then 'PUBLIC'
-               else pg_catalog.coalesce(role_name.rolname, role_oid::text) end,
+               else coalesce(role_name.rolname, role_oid::text) end,
           ', ' order by role_oid)
         from pg_catalog.unnest(p.polroles) as policy_role(role_oid)
         left join pg_catalog.pg_roles role_name on role_name.oid = role_oid
       ), '<sin roles>'),
-      pg_catalog.coalesce(p.using_expr, '<sin USING>'),
-      pg_catalog.coalesce(p.check_expr, '<sin WITH CHECK>')
+      coalesce(p.using_expr, '<sin USING>'),
+      coalesce(p.check_expr, '<sin WITH CHECK>')
     )::text as evidence
   from policy_flags p
 ),
@@ -271,7 +406,7 @@ expanded_permissive_policies as (
          command_name
   from policy_flags p
   cross join lateral pg_catalog.unnest(
-    case p.polcmd
+    case p.polcmd::text
       when '*' then array['SELECT', 'INSERT', 'UPDATE', 'DELETE']::text[]
       when 'r' then array['SELECT']::text[]
       when 'a' then array['INSERT']::text[]
@@ -294,7 +429,7 @@ policy_combination_rows as (
       when pg_catalog.count(*) > 1
        and pg_catalog.count(*) filter (where p.has_true_predicate or not p.has_team_season_scope) > 0
         then 'FAIL'
-      else 'PASS'
+      else 'REVIEW'
     end::text as status,
     case
       when pg_catalog.count(*) > 1
@@ -306,7 +441,7 @@ policy_combination_rows as (
       when pg_catalog.count(*) > 1
        and pg_catalog.count(*) filter (where p.has_true_predicate or not p.has_team_season_scope) > 0
         then 'Varias politicas permisivas se combinan mediante OR y al menos una carece de alcance acreditado.'
-      else 'No se detecta esta combinacion permisiva concreta.'
+      else 'No se detecta esta combinacion permisiva concreta; los predicados completos aun requieren revision semantica.'
     end::text as finding,
     pg_catalog.format(
       'permissive_count=%s; open_or_unscoped=%s; policies=%s',
@@ -317,35 +452,36 @@ policy_combination_rows as (
   from expanded_permissive_policies p
   group by p.table_name, p.command_name
 ),
-role_names(role_name) as (
-  values ('authenticated'::text), ('anon'::text)
-),
 table_role_privileges as (
   select
     t.table_name,
     roles.role_name,
-    pg_catalog.concat_ws(', ',
-      case when pg_catalog.has_table_privilege(roles.role_name, t.relation_oid, 'SELECT') then 'SELECT' end,
-      case when pg_catalog.has_table_privilege(roles.role_name, t.relation_oid, 'INSERT') then 'INSERT' end,
-      case when pg_catalog.has_table_privilege(roles.role_name, t.relation_oid, 'UPDATE') then 'UPDATE' end,
-      case when pg_catalog.has_table_privilege(roles.role_name, t.relation_oid, 'DELETE') then 'DELETE' end,
-      case when pg_catalog.has_table_privilege(roles.role_name, t.relation_oid, 'TRUNCATE') then 'TRUNCATE' end,
-      case when pg_catalog.has_table_privilege(roles.role_name, t.relation_oid, 'REFERENCES') then 'REFERENCES' end,
-      case when pg_catalog.has_table_privilege(roles.role_name, t.relation_oid, 'TRIGGER') then 'TRIGGER' end
-    ) as privileges
+    roles.role_oid is not null as role_exists,
+    case when roles.role_oid is not null then
+      pg_catalog.concat_ws(', ',
+        case when pg_catalog.has_table_privilege(roles.role_oid, t.relation_oid, 'SELECT') then 'SELECT' end,
+        case when pg_catalog.has_table_privilege(roles.role_oid, t.relation_oid, 'INSERT') then 'INSERT' end,
+        case when pg_catalog.has_table_privilege(roles.role_oid, t.relation_oid, 'UPDATE') then 'UPDATE' end,
+        case when pg_catalog.has_table_privilege(roles.role_oid, t.relation_oid, 'DELETE') then 'DELETE' end,
+        case when pg_catalog.has_table_privilege(roles.role_oid, t.relation_oid, 'TRUNCATE') then 'TRUNCATE' end,
+        case when pg_catalog.has_table_privilege(roles.role_oid, t.relation_oid, 'REFERENCES') then 'REFERENCES' end,
+        case when pg_catalog.has_table_privilege(roles.role_oid, t.relation_oid, 'TRIGGER') then 'TRIGGER' end
+      )
+    end as privileges
   from targets t
-  cross join role_names roles
+  cross join client_roles roles
   where t.relation_oid is not null
 ),
 table_public_privileges as (
   select
     t.table_name,
     'PUBLIC'::text as role_name,
-    pg_catalog.coalesce(pg_catalog.string_agg(distinct acl.privilege_type, ', ' order by acl.privilege_type), '') as privileges
+    true as role_exists,
+    coalesce(pg_catalog.string_agg(distinct acl.privilege_type, ', ' order by acl.privilege_type), '') as privileges
   from targets t
   join pg_catalog.pg_class c on c.oid = t.relation_oid
   left join lateral pg_catalog.aclexplode(
-    pg_catalog.coalesce(c.relacl, pg_catalog.acldefault('r', c.relowner))
+    coalesce(c.relacl, pg_catalog.acldefault('r', c.relowner))
   ) acl on acl.grantee = 0::oid
   group by t.table_name
 ),
@@ -356,23 +492,28 @@ table_privilege_rows as (
     pg_catalog.format('public.%I', privileges.table_name)::text as object_name,
     pg_catalog.format('privilegios_efectivos_%s', privileges.role_name)::text as check_name,
     case
+      when not privileges.role_exists then 'NOT_FOUND'
       when privileges.privileges = '' then 'PASS'
       when privileges.role_name in ('anon', 'PUBLIC')
        and privileges.privileges ~ 'INSERT|UPDATE|DELETE|TRUNCATE|REFERENCES|TRIGGER' then 'FAIL'
       else 'INFO'
     end::text as status,
     case
+      when not privileges.role_exists then 'HIGH'
       when privileges.role_name in ('anon', 'PUBLIC')
        and privileges.privileges ~ 'INSERT|UPDATE|DELETE|TRUNCATE|REFERENCES|TRIGGER' then 'CRITICAL'
       when privileges.role_name in ('anon', 'PUBLIC') and privileges.privileges <> '' then 'HIGH'
       else 'INFO'
     end::text as severity,
     case
+      when not privileges.role_exists then 'El rol esperado no existe; no se pudieron calcular sus privilegios efectivos.'
       when privileges.privileges = '' then 'El rol no tiene privilegios SQL efectivos sobre la tabla.'
       else 'Los privilegios permiten intentar la operacion; RLS sigue determinando las filas accesibles.'
     end::text as finding,
     pg_catalog.format('role=%s; privileges=%s', privileges.role_name,
-      case when privileges.privileges = '' then '<ninguno>' else privileges.privileges end)::text as evidence
+      case when not privileges.role_exists then '<rol inexistente>'
+           when privileges.privileges = '' then '<ninguno>'
+           else privileges.privileges end)::text as evidence
   from (
     select * from table_role_privileges
     union all
@@ -398,7 +539,7 @@ function_candidates as (
   join pg_catalog.pg_namespace ns on ns.oid = proc.pronamespace
   join pg_catalog.pg_language language on language.oid = proc.prolang
   where ns.nspname = 'public'
-    and proc.prokind = 'f'
+    and proc.prokind::text = 'f'
     and (
       proc.proname ~* '(partido|match|player_analysis|player_production|player_availability|suspension)'
       or proc.proname in (
@@ -440,17 +581,22 @@ function_flags as (
          ) as has_identity_check,
          pg_catalog.strpos(pg_catalog.lower(f.prosrc), 'is_player_match_publishable') > 0 as uses_publication_helper,
          pg_catalog.strpos(pg_catalog.lower(f.prosrc), 'player_visible') > 0 as uses_player_visible,
-         pg_catalog.lower(f.prosrc) ~ '(^|[^a-z_])(insert[[:space:]]+into|update[[:space:]]+|delete[[:space:]]+from)' as appears_to_mutate,
-         pg_catalog.has_function_privilege('authenticated', f.oid, 'EXECUTE') as authenticated_execute,
-         pg_catalog.has_function_privilege('anon', f.oid, 'EXECUTE') as anon_execute,
+         pg_catalog.lower(f.prosrc) ~ '(^|[^a-z_])(insert[[:space:]]+into|update[[:space:]]+|delete[[:space:]]+from|merge[[:space:]]+into|truncate([[:space:]]+table)?)' as appears_to_mutate,
+         case when client_oid.authenticated_oid is not null
+           then pg_catalog.has_function_privilege(client_oid.authenticated_oid, f.oid, 'EXECUTE')
+         end as authenticated_execute,
+         case when client_oid.anon_oid is not null
+           then pg_catalog.has_function_privilege(client_oid.anon_oid, f.oid, 'EXECUTE')
+         end as anon_execute,
          exists (
            select 1
            from pg_catalog.aclexplode(
-             pg_catalog.coalesce(f.proacl, pg_catalog.acldefault('f', f.proowner))
+             coalesce(f.proacl, pg_catalog.acldefault('f', f.proowner))
            ) acl
            where acl.grantee = 0::oid and acl.privilege_type = 'EXECUTE'
          ) as public_execute
   from function_candidates f
+  cross join client_role_oids client_oid
 ),
 function_rows as (
   select
@@ -487,8 +633,8 @@ function_rows as (
       case when f.prosecdef then 'DEFINER' else 'INVOKER' end,
       pg_catalog.pg_get_userbyid(f.proowner),
       f.lanname,
-      case f.provolatile when 'i' then 'IMMUTABLE' when 's' then 'STABLE' else 'VOLATILE' end,
-      pg_catalog.coalesce(pg_catalog.array_to_string(f.proconfig, '; '), '<por defecto>'),
+      case f.provolatile::text when 'i' then 'IMMUTABLE' when 's' then 'STABLE' else 'VOLATILE' end,
+      coalesce(pg_catalog.array_to_string(f.proconfig, '; '), '<por defecto>'),
       f.result_type,
       f.authenticated_execute,
       f.anon_execute,
@@ -534,11 +680,9 @@ function_search_path_rows as (
         ) then 'FAIL'
       when exists (
         select 1 from pg_catalog.unnest(f.proconfig) as config(setting)
-        where pg_catalog.regexp_replace(
-          pg_catalog.lower(pg_catalog.replace(setting, ' ', '')),
-          '^search_path=', '') ~ '(^|,)public(,|$)'
-      ) then 'WARN'
-      else 'PASS'
+        where pg_catalog.lower(pg_catalog.replace(setting, ' ', '')) = 'search_path=pg_catalog'
+      ) then 'PASS'
+      else 'WARN'
     end::text as status,
     case
       when f.proconfig is null
@@ -548,11 +692,9 @@ function_search_path_rows as (
         ) then 'HIGH'
       when exists (
         select 1 from pg_catalog.unnest(f.proconfig) as config(setting)
-        where pg_catalog.regexp_replace(
-          pg_catalog.lower(pg_catalog.replace(setting, ' ', '')),
-          '^search_path=', '') ~ '(^|,)public(,|$)'
-      ) then 'MEDIUM'
-      else 'INFO'
+        where pg_catalog.lower(pg_catalog.replace(setting, ' ', '')) = 'search_path=pg_catalog'
+      ) then 'INFO'
+      else 'HIGH'
     end::text as severity,
     case
       when f.proconfig is null
@@ -566,11 +708,15 @@ function_search_path_rows as (
           pg_catalog.lower(pg_catalog.replace(setting, ' ', '')),
           '^search_path=', '') ~ '(^|,)public(,|$)'
       ) then 'El search_path de SECURITY DEFINER incluye public; revisar nombres no cualificados y CREATE sobre el esquema.'
-      else 'SECURITY DEFINER con search_path local explicito sin public detectado.'
+      when exists (
+        select 1 from pg_catalog.unnest(f.proconfig) as config(setting)
+        where pg_catalog.lower(pg_catalog.replace(setting, ' ', '')) = 'search_path=pg_catalog'
+      ) then 'SECURITY DEFINER limitado explicitamente a pg_catalog.'
+      else 'SECURITY DEFINER con search_path explicito distinto de pg_catalog; revisar todos los esquemas y nombres no cualificados.'
     end::text as finding,
     pg_catalog.format(
       'search_path=%s; owner=%s; execute_authenticated=%s; execute_PUBLIC=%s; definition_md5=%s',
-      pg_catalog.coalesce(pg_catalog.array_to_string(f.proconfig, '; '), '<por defecto>'),
+      coalesce(pg_catalog.array_to_string(f.proconfig, '; '), '<por defecto>'),
       pg_catalog.pg_get_userbyid(f.proowner),
       f.authenticated_execute,
       f.public_execute,
@@ -587,24 +733,36 @@ player_function_rows as (
     expected.purpose::text as check_name,
     case
       when f.oid is null then 'NOT_FOUND'
+      when expected.function_name = 'is_player_match_publishable'
+       and not f.uses_player_visible then 'WARN'
       when expected.function_name <> 'is_player_match_publishable'
        and not f.has_identity_check then 'FAIL'
+      when expected.function_name <> 'is_player_match_publishable'
+       and not f.uses_publication_helper then 'WARN'
       when expected.function_name <> 'is_player_match_publishable'
        and f.prosecdef and not f.has_team_season_scope then 'WARN'
       else 'INFO'
     end::text as status,
     case
       when f.oid is null then 'HIGH'
+      when expected.function_name = 'is_player_match_publishable'
+       and not f.uses_player_visible then 'HIGH'
       when expected.function_name <> 'is_player_match_publishable'
        and not f.has_identity_check then 'CRITICAL'
+      when expected.function_name <> 'is_player_match_publishable'
+       and not f.uses_publication_helper then 'HIGH'
       when expected.function_name <> 'is_player_match_publishable'
        and f.prosecdef and not f.has_team_season_scope then 'HIGH'
       else 'INFO'
     end::text as severity,
     case
       when f.oid is null then 'Funcion esperada por el repositorio no encontrada en produccion.'
+      when expected.function_name = 'is_player_match_publishable'
+       and not f.uses_player_visible then 'La regla de publicacion no contiene un control textual player_visible; revisar si la publicacion es realmente explicita.'
       when expected.function_name <> 'is_player_match_publishable'
        and not f.has_identity_check then 'No se detecta vinculacion textual con la identidad del jugador.'
+      when expected.function_name <> 'is_player_match_publishable'
+       and not f.uses_publication_helper then 'La RPC de jugador no llama textualmente al helper de publicacion esperado.'
       when expected.function_name <> 'is_player_match_publishable'
        and f.prosecdef and not f.has_team_season_scope
         then 'RPC de jugador SECURITY DEFINER sin alcance equipo-temporada detectado; revisar manualmente sus resultados.'
@@ -626,6 +784,33 @@ player_function_rows as (
   from expected_player_functions expected
   left join function_flags f on f.proname = expected.function_name
 ),
+expected_sports_function_rows as (
+  select
+    '07A RPC_DEPORTIVAS_ESPERADAS'::text as section,
+    'EXPECTED_RPC'::text as object_type,
+    pg_catalog.format('public.%I', expected.function_name)::text as object_name,
+    expected.purpose::text as check_name,
+    case when pg_catalog.count(f.oid) = 0 then 'NOT_FOUND' else 'REVIEW' end::text as status,
+    case when pg_catalog.count(f.oid) = 0 then 'HIGH' else 'INFO' end::text as severity,
+    case when pg_catalog.count(f.oid) = 0
+      then 'RPC esperada por el repositorio no encontrada entre las funciones efectivas relacionadas.'
+      else 'RPC localizada; revisar todas sus sobrecargas en las secciones 05 y 06.'
+    end::text as finding,
+    pg_catalog.format(
+      'overloads_found=%s; signatures=%s',
+      pg_catalog.count(f.oid),
+      coalesce(
+        pg_catalog.string_agg(
+          pg_catalog.format('%I.%I(%s)', f.nspname, f.proname, f.identity_arguments),
+          ' | ' order by f.identity_arguments
+        ),
+        '<ninguna>'
+      )
+    )::text as evidence
+  from expected_sports_functions expected
+  left join function_flags f on f.proname = expected.function_name
+  group by expected.function_name, expected.purpose
+),
 fk_source as (
   select
     fk.oid,
@@ -640,7 +825,7 @@ fk_source as (
     fk.confdeltype,
     fk.confupdtype
   from pg_catalog.pg_constraint fk
-  where fk.contype = 'f'
+  where fk.contype::text = 'f'
     and fk.conrelid in (select relation_oid from target_oids)
     and fk.confrelid in (select relation_oid from target_oids)
 ),
@@ -660,9 +845,9 @@ fk_rows as (
       fk.convalidated,
       fk.condeferrable,
       fk.condeferred,
-      case fk.confdeltype when 'a' then 'NO ACTION' when 'r' then 'RESTRICT'
+      case fk.confdeltype::text when 'a' then 'NO ACTION' when 'r' then 'RESTRICT'
         when 'c' then 'CASCADE' when 'n' then 'SET NULL' when 'd' then 'SET DEFAULT' else fk.confdeltype::text end,
-      case fk.confupdtype when 'a' then 'NO ACTION' when 'r' then 'RESTRICT'
+      case fk.confupdtype::text when 'a' then 'NO ACTION' when 'r' then 'RESTRICT'
         when 'c' then 'CASCADE' when 'n' then 'SET NULL' when 'd' then 'SET DEFAULT' else fk.confupdtype::text end
     )::text as evidence
   from fk_source fk
@@ -677,7 +862,7 @@ expected_link_state as (
     exists (
       select 1
       from pg_catalog.pg_constraint fk
-      where fk.contype = 'f'
+      where fk.contype::text = 'f'
         and fk.conrelid = child.oid
         and fk.confrelid = parent.oid
         and fk.conkey = array[child_column.attnum]::smallint[]
@@ -686,7 +871,7 @@ expected_link_state as (
     exists (
       select 1
       from pg_catalog.pg_constraint fk
-      where fk.contype = 'f'
+      where fk.contype::text = 'f'
         and fk.conrelid = child.oid
         and fk.confrelid = parent.oid
         and fk.conkey = array[child_column.attnum]::smallint[]
@@ -743,22 +928,31 @@ expected_link_rows as (
 expected_link_count_queries as (
   select
     l.*,
-    pg_catalog.query_to_xml(
-      pg_catalog.format(
-        'select count(*) filter (where child.%I is not null and parent.%I is null) as orphan_count, count(*) filter (where child.%I is null) as null_link_count from %s child left join %s parent on child.%I = parent.%I',
-        l.child_column,
-        l.parent_column,
-        l.child_column,
-        l.child_oid::pg_catalog.regclass,
-        l.parent_oid::pg_catalog.regclass,
-        l.child_column,
-        l.parent_column
-      ),
-      true,
-      false,
-      ''
-    ) as counts_xml
+    coalesce(child_access.has_full_row_visibility, false)
+      and coalesce(parent_access.has_full_row_visibility, false) as count_executed,
+    case
+      when coalesce(child_access.has_full_row_visibility, false)
+       and coalesce(parent_access.has_full_row_visibility, false)
+      then pg_catalog.query_to_xml(
+        pg_catalog.format(
+          'select count(*) filter (where child.%I is not null and parent.%I is null) as orphan_count, count(*) filter (where child.%I is null) as null_link_count from %s child left join %s parent on child.%I = parent.%I',
+          l.child_column,
+          l.parent_column,
+          l.child_column,
+          l.child_oid::pg_catalog.regclass,
+          l.parent_oid::pg_catalog.regclass,
+          l.child_column,
+          l.parent_column
+        ),
+        true,
+        false,
+        ''
+      )
+      else null::xml
+    end as counts_xml
   from expected_link_state l
+  left join relation_access child_access on child_access.relation_oid = l.child_oid
+  left join relation_access parent_access on parent_access.relation_oid = l.parent_oid
   where l.child_oid is not null
     and l.parent_oid is not null
     and l.child_attnum is not null
@@ -766,14 +960,16 @@ expected_link_count_queries as (
 ),
 expected_link_counts as (
   select q.*,
-         pg_catalog.coalesce(
-           ((pg_catalog.xpath('/table/row/orphan_count/text()', q.counts_xml))[1]::text)::bigint,
-           0::bigint
-         ) as orphan_count,
-         pg_catalog.coalesce(
-           ((pg_catalog.xpath('/table/row/null_link_count/text()', q.counts_xml))[1]::text)::bigint,
-           0::bigint
-         ) as null_link_count
+         case when q.count_executed then
+           nullif(
+             (pg_catalog.xpath('/*[local-name()="table"]/*[local-name()="row"]/*[local-name()="orphan_count"]/text()', q.counts_xml))[1]::text,
+             '')::bigint
+         end as orphan_count,
+         case when q.count_executed then
+           nullif(
+             (pg_catalog.xpath('/*[local-name()="table"]/*[local-name()="row"]/*[local-name()="null_link_count"]/text()', q.counts_xml))[1]::text,
+             '')::bigint
+         end as null_link_count
   from expected_link_count_queries q
 ),
 expected_link_count_rows as (
@@ -783,25 +979,32 @@ expected_link_count_rows as (
     pg_catalog.format('public.%I.%I -> public.%I.%I', l.child_table, l.child_column, l.parent_table, l.parent_column)::text as object_name,
     'recuento_sin_datos_personales'::text as check_name,
     case
+      when not l.count_executed then 'NOT_CHECKED'
+      when l.orphan_count is null or l.null_link_count is null then 'FAIL'
       when l.orphan_count > 0 then 'FAIL'
       when l.link_required and l.null_link_count > 0 then 'FAIL'
       when not l.link_required and l.null_link_count > 0 then 'INFO'
       else 'PASS'
     end::text as status,
     case
+      when not l.count_executed then 'HIGH'
+      when l.orphan_count is null or l.null_link_count is null then 'CRITICAL'
       when l.orphan_count > 0 then 'CRITICAL'
       when l.link_required and l.null_link_count > 0 then 'HIGH'
       else 'INFO'
     end::text as severity,
     case
+      when not l.count_executed then 'Recuento omitido: el ejecutor no acredita SELECT con visibilidad completa en ambas tablas.'
+      when l.orphan_count is null or l.null_link_count is null then 'No se pudo extraer el recuento numerico del XML; no se acepta cero por defecto.'
       when l.orphan_count > 0 then 'Existen valores de relacion sin fila padre.'
       when l.link_required and l.null_link_count > 0 then 'Existen filas sin el vinculo requerido para aplicar autorizacion heredada.'
       when not l.link_required and l.null_link_count > 0 then 'Hay filas sin vinculo opcional; no pueden heredar autorizacion desde un partido.'
       else 'Todas las filas tienen una relacion valida conforme al alcance esperado.'
     end::text as finding,
     pg_catalog.format(
-      'required=%s; orphan_count=%s; null_link_count=%s; fk_exists=%s; fk_validated=%s; no se muestran filas',
+      'required=%s; count_executed=%s; orphan_count=%s; null_link_count=%s; fk_exists=%s; fk_validated=%s; no se muestran filas',
       l.link_required,
+      l.count_executed,
       l.orphan_count,
       l.null_link_count,
       l.fk_exists,
@@ -818,22 +1021,31 @@ fk_count_queries as (
     predicates.all_child_not_null,
     predicates.any_child_not_null,
     predicates.first_parent_column,
-    pg_catalog.query_to_xml(
-      pg_catalog.format(
-        'select count(*) filter (where (%s) and parent.%I is null) as orphan_count, count(*) filter (where (%s) and not (%s)) as partial_null_count from %s child left join %s parent on %s',
-        predicates.all_child_not_null,
-        predicates.first_parent_column,
-        predicates.any_child_not_null,
-        predicates.all_child_not_null,
-        fk.conrelid::pg_catalog.regclass,
-        fk.confrelid::pg_catalog.regclass,
-        predicates.join_predicate
-      ),
-      true,
-      false,
-      ''
-    ) as counts_xml
+    coalesce(child_access.has_full_row_visibility, false)
+      and coalesce(parent_access.has_full_row_visibility, false) as count_executed,
+    case
+      when coalesce(child_access.has_full_row_visibility, false)
+       and coalesce(parent_access.has_full_row_visibility, false)
+      then pg_catalog.query_to_xml(
+        pg_catalog.format(
+          'select count(*) filter (where (%s) and parent.%I is null) as orphan_count, count(*) filter (where (%s) and not (%s)) as partial_null_count from %s child left join %s parent on %s',
+          predicates.all_child_not_null,
+          predicates.first_parent_column,
+          predicates.any_child_not_null,
+          predicates.all_child_not_null,
+          fk.conrelid::pg_catalog.regclass,
+          fk.confrelid::pg_catalog.regclass,
+          predicates.join_predicate
+        ),
+        true,
+        false,
+        ''
+      )
+      else null::xml
+    end as counts_xml
   from fk_source fk
+  left join relation_access child_access on child_access.relation_oid = fk.conrelid
+  left join relation_access parent_access on parent_access.relation_oid = fk.confrelid
   cross join lateral (
     select
       pg_catalog.string_agg(
@@ -849,24 +1061,27 @@ fk_count_queries as (
         ' or ' order by keys.ordinality
       ) as any_child_not_null,
       (pg_catalog.array_agg(parent_attr.attname order by keys.ordinality))[1] as first_parent_column
-    from pg_catalog.unnest(fk.conkey, fk.confkey) with ordinality
-      as keys(child_attnum, parent_attnum, ordinality)
+    from pg_catalog.unnest(fk.conkey) with ordinality
+      as keys(child_attnum, ordinality)
     join pg_catalog.pg_attribute child_attr
       on child_attr.attrelid = fk.conrelid and child_attr.attnum = keys.child_attnum
     join pg_catalog.pg_attribute parent_attr
-      on parent_attr.attrelid = fk.confrelid and parent_attr.attnum = keys.parent_attnum
+      on parent_attr.attrelid = fk.confrelid
+     and parent_attr.attnum = fk.confkey[keys.ordinality::integer]
   ) predicates
 ),
 fk_counts as (
   select q.*,
-         pg_catalog.coalesce(
-           ((pg_catalog.xpath('/table/row/orphan_count/text()', q.counts_xml))[1]::text)::bigint,
-           0::bigint
-         ) as orphan_count,
-         pg_catalog.coalesce(
-           ((pg_catalog.xpath('/table/row/partial_null_count/text()', q.counts_xml))[1]::text)::bigint,
-           0::bigint
-         ) as partial_null_count
+         case when q.count_executed then
+           nullif(
+             (pg_catalog.xpath('/*[local-name()="table"]/*[local-name()="row"]/*[local-name()="orphan_count"]/text()', q.counts_xml))[1]::text,
+             '')::bigint
+         end as orphan_count,
+         case when q.count_executed then
+           nullif(
+             (pg_catalog.xpath('/*[local-name()="table"]/*[local-name()="row"]/*[local-name()="partial_null_count"]/text()', q.counts_xml))[1]::text,
+             '')::bigint
+         end as partial_null_count
   from fk_count_queries q
 ),
 orphan_rows as (
@@ -875,26 +1090,65 @@ orphan_rows as (
     'FOREIGN_KEY_COUNT'::text as object_type,
     pg_catalog.format('%s.%I', fk.conrelid::pg_catalog.regclass, fk.conname)::text as object_name,
     'filas_sin_padre'::text as check_name,
-    case when fk.orphan_count > 0 then 'FAIL'
+    case when not fk.count_executed then 'NOT_CHECKED'
+         when fk.orphan_count is null or fk.partial_null_count is null then 'FAIL'
+         when fk.orphan_count > 0 then 'FAIL'
          when fk.partial_null_count > 0 then 'WARN'
          else 'PASS' end::text as status,
-    case when fk.orphan_count > 0 then 'CRITICAL'
+    case when not fk.count_executed then 'HIGH'
+         when fk.orphan_count is null or fk.partial_null_count is null then 'CRITICAL'
+         when fk.orphan_count > 0 then 'CRITICAL'
          when fk.partial_null_count > 0 then 'MEDIUM'
          else 'INFO' end::text as severity,
-    case when fk.orphan_count > 0 then 'Existen claves completas sin fila padre.'
+    case when not fk.count_executed then 'Recuento omitido: el ejecutor no acredita SELECT con visibilidad completa en ambas tablas.'
+         when fk.orphan_count is null or fk.partial_null_count is null then 'No se pudo extraer el recuento numerico del XML; no se acepta cero por defecto.'
+         when fk.orphan_count > 0 then 'Existen claves completas sin fila padre.'
          when fk.partial_null_count > 0 then 'Existen claves compuestas parcialmente nulas; revisar si son validas para el modelo.'
          else 'No se detectan huerfanos ni claves compuestas parcialmente nulas.' end::text as finding,
     pg_catalog.format(
-      'child=%s; parent=%s; orphan_count=%s; partial_null_count=%s; no se muestran datos de filas',
+      'child=%s; parent=%s; count_executed=%s; orphan_count=%s; partial_null_count=%s; no se muestran datos de filas',
       fk.conrelid::pg_catalog.regclass,
       fk.confrelid::pg_catalog.regclass,
+      fk.count_executed,
       fk.orphan_count,
       fk.partial_null_count
     )::text as evidence
   from fk_counts fk
 ),
+limitation_rows as (
+  select *
+  from (
+    values
+      (
+        '12 LIMITACIONES'::text, 'AUDIT_LIMIT'::text, 'politicas_rls'::text,
+        'deteccion_textual_no_demuestra_seguridad'::text, 'REVIEW'::text, 'HIGH'::text,
+        'La presencia de un nombre de helper o columna no demuestra que la expresion restrinja realmente todas las filas.'::text,
+        'Revisar manualmente USING y WITH CHECK completos; el inventario los exporta sin resumirlos.'::text
+      ),
+      (
+        '12 LIMITACIONES', 'AUDIT_LIMIT', 'funciones_rpc',
+        'sql_dinamico_y_llamadas_transitivas', 'REVIEW', 'HIGH',
+        'El analisis de prosrc no resuelve SQL dinamico ni autorizacion delegada en otras funciones.',
+        'Una fila INFO o REVIEW de funcion nunca equivale a certificacion de seguridad.'
+      ),
+      (
+        '12 LIMITACIONES', 'AUDIT_LIMIT', 'resultados_rpc_player',
+        'privacidad_del_resultado', 'REVIEW', 'HIGH',
+        'Los metadatos no prueban que una RPC omita datos individuales de companeros en todas sus columnas JSON o TABLE.',
+        'Debe revisarse la definicion efectiva identificada por definition_md5 y probarse despues con identidades reales.'
+      ),
+      (
+        '12 LIMITACIONES', 'AUDIT_LIMIT', 'recuentos_query_to_xml',
+        'requieren_visibilidad_total', 'REVIEW', 'MEDIUM',
+        'Los recuentos solo se ejecutan cuando el usuario acredita SELECT y ausencia de filtrado RLS efectivo.',
+        'Cualquier NOT_CHECKED bloquea el avance; un XML sin nodos numericos produce FAIL y no cero.'
+      )
+  ) as limits(section, object_type, object_name, check_name, status, severity, finding, evidence)
+),
 detail_rows as (
-  select * from table_state_rows
+  select * from audit_context_rows
+  union all select * from table_state_rows
+  union all select * from policy_coverage_rows
   union all select * from policy_rows
   union all select * from policy_combination_rows
   union all select * from table_privilege_rows
@@ -902,10 +1156,12 @@ detail_rows as (
   union all select * from function_staff_scope_rows
   union all select * from function_search_path_rows
   union all select * from player_function_rows
+  union all select * from expected_sports_function_rows
   union all select * from fk_rows
   union all select * from expected_link_rows
   union all select * from expected_link_count_rows
   union all select * from orphan_rows
+  union all select * from limitation_rows
 ),
 summary_rows as (
   select
@@ -914,31 +1170,32 @@ summary_rows as (
     'CAMBIO_38'::text as object_name,
     'decision_para_avanzar'::text as check_name,
     case
-      when pg_catalog.count(*) filter (where severity in ('CRITICAL', 'HIGH') and status in ('FAIL', 'WARN', 'NOT_FOUND')) > 0
+      when pg_catalog.count(*) filter (where severity in ('CRITICAL', 'HIGH') and status in ('FAIL', 'WARN', 'NOT_FOUND', 'NOT_CHECKED')) > 0
         then 'BLOCKED'
       else 'REVIEW'
     end::text as status,
     case
-      when pg_catalog.count(*) filter (where severity = 'CRITICAL' and status in ('FAIL', 'WARN', 'NOT_FOUND')) > 0
+      when pg_catalog.count(*) filter (where severity = 'CRITICAL' and status in ('FAIL', 'WARN', 'NOT_FOUND', 'NOT_CHECKED')) > 0
         then 'CRITICAL'
-      when pg_catalog.count(*) filter (where severity = 'HIGH' and status in ('FAIL', 'WARN', 'NOT_FOUND')) > 0
+      when pg_catalog.count(*) filter (where severity = 'HIGH' and status in ('FAIL', 'WARN', 'NOT_FOUND', 'NOT_CHECKED')) > 0
         then 'HIGH'
       else 'INFO'
     end::text as severity,
     case
-      when pg_catalog.count(*) filter (where severity in ('CRITICAL', 'HIGH') and status in ('FAIL', 'WARN', 'NOT_FOUND')) > 0
+      when pg_catalog.count(*) filter (where severity in ('CRITICAL', 'HIGH') and status in ('FAIL', 'WARN', 'NOT_FOUND', 'NOT_CHECKED')) > 0
         then 'No avanzar a cambios RLS hasta revisar todos los hallazgos CRITICAL/HIGH.'
       else 'Sin bloqueos automaticos; requiere revision humana antes de avanzar.'
     end::text as finding,
     pg_catalog.format(
-      'rows=%s; critical=%s; high=%s; medium=%s; fail=%s; warn=%s; not_found=%s',
+      'rows=%s; critical=%s; high=%s; medium=%s; fail=%s; warn=%s; not_found=%s; not_checked=%s',
       pg_catalog.count(*),
       pg_catalog.count(*) filter (where severity = 'CRITICAL'),
       pg_catalog.count(*) filter (where severity = 'HIGH'),
       pg_catalog.count(*) filter (where severity = 'MEDIUM'),
       pg_catalog.count(*) filter (where status = 'FAIL'),
       pg_catalog.count(*) filter (where status = 'WARN'),
-      pg_catalog.count(*) filter (where status = 'NOT_FOUND')
+      pg_catalog.count(*) filter (where status = 'NOT_FOUND'),
+      pg_catalog.count(*) filter (where status = 'NOT_CHECKED')
     )::text as evidence
   from detail_rows
 )
