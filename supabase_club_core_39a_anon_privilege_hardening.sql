@@ -159,6 +159,7 @@ begin
     join pg_catalog.pg_roles inherited_role
       on inherited_role.oid = acl.grantee
     where relation.oid = v_relation_oid
+      and acl.grantee <> 0::oid
       and acl.grantee <> v_anon_oid
       and pg_catalog.pg_has_role(v_anon_oid, acl.grantee, 'USAGE');
 
