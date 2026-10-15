@@ -145,10 +145,14 @@ inherited_function_state as (
         )
         or not exists (
           select 1 from pg_catalog.pg_roles where rolname = 'authenticated'
+        )
+        or not exists (
+          select 1 from pg_catalog.pg_roles where rolname = 'service_role'
         ) then false
       else
         not pg_catalog.has_function_privilege('anon', routine.oid, 'EXECUTE')
         and pg_catalog.has_function_privilege('authenticated', routine.oid, 'EXECUTE')
+        and pg_catalog.has_function_privilege('service_role', routine.oid, 'EXECUTE')
         and not exists (
           select 1
           from pg_catalog.aclexplode(
@@ -259,7 +263,7 @@ target_function_state as (
         and pg_catalog.has_function_privilege(
           'authenticated', function_row.function_oid, 'EXECUTE'
         )
-        and not pg_catalog.has_function_privilege(
+        and pg_catalog.has_function_privilege(
           'service_role', function_row.function_oid, 'EXECUTE'
         )
         and not exists (
@@ -283,6 +287,19 @@ target_function_state as (
           ) acl_row
           join pg_catalog.pg_roles grantee on grantee.oid = acl_row.grantee
           where grantee.rolname = 'authenticated'
+            and acl_row.privilege_type = 'EXECUTE'
+            and not acl_row.is_grantable
+        )
+        and exists (
+          select 1
+          from pg_catalog.aclexplode(
+            coalesce(
+              function_row.proacl,
+              pg_catalog.acldefault('f', function_row.proowner)
+            )
+          ) acl_row
+          join pg_catalog.pg_roles grantee on grantee.oid = acl_row.grantee
+          where grantee.rolname = 'service_role'
             and acl_row.privilege_type = 'EXECUTE'
             and not acl_row.is_grantable
         )
@@ -660,7 +677,7 @@ base_checks(check_name, passed, detail) as (
   select
     'INHERITED_CAN_READ_EXECUTE',
     inherited.execute_ok,
-    'authenticated=true; anon=false; PUBLIC=false'
+    'authenticated=true; service_role=true; anon=false; PUBLIC=false'
   from inherited_function_state inherited
 
   union all
@@ -753,7 +770,7 @@ function_checks(check_name, passed, detail) as (
   select
     'FUNCTION_' || pg_catalog.upper(function_row.function_name) || '_EXECUTE',
     function_row.execute_ok,
-    'authenticated=true direct without grant option; anon=false; service_role=false; PUBLIC=false'
+    'authenticated=true and service_role=true, both direct without grant option; anon=false; PUBLIC=false'
   from target_function_state function_row
 ),
 state_summary as (

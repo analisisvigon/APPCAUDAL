@@ -270,6 +270,9 @@ begin
      or not pg_catalog.has_function_privilege(
        'authenticated', v_function_oid, 'EXECUTE'
      )
+     or not pg_catalog.has_function_privilege(
+       'service_role', v_function_oid, 'EXECUTE'
+     )
      or exists (
        select 1
        from pg_catalog.pg_proc routine
@@ -471,8 +474,8 @@ alter function public.can_write_club_team_season(uuid) owner to postgres;
 alter function public.can_read_match(uuid) owner to postgres;
 alter function public.can_write_match(uuid) owner to postgres;
 
--- CREATE FUNCTION grants EXECUTE to PUBLIC by default. Remove every client and
--- backend grant first, then expose only the authenticated application role.
+-- CREATE FUNCTION grants EXECUTE to PUBLIC by default. Reset every client and
+-- backend grant first, then expose authenticated and the trusted service role.
 -- postgres retains the unavoidable owner capability.
 revoke all on function public.can_write_club_team_season(uuid)
   from public, anon, authenticated, service_role;
@@ -482,11 +485,11 @@ revoke all on function public.can_write_match(uuid)
   from public, anon, authenticated, service_role;
 
 grant execute on function public.can_write_club_team_season(uuid)
-  to authenticated;
+  to authenticated, service_role;
 grant execute on function public.can_read_match(uuid)
-  to authenticated;
+  to authenticated, service_role;
 grant execute on function public.can_write_match(uuid)
-  to authenticated;
+  to authenticated, service_role;
 
 do $postconditions$
 declare
@@ -579,7 +582,7 @@ begin
 
     if pg_catalog.has_function_privilege('anon', v_function_oid, 'EXECUTE')
        or not pg_catalog.has_function_privilege('authenticated', v_function_oid, 'EXECUTE')
-       or pg_catalog.has_function_privilege('service_role', v_function_oid, 'EXECUTE')
+       or not pg_catalog.has_function_privilege('service_role', v_function_oid, 'EXECUTE')
        or exists (
          select 1
          from pg_catalog.pg_proc routine
@@ -605,6 +608,21 @@ begin
          join pg_catalog.pg_roles grantee on grantee.oid = acl_row.grantee
          where routine.oid = v_function_oid
            and grantee.rolname = 'authenticated'
+           and acl_row.privilege_type = 'EXECUTE'
+           and not acl_row.is_grantable
+       )
+       or not exists (
+         select 1
+         from pg_catalog.pg_proc routine
+         cross join lateral pg_catalog.aclexplode(
+           coalesce(
+             routine.proacl,
+             pg_catalog.acldefault('f', routine.proowner)
+           )
+         ) acl_row
+         join pg_catalog.pg_roles grantee on grantee.oid = acl_row.grantee
+         where routine.oid = v_function_oid
+           and grantee.rolname = 'service_role'
            and acl_row.privilege_type = 'EXECUTE'
            and not acl_row.is_grantable
        ) then
