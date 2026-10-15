@@ -23,7 +23,8 @@ roles as (
   select
     (select r.oid from pg_catalog.pg_roles r where r.rolname = 'anon') as anon_oid,
     (select r.oid from pg_catalog.pg_roles r where r.rolname = 'authenticated') as authenticated_oid,
-    (select r.oid from pg_catalog.pg_roles r where r.rolname = 'service_role') as service_role_oid
+    (select r.oid from pg_catalog.pg_roles r where r.rolname = 'service_role') as service_role_oid,
+    (select r.oid from pg_catalog.pg_roles r where r.rolname = 'pg_maintain') as pg_maintain_oid
 ),
 relations as (
   select
@@ -71,6 +72,7 @@ all_privileges(privilege_name) as (
     ('INSERT'::text),
     ('UPDATE'::text),
     ('DELETE'::text),
+    ('MAINTAIN'::text),
     ('TRUNCATE'::text),
     ('REFERENCES'::text),
     ('TRIGGER'::text)
@@ -79,7 +81,11 @@ dml_privileges(privilege_name) as (
   values ('SELECT'::text), ('INSERT'::text), ('UPDATE'::text), ('DELETE'::text)
 ),
 dangerous_privileges(privilege_name) as (
-  values ('TRUNCATE'::text), ('REFERENCES'::text), ('TRIGGER'::text)
+  values
+    ('MAINTAIN'::text),
+    ('TRUNCATE'::text),
+    ('REFERENCES'::text),
+    ('TRIGGER'::text)
 ),
 required_authenticated(table_name, privilege_name) as (
   values
@@ -149,18 +155,84 @@ service_non_public_sources as (
 ),
 preflight_checks(check_name, object_name, passed, detail) as (
   select
+    'postgresql_17_o_superior'::text,
+    'database'::text,
+    pg_catalog.current_setting('server_version_num')::integer >= 170000,
+    pg_catalog.format(
+      'server_version=%s; server_version_num=%s',
+      pg_catalog.current_setting('server_version'),
+      pg_catalog.current_setting('server_version_num')
+    )::text
+
+  union all
+
+  select
     'roles_supabase_presentes'::text,
-    'anon, authenticated, service_role'::text,
+    'anon, authenticated, service_role, pg_maintain'::text,
     role_ids.anon_oid is not null
       and role_ids.authenticated_oid is not null
-      and role_ids.service_role_oid is not null,
+      and role_ids.service_role_oid is not null
+      and role_ids.pg_maintain_oid is not null,
     pg_catalog.format(
-      'anon=%s; authenticated=%s; service_role=%s',
+      'anon=%s; authenticated=%s; service_role=%s; pg_maintain=%s',
       coalesce(role_ids.anon_oid::text, '<ausente>'),
       coalesce(role_ids.authenticated_oid::text, '<ausente>'),
-      coalesce(role_ids.service_role_oid::text, '<ausente>')
+      coalesce(role_ids.service_role_oid::text, '<ausente>'),
+      coalesce(role_ids.pg_maintain_oid::text, '<ausente>')
     )::text
   from roles role_ids
+
+  union all
+
+  select
+    'rol_sin_membresia_pg_maintain'::text,
+    actor.role_name,
+    case
+      when actor.role_oid is null or role_ids.pg_maintain_oid is null then false
+      else not pg_catalog.pg_has_role(
+             actor.role_oid,
+             role_ids.pg_maintain_oid,
+             'MEMBER'
+           )
+        and not pg_catalog.pg_has_role(
+             actor.role_oid,
+             role_ids.pg_maintain_oid,
+             'USAGE'
+           )
+        and not pg_catalog.pg_has_role(
+             actor.role_oid,
+             role_ids.pg_maintain_oid,
+             'SET'
+           )
+    end,
+    case
+      when actor.role_oid is null or role_ids.pg_maintain_oid is null
+        then 'No se puede comprobar la membresia.'
+      else pg_catalog.format(
+        'member=%s; usage=%s; can_set_role=%s',
+        pg_catalog.pg_has_role(
+          actor.role_oid,
+          role_ids.pg_maintain_oid,
+          'MEMBER'
+        ),
+        pg_catalog.pg_has_role(
+          actor.role_oid,
+          role_ids.pg_maintain_oid,
+          'USAGE'
+        ),
+        pg_catalog.pg_has_role(
+          actor.role_oid,
+          role_ids.pg_maintain_oid,
+          'SET'
+        )
+      )
+    end::text
+  from roles role_ids
+  cross join lateral (
+    values
+      ('anon'::text, role_ids.anon_oid),
+      ('authenticated'::text, role_ids.authenticated_oid)
+  ) actor(role_name, role_oid)
 
   union all
 
@@ -668,6 +740,53 @@ result_rows(section, object_type, object_name, check_name, status, severity, det
     from all_privileges
   ) privilege
   group by relation.table_name, actor.role_name
+
+  union all
+
+  select
+    '06 PG_MAINTAIN_MEMBERSHIP'::text,
+    'ROLE_MEMBERSHIP'::text,
+    'pg_catalog.pg_maintain'::text,
+    actor.role_name,
+    'INFO'::text,
+    case
+      when actor.role_oid is null or role_ids.pg_maintain_oid is null then 'HIGH'
+      when (
+        pg_catalog.pg_has_role(actor.role_oid, role_ids.pg_maintain_oid, 'MEMBER')
+        or pg_catalog.pg_has_role(actor.role_oid, role_ids.pg_maintain_oid, 'USAGE')
+        or pg_catalog.pg_has_role(actor.role_oid, role_ids.pg_maintain_oid, 'SET')
+      ) and actor.role_name in ('anon', 'authenticated') then 'CRITICAL'
+      else 'INFO'
+    end::text,
+    case
+      when actor.role_oid is null or role_ids.pg_maintain_oid is null
+        then 'No se puede comprobar la membresia.'
+      else pg_catalog.format(
+        'member=%s; usage=%s; can_set_role=%s',
+        pg_catalog.pg_has_role(
+          actor.role_oid,
+          role_ids.pg_maintain_oid,
+          'MEMBER'
+        ),
+        pg_catalog.pg_has_role(
+          actor.role_oid,
+          role_ids.pg_maintain_oid,
+          'USAGE'
+        ),
+        pg_catalog.pg_has_role(
+          actor.role_oid,
+          role_ids.pg_maintain_oid,
+          'SET'
+        )
+      )
+    end::text
+  from roles role_ids
+  cross join lateral (
+    values
+      ('anon'::text, role_ids.anon_oid),
+      ('authenticated'::text, role_ids.authenticated_oid),
+      ('service_role'::text, role_ids.service_role_oid)
+  ) actor(role_name, role_oid)
 )
 select
   section,

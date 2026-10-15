@@ -18,6 +18,7 @@ declare
   v_anon_oid oid;
   v_authenticated_oid oid;
   v_service_role_oid oid;
+  v_pg_maintain_oid oid;
   v_privilege text;
   v_inherited_sources text;
   v_has_non_public_source boolean;
@@ -26,10 +27,10 @@ declare
   ]::text[];
   v_all_privileges constant text[] := array[
     'SELECT', 'INSERT', 'UPDATE', 'DELETE',
-    'TRUNCATE', 'REFERENCES', 'TRIGGER'
+    'MAINTAIN', 'TRUNCATE', 'REFERENCES', 'TRIGGER'
   ]::text[];
   v_dangerous_privileges constant text[] := array[
-    'TRUNCATE', 'REFERENCES', 'TRIGGER'
+    'MAINTAIN', 'TRUNCATE', 'REFERENCES', 'TRIGGER'
   ]::text[];
   v_target_tables constant text[] := array[
     'jugador_suspension_consumptions',
@@ -38,6 +39,15 @@ declare
     'match_set_piece_takers'
   ]::text[];
 begin
+  if pg_catalog.current_setting('server_version_num')::integer < 170000 then
+    raise exception using
+      errcode = '0A000',
+      message = pg_catalog.format(
+        'Cambio 39A bloqueado: PostgreSQL %s no dispone del modelo MAINTAIN esperado.',
+        pg_catalog.current_setting('server_version')
+      );
+  end if;
+
   select role_row.oid
   into v_anon_oid
   from pg_catalog.pg_roles role_row
@@ -53,12 +63,34 @@ begin
   from pg_catalog.pg_roles role_row
   where role_row.rolname = 'service_role';
 
+  select role_row.oid
+  into v_pg_maintain_oid
+  from pg_catalog.pg_roles role_row
+  where role_row.rolname = 'pg_maintain';
+
   if v_anon_oid is null
      or v_authenticated_oid is null
-     or v_service_role_oid is null then
+     or v_service_role_oid is null
+     or v_pg_maintain_oid is null then
     raise exception using
       errcode = '55000',
-      message = 'Cambio 39A bloqueado: faltan los roles anon, authenticated o service_role.';
+      message = 'Cambio 39A bloqueado: faltan los roles anon, authenticated, service_role o pg_maintain.';
+  end if;
+
+  if pg_catalog.pg_has_role(v_anon_oid, v_pg_maintain_oid, 'MEMBER')
+     or pg_catalog.pg_has_role(v_anon_oid, v_pg_maintain_oid, 'USAGE')
+     or pg_catalog.pg_has_role(v_anon_oid, v_pg_maintain_oid, 'SET') then
+    raise exception using
+      errcode = '55000',
+      message = 'Cambio 39A bloqueado: anon hereda el rol administrativo pg_maintain.';
+  end if;
+
+  if pg_catalog.pg_has_role(v_authenticated_oid, v_pg_maintain_oid, 'MEMBER')
+     or pg_catalog.pg_has_role(v_authenticated_oid, v_pg_maintain_oid, 'USAGE')
+     or pg_catalog.pg_has_role(v_authenticated_oid, v_pg_maintain_oid, 'SET') then
+    raise exception using
+      errcode = '55000',
+      message = 'Cambio 39A bloqueado: authenticated hereda el rol administrativo pg_maintain.';
   end if;
 
   foreach v_table_name in array v_target_tables loop
@@ -369,7 +401,7 @@ from anon, public;
 
 -- Estas capacidades no son necesarias para las consultas ni el CRUD de la app
 -- y no estan protegidas por las expresiones RLS de fila.
-revoke truncate, references, trigger on table
+revoke maintain, truncate, references, trigger on table
   public.jugador_suspension_consumptions,
   public.match_set_piece_diagrams,
   public.match_set_piece_notes,
@@ -382,14 +414,15 @@ declare
   v_relation_oid oid;
   v_anon_oid oid;
   v_authenticated_oid oid;
+  v_pg_maintain_oid oid;
   v_privilege text;
   v_required_privilege text;
   v_all_privileges constant text[] := array[
     'SELECT', 'INSERT', 'UPDATE', 'DELETE',
-    'TRUNCATE', 'REFERENCES', 'TRIGGER'
+    'MAINTAIN', 'TRUNCATE', 'REFERENCES', 'TRIGGER'
   ]::text[];
   v_dangerous_privileges constant text[] := array[
-    'TRUNCATE', 'REFERENCES', 'TRIGGER'
+    'MAINTAIN', 'TRUNCATE', 'REFERENCES', 'TRIGGER'
   ]::text[];
   v_target_tables constant text[] := array[
     'jugador_suspension_consumptions',
@@ -407,6 +440,22 @@ begin
   into strict v_authenticated_oid
   from pg_catalog.pg_roles role_row
   where role_row.rolname = 'authenticated';
+
+  select role_row.oid
+  into strict v_pg_maintain_oid
+  from pg_catalog.pg_roles role_row
+  where role_row.rolname = 'pg_maintain';
+
+  if pg_catalog.pg_has_role(v_anon_oid, v_pg_maintain_oid, 'MEMBER')
+     or pg_catalog.pg_has_role(v_anon_oid, v_pg_maintain_oid, 'USAGE')
+     or pg_catalog.pg_has_role(v_anon_oid, v_pg_maintain_oid, 'SET')
+     or pg_catalog.pg_has_role(v_authenticated_oid, v_pg_maintain_oid, 'MEMBER')
+     or pg_catalog.pg_has_role(v_authenticated_oid, v_pg_maintain_oid, 'USAGE')
+     or pg_catalog.pg_has_role(v_authenticated_oid, v_pg_maintain_oid, 'SET') then
+    raise exception using
+      errcode = '55000',
+      message = 'Cambio 39A revertido: anon o authenticated heredan pg_maintain.';
+  end if;
 
   foreach v_table_name in array v_target_tables loop
     v_relation_oid := pg_catalog.to_regclass(
