@@ -189,3 +189,9 @@ export const selectTrainingTaskPreviewMedia = (rows = []) => {
     || ordered.find((row) => row.kind === 'video' && getVideoThumbnailUrl(detectVideoProvider(row.originalUrl)))
     || null;
 };
+
+// The detail uses the persisted order; the card preview has separate image-first rules.
+export const selectTrainingTaskFeaturedMedia = (rows = []) => sortTrainingTaskMedia(rows).find((row) => (
+  (row.kind === 'image' && row.source === 'upload' && Boolean(row.storagePath))
+  || (row.kind === 'video' && row.source === 'url' && Boolean(row.originalUrl))
+)) || null;

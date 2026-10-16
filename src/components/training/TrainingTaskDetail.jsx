@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import TrainingTaskBoardEditor from './TrainingTaskBoardEditor';
-import TrainingTaskMediaPanel from './TrainingTaskMediaPanel';
+import TrainingTaskMediaPanel, { TrainingTaskFeaturedMedia } from './TrainingTaskMediaPanel';
+import TrainingTaskTeamsPanel from './TrainingTaskTeamsPanel';
 import {
   TRAINING_TASK_PHASES,
   formatTrainingTaskPlayers,
@@ -10,6 +11,7 @@ import {
   getTrainingTaskTypeDefinition,
 } from '../../utils/trainingTasks';
 import { readTrainingTaskEditorPayload } from '../../utils/trainingTaskEditorPayload';
+import { selectTrainingTaskFeaturedMedia } from '../../utils/trainingTaskMedia';
 
 const EMPTY_VALUE = '—';
 const hasValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
@@ -65,24 +67,31 @@ export default function TrainingTaskDetail({ task = null, currentUserId = '', pl
 
   const canEdit = task.author_user_id === currentUserId;
   const type = getTrainingTaskTypeDefinition(task.taskType);
-  const phaseLabel = TRAINING_TASK_PHASES.find((phase) => phase.value === task.gamePhase)?.label || '';
+  const phaseLabel = task.gamePhase ? TRAINING_TASK_PHASES.find((phase) => phase.value === task.gamePhase)?.label || task.gamePhase : '';
   const momentLabel = getTrainingTaskMomentLabel(task.gamePhase, task.gameMoment) || task.gameMoment || '';
   const stages = Array.isArray(task.stageKeys) ? task.stageKeys.map(getTrainingTaskStageLabel) : [];
   const parsedBoard = readTrainingTaskEditorPayload(task.editorPayload ?? task.editor_payload);
   const assignments = parsedBoard.kind === 'v1' && Array.isArray(parsedBoard.scene.assignments?.players) ? parsedBoard.scene.assignments.players : [];
   const assignedTeams = new Set(assignments.map((entry) => entry?.teamKey).filter(Boolean)).size;
-  const playersLabel = formatTrainingTaskPlayers(task);
+  const hasPlayerRange = hasValue(task.playersMin) || hasValue(task.playersMax);
+  const playersLabel = hasValue(task.playersMin) && hasValue(task.playersMax)
+    ? task.playersMin === task.playersMax ? String(task.playersMin) : `${task.playersMin}–${task.playersMax}`
+    : hasValue(task.playersMin) ? `Desde ${task.playersMin}`
+      : hasValue(task.playersMax) ? `Hasta ${task.playersMax}` : formatTrainingTaskPlayers(task);
   const spaceLabel = formatTrainingTaskSpace(task);
   const ratingLabel = Number(task.ratingCount) > 0 && Number.isFinite(Number(task.ratingAverage)) ? `${Number(task.ratingAverage).toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}/5` : EMPTY_VALUE;
   const ownership = canEdit ? task.isShared ? 'Tarea propia compartida' : 'Tarea propia privada' : 'Compartida contigo';
   const author = canEdit ? 'Tú' : 'Miembro del cuerpo técnico';
   const mediaCount = Array.isArray(task.media) ? task.media.length : 0;
-  const organizationSummary = [task.playersSpec || '', hasValue(task.playersMin) || hasValue(task.playersMax) ? `rango ${displayValue(task.playersMin)}–${displayValue(task.playersMax)}` : '', spaceLabel].filter(Boolean).join(' · ') || 'Sin datos detallados';
-  const contentSummary = [phaseLabel, momentLabel, task.technicalContent ? 'contenido técnico' : '', task.tacticalContent ? 'contenido táctico' : ''].filter(Boolean).join(' · ') || 'Sin contenido adicional';
+  const featuredMedia = selectTrainingTaskFeaturedMedia(Array.isArray(task.media) ? task.media : []);
+  const hasOrganization = [task.playersSpec, task.playersMin, task.playersMax, task.spaceWidthM, task.spaceLengthM].some(hasValue);
+  const hasTechnicalContent = [task.gamePhase, task.gameMoment, task.technicalContent, task.tacticalContent, task.material].some(hasValue);
+  const hasOrganizationDetails = assignments.length > 0;
+  const hasContentDetails = hasValue(task.variants);
   const mediaSummary = `${mediaCount} ${mediaCount === 1 ? 'recurso' : 'recursos'}${task.attachmentPath ? ' · adjunto legacy' : ''}`;
   const feedbackSummary = Number(task.feedbackCount) > 0 ? `${task.feedbackCount} ${Number(task.feedbackCount) === 1 ? 'experiencia' : 'experiencias'} · ${ratingLabel}` : 'Sin experiencias registradas';
 
-  return <article className="relative left-1/2 w-full min-w-0 -translate-x-1/2 overflow-hidden rounded-[1.35rem] border border-caudal-electric/20 bg-[linear-gradient(145deg,rgba(8,24,45,.98),rgba(5,13,25,.98))] shadow-[0_24px_70px_rgba(0,0,0,.32)] xl:w-[min(96rem,calc(100vw-4rem))]" aria-labelledby="training-task-detail-title">
+  return <article className="w-full min-w-0 overflow-hidden rounded-[1.35rem] border border-caudal-electric/20 bg-[linear-gradient(145deg,rgba(8,24,45,.98),rgba(5,13,25,.98))] shadow-[0_24px_70px_rgba(0,0,0,.32)] xl:ml-[calc((100%-min(96rem,100vw-4rem))/2)] xl:w-[min(96rem,calc(100vw-4rem))]" aria-labelledby="training-task-detail-title">
     <header className="border-b border-white/10 bg-[radial-gradient(circle_at_85%_0%,rgba(61,217,255,.10),transparent_40%)] px-4 py-3.5 sm:px-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
@@ -111,26 +120,50 @@ export default function TrainingTaskDetail({ task = null, currentUserId = '', pl
         <Metric kind="rating" label="Valoración POST" value={ratingLabel} detail={Number(task.feedbackCount) > 0 ? `${task.feedbackCount} ${Number(task.feedbackCount) === 1 ? 'experiencia' : 'experiencias'}` : ''} />
       </section>
 
-      <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,0.43fr)_minmax(0,0.57fr)] lg:items-start">
-        <section className="grid min-w-0 gap-3 rounded-[1.1rem] border border-white/10 bg-white/[0.03] p-4 sm:p-5">
-          <div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-caudal-electric">Objetivo principal</p><p className={`mt-1.5 whitespace-pre-wrap text-base leading-6 ${hasValue(task.objective) ? 'font-semibold text-white' : 'italic text-slate-600'}`}>{displayValue(task.objective, 'Sin definir')}</p></div>
-          <div className="border-t border-white/10 pt-3"><p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Descripción y desarrollo</p><p className={`mt-1.5 whitespace-pre-wrap text-sm leading-6 ${hasValue(task.description) ? 'text-slate-300' : 'italic text-slate-600'}`}>{displayValue(task.description, 'Sin definir')}</p></div>
-          {(task.material || task.observations) ? <div className="grid gap-3 border-t border-white/10 pt-3 sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">{task.material ? <LabeledValue label="Material esencial" value={task.material} /> : null}{task.observations ? <LabeledValue label="Consignas / observaciones" value={task.observations} /> : null}</div> : null}
-        </section>
+      <div className="flex min-w-0 flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,0.43fr)_minmax(0,0.57fr)] lg:items-start">
+        <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-3">
+          <section className="order-1 min-w-0 rounded-[1.1rem] border border-white/10 bg-white/[0.03] p-4 sm:p-5">
+            <div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-caudal-electric">Objetivo principal</p><p className={`mt-1.5 whitespace-pre-wrap text-base leading-6 ${hasValue(task.objective) ? 'font-semibold text-white' : 'italic text-slate-600'}`}>{displayValue(task.objective, 'Sin definir')}</p></div>
+            <div className="mt-3 border-t border-white/10 pt-3"><p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Descripción y desarrollo</p><p className={`mt-1.5 whitespace-pre-wrap text-sm leading-6 ${hasValue(task.description) ? 'text-slate-300' : 'italic text-slate-600'}`}>{displayValue(task.description, 'Sin definir')}</p></div>
+            {hasValue(task.observations) ? <div className="mt-3 border-t border-white/10 pt-3"><LabeledValue label="Consignas / observaciones" value={task.observations} /></div> : null}
+          </section>
 
-        <section className="min-w-0 rounded-[1.1rem] border border-caudal-electric/20 bg-[#06111f] p-1.5 sm:p-2" aria-label="Pizarra táctica de la tarea">
+          {hasOrganization ? <section className="order-3 min-w-0 rounded-[1.1rem] border border-white/10 bg-white/[0.03] p-4" aria-label="Organización de la tarea">
+            <h3 className="text-[9px] font-black uppercase tracking-[0.18em] text-caudal-electric">Organización</h3>
+            <div className="mt-2 grid gap-x-4 gap-y-2 sm:grid-cols-3 lg:grid-cols-2 2xl:grid-cols-3">
+              <LabeledValue label="Formato de jugadores" value={task.playersSpec} />
+              <LabeledValue label="Mínimo / máximo" value={hasPlayerRange ? `${displayValue(task.playersMin)} / ${displayValue(task.playersMax)}` : ''} />
+              <LabeledValue label="Ancho / largo" value={hasValue(task.spaceWidthM) || hasValue(task.spaceLengthM) ? `${hasValue(task.spaceWidthM) ? `${task.spaceWidthM} m` : EMPTY_VALUE} / ${hasValue(task.spaceLengthM) ? `${task.spaceLengthM} m` : EMPTY_VALUE}` : ''} />
+            </div>
+          </section> : null}
+
+          {hasTechnicalContent ? <section className="order-4 min-w-0 rounded-[1.1rem] border border-white/10 bg-white/[0.03] p-4" aria-label="Contenido técnico y táctico de la tarea">
+            <h3 className="text-[9px] font-black uppercase tracking-[0.18em] text-caudal-electric">Contenido técnico y táctico</h3>
+            <div className="mt-2 grid gap-x-4 gap-y-2 sm:grid-cols-2">
+              <LabeledValue label="Fase del juego" value={phaseLabel} />
+              <LabeledValue label="Momento / subfase" value={momentLabel} />
+              <LabeledValue label="Contenido técnico" value={task.technicalContent} />
+              <LabeledValue label="Contenido táctico" value={task.tacticalContent} />
+              <LabeledValue label="Material" value={task.material} className="sm:col-span-2" />
+            </div>
+          </section> : null}
+
+          {featuredMedia ? <div className="order-5 min-w-0 rounded-[1.1rem] border border-white/10 bg-white/[0.03] px-4 pb-4"><TrainingTaskFeaturedMedia client={client} media={featuredMedia} /></div> : null}
+        </div>
+
+        <section className="order-2 min-w-0 rounded-[1.1rem] border border-caudal-electric/20 bg-[#06111f] p-1.5 sm:p-2 lg:order-none" aria-label="Pizarra táctica de la tarea">
           {parsedBoard.kind === 'empty' ? <div className="flex min-h-72 items-center justify-center rounded-xl border border-dashed border-white/10 bg-black/15 px-5 text-center"><div><p className="text-sm font-black text-white">Pizarra táctica</p><p className="mt-1 text-xs text-slate-600">Sin diseño guardado</p></div></div> : <TrainingTaskBoardEditor key={task.id} players={players} payload={task.editorPayload ?? task.editor_payload} readOnly />}
         </section>
       </div>
 
       <div className="grid gap-2">
-        <TrainingTaskDetailAccordion sectionKey="organization" title="Organización detallada" summary={organizationSummary} isOpen={Boolean(openSections.organization)} onToggle={() => toggleSection('organization')}>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6"><LabeledValue label="Formato de jugadores" value={task.playersSpec} className="lg:col-span-2" /><LabeledValue label="Mínimo" value={task.playersMin} /><LabeledValue label="Máximo" value={task.playersMax} /><LabeledValue label="Ancho" value={hasValue(task.spaceWidthM) ? `${task.spaceWidthM} m` : ''} /><LabeledValue label="Largo" value={hasValue(task.spaceLengthM) ? `${task.spaceLengthM} m` : ''} /></div>
-        </TrainingTaskDetailAccordion>
+        {hasOrganizationDetails ? <TrainingTaskDetailAccordion sectionKey="organization" title="Organización detallada" summary={`${assignments.length} jugadores asignados a la pizarra`} isOpen={Boolean(openSections.organization)} onToggle={() => toggleSection('organization')}>
+          <TrainingTaskTeamsPanel players={players} assignments={parsedBoard.scene.assignments} elements={parsedBoard.scene.board.elements} readOnly />
+        </TrainingTaskDetailAccordion> : null}
 
-        <TrainingTaskDetailAccordion sectionKey="content" title="Contenido técnico y táctico" summary={contentSummary} isOpen={Boolean(openSections.content)} onToggle={() => toggleSection('content')}>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"><LabeledValue label="Fase del juego" value={phaseLabel} /><LabeledValue label="Momento / subfase" value={momentLabel} /><LabeledValue label="Material" value={task.material} /><LabeledValue label="Contenido técnico" value={task.technicalContent} /><LabeledValue label="Contenido táctico" value={task.tacticalContent} /><LabeledValue label="Observaciones" value={task.observations} /><LabeledValue label="Variantes y progresiones" value={task.variants} className="sm:col-span-2 xl:col-span-3" /></div>
-        </TrainingTaskDetailAccordion>
+        {hasContentDetails ? <TrainingTaskDetailAccordion sectionKey="content" title="Contenido técnico y táctico" summary="Variantes y progresiones" isOpen={Boolean(openSections.content)} onToggle={() => toggleSection('content')}>
+          <LabeledValue label="Variantes y progresiones" value={task.variants} />
+        </TrainingTaskDetailAccordion> : null}
 
         <TrainingTaskDetailAccordion sectionKey="media" title="Multimedia y archivos" summary={mediaSummary} isOpen={Boolean(openSections.media)} onToggle={() => toggleSection('media')}>
           <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.35fr)]">
