@@ -233,7 +233,7 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
       {view === 'board' && !readOnly && activeTool !== 'select' ? <p className="mt-1.5 text-center text-[10px] font-bold text-caudal-electric">{activeTool === 'zone' || TRACE_TYPES.has(activeTool) ? 'Arrastra sobre el campo para dibujar' : 'Haz clic en el campo para colocar · Escape para seleccionar'}</p> : null}
       {view === 'board' ? <div className="mt-2 min-w-0 gap-2 xl:flex">
         <div className="w-full min-w-0 flex-1 overflow-auto rounded-xl bg-[#0b1e16] p-1 shadow-[0_18px_45px_rgba(0,0,0,.25)]">
-          <div className="min-w-[520px] overflow-hidden rounded-lg">
+          <div className={`${readOnly ? 'min-w-0' : 'min-w-[520px]'} overflow-hidden rounded-lg`}>
           <TrainingTaskDiagramCanvas
             elements={elements}
             pitchType={scene.board.pitchType === 'penalty-area' ? 'half' : scene.board.pitchType}

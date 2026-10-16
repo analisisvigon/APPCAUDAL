@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import TrainingTaskBoardEditor from './TrainingTaskBoardEditor';
 import TrainingTaskCardPreview from './TrainingTaskCardPreview';
+import TrainingTaskDetail from './TrainingTaskDetail';
 import TrainingTaskMediaPanel from './TrainingTaskMediaPanel';
 import { buildTrainingTaskCardPresentation } from '../../utils/trainingTaskCardPresentation';
 import { createTrainingTaskPlayerLookup } from '../../utils/trainingTaskRoster';
@@ -14,9 +15,6 @@ import {
   createTrainingTaskDraft,
   createTrainingTaskFilters,
   filterTrainingTasks,
-  formatTrainingTaskPlayers,
-  getTrainingTaskMomentLabel,
-  getTrainingTaskStageLabel,
   getTrainingTaskTypeDefinition,
   trainingTaskToDraft,
   validateTrainingTaskDraft,
@@ -152,7 +150,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
   const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [feedbackError, setFeedbackError] = useState('');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const [detailSection, setDetailSection] = useState('information');
+  const [draftBaseline, setDraftBaseline] = useState(null);
   const playerLookup = useMemo(() => createTrainingTaskPlayerLookup(players), [players]);
 
   const refresh = async () => { if (!clubId) return; setLoading(true); setError(''); try { const [loaded, members] = await Promise.all([loadTrainingTasks(supabase, clubId), supabase.from('club_memberships').select('id,user_id,role,is_active').eq('club_id', clubId).eq('is_active', true).in('role', ['owner', 'admin', 'staff'])]); if (members.error) throw members.error; setTasks(loaded); setMemberships(members.data || []); } catch (loadError) { setError(loadError.message || 'No se pudieron cargar las tareas.'); } finally { setLoading(false); } };
@@ -160,19 +158,39 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
 
   const visibleTasks = useMemo(() => filterTrainingTasks(tasks, filters, userId), [tasks, filters, userId]);
   const advancedFilterCount = countActiveTrainingTaskAdvancedFilters(filters);
+  const draftDirty = useMemo(() => Boolean(draft && draftBaseline && JSON.stringify(draft) !== JSON.stringify(draftBaseline)), [draft, draftBaseline]);
   const clearFilters = () => { setFilters(createTrainingTaskFilters()); setShowAdvancedFilters(false); };
   const applyTaskMedia = (taskId, media) => {
     setTasks((current) => current.map((task) => task.id === taskId ? { ...task, media } : task));
     setSelected((current) => current?.id === taskId ? { ...current, media } : current);
   };
-  const openNew = () => { setSelected(null); setFeedbackRows([]); setDraft(createTrainingTaskDraft()); setError(''); };
+  const openNew = () => {
+    const nextDraft = createTrainingTaskDraft();
+    setSelected(null); setFeedbackRows([]); setDraftBaseline(nextDraft); setDraft(nextDraft); setError('');
+  };
   const loadFeedback = async (task) => {
     setFeedbackRows([]); setFeedbackDraft(createTrainingTaskFeedbackDraft()); setFeedbackEditingId(null); setFeedbackError(''); setFeedbackLoading(true);
     try { setFeedbackRows(await loadTrainingTaskFeedback(supabase, task.id)); }
     catch (loadError) { setFeedbackError(loadError.message || 'No se pudo cargar el historial POST.'); }
     finally { setFeedbackLoading(false); }
   };
-  const openEdit = (task) => { if (task.author_user_id !== userId) return; setSelected(task); setDraft(trainingTaskToDraft(task)); setError(''); loadFeedback(task); };
+  const openEdit = (task) => {
+    if (task.author_user_id !== userId) return;
+    const nextDraft = trainingTaskToDraft(task);
+    setSelected(task); setDraftBaseline(nextDraft); setDraft(nextDraft); setError(''); loadFeedback(task);
+  };
+  const closeEditor = () => {
+    if (draftDirty && !window.confirm('Hay cambios sin guardar. ¿Quieres descartarlos?')) return;
+    setDraft(null); setDraftBaseline(null); setError('');
+    if (!selected) setFeedbackRows([]);
+    resetFeedbackDraft();
+  };
+  useEffect(() => {
+    if (!draftDirty) return undefined;
+    const warnBeforeUnload = (event) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [draftDirty]);
   const save = async () => {
     const validation = validateTrainingTaskDraft(draft || {});
     if (Object.keys(validation).length) { setError(Object.values(validation)[0]); return; }
@@ -182,17 +200,15 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
       const { task: saved, cleanupPending, cleanupError } = await saveTrainingTaskWithFile(
         supabase, draft, { clubId, authorUserId: userId }, selected
       );
+      const savedTask = selected
+        ? { ...selected, ...saved, media: selected.media || [] }
+        : { ...saved, media: [] };
       setTasks((current) => selected
-        ? current.map((task) => task.id === saved.id ? { ...task, ...saved } : task)
-        : [{ ...saved, media: [] }, ...current]);
-      if (selected) {
-        setDraft(null);
-        setSelected(null);
-      } else {
-        const created = { ...saved, media: [] };
-        setSelected(created);
-        setDraft(trainingTaskToDraft(created));
-      }
+        ? current.map((task) => task.id === saved.id ? savedTask : task)
+        : [savedTask, ...current]);
+      setSelected(savedTask);
+      setDraft(null);
+      setDraftBaseline(null);
       setStatus(cleanupPending.length
         ? `Tarea guardada. Limpieza pendiente de ${cleanupPending.join(', ')}: ${cleanupError?.message || 'error desconocido'}.`
         : selected ? 'Tarea actualizada.' : 'Tarea creada. Ya puedes añadir contenido multimedia.');
@@ -201,8 +217,9 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     } finally { setSaving(false); }
   };
   const openTask = async (task) => {
+    setDraft(null);
+    setDraftBaseline(null);
     setSelected(task);
-    setDetailSection('information');
     await loadFeedback(task);
   };
   const download = async (task) => { const { data, error: urlError } = await supabase.storage.from(BUCKET).createSignedUrl(task.attachmentPath, 3600, { download: task.attachmentName || true }); if (urlError) { setError(urlError.message); return; } window.open(data.signedUrl, '_blank', 'noopener,noreferrer'); };
@@ -252,8 +269,20 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
   if (!clubId) return <section className="rounded-2xl border border-amber-200/20 bg-amber-200/10 p-5 text-sm text-amber-100">No hay un club activo disponible para cargar Tareas.</section>;
   return <main className="space-y-5">
     <header className="rounded-[1.35rem] border border-white/10 bg-white/[0.04] p-4 shadow-[0_16px_48px_rgba(0,0,0,0.16)] sm:p-5"><div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric">Biblioteca operativa</p><h1 className="mt-1 text-2xl font-black text-white">Tareas</h1><p className="mt-1 text-sm text-slate-400">Biblioteca de tareas de entrenamiento para el cuerpo técnico.</p></div><button type="button" onClick={openNew} className="rounded-xl bg-caudal-electric px-4 py-2.5 text-xs font-black text-slate-950">+ Nueva tarea</button></div>{status ? <p className="mt-3 rounded-xl bg-emerald-400/10 px-3 py-2 text-xs font-bold text-emerald-100">{status}</p> : null}{error && !draft ? <p role="alert" className="mt-3 rounded-xl bg-red-400/10 px-3 py-2 text-xs font-bold text-red-100">{error}</p> : null}</header>
-    {draft ? <TaskForm players={players} draft={draft} setDraft={setDraft} task={selected} onMediaChange={(media) => selected && applyTaskMedia(selected.id, media)} feedback={{ rows: feedbackRows, loading: feedbackLoading, error: feedbackError, draft: feedbackDraft, setDraft: setFeedbackDraft, editingId: feedbackEditingId, saving: feedbackSaving, userId, onSave: saveFeedback, onEdit: editFeedback, onCancelEdit: resetFeedbackDraft, onDelete: removeFeedback, canManage: true }} onCancel={() => { setDraft(null); setSelected(null); setFeedbackRows([]); resetFeedbackDraft(); }} onSave={save} saving={saving} error={error} isEditing={Boolean(selected?.id)} /> : null}
-    <section className="rounded-[1.25rem] border border-white/10 bg-[#091428]/78 p-3">
+    {draft ? <TaskForm players={players} draft={draft} setDraft={setDraft} task={selected} onMediaChange={(media) => selected && applyTaskMedia(selected.id, media)} feedback={{ rows: feedbackRows, loading: feedbackLoading, error: feedbackError, draft: feedbackDraft, setDraft: setFeedbackDraft, editingId: feedbackEditingId, saving: feedbackSaving, userId, onSave: saveFeedback, onEdit: editFeedback, onCancelEdit: resetFeedbackDraft, onDelete: removeFeedback, canManage: true }} onCancel={closeEditor} onSave={save} saving={saving} error={error} isEditing={Boolean(selected?.id)} /> : null}
+    {selected && !draft ? <TrainingTaskDetail
+      task={selected}
+      currentUserId={userId}
+      players={players}
+      client={supabase}
+      onEdit={openEdit}
+      onDuplicate={duplicate}
+      onDownload={download}
+      onMediaChange={(media) => applyTaskMedia(selected.id, media)}
+      onClose={() => { setSelected(null); setFeedbackRows([]); resetFeedbackDraft(); setError(''); }}
+      feedbackContent={<FeedbackPanel rows={feedbackRows} loading={feedbackLoading} error={feedbackError} draft={feedbackDraft} setDraft={setFeedbackDraft} editingId={feedbackEditingId} saving={feedbackSaving} userId={userId} onSave={saveFeedback} onEdit={editFeedback} onCancelEdit={resetFeedbackDraft} onDelete={removeFeedback} canManage={false} />}
+    /> : null}
+    {!draft && !selected ? <><section className="rounded-[1.25rem] border border-white/10 bg-[#091428]/78 p-3">
       <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_180px_160px_180px_auto]">
         <input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Buscar en toda la ficha..." aria-label="Buscar tareas" className="min-h-9 rounded-xl border border-white/10 bg-black/20 px-3 text-sm font-semibold text-white outline-none placeholder:text-slate-600 focus:border-caudal-electric/60" />
         <select value={filters.taskType} onChange={(event) => setFilters((current) => ({ ...current, taskType: event.target.value }))} aria-label="Filtrar por tipo" className="min-h-9 rounded-xl border border-white/10 bg-white px-2 text-xs font-bold text-slate-950"><option value="">Todos los tipos</option>{TRAINING_TASK_TYPES.map((type) => <option key={type.key} value={type.key}>{type.label}</option>)}</select>
@@ -272,14 +301,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
       <div className="mt-3 flex items-center justify-between gap-3"><p className="text-xs font-bold text-slate-400">{visibleTasks.length} {visibleTasks.length === 1 ? 'resultado' : 'resultados'}</p><button type="button" onClick={clearFilters} className="rounded-lg bg-white/[0.06] px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-300 hover:bg-white/10">Limpiar filtros</button></div>
     </section>
     {loading ? <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm text-slate-500">Cargando tareas…</div> : error && !tasks.length ? <div role="alert" className="rounded-2xl border border-red-300/20 bg-red-400/10 p-8 text-center text-sm text-red-100">No se pudieron cargar las tareas.</div> : visibleTasks.length ? <div className="grid items-stretch gap-4 md:grid-cols-2 2xl:grid-cols-3">{visibleTasks.map((task) => <TaskCard key={task.id} task={task} userId={userId} playerLookup={playerLookup} canManage={task.author_user_id === userId} onOpen={openTask} onEdit={openEdit} onDuplicate={duplicate} onDelete={remove} onShare={startShare} onDownload={download} />)}</div> : <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] p-8 text-center"><p className="text-sm font-black text-white">No hay tareas todavía</p><p className="mt-1 text-xs text-slate-500">Crea la primera tarea de entrenamiento para tu biblioteca.</p><button type="button" onClick={openNew} className="mt-4 rounded-xl bg-caudal-electric px-4 py-2 text-xs font-black text-slate-950">+ Nueva tarea</button></div>}
-    {selected && !draft ? <section className="min-w-0 rounded-[1.35rem] border border-caudal-electric/20 bg-[#071327]/95 p-4 sm:p-5" aria-labelledby="training-task-detail-title"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Detalle de tarea</p>{selected.author_user_id !== userId ? <span className="rounded-full bg-white/[0.06] px-2 py-1 text-[9px] font-black uppercase text-slate-400">Solo lectura</span> : null}</div><h2 id="training-task-detail-title" className="mt-1 break-words text-xl font-black text-white">{selected.name}</h2></div><button type="button" onClick={() => setSelected(null)} className="min-h-10 rounded-xl bg-white/[0.06] px-3 text-xs font-black text-slate-300">Cerrar</button></div><TaskSectionNavigation active={detailSection} onChange={setDetailSection} prefix="task-detail" />
-      <TaskSectionPanel active={detailSection} section="information" prefix="task-detail"><SectionHeading eyebrow="1 · Información" title="Identidad de la tarea" /><div className="grid gap-3 text-sm text-slate-300 sm:grid-cols-2"><div><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Código</p><p className="mt-1 font-bold text-white">{selected.taskCode || 'Sin código'}</p></div><div><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Tipo</p><p className="mt-1">{getTrainingTaskTypeDefinition(selected.taskType).label}</p></div><div className="sm:col-span-2"><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Etapas</p><p className="mt-1">{selected.stageKeys?.length ? selected.stageKeys.map(getTrainingTaskStageLabel).join(' · ') : 'Sin etapa'}</p></div><div className="sm:col-span-2 text-xs text-slate-500">Creada {formatDate(selected.created_at)} · actualizada {formatDate(selected.updated_at)}</div></div></TaskSectionPanel>
-      <TaskSectionPanel active={detailSection} section="organization" prefix="task-detail"><SectionHeading eyebrow="2 · Organización" title="Formato y espacio" /><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[['Jugadores', formatTrainingTaskPlayers(selected)], ['Duración', selected.durationMinutes ? `${selected.durationMinutes} min` : '—'], ['Ancho', selected.spaceWidthM ? `${selected.spaceWidthM} m` : '—'], ['Largo', selected.spaceLengthM ? `${selected.spaceLengthM} m` : '—']].map(([label, value]) => <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{label}</p><p className="mt-2 text-base font-black text-white">{value}</p></div>)}</div></TaskSectionPanel>
-      <TaskSectionPanel active={detailSection} section="content" prefix="task-detail"><SectionHeading eyebrow="3 · Contenido" title="Objetivos y consignas" /><div className="grid gap-4 text-sm leading-6 text-slate-300 md:grid-cols-2"><div><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Objetivo</p><p className="mt-1 whitespace-pre-wrap">{selected.objective}</p></div><div><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Descripción</p><p className="mt-1 whitespace-pre-wrap">{selected.description || 'Sin descripción.'}</p></div><div><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Técnico</p><p className="mt-1 whitespace-pre-wrap">{selected.technicalContent || '—'}</p></div><div><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Táctico / fase</p><p className="mt-1 whitespace-pre-wrap">{selected.tacticalContent || '—'}{selected.gameMoment ? ` · ${getTrainingTaskMomentLabel(selected.gamePhase, selected.gameMoment) || selected.gameMoment}` : ''}</p></div><div><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Material</p><p className="mt-1 whitespace-pre-wrap">{selected.material || '—'}</p></div><div><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Observaciones</p><p className="mt-1 whitespace-pre-wrap">{selected.observations || '—'}</p></div><div className="md:col-span-2"><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Variantes</p><p className="mt-1 whitespace-pre-wrap">{selected.variants || 'Sin variantes.'}</p></div><div className="md:col-span-2"><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Adjunto anterior</p>{selected.attachmentPath ? <button type="button" onClick={() => download(selected)} className="mt-1 text-left font-bold text-caudal-electric underline">{selected.attachmentName || 'Descargar archivo'}</button> : <p className="mt-1">Sin archivo.</p>}</div></div></TaskSectionPanel>
-      <TaskSectionPanel active={detailSection} section="design" prefix="task-detail"><SectionHeading eyebrow="4 · Diseño de la tarea" title="Pizarra, equipos y jugadores" /><TrainingTaskBoardEditor players={players} payload={selected.editorPayload ?? selected.editor_payload} readOnly showEmpty={false} /></TaskSectionPanel>
-      <TaskSectionPanel active={detailSection} section="media" prefix="task-detail"><SectionHeading eyebrow="5 · Multimedia" title="Material visual y documentos" /><TrainingTaskMediaPanel client={supabase} task={selected} canManage={selected.author_user_id === userId} onChange={(media) => applyTaskMedia(selected.id, media)} embedded /></TaskSectionPanel>
-      <TaskSectionPanel active={detailSection} section="post" prefix="task-detail"><FeedbackPanel rows={feedbackRows} loading={feedbackLoading} error={feedbackError} draft={feedbackDraft} setDraft={setFeedbackDraft} editingId={feedbackEditingId} saving={feedbackSaving} userId={userId} onSave={saveFeedback} onEdit={editFeedback} onCancelEdit={resetFeedbackDraft} onDelete={removeFeedback} canManage={selected.author_user_id === userId} /></TaskSectionPanel>
-    </section> : null}
+    </> : null}
     {shareTask ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"><section className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#071327] p-5 shadow-2xl"><h2 className="text-lg font-black text-white">Compartir tarea</h2><p className="mt-1 text-xs text-slate-500">Selecciona miembros STAFF del mismo club. No se comparte con jugadores.</p><div className="mt-4 grid max-h-64 gap-2 overflow-y-auto">{memberships.filter((member) => member.user_id !== userId).map((member) => <label key={member.id} className="flex items-center gap-3 rounded-xl bg-white/[0.04] px-3 py-2 text-xs text-slate-300"><input type="checkbox" checked={shareIds.includes(member.id)} onChange={(event) => setShareIds((current) => event.target.checked ? [...current, member.id] : current.filter((id) => id !== member.id))} />{member.role.toUpperCase()} · {member.user_id}</label>)}</div><div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => setShareTask(null)} className="rounded-xl bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-300">Cancelar</button><button type="button" onClick={saveShare} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black text-slate-950">Guardar compartición</button></div></section></div> : null}
   </main>;
 }

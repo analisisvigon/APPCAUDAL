@@ -83,14 +83,16 @@ assert.equal(copy.previewPath, '', 'duplicar sigue sin copiar preview');
 assert.equal(copy.isShared, false, 'duplicar sigue sin copiar sharing');
 
 const sectionSource = await readFile(new URL('../components/training/TrainingTasksSection.jsx', import.meta.url), 'utf8');
+const detailSource = await readFile(new URL('../components/training/TrainingTaskDetail.jsx', import.meta.url), 'utf8');
 const boardSource = await readFile(new URL('../components/training/TrainingTaskBoardEditor.jsx', import.meta.url), 'utf8');
 const teamsSource = await readFile(new URL('../components/training/TrainingTaskTeamsPanel.jsx', import.meta.url), 'utf8');
 const appSource = await readFile(new URL('../App.jsx', import.meta.url), 'utf8');
 assert.match(sectionSource, /task\.author_user_id !== userId/, 'solo el autor abre edición');
-assert.match(sectionSource, /TrainingTaskBoardEditor[^>]+readOnly/, 'el detalle, incluida una compartida, renderiza la pizarra readonly');
+assert.match(detailSource, /TrainingTaskBoardEditor[^>]+readOnly/, 'el detalle, incluida una compartida, renderiza la pizarra readonly');
 assert.match(boardSource, /view === 'board' && !readOnly \? <div className="mt-2"><TrainingTaskBoardToolbar/, 'los controles solo aparecen en modo editable');
 assert.match(appSource, /<TrainingTasksSection[^>]+players=\{players\}/, 'Tareas recibe la plantilla ya cargada por App');
-assert.match(sectionSource, /TrainingTaskBoardEditor players=\{players\}/, 'la misma plantilla llega a edición y lectura');
+assert.match(sectionSource, /TrainingTaskBoardEditor players=\{players\}/, 'la plantilla llega al editor');
+assert.match(detailSource, /TrainingTaskBoardEditor[^>]+players=\{players\}/, 'la misma plantilla llega a la consulta');
 assert.doesNotMatch(teamsSource, /supabase|\.from\(/, 'Equipos no crea una fuente ni consulta adicional');
 assert.match(boardSource, /removeTrainingTaskPlayerFromBoard/, 'quitar una ficha del campo se mantiene separado de la asignación');
 assert.match(boardSource, /selectedElement\.playerRef \? null/, 'un jugador real no se puede duplicar');
