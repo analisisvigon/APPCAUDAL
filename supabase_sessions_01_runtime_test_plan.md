@@ -9,6 +9,7 @@ Archivos: `runtime_readonly.sql` = diagnóstico de producción; `runtime_transac
 1. En producción, ejecutar solo **RO** y exportar su única tabla a CSV. Si aparece `BLOCKED`, detenerse. El recuento cero impide probar RLS sobre filas reales.
 2. Revisar los tres UUID de usuario previamente comunicados y ejecutar **TX** completo en producción solo si el propietario acepta la **simulación**. El script revalida memberships activas, usa `SET LOCAL ROLE authenticated`, fija `request.jwt.claim.sub` y `request.jwt.claims`, comprueba `auth.uid()` antes de cada caso y termina en `ROLLBACK`. No escribe en tablas. Guardar los `NOTICE`. Si hay error, ejecutar `ROLLBACK` en esa sesión. Una simulación desde SQL Editor privilegiado comprueba la lógica SQL, no la emisión real de tokens ni el acceso desde la aplicación.
 3. Crear o identificar un proyecto **staging aislado** con el mismo esquema aprobado y una copia controlada de los datos necesarios. Revisar visualmente la URL/proyecto antes de abrir **STG**. Su primer bloque provoca una excepción deliberada **dentro de `BEGIN`**, por lo que no se puede usar inadvertidamente. Retirarlo solo en la copia; el resto del archivo sigue dentro de la transacción y termina en `ROLLBACK`. Si un caso falla, ejecutar `ROLLBACK` manualmente y no proseguir; los `NOTICE PASS` anteriores no equivalen a un resultado global favorable. Ejecutar después RO en staging y comparar recuentos de tabla, asignaciones y temporada con el preflight.
+   La fila final `STATE_ONLY_NOT_SUITE_PASS_COMPARE_ASSIGNMENTS` verifica estado tras el rollback, **no demuestra que la batería haya llegado a ejecutarse**: exigir también todos los `NOTICE` de los bloques y ausencia de excepciones inesperadas.
 4. La prueba de concurrencia requiere dos conexiones de staging y coordinación manual. No se puede demostrar con un clic de SQL Editor.
 5. Para elevar el resultado a seguridad funcional, repetir los casos principales desde clientes realmente autenticados en staging: owner, staff asignado/no asignado y player. `SET ROLE` + GUC de JWT no valida el servicio de autenticación ni PostgREST.
 
@@ -50,12 +51,12 @@ El guion STG solo lee `jugadores`, `players_database`, `player_team_memberships`
 | V05 | Sustitución tras anulación | Admitida sin DELETE del original | STG `owner_cases` | PENDING | NOTICE |
 | V06 | Staff intenta anular | Rechazado | STG `staff_assigned` | PENDING | NOTICE |
 | V07 | Staff no ve anulación; owner sí | 0 / 1 para la fila anulada | STG `owner_cases`, `staff_assigned` | PENDING | NOTICE |
-| V08 | Player o staff no autorizado rectifica | INSERT/UPDATE denegado | STG `staff_unassigned`, `player` | PENDING | NOTICE; revisar UPDATE específicamente con filas activas |
+| V08 | Player o staff no autorizado rectifica | INSERT/UPDATE/anulación denegados | STG `staff_unassigned`, `player` | PENDING | NOTICE sobre filas activas |
 | V09 | Cliente cambia `player_id` o usa DELETE | Denegado | STG `owner_cases` | PENDING | NOTICE |
 | C01 | Owner lee histórico cerrado | TRUE y fila visible | STG `closed` | PENDING | NOTICE |
 | C02 | Owner inserta/actualiza/anula cerrado | Tres rechazos | STG `closed` | PENDING | NOTICE |
 | C03 | Staff asignado solo lee cerrado | TRUE lectura, FALSE escritura, UPDATE denegado | STG `closed_staff` | PENDING | NOTICE |
-| C04 | DELETE o manipulación de auditoría en cerrado | Denegado también por privilegios/guard | STG `closed`, más prueba negativa específica | PENDING | Evidencia adicional |
+| C04 | DELETE o manipulación de auditoría en cerrado | Denegado también por privilegios/guard | STG `closed` | PENDING | NOTICE |
 | K01 | Dos altas solapadas concurrentes | Una confirma, otra falla con conflicto GiST | Staging, dos conexiones | PENDING | Tiempos y SQLSTATE |
 | K02 | Dos actualizaciones concurrentes de una fecha NULL | Una confirma; segunda reevalúa fila y falla o espera | Staging, dos conexiones | PENDING | Tiempos y SQLSTATE |
 | K03 | Alta frente a cierre concurrente | Serialización por bloqueo de `club_seasons`; no alta posterior al cierre | Staging, dos conexiones | PENDING | Orden de commits y estado final |

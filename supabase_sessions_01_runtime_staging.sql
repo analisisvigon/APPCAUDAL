@@ -196,7 +196,16 @@ begin
   exception when insufficient_privilege then v_rejected := true;
   end;
   if not v_rejected then raise exception 'STAFF NO ASIGNADO FAIL: pudo actualizar'; end if;
-  raise notice 'STAFF NO ASIGNADO PASS: sin lectura, INSERT ni UPDATE de la fila activa';
+  v_rejected := false;
+  begin
+    update public.club_team_season_players
+      set void_reason='Anulacion prohibida sin asignacion' where id=v_base;
+    get diagnostics v_updated = row_count;
+    v_rejected := v_updated=0;
+  exception when insufficient_privilege then v_rejected := true;
+  end;
+  if not v_rejected then raise exception 'STAFF NO ASIGNADO FAIL: pudo anular'; end if;
+  raise notice 'STAFF NO ASIGNADO PASS: sin lectura, INSERT, UPDATE ni anulacion';
 end
 $staff_unassigned$;
 
@@ -351,6 +360,21 @@ begin
   if not v_rejected then raise exception 'FAIL: cliente modifico player_id'; end if;
   v_rejected := false;
   begin
+    update public.club_team_season_players
+      set created_by_membership_id=current_setting('appcaudal.sessions01.owner_membership')::uuid
+      where id=v_base;
+  exception when insufficient_privilege then v_rejected := true;
+  end;
+  if not v_rejected then raise exception 'FAIL: cliente modifico procedencia de auditoria'; end if;
+  v_rejected := false;
+  begin
+    update public.club_team_season_players
+      set club_team_season_id=v_relation where id=v_base;
+  exception when insufficient_privilege then v_rejected := true;
+  end;
+  if not v_rejected then raise exception 'FAIL: cliente modifico identidad de vinculacion'; end if;
+  v_rejected := false;
+  begin
     delete from public.club_team_season_players where id=v_base;
   exception when insufficient_privilege then v_rejected := true;
   end;
@@ -482,7 +506,16 @@ begin
   exception when insufficient_privilege then v_rejected := true;
   end;
   if not v_rejected then raise exception 'PLAYER FAIL: pudo actualizar'; end if;
-  raise notice 'PLAYER PASS: sin SELECT, INSERT ni UPDATE general';
+  v_rejected := false;
+  begin
+    update public.club_team_season_players
+      set void_reason='Anulacion prohibida a player' where id=v_active;
+    get diagnostics v_updated = row_count;
+    v_rejected := v_updated=0;
+  exception when insufficient_privilege then v_rejected := true;
+  end;
+  if not v_rejected then raise exception 'PLAYER FAIL: pudo anular'; end if;
+  raise notice 'PLAYER PASS: sin SELECT, INSERT, UPDATE ni anulacion general';
 end
 $player$;
 
@@ -572,7 +605,19 @@ begin
   exception when insufficient_privilege then v_rejected := true;
   end;
   if not v_rejected then raise exception 'CLOSED FAIL: anulacion aceptada'; end if;
-  raise notice 'CLOSED PASS: lectura historica y rechazo de INSERT/UPDATE/anulacion';
+  v_rejected := false;
+  begin
+    delete from public.club_team_season_players where id=v_active;
+  exception when insufficient_privilege then v_rejected := true;
+  end;
+  if not v_rejected then raise exception 'CLOSED FAIL: DELETE aceptado'; end if;
+  v_rejected := false;
+  begin
+    update public.club_team_season_players set voided_at=now() where id=v_active;
+  exception when insufficient_privilege then v_rejected := true;
+  end;
+  if not v_rejected then raise exception 'CLOSED FAIL: metadatos arbitrarios aceptados'; end if;
+  raise notice 'CLOSED PASS: lectura historica y rechazo de INSERT/UPDATE/anulacion/DELETE/auditoria';
 end
 $closed$;
 
@@ -612,7 +657,7 @@ select
   case when (select count(*) from public.club_team_season_players)=0
     and (select status from public.club_seasons
       where id='a858d03b-aa54-49f5-bdb1-8c8b3b533dae'::uuid)='open'
-    then 'ROWS_AND_SEASON_RESTORED_COMPARE_ASSIGNMENTS'
+    then 'STATE_ONLY_NOT_SUITE_PASS_COMPARE_ASSIGNMENTS'
     else 'FAIL_REVISAR_STAGING' end as result,
   (select count(*) from public.club_team_season_players) as remaining_test_rows,
   (select count(*) from public.club_team_season_permissions
