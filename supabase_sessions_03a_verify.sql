@@ -16,7 +16,7 @@ expected_functions(signature,client_rpc,expected_body_md5) as (values
   ('public.create_planned_session_draft(uuid,date)',true,'135f57bde0cdafd66cae14d2e994bbd4'),
   ('public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])',
     true,'266abcf6cfa754b9779ed84ef664d842'),
-  ('public.confirm_planned_session(uuid,integer)',true,'1f13c297515f5490628f462d58e4d287')
+  ('public.confirm_planned_session(uuid,integer)',true,'66095dfe8b535bb13c5d01bfdd10ff0d')
 ),
 expected_triggers(table_name,trigger_name,function_name) as (values
   ('planned_training_sessions','planned_sessions_guard','guard_planned_session_row'),
@@ -187,6 +187,42 @@ fingerprint as (
      'training_sessions','rpe_entries','training_tasks','partidos')
 ),
 checks as (
+  select 'source_team_name_chain' as check_name,
+    exists(select 1 from pg_catalog.pg_constraint c
+      where c.conrelid=to_regclass('public.club_team_seasons')
+        and c.confrelid=to_regclass('public.club_teams')
+        and c.contype='f' and c.convalidated and c.confdeltype='r'
+        and c.conkey=array[
+          (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid=c.conrelid and a.attname='team_id' and not a.attisdropped),
+          (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid=c.conrelid and a.attname='club_id' and not a.attisdropped)]
+        and c.confkey=array[
+          (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid=c.confrelid and a.attname='id' and not a.attisdropped),
+          (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid=c.confrelid and a.attname='club_id' and not a.attisdropped)])
+    and exists(select 1 from pg_catalog.pg_constraint c
+      where c.conrelid=to_regclass('public.club_teams')
+        and c.confrelid=to_regclass('public.equipos_rivales')
+        and c.contype='f' and c.convalidated and c.confdeltype='r'
+        and c.conkey=array[(select a.attnum from pg_catalog.pg_attribute a
+          where a.attrelid=c.conrelid and a.attname='id' and not a.attisdropped)]
+        and c.confkey=array[(select a.attnum from pg_catalog.pg_attribute a
+          where a.attrelid=c.confrelid and a.attname='id' and not a.attisdropped)])
+    and exists(select 1 from pg_catalog.pg_attribute a
+      where a.attrelid=to_regclass('public.equipos_rivales')
+        and a.attname='name' and a.atttypid=to_regtype('pg_catalog.text')
+        and a.attnotnull and not a.attisdropped) as ok,
+    'CTS -> club_teams -> equipos_rivales.name mediante FK validadas' as detail
+  union all
+  select 'source_season_label',
+    exists(select 1 from pg_catalog.pg_attribute a
+      where a.attrelid=to_regclass('public.club_seasons')
+        and a.attname='label' and a.atttypid=to_regtype('pg_catalog.text')
+        and a.attnotnull and not a.attisdropped),
+    'Snapshot de temporada desde club_seasons.label'
+  union all
   select 'table:'||name as check_name,
     (select count(*)=1 from pg_catalog.pg_class c
      where c.oid=to_regclass('public.'||name) and c.relkind='r'

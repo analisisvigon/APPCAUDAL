@@ -26,6 +26,7 @@ source_columns(table_name,column_name,type_name) as (values
   ('club_seasons','status','text'),('club_seasons','label','text'),
   ('club_team_seasons','id','uuid'),('club_team_seasons','club_id','uuid'),
   ('club_team_seasons','team_id','uuid'),('club_team_seasons','season_id','uuid'),
+  ('club_teams','id','uuid'),('club_teams','club_id','uuid'),
   ('club_memberships','id','uuid'),('club_memberships','club_id','uuid'),
   ('club_memberships','user_id','uuid'),('club_memberships','role','text'),
   ('club_memberships','is_active','bool'),
@@ -119,6 +120,39 @@ findings as (
            where a.attrelid=c.confrelid and a.attname='club_id')]
     ) then 'PASS' else 'BLOCKED' end,
     'FK compuesta validada (team_id,club_id) a (id,club_id), DELETE RESTRICT'
+  union all
+  select 'canonical_team_primary_key',
+    case when exists(select 1 from pg_catalog.pg_constraint c
+      where c.conrelid=to_regclass('public.club_teams')
+        and c.contype='p' and c.convalidated
+        and c.conkey=array[(select a.attnum from pg_catalog.pg_attribute a
+          where a.attrelid=c.conrelid and a.attname='id' and not a.attisdropped)])
+      then 'PASS' else 'BLOCKED' end,
+    'club_teams.id es la identidad canónica del equipo'
+  union all
+  select 'canonical_team_club_key',
+    case when exists(select 1 from pg_catalog.pg_constraint c
+      where c.conrelid=to_regclass('public.club_teams')
+        and c.contype='u' and c.convalidated
+        and c.conkey=array[
+          (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid=c.conrelid and a.attname='id' and not a.attisdropped),
+          (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid=c.conrelid and a.attname='club_id' and not a.attisdropped)])
+      then 'PASS' else 'BLOCKED' end,
+    'UNIQUE (id,club_id) sostiene la FK compuesta CTS-equipo'
+  union all
+  select 'canonical_team_name_fk',
+    case when exists(select 1 from pg_catalog.pg_constraint c
+      where c.conrelid=to_regclass('public.club_teams')
+        and c.confrelid=to_regclass('public.equipos_rivales')
+        and c.contype='f' and c.convalidated and c.confdeltype='r'
+        and c.conkey=array[(select a.attnum from pg_catalog.pg_attribute a
+          where a.attrelid=c.conrelid and a.attname='id' and not a.attisdropped)]
+        and c.confkey=array[(select a.attnum from pg_catalog.pg_attribute a
+          where a.attrelid=c.confrelid and a.attname='id' and not a.attisdropped)])
+      then 'PASS' else 'BLOCKED' end,
+    'FK validada club_teams.id a equipos_rivales.id; nombre deportivo en equipos_rivales.name'
   union all
   select 'season_lifecycle_constraints',
     case when (select count(*) from pg_catalog.pg_constraint c

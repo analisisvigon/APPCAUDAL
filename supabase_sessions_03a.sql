@@ -29,6 +29,7 @@ begin
       ('club_seasons','ends_on','date'),('club_seasons','status','text'),
       ('club_team_seasons','id','uuid'),('club_team_seasons','club_id','uuid'),
       ('club_team_seasons','team_id','uuid'),('club_team_seasons','season_id','uuid'),
+      ('club_teams','id','uuid'),('club_teams','club_id','uuid'),
       ('club_memberships','id','uuid'),('club_memberships','club_id','uuid'),
       ('club_memberships','user_id','uuid'),('club_memberships','role','text'),
       ('club_memberships','is_active','bool'),
@@ -76,10 +77,46 @@ begin
   if not exists (
     select 1 from pg_constraint c
     where c.conrelid='public.club_team_seasons'::regclass
-      and c.contype='f' and c.convalidated
       and c.confrelid='public.club_seasons'::regclass
+      and c.contype='f' and c.convalidated and c.confdeltype='r'
+      and c.conkey=array[
+        (select a.attnum from pg_attribute a where a.attrelid=c.conrelid
+          and a.attname='season_id' and not a.attisdropped),
+        (select a.attnum from pg_attribute a where a.attrelid=c.conrelid
+          and a.attname='club_id' and not a.attisdropped)]
+      and c.confkey=array[
+        (select a.attnum from pg_attribute a where a.attrelid=c.confrelid
+          and a.attname='id' and not a.attisdropped),
+        (select a.attnum from pg_attribute a where a.attrelid=c.confrelid
+          and a.attname='club_id' and not a.attisdropped)]
+  ) or not exists (
+    select 1 from pg_constraint c
+    where c.conrelid='public.club_team_seasons'::regclass
+      and c.confrelid='public.club_teams'::regclass
+      and c.contype='f' and c.convalidated and c.confdeltype='r'
+      and c.conkey=array[
+        (select a.attnum from pg_attribute a where a.attrelid=c.conrelid
+          and a.attname='team_id' and not a.attisdropped),
+        (select a.attnum from pg_attribute a where a.attrelid=c.conrelid
+          and a.attname='club_id' and not a.attisdropped)]
+      and c.confkey=array[
+        (select a.attnum from pg_attribute a where a.attrelid=c.confrelid
+          and a.attname='id' and not a.attisdropped),
+        (select a.attnum from pg_attribute a where a.attrelid=c.confrelid
+          and a.attname='club_id' and not a.attisdropped)]
+  ) or not exists (
+    select 1 from pg_constraint c
+    where c.conrelid='public.club_teams'::regclass
+      and c.confrelid='public.equipos_rivales'::regclass
+      and c.contype='f' and c.convalidated and c.confdeltype='r'
+      and c.conkey=array[
+        (select a.attnum from pg_attribute a where a.attrelid=c.conrelid
+          and a.attname='id' and not a.attisdropped)]
+      and c.confkey=array[
+        (select a.attnum from pg_attribute a where a.attrelid=c.confrelid
+          and a.attname='id' and not a.attisdropped)]
   ) then
-    raise exception 'Sesiones 03A: no consta FK validada CTS a club_seasons';
+    raise exception 'Sesiones 03A: cadena canónica CTS-equipo-temporada incompatible';
   end if;
   if (select count(*) from pg_constraint c
       where c.conrelid='public.club_seasons'::regclass
@@ -891,11 +928,12 @@ begin
   if v_cts is null or public.can_write_club_team_season(v_cts) is not true then
     raise exception 'Sesión no autorizada' using errcode='42501';
   end if;
-  select cts.club_id,se.starts_on,se.ends_on,se.status,team.name,se.label
+  select cts.club_id,se.starts_on,se.ends_on,se.status,legacy_team.name,se.label
     into v_club,v_start,v_end,v_status,v_team,v_label
   from public.club_team_seasons cts
   join public.club_seasons se on se.id=cts.season_id and se.club_id=cts.club_id
-  join public.equipos_rivales team on team.id=cts.team_id
+  join public.club_teams team on team.id=cts.team_id and team.club_id=cts.club_id
+  join public.equipos_rivales legacy_team on legacy_team.id=team.id
   where cts.id=v_cts for update of se;
   if not found or v_status<>'open' or
      public.can_write_club_team_season(v_cts) is not true then
