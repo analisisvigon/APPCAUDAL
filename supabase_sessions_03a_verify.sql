@@ -5,15 +5,18 @@ expected_tables(name) as (values
   ('planned_training_sessions'),('planned_session_number_state'),
   ('planned_session_slots'),('planned_session_items'),('planned_session_audit_events')
 ),
-expected_functions(signature,client_rpc) as (values
-  ('public.planned_session_state(uuid)',false),
-  ('public.guard_planned_session_row()',false),
-  ('public.guard_planned_session_child()',false),
-  ('public.guard_planned_session_number()',false),
-  ('public.guard_planned_session_audit()',false),
-  ('public.create_planned_session_draft(uuid,date)',true),
-  ('public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer)',true),
-  ('public.confirm_planned_session(uuid,integer)',true)
+-- Huellas MD5 de prosrc con finales de línea CRLF normalizados a LF.
+-- Detectan divergencias de cuerpo; no sustituyen pruebas dinámicas de permisos.
+expected_functions(signature,client_rpc,expected_body_md5) as (values
+  ('public.planned_session_state(uuid)',false,'3f276434e696206885bf72134ebd0444'),
+  ('public.guard_planned_session_row()',false,'31814c93c421e4843d53e895cb3fe8db'),
+  ('public.guard_planned_session_child()',false,'4b31719bab94c835a26a148b6f736142'),
+  ('public.guard_planned_session_number()',false,'ba3b88309c883d8da1565da94b6321b5'),
+  ('public.guard_planned_session_audit()',false,'0565cb0571a8c4519adf0ff50412cd22'),
+  ('public.create_planned_session_draft(uuid,date)',true,'135f57bde0cdafd66cae14d2e994bbd4'),
+  ('public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])',
+    true,'266abcf6cfa754b9779ed84ef664d842'),
+  ('public.confirm_planned_session(uuid,integer)',true,'1f13c297515f5490628f462d58e4d287')
 ),
 expected_triggers(table_name,trigger_name,function_name) as (values
   ('planned_training_sessions','planned_sessions_guard','guard_planned_session_row'),
@@ -22,57 +25,152 @@ expected_triggers(table_name,trigger_name,function_name) as (values
   ('planned_session_items','planned_items_guard','guard_planned_session_child'),
   ('planned_session_audit_events','planned_audit_guard','guard_planned_session_audit')
 ),
-expected_indexes(table_name,index_name,unique_required,predicate_required) as (values
-  ('planned_training_sessions','planned_sessions_number_uidx',true,true),
-  ('planned_training_sessions','planned_sessions_date_idx',false,false),
-  ('planned_session_items','planned_items_session_slot_idx',false,false),
-  ('planned_session_audit_events','planned_audit_session_date_idx',false,false)
+expected_indexes(table_name,index_name,unique_required,predicate_required,key_columns) as (values
+  ('planned_training_sessions','planned_sessions_number_uidx',true,true,
+    array['club_team_season_id','session_number']),
+  ('planned_training_sessions','planned_sessions_date_idx',false,false,
+    array['club_team_season_id','session_date','id']),
+  ('planned_session_items','planned_items_session_slot_idx',false,false,
+    array['session_id','slot_id']),
+  ('planned_session_audit_events','planned_audit_session_date_idx',false,false,
+    array['session_id','occurred_at'])
 ),
 expected_columns(table_name,column_name,type_name) as (values
   ('planned_training_sessions','id','uuid'),
   ('planned_training_sessions','club_team_season_id','uuid'),
   ('planned_training_sessions','session_date','date'),
+  ('planned_training_sessions','starts_at','time'),
+  ('planned_training_sessions','location','text'),
+  ('planned_training_sessions','period_label','text'),
+  ('planned_training_sessions','morphology_pattern','text'),
+  ('planned_training_sessions','next_opponent_label','text'),
+  ('planned_training_sessions','objectives','text'),
+  ('planned_training_sessions','notes','text'),
+  ('planned_training_sessions','material','text'),
+  ('planned_training_sessions','staff_observations','text'),
   ('planned_training_sessions','planning_state','text'),
   ('planned_training_sessions','session_number','int4'),
   ('planned_training_sessions','revision','int4'),
   ('planned_training_sessions','created_by_membership_id','uuid'),
+  ('planned_training_sessions','confirmed_at','timestamptz'),
+  ('planned_training_sessions','team_name_snapshot','text'),
+  ('planned_training_sessions','season_label_snapshot','text'),
+  ('planned_training_sessions','created_at','timestamptz'),
+  ('planned_training_sessions','updated_at','timestamptz'),
   ('planned_session_number_state','club_team_season_id','uuid'),
   ('planned_session_number_state','highest_ever_assigned','int4'),
+  ('planned_session_number_state','updated_at','timestamptz'),
   ('planned_session_slots','id','uuid'),
   ('planned_session_slots','session_id','uuid'),
   ('planned_session_slots','phase','text'),
+  ('planned_session_slots','sort_order','int4'),
   ('planned_session_slots','duration_minutes','int4'),
+  ('planned_session_slots','created_at','timestamptz'),
+  ('planned_session_slots','updated_at','timestamptz'),
   ('planned_session_items','id','uuid'),
   ('planned_session_items','session_id','uuid'),
   ('planned_session_items','slot_id','uuid'),
+  ('planned_session_items','sort_order','int4'),
   ('planned_session_items','kind','text'),
+  ('planned_session_items','source_task_uuid_snapshot','uuid'),
   ('planned_session_items','task_snapshot','jsonb'),
+  ('planned_session_items','free_title','text'),
+  ('planned_session_items','free_description','text'),
+  ('planned_session_items','free_comments','text'),
+  ('planned_session_items','free_url','text'),
+  ('planned_session_items','activity_minutes','int4'),
+  ('planned_session_items','created_at','timestamptz'),
+  ('planned_session_items','updated_at','timestamptz'),
+  ('planned_session_audit_events','id','uuid'),
   ('planned_session_audit_events','session_id','uuid'),
   ('planned_session_audit_events','revision','int4'),
-  ('planned_session_audit_events','actor_membership_id','uuid')
+  ('planned_session_audit_events','actor_membership_id','uuid'),
+  ('planned_session_audit_events','event_type','text'),
+  ('planned_session_audit_events','changed_sections','_text'),
+  ('planned_session_audit_events','occurred_at','timestamptz'),
+  ('planned_session_audit_events','before_hash','text'),
+  ('planned_session_audit_events','after_hash','text'),
+  ('planned_session_audit_events','metadata','jsonb')
 ),
-expected_fks(table_name,referenced_table) as (values
-  ('planned_training_sessions','club_team_seasons'),
-  ('planned_training_sessions','club_memberships'),
-  ('planned_session_number_state','club_team_seasons'),
-  ('planned_session_slots','planned_training_sessions'),
-  ('planned_session_items','planned_training_sessions'),
-  ('planned_session_items','planned_session_slots'),
-  ('planned_session_audit_events','planned_training_sessions'),
-  ('planned_session_audit_events','club_memberships')
+nullable_columns(table_name,column_name) as (values
+  ('planned_training_sessions','starts_at'),
+  ('planned_training_sessions','location'),
+  ('planned_training_sessions','period_label'),
+  ('planned_training_sessions','morphology_pattern'),
+  ('planned_training_sessions','next_opponent_label'),
+  ('planned_training_sessions','objectives'),
+  ('planned_training_sessions','notes'),
+  ('planned_training_sessions','material'),
+  ('planned_training_sessions','staff_observations'),
+  ('planned_training_sessions','session_number'),
+  ('planned_training_sessions','confirmed_at'),
+  ('planned_training_sessions','team_name_snapshot'),
+  ('planned_training_sessions','season_label_snapshot'),
+  ('planned_session_items','source_task_uuid_snapshot'),
+  ('planned_session_items','task_snapshot'),
+  ('planned_session_items','free_title'),
+  ('planned_session_items','free_description'),
+  ('planned_session_items','free_comments'),
+  ('planned_session_items','free_url'),
+  ('planned_session_items','activity_minutes'),
+  ('planned_session_audit_events','before_hash'),
+  ('planned_session_audit_events','after_hash')
+),
+expected_fks(table_name,referenced_table,local_columns,remote_columns) as (values
+  ('planned_training_sessions','club_team_seasons',
+    array['club_team_season_id'],array['id']),
+  ('planned_training_sessions','club_memberships',
+    array['created_by_membership_id'],array['id']),
+  ('planned_session_number_state','club_team_seasons',
+    array['club_team_season_id'],array['id']),
+  ('planned_session_slots','planned_training_sessions',
+    array['session_id'],array['id']),
+  ('planned_session_items','planned_training_sessions',
+    array['session_id'],array['id']),
+  ('planned_session_items','planned_session_slots',
+    array['slot_id','session_id'],array['id','session_id']),
+  ('planned_session_audit_events','planned_training_sessions',
+    array['session_id'],array['id']),
+  ('planned_session_audit_events','club_memberships',
+    array['actor_membership_id'],array['id'])
 ),
 expected_constraints(table_name,name) as (values
   ('planned_training_sessions','planned_sessions_state_check'),
   ('planned_training_sessions','planned_sessions_number_check'),
   ('planned_training_sessions','planned_sessions_revision_check'),
+  ('planned_training_sessions','planned_sessions_text_check'),
   ('planned_session_number_state','planned_number_state_nonnegative'),
   ('planned_session_slots','planned_slots_phase_check'),
+  ('planned_session_slots','planned_slots_order_check'),
   ('planned_session_slots','planned_slots_duration_check'),
-  ('planned_session_slots','planned_slots_session_order_key'),
+  ('planned_session_items','planned_items_order_check'),
   ('planned_session_items','planned_items_kind_check'),
   ('planned_session_items','planned_items_duration_check'),
-  ('planned_session_items','planned_items_slot_order_key'),
-  ('planned_session_audit_events','planned_audit_session_revision_key')
+  ('planned_session_items','planned_items_text_check'),
+  ('planned_session_audit_events','planned_audit_revision_check'),
+  ('planned_session_audit_events','planned_audit_event_check'),
+  ('planned_session_audit_events','planned_audit_sections_check'),
+  ('planned_session_audit_events','planned_audit_metadata_check'),
+  ('planned_session_audit_events','planned_audit_hash_check')
+),
+expected_keys(table_name,name,key_type,columns,is_deferred) as (values
+  ('planned_training_sessions','planned_training_sessions_pkey','p',array['id'],false),
+  ('planned_session_number_state','planned_session_number_state_pkey','p',
+    array['club_team_season_id'],false),
+  ('planned_session_slots','planned_session_slots_pkey','p',array['id'],false),
+  ('planned_session_slots','planned_slots_session_order_key','u',
+    array['session_id','phase','sort_order'],true),
+  ('planned_session_slots','planned_slots_id_session_key','u',
+    array['id','session_id'],false),
+  ('planned_session_items','planned_session_items_pkey','p',array['id'],false),
+  ('planned_session_items','planned_items_slot_order_key','u',
+    array['slot_id','sort_order'],true),
+  ('planned_session_items','planned_items_id_session_key','u',
+    array['id','session_id'],false),
+  ('planned_session_audit_events','planned_session_audit_events_pkey','p',
+    array['id'],false),
+  ('planned_session_audit_events','planned_audit_session_revision_key','u',
+    array['session_id','revision'],false)
 ),
 fingerprint as (
   select md5(coalesce(string_agg(
@@ -101,22 +199,48 @@ checks as (
     exists(select 1 from pg_catalog.pg_attribute a
       where a.attrelid=to_regclass('public.'||table_name)
         and a.attname=column_name and a.atttypid=to_regtype('pg_catalog.'||type_name)
-        and not a.attisdropped),
-    'Columna y tipo requerido' from expected_columns
+        and not a.attisdropped
+        and a.attnotnull=(not exists(select 1 from nullable_columns n
+          where n.table_name=expected_columns.table_name
+            and n.column_name=expected_columns.column_name))),
+    'Columna, tipo y nulabilidad requerida' from expected_columns
   union all
-  select 'fk:'||table_name||'->'||referenced_table,
+  select 'fk:'||table_name||'('||array_to_string(local_columns,',')||')->'||
+      referenced_table||'('||array_to_string(remote_columns,',')||')',
     exists(select 1 from pg_catalog.pg_constraint c
       where c.conrelid=to_regclass('public.'||table_name)
         and c.confrelid=to_regclass('public.'||referenced_table)
-        and c.contype='f' and c.convalidated and c.confdeltype='r'),
-    'FK validada ON DELETE RESTRICT' from expected_fks
+        and c.contype='f' and c.convalidated and c.confdeltype='r'
+        and c.conkey=(select array_agg(a.attnum order by x.ord)
+          from unnest(local_columns) with ordinality x(attname,ord)
+          join pg_catalog.pg_attribute a
+            on a.attrelid=c.conrelid and a.attname=x.attname and not a.attisdropped)
+        and c.confkey=(select array_agg(a.attnum order by x.ord)
+          from unnest(remote_columns) with ordinality x(attname,ord)
+          join pg_catalog.pg_attribute a
+            on a.attrelid=c.confrelid and a.attname=x.attname and not a.attisdropped)),
+    'FK validada sobre columnas exactas, ON DELETE RESTRICT' from expected_fks
   union all
   select 'constraint:'||table_name||'.'||name,
     exists(select 1 from pg_catalog.pg_constraint c
       where c.conrelid=to_regclass('public.'||table_name)
-        and c.conname=name and c.convalidated),
-    'Restricción validada; definición debe revisarse en catálogo detallado'
+        and c.conname=name and c.contype='c' and c.convalidated
+        and not c.connoinherit),
+    'CHECK validado; expresión íntegra incluida en fila de detalle'
   from expected_constraints
+  union all
+  select 'key:'||table_name||'.'||name,
+    exists(select 1 from pg_catalog.pg_constraint c
+      where c.conrelid=to_regclass('public.'||table_name)
+        and c.conname=name and c.contype::text=key_type
+        and c.convalidated and c.condeferrable=is_deferred
+        and c.condeferred=is_deferred
+        and c.conkey=(select array_agg(a.attnum order by x.ord)
+          from unnest(columns) with ordinality x(attname,ord)
+          join pg_catalog.pg_attribute a
+            on a.attrelid=c.conrelid and a.attname=x.attname and not a.attisdropped)),
+    'PK/UNIQUE sobre columnas exactas; diferibilidad esperada'
+  from expected_keys
   union all
   select 'trigger:'||table_name||'.'||trigger_name,
     exists(select 1 from pg_catalog.pg_trigger t
@@ -131,15 +255,25 @@ checks as (
       where ix.indrelid=to_regclass('public.'||table_name)
         and ix.indexrelid=to_regclass('public.'||index_name)
         and ix.indisvalid and ix.indisready
-        and (not unique_required or ix.indisunique)
-        and (not predicate_required or ix.indpred is not null)),
-    'Índice válido, unicidad y predicado parcial cuando corresponde'
+        and ix.indisunique=unique_required
+        and ix.indnatts=cardinality(key_columns)
+        and ix.indnkeyatts=cardinality(key_columns)
+        and ix.indkey::smallint[]=(select array_agg(a.attnum order by x.ord)
+          from unnest(key_columns) with ordinality x(attname,ord)
+          join pg_catalog.pg_attribute a
+            on a.attrelid=ix.indrelid and a.attname=x.attname and not a.attisdropped)
+        and ((predicate_required and regexp_replace(lower(
+              pg_get_expr(ix.indpred,ix.indrelid)),
+              '[[:space:]()]','','g')='session_numberisnotnull')
+          or (not predicate_required and ix.indpred is null))),
+    'Índice válido, columnas exactas, unicidad y predicado parcial esperado'
   from expected_indexes
   union all
   select 'rls_policy:'||name,
     (select count(*)=1 from pg_catalog.pg_policy p
       where p.polrelid=to_regclass('public.'||name)
         and p.polcmd::text='r' and p.polpermissive
+        and p.polqual is not null and p.polwithcheck is null
         and p.polroles=array[(select oid from pg_catalog.pg_roles where rolname='authenticated')])
     and (select count(*)=1 from pg_catalog.pg_policy p
       where p.polrelid=to_regclass('public.'||name)),
@@ -151,6 +285,9 @@ checks as (
       where p.polrelid=to_regclass('public.'||name)
         and position('can_read_club_team_season' in
           pg_get_expr(p.polqual,p.polrelid))>0
+        and position('ortrue' in regexp_replace(lower(
+          pg_get_expr(p.polqual,p.polrelid)),
+          '[[:space:]()]','','g'))=0
         and (name<>'planned_session_audit_events' or
           position('has_club_role' in pg_get_expr(p.polqual,p.polrelid))>0)
         and (name not in ('planned_session_slots','planned_session_items',
@@ -184,8 +321,12 @@ checks as (
     exists(select 1 from pg_catalog.pg_proc p
       where p.oid=to_regprocedure(signature) and p.prosecdef
         and p.provolatile::text='v'
+        and md5(replace(p.prosrc,E'\r\n',E'\n'))=expected_body_md5
         and p.proconfig @> array['search_path=pg_catalog']::text[]
         and pg_get_userbyid(p.proowner)='postgres'
+        and not exists(select 1 from pg_catalog.aclexplode(
+          coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) acl
+          where acl.grantee=0 and acl.privilege_type='EXECUTE')
         and obj_description(p.oid,'pg_proc')=
           'APPCAUDAL Sesiones 03A: '||p.proname)
     and case when to_regprocedure(signature) is null then false else
@@ -224,6 +365,26 @@ union all
 select 'BASELINE_TRAINING_TASKS_COUNT','INFO',
   (select count(*)::text from public.training_tasks)
 union all
+select 'CONSTRAINT_DDL:'||c.relname||'.'||co.conname,'INFO',
+  pg_get_constraintdef(co.oid)
+from pg_catalog.pg_constraint co
+join pg_catalog.pg_class c on c.oid=co.conrelid
+join pg_catalog.pg_namespace n on n.oid=c.relnamespace
+where n.nspname='public' and c.relname in (select name from expected_tables)
+union all
+select 'INDEX_DDL:'||i.relname,'INFO',pg_get_indexdef(i.oid)
+from pg_catalog.pg_index ix
+join pg_catalog.pg_class i on i.oid=ix.indexrelid
+join pg_catalog.pg_class t on t.oid=ix.indrelid
+join pg_catalog.pg_namespace n on n.oid=t.relnamespace
+where n.nspname='public' and t.relname in (select name from expected_tables)
+union all
+select 'FUNCTION_BODY_MD5:'||f.signature,'INFO',
+  'actual='||coalesce(md5(replace(p.prosrc,E'\r\n',E'\n')),'MISSING')||
+  '; expected='||f.expected_body_md5
+from expected_functions f
+left join pg_catalog.pg_proc p on p.oid=to_regprocedure(f.signature)
+union all
 select 'POLICY_USING:'||c.relname||'.'||p.polname,'INFO',
   coalesce(pg_get_expr(p.polqual,p.polrelid),'NULL')
 from pg_catalog.pg_policy p
@@ -233,6 +394,12 @@ where n.nspname='public' and c.relname in (select name from expected_tables)
 union all
 select 'IDENTITY_AND_CONCURRENCY_TESTS','PENDING',
   'Solo staging: roles reales, concurrencia, revisión obsoleta y cierre'
+union all
+select 'CHECK_EXPRESSIONS_REVIEW','PENDING',
+  'Revisar CONSTRAINT_DDL frente a migración; el nombre/validación no prueba equivalencia lógica'
+union all
+select 'RLS_EXPRESSIONS_REVIEW','PENDING',
+  'Revisar POLICY_USING completo; referencias textuales no prueban ausencia de OR permisivo'
 union all
 select 'GLOBAL',case when count(*) filter(where status='FAIL')=0
   then 'PASS_STRUCTURAL' else 'FAIL' end,

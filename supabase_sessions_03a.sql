@@ -88,6 +88,40 @@ begin
         and c.contype='c' and c.convalidated)<>2 then
     raise exception 'Sesiones 03A: ciclo de vida de temporada incompleto';
   end if;
+  if not exists(select 1 from pg_constraint c
+      where c.conrelid='public.club_memberships'::regclass
+        and c.conname='club_memberships_club_user_key'
+        and c.contype='u' and c.convalidated)
+     or not exists(select 1 from pg_constraint c
+       where c.conrelid='public.club_team_season_permissions'::regclass
+         and c.confrelid='public.club_memberships'::regclass
+         and c.contype='f' and c.convalidated and c.confdeltype='c'
+         and c.conkey=array[
+           (select a.attnum from pg_attribute a where a.attrelid=c.conrelid
+             and a.attname='membership_id' and not a.attisdropped),
+           (select a.attnum from pg_attribute a where a.attrelid=c.conrelid
+             and a.attname='club_id' and not a.attisdropped)]
+         and c.confkey=array[
+           (select a.attnum from pg_attribute a where a.attrelid=c.confrelid
+             and a.attname='id' and not a.attisdropped),
+           (select a.attnum from pg_attribute a where a.attrelid=c.confrelid
+             and a.attname='club_id' and not a.attisdropped)])
+     or not exists(select 1 from pg_constraint c
+       where c.conrelid='public.club_team_season_permissions'::regclass
+         and c.confrelid='public.club_team_seasons'::regclass
+         and c.contype='f' and c.convalidated and c.confdeltype='r'
+         and c.conkey=array[
+           (select a.attnum from pg_attribute a where a.attrelid=c.conrelid
+             and a.attname='club_team_season_id' and not a.attisdropped),
+           (select a.attnum from pg_attribute a where a.attrelid=c.conrelid
+             and a.attname='club_id' and not a.attisdropped)]
+         and c.confkey=array[
+           (select a.attnum from pg_attribute a where a.attrelid=c.confrelid
+             and a.attname='id' and not a.attisdropped),
+           (select a.attnum from pg_attribute a where a.attrelid=c.confrelid
+             and a.attname='club_id' and not a.attisdropped)]) then
+    raise exception 'Sesiones 03A: identidad/asignación staff incompatible';
+  end if;
   foreach v_name in array array[
     'planned_training_sessions','planned_session_number_state','planned_session_slots',
     'planned_session_items','planned_session_audit_events'
@@ -120,7 +154,7 @@ begin
             ('public.guard_planned_session_number()'),
             ('public.guard_planned_session_audit()'),
             ('public.create_planned_session_draft(uuid,date)'),
-            ('public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer)'),
+            ('public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])'),
             ('public.confirm_planned_session(uuid,integer)')
           ) as sig(signature) where p.oid=to_regprocedure(sig.signature)))
     ) then
@@ -291,6 +325,8 @@ returns jsonb language sql volatile security definer set search_path=pg_catalog 
       'duration_minutes',sl.duration_minutes,
       'items',coalesce((select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
         'id',i.id,'sort_order',i.sort_order,'kind',i.kind,
+        'source_task_uuid_snapshot',i.source_task_uuid_snapshot,
+        'task_snapshot',i.task_snapshot,
         'free_title',i.free_title,'free_description',i.free_description,
         'free_comments',i.free_comments,'free_url',i.free_url,
         'activity_minutes',i.activity_minutes) order by i.sort_order,i.id)
@@ -528,14 +564,18 @@ end $fn$;
 comment on function public.create_planned_session_draft(uuid,date) is
   'APPCAUDAL Sesiones 03A: create_planned_session_draft';
 
--- p_header: objeto con las nueve propiedades escalares opcionales de cabecera.
+-- p_header: PATCH parcial. Clave omitida=conservar; JSON null=borrar; valor=reemplazar.
 -- p_slots: array COMPLETO de {id,phase,sort_order,duration_minutes,items:[{id,
 -- sort_order,kind,free_title,free_description,free_comments,free_url,activity_minutes}]}.
 -- Los UUID de slots/items se generan en cliente y permanecen estables entre guardados.
+-- Una omisión en p_slots solo retira una fila si su UUID está también en la lista
+-- explícita p_removed_slot_ids/p_removed_item_ids. Las listas deben ser exactas.
 -- NULL en p_requested_number conserva el número actual; en borrador no numera.
 create or replace function public.save_planned_session(
   p_session_id uuid,p_expected_revision integer,p_session_date date,
-  p_header jsonb,p_slots jsonb,p_requested_number integer default null)
+  p_header jsonb,p_slots jsonb,p_requested_number integer default null,
+  p_removed_slot_ids uuid[] default '{}'::uuid[],
+  p_removed_item_ids uuid[] default '{}'::uuid[])
 returns integer language plpgsql security definer set search_path=pg_catalog as $fn$
 declare
   v_s public.planned_training_sessions%rowtype;
@@ -543,13 +583,15 @@ declare
   v_header jsonb; v_slot jsonb; v_item jsonb; v_key text;
   v_slot_id uuid; v_item_id uuid; v_seen_slots uuid[]:='{}'; v_seen_items uuid[]:='{}';
   v_number integer; v_high integer; v_before jsonb; v_after jsonb; v_desired jsonb;
-  v_slot_created jsonb; v_item_created jsonb;
   v_sections text[]:='{}'; v_revision integer;
 begin
   if auth.uid() is null or p_session_id is null or p_expected_revision is null or
      p_session_date is null or jsonb_typeof(p_header) is distinct from 'object' or
      jsonb_typeof(p_slots) is distinct from 'array' or octet_length(p_slots::text)>1048576 or
-     octet_length(p_header::text)>40000 then
+     octet_length(p_header::text)>40000 or
+     p_removed_slot_ids is null or p_removed_item_ids is null or
+     array_position(p_removed_slot_ids,null) is not null or
+     array_position(p_removed_item_ids,null) is not null then
     raise exception 'Guardado inválido' using errcode='22023';
   end if;
   -- Resolver sin lock y adquirir siempre season -> session -> counter.
@@ -571,6 +613,11 @@ begin
   if not found or v_s.revision<>p_expected_revision then
     raise exception 'Revisión obsoleta' using errcode='40001';
   end if;
+  if exists(select 1 from public.planned_session_items it
+      where it.session_id=p_session_id and it.kind<>'free') then
+    raise exception 'Este contrato 03A no edita snapshots de Biblioteca'
+      using errcode='42501';
+  end if;
   if p_session_date<v_start or p_session_date>v_end then
     raise exception 'Fecha fuera de temporada' using errcode='23514';
   end if;
@@ -590,15 +637,17 @@ begin
       'next_opponent_label','objectives','notes','material','staff_observations']) then
       raise exception 'Campo de cabecera no admitido' using errcode='22023';
     end if;
+    if jsonb_typeof(p_header->v_key) not in ('string','null') then
+      raise exception 'Valor de cabecera no admitido' using errcode='22023';
+    end if;
   end loop;
   v_header:=jsonb_build_object(
-    'starts_at',(p_header->>'starts_at')::time,'location',p_header->>'location',
-    'period_label',p_header->>'period_label',
-    'morphology_pattern',p_header->>'morphology_pattern',
-    'next_opponent_label',p_header->>'next_opponent_label',
-    'objectives',p_header->>'objectives','notes',p_header->>'notes',
-    'material',p_header->>'material',
-    'staff_observations',p_header->>'staff_observations');
+    'starts_at',v_s.starts_at,'location',v_s.location,
+    'period_label',v_s.period_label,'morphology_pattern',v_s.morphology_pattern,
+    'next_opponent_label',v_s.next_opponent_label,
+    'objectives',v_s.objectives,'notes',v_s.notes,
+    'material',v_s.material,'staff_observations',v_s.staff_observations)
+    || p_header;
   if p_requested_number is not null then
     if v_s.planning_state<>'confirmed' or p_requested_number<=0 then
       raise exception 'Numeración manual no permitida' using errcode='22023';
@@ -607,7 +656,8 @@ begin
   v_number:=coalesce(p_requested_number,v_s.session_number);
   for v_slot in select value from jsonb_array_elements(p_slots) loop
     if jsonb_typeof(v_slot) is distinct from 'object' or
-       jsonb_typeof(v_slot->'items') is distinct from 'array' then
+       jsonb_typeof(v_slot->'items') is distinct from 'array' or
+       (v_slot ?& array['id','phase','sort_order','duration_minutes','items']) is not true then
       raise exception 'Franja inválida' using errcode='22023';
     end if;
     for v_key in select jsonb_object_keys(v_slot) loop
@@ -625,7 +675,9 @@ begin
     end if;
     for v_item in select value from jsonb_array_elements(v_slot->'items') loop
       if jsonb_typeof(v_item) is distinct from 'object' or
-         v_item->>'kind' is distinct from 'free' then
+         v_item->>'kind' is distinct from 'free' or
+         (v_item ?& array['id','sort_order','kind','free_title',
+           'free_description','free_comments','free_url','activity_minutes']) is not true then
         raise exception 'Solo actividades libres en 03A' using errcode='22023';
       end if;
       for v_key in select jsonb_object_keys(v_item) loop
@@ -645,9 +697,41 @@ begin
       end if;
     end loop;
   end loop;
+  if cardinality(p_removed_slot_ids)<>
+       (select count(distinct removed.id) from unnest(p_removed_slot_ids) removed(id))
+     or cardinality(p_removed_item_ids)<>
+       (select count(distinct removed.id) from unnest(p_removed_item_ids) removed(id)) then
+    raise exception 'UUID de retirada duplicado' using errcode='22023';
+  end if;
+  if exists(select 1 from public.planned_session_slots sl
+       where sl.id=any(v_seen_slots) and sl.session_id<>p_session_id)
+     or exists(select 1 from public.planned_session_items it
+       where it.id=any(v_seen_items) and it.session_id<>p_session_id) then
+    raise exception 'Elemento pertenece a otra sesión' using errcode='42501';
+  end if;
+  -- Documento completo + lista de retiradas exacta: una omisión accidental
+  -- no puede borrar una actividad o franja existente.
+  if exists(select 1 from public.planned_session_slots sl
+       where sl.session_id=p_session_id and sl.id<>all(v_seen_slots)
+         and sl.id<>all(p_removed_slot_ids))
+     or exists(select 1 from unnest(p_removed_slot_ids) removed(id)
+       where removed.id=any(v_seen_slots) or not exists(
+         select 1 from public.planned_session_slots sl
+         where sl.id=removed.id and sl.session_id=p_session_id))
+     or exists(select 1 from public.planned_session_items it
+       where it.session_id=p_session_id and it.id<>all(v_seen_items)
+         and it.id<>all(p_removed_item_ids))
+     or exists(select 1 from unnest(p_removed_item_ids) removed(id)
+       where removed.id=any(v_seen_items) or not exists(
+         select 1 from public.planned_session_items it
+         where it.id=removed.id and it.session_id=p_session_id)) then
+    raise exception 'Las retiradas explícitas no coinciden con el documento completo'
+      using errcode='22023';
+  end if;
   -- Canonizar el payload para distinguir un guardado idéntico de un cambio real.
   select jsonb_build_object(
-    'session_date',p_session_date,'starts_at',v_header->'starts_at',
+    'session_date',p_session_date,
+    'starts_at',(v_header->>'starts_at')::time,
     'location',v_header->'location','period_label',v_header->'period_label',
     'morphology_pattern',v_header->'morphology_pattern',
     'next_opponent_label',v_header->'next_opponent_label',
@@ -660,7 +744,8 @@ begin
       'duration_minutes',(sl.x->>'duration_minutes')::integer,
       'items',coalesce((select jsonb_agg(jsonb_build_object(
         'id',(it.y->>'id')::uuid,'sort_order',(it.y->>'sort_order')::integer,
-        'kind',it.y->>'kind','free_title',it.y->>'free_title',
+        'kind',it.y->>'kind','source_task_uuid_snapshot',null,
+        'task_snapshot',null,'free_title',it.y->>'free_title',
         'free_description',it.y->>'free_description',
         'free_comments',it.y->>'free_comments','free_url',it.y->>'free_url',
         'activity_minutes',(it.y->>'activity_minutes')::integer)
@@ -685,37 +770,84 @@ begin
       where club_team_season_id=v_s.club_team_season_id;
   end if;
   update public.planned_training_sessions set
-    session_date=p_session_date,starts_at=(p_header->>'starts_at')::time,
-    location=p_header->>'location',period_label=p_header->>'period_label',
-    morphology_pattern=p_header->>'morphology_pattern',
-    next_opponent_label=p_header->>'next_opponent_label',
-    objectives=p_header->>'objectives',notes=p_header->>'notes',
-    material=p_header->>'material',staff_observations=p_header->>'staff_observations',
+    session_date=p_session_date,starts_at=(v_header->>'starts_at')::time,
+    location=v_header->>'location',period_label=v_header->>'period_label',
+    morphology_pattern=v_header->>'morphology_pattern',
+    next_opponent_label=v_header->>'next_opponent_label',
+    objectives=v_header->>'objectives',notes=v_header->>'notes',
+    material=v_header->>'material',staff_observations=v_header->>'staff_observations',
     session_number=v_number,revision=revision+1
   where id=p_session_id returning revision into v_revision;
   if v_before->'slots' is distinct from v_desired->'slots' then
-    select coalesce(jsonb_object_agg(id::text,to_jsonb(created_at)),'{}'::jsonb)
-      into v_slot_created from public.planned_session_slots where session_id=p_session_id;
-    select coalesce(jsonb_object_agg(id::text,to_jsonb(created_at)),'{}'::jsonb)
-      into v_item_created from public.planned_session_items where session_id=p_session_id;
-    delete from public.planned_session_items where session_id=p_session_id;
-    delete from public.planned_session_slots where session_id=p_session_id;
+    -- 1. Franjas existentes: UPDATE solo si cambia; nuevas: INSERT.
+    -- Unicidades de orden diferidas permiten intercambiar posiciones.
     for v_slot in select value from jsonb_array_elements(p_slots) loop
-      insert into public.planned_session_slots
-        (id,session_id,phase,sort_order,duration_minutes,created_at)
-      values ((v_slot->>'id')::uuid,p_session_id,v_slot->>'phase',
-        (v_slot->>'sort_order')::integer,(v_slot->>'duration_minutes')::integer,
-        coalesce((v_slot_created->>(v_slot->>'id'))::timestamptz,now()));
+      v_slot_id:=(v_slot->>'id')::uuid;
+      if exists(select 1 from public.planned_session_slots sl
+          where sl.id=v_slot_id and sl.session_id=p_session_id) then
+        update public.planned_session_slots sl set
+          phase=v_slot->>'phase',sort_order=(v_slot->>'sort_order')::integer,
+          duration_minutes=(v_slot->>'duration_minutes')::integer
+        where sl.id=v_slot_id and sl.session_id=p_session_id
+          and row(sl.phase,sl.sort_order,sl.duration_minutes) is distinct from
+              row(v_slot->>'phase',(v_slot->>'sort_order')::integer,
+                  (v_slot->>'duration_minutes')::integer);
+      else
+        insert into public.planned_session_slots
+          (id,session_id,phase,sort_order,duration_minutes)
+        values (v_slot_id,p_session_id,v_slot->>'phase',
+          (v_slot->>'sort_order')::integer,(v_slot->>'duration_minutes')::integer);
+      end if;
+    end loop;
+    -- 2. Actividades existentes conservan UUID/created_at y pueden moverse
+    -- entre franjas de esta sesión; no se tocan las que no cambian.
+    for v_slot in select value from jsonb_array_elements(p_slots) loop
+      v_slot_id:=(v_slot->>'id')::uuid;
       for v_item in select value from jsonb_array_elements(v_slot->'items') loop
-        insert into public.planned_session_items(id,session_id,slot_id,sort_order,kind,
-          free_title,free_description,free_comments,free_url,activity_minutes,created_at)
-        values ((v_item->>'id')::uuid,p_session_id,(v_slot->>'id')::uuid,
-          (v_item->>'sort_order')::integer,'free',v_item->>'free_title',
-          v_item->>'free_description',v_item->>'free_comments',v_item->>'free_url',
-          (v_item->>'activity_minutes')::integer,
-          coalesce((v_item_created->>(v_item->>'id'))::timestamptz,now()));
+        v_item_id:=(v_item->>'id')::uuid;
+        if exists(select 1 from public.planned_session_items it
+            where it.id=v_item_id and it.session_id=p_session_id) then
+          update public.planned_session_items it set
+            slot_id=v_slot_id,sort_order=(v_item->>'sort_order')::integer,
+            free_title=v_item->>'free_title',
+            free_description=v_item->>'free_description',
+            free_comments=v_item->>'free_comments',free_url=v_item->>'free_url',
+            activity_minutes=(v_item->>'activity_minutes')::integer
+          where it.id=v_item_id and it.session_id=p_session_id
+            and row(it.slot_id,it.sort_order,it.free_title,it.free_description,
+                    it.free_comments,it.free_url,it.activity_minutes) is distinct from
+                row(v_slot_id,(v_item->>'sort_order')::integer,
+                    v_item->>'free_title',v_item->>'free_description',
+                    v_item->>'free_comments',v_item->>'free_url',
+                    (v_item->>'activity_minutes')::integer);
+        else
+          insert into public.planned_session_items
+            (id,session_id,slot_id,sort_order,kind,free_title,
+             free_description,free_comments,free_url,activity_minutes)
+          values (v_item_id,p_session_id,v_slot_id,
+            (v_item->>'sort_order')::integer,'free',v_item->>'free_title',
+            v_item->>'free_description',v_item->>'free_comments',
+            v_item->>'free_url',(v_item->>'activity_minutes')::integer);
+        end if;
       end loop;
     end loop;
+    -- 3. Retirada expresa: primero actividades, después franjas. FKs RESTRICT
+    -- futuras impedirán eliminar un elemento aún referenciado; jamás CASCADE.
+    delete from public.planned_session_items it
+      where it.session_id=p_session_id and it.id=any(p_removed_item_ids);
+    delete from public.planned_session_slots sl
+      where sl.session_id=p_session_id and sl.id=any(p_removed_slot_ids);
+  end if;
+  if v_s.planning_state='confirmed' and exists(
+       select 1 from public.planned_session_slots sl
+       where sl.session_id=p_session_id and not exists(
+         select 1 from public.planned_session_items it where it.slot_id=sl.id)) then
+    raise exception 'Franja confirmada sin actividad' using errcode='23514';
+  end if;
+  if exists(select 1 from public.planned_session_items it
+      join public.planned_session_slots sl on sl.id=it.slot_id
+      where it.session_id=p_session_id and it.activity_minutes>sl.duration_minutes) then
+    raise exception 'Actividad supera franja' using errcode='23514';
   end if;
   v_after:=public.planned_session_state(p_session_id);
   if v_after is distinct from v_desired then
@@ -739,7 +871,7 @@ begin
     v_sections,md5(v_before::text),md5(v_after::text));
   return v_revision;
 end $fn$;
-comment on function public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer) is
+comment on function public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[]) is
   'APPCAUDAL Sesiones 03A: save_planned_session';
 
 create or replace function public.confirm_planned_session(
@@ -783,6 +915,13 @@ begin
     where sl.session_id=p_session_id and not exists(
       select 1 from public.planned_session_items it where it.slot_id=sl.id)) then
     raise exception 'Franja sin actividad' using errcode='23514';
+  end if;
+  if exists(select 1 from public.planned_session_items it
+      join public.planned_session_slots sl on sl.id=it.slot_id
+      where it.session_id=p_session_id
+        and (it.kind<>'free' or it.activity_minutes>sl.duration_minutes)) then
+    raise exception 'Actividad incompatible con 03A o con su franja'
+      using errcode='23514';
   end if;
   select m.id into v_actor from public.club_memberships m
   where m.club_id=v_club and m.user_id=auth.uid() and m.is_active
@@ -873,17 +1012,17 @@ revoke all on function public.planned_session_state(uuid),
   public.guard_planned_session_row(),public.guard_planned_session_child(),
   public.guard_planned_session_number(),public.guard_planned_session_audit(),
   public.create_planned_session_draft(uuid,date),
-  public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer),
+  public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[]),
   public.confirm_planned_session(uuid,integer)
   from public,anon,authenticated,service_role;
 grant execute on function public.create_planned_session_draft(uuid,date),
-  public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer),
+  public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[]),
   public.confirm_planned_session(uuid,integer)
   to authenticated;
 
 -- Verificación transaccional mínima. El postflight realiza el inventario completo.
 do $post$
-declare v_name text;
+declare v_name text; v_signature text;
 begin
   foreach v_name in array array[
     'planned_training_sessions','planned_session_number_state','planned_session_slots',
@@ -911,7 +1050,14 @@ begin
   if not exists(select 1 from pg_index ix
       where ix.indrelid='public.planned_training_sessions'::regclass
         and ix.indexrelid=to_regclass('public.planned_sessions_number_uidx')
-        and ix.indisvalid and ix.indisunique and ix.indpred is not null)
+        and ix.indisvalid and ix.indisunique and ix.indnkeyatts=2
+        and ix.indkey::smallint[]=array[
+          (select a.attnum from pg_attribute a
+           where a.attrelid=ix.indrelid and a.attname='club_team_season_id'),
+          (select a.attnum from pg_attribute a
+           where a.attrelid=ix.indrelid and a.attname='session_number')]
+        and regexp_replace(lower(pg_get_expr(ix.indpred,ix.indrelid)),
+          '[[:space:]()]','','g')='session_numberisnotnull')
      or not exists(select 1 from pg_index ix
       where ix.indrelid='public.planned_training_sessions'::regclass
         and ix.indexrelid=to_regclass('public.planned_sessions_date_idx')
@@ -926,22 +1072,55 @@ begin
         and ix.indisvalid) then
     raise exception 'Sesiones 03A: índice inexistente o incompatible';
   end if;
+  foreach v_signature in array array[
+    'public.planned_session_state(uuid)',
+    'public.guard_planned_session_row()',
+    'public.guard_planned_session_child()',
+    'public.guard_planned_session_number()',
+    'public.guard_planned_session_audit()',
+    'public.create_planned_session_draft(uuid,date)',
+    'public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])',
+    'public.confirm_planned_session(uuid,integer)'
+  ] loop
+    if to_regprocedure(v_signature) is null or not exists(
+      select 1 from pg_proc p where p.oid=to_regprocedure(v_signature)
+        and p.prosecdef and pg_get_userbyid(p.proowner)='postgres'
+        and p.proconfig @> array['search_path=pg_catalog']::text[]
+        and not exists(select 1 from aclexplode(
+          coalesce(p.proacl,acldefault('f',p.proowner))) acl
+          where acl.grantee=0 and acl.privilege_type='EXECUTE')) then
+      raise exception 'Sesiones 03A: función de seguridad incompatible %',v_signature;
+    end if;
+  end loop;
+  foreach v_signature in array array[
+    'public.planned_session_state(uuid)',
+    'public.guard_planned_session_row()',
+    'public.guard_planned_session_child()',
+    'public.guard_planned_session_number()',
+    'public.guard_planned_session_audit()'
+  ] loop
+    if has_function_privilege('authenticated',v_signature,'EXECUTE') or
+       has_function_privilege('anon',v_signature,'EXECUTE') or
+       has_function_privilege('service_role',v_signature,'EXECUTE') then
+      raise exception 'Sesiones 03A: función interna expuesta %',v_signature;
+    end if;
+  end loop;
   if not has_function_privilege('authenticated',
       'public.create_planned_session_draft(uuid,date)','EXECUTE') or
      not has_function_privilege('authenticated',
-      'public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer)','EXECUTE') or
+      'public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])','EXECUTE') or
      not has_function_privilege('authenticated',
       'public.confirm_planned_session(uuid,integer)','EXECUTE') or
      has_function_privilege('anon',
       'public.create_planned_session_draft(uuid,date)','EXECUTE') or
      has_function_privilege('anon',
-      'public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer)','EXECUTE') or
+      'public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])','EXECUTE') or
      has_function_privilege('anon',
       'public.confirm_planned_session(uuid,integer)','EXECUTE') or
      has_function_privilege('service_role',
       'public.create_planned_session_draft(uuid,date)','EXECUTE') or
      has_function_privilege('service_role',
-      'public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer)','EXECUTE') or
+      'public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])','EXECUTE') or
      has_function_privilege('service_role',
       'public.confirm_planned_session(uuid,integer)','EXECUTE') then
     raise exception 'Sesiones 03A: EXECUTE de RPC incompatible';

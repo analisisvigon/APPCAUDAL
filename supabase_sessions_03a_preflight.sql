@@ -129,6 +129,51 @@ findings as (
       then 'PASS' else 'BLOCKED' end,
     'CHECKs de estado y coherencia existentes y validadas; contrastar sus definiciones'
   union all
+  select 'membership_unique_club_user',
+    case when exists(select 1 from pg_catalog.pg_constraint c
+      where c.conrelid=to_regclass('public.club_memberships')
+        and c.conname='club_memberships_club_user_key'
+        and c.contype='u' and c.convalidated
+        and c.conkey=array[
+          (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid=c.conrelid and a.attname='club_id'),
+          (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid=c.conrelid and a.attname='user_id')])
+      then 'PASS' else 'BLOCKED' end,
+    'Una membership por usuario y club para el actor de cada RPC'
+  union all
+  select 'permission_fks',
+    case when exists(select 1 from pg_catalog.pg_constraint c
+      where c.conrelid=to_regclass('public.club_team_season_permissions')
+        and c.confrelid=to_regclass('public.club_memberships')
+        and c.contype='f' and c.convalidated and c.confdeltype='c'
+        and c.conkey=array[
+          (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid=c.conrelid and a.attname='membership_id' and not a.attisdropped),
+          (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid=c.conrelid and a.attname='club_id' and not a.attisdropped)]
+        and c.confkey=array[
+          (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid=c.confrelid and a.attname='id' and not a.attisdropped),
+          (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid=c.confrelid and a.attname='club_id' and not a.attisdropped)])
+      and exists(select 1 from pg_catalog.pg_constraint c
+      where c.conrelid=to_regclass('public.club_team_season_permissions')
+        and c.confrelid=to_regclass('public.club_team_seasons')
+        and c.contype='f' and c.convalidated and c.confdeltype='r'
+        and c.conkey=array[
+          (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid=c.conrelid and a.attname='club_team_season_id' and not a.attisdropped),
+          (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid=c.conrelid and a.attname='club_id' and not a.attisdropped)]
+        and c.confkey=array[
+          (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid=c.confrelid and a.attname='id' and not a.attisdropped),
+          (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid=c.confrelid and a.attname='club_id' and not a.attisdropped)])
+      then 'PASS' else 'BLOCKED' end,
+    'FKs compuestas validadas: membership+club CASCADE y CTS+club RESTRICT'
+  union all
   select 'session_context',
     case when current_user='postgres' and auth.uid() is null then 'PASS' else 'BLOCKED' end,
     'La migración exige postgres en SQL Editor, sin JWT de usuario'
