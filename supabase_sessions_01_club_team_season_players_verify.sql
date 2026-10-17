@@ -40,24 +40,41 @@ target as (
 ), checks as (
   select 'table_marker'::text as check_name,
     t.rel is not null and obj_description(t.rel, 'pg_class') =
-      'APPCAUDAL Sesiones 01: canonical dated player membership in a club team-season' as ok,
+      'APPCAUDAL Sesiones 01: canonical player membership in a club team-season, dates optional' as ok,
     'Tabla nueva identificada'::text as explanation from target t
   union all select 'columns_and_types',
     (select count(*) from pg_attribute a, target t where a.attrelid=t.rel and not a.attisdropped
       and ((a.attname='id' and a.atttypid='uuid'::regtype and a.attnotnull)
         or (a.attname='club_team_season_id' and a.atttypid='uuid'::regtype and a.attnotnull)
         or (a.attname='player_id' and a.atttypid='uuid'::regtype and a.attnotnull)
-        or (a.attname='joined_on' and a.atttypid='date'::regtype and a.attnotnull)
+        or (a.attname='joined_on' and a.atttypid='date'::regtype and not a.attnotnull)
         or (a.attname='left_on' and a.atttypid='date'::regtype and not a.attnotnull)
+        or (a.attname='has_departed' and a.atttypid='boolean'::regtype and a.attnotnull)
+        or (a.attname='created_by_membership_id' and a.atttypid='uuid'::regtype and a.attnotnull)
+        or (a.attname='voided_at' and a.atttypid='timestamptz'::regtype and not a.attnotnull)
+        or (a.attname='voided_by_membership_id' and a.atttypid='uuid'::regtype and not a.attnotnull)
+        or (a.attname='void_reason' and a.atttypid='text'::regtype and not a.attnotnull)
         or (a.attname='created_at' and a.atttypid='timestamp with time zone'::regtype and a.attnotnull)
-        or (a.attname='updated_at' and a.atttypid='timestamp with time zone'::regtype and a.attnotnull)))=7
-    and (select count(*) from pg_attribute a, target t where a.attrelid=t.rel and a.attnum>0 and not a.attisdropped)=7,
-    'Exactamente siete columnas y tipos esperados'
+        or (a.attname='updated_at' and a.atttypid='timestamp with time zone'::regtype and a.attnotnull)))=12
+    and (select count(*) from pg_attribute a, target t where a.attrelid=t.rel and a.attnum>0 and not a.attisdropped)=12,
+    'Exactamente doce columnas; joined_on opcional y metadatos de anulación'
+  union all select 'no_invented_date_defaults',
+    not exists (select 1 from pg_attribute a, target t where a.attrelid=t.rel
+      and a.attname in ('joined_on','left_on') and a.atthasdef)
+    and exists (select 1 from pg_attribute a join pg_attrdef d
+      on d.adrelid=a.attrelid and d.adnum=a.attnum, target t
+      where a.attrelid=t.rel and a.attname='has_departed'
+        and pg_get_expr(d.adbin,d.adrelid)='false'),
+    'Las fechas no se completan por defecto; ausencia de salida registrada inicia false'
   union all select 'primary_key',
     exists (select 1 from pg_constraint c, target t where c.conrelid=t.rel
       and c.conname='club_team_season_players_pkey' and c.contype='p' and c.convalidated
       and c.conkey=array[(select attnum from pg_attribute where attrelid=t.rel and attname='id' and not attisdropped)]::smallint[]),
     'PK en id'
+  union all select 'exact_constraint_count',
+    (select count(*) from pg_constraint c, target t where c.conrelid=t.rel and c.convalidated)=8
+      and (select count(*) from pg_constraint c, target t where c.conrelid=t.rel)=8,
+    'Sin constraints extra ni constraints obligatorias no validadas'
   union all select 'relation_fk_restrict',
     exists (select 1 from pg_constraint c, target t where c.conrelid=t.rel
       and c.conname='club_team_season_players_relation_fkey' and c.contype='f' and c.convalidated
@@ -70,27 +87,39 @@ target as (
       and c.confrelid=to_regclass('public.players_database') and c.confdeltype='r'
       and c.conkey=array[(select attnum from pg_attribute where attrelid=t.rel and attname='player_id' and not attisdropped)]::smallint[]),
     'FK validada hacia identidad global; ON DELETE RESTRICT'
+  union all select 'audit_actor_fks_restrict',
+    exists (select 1 from pg_constraint c, target t where c.conrelid=t.rel
+      and c.conname='club_team_season_players_creator_fkey' and c.contype='f' and c.convalidated
+      and c.confrelid=to_regclass('public.club_memberships') and c.confdeltype='r'
+      and c.conkey=array[(select attnum from pg_attribute where attrelid=t.rel
+        and attname='created_by_membership_id')]::smallint[])
+    and exists (select 1 from pg_constraint c, target t where c.conrelid=t.rel
+      and c.conname='club_team_season_players_void_actor_fkey' and c.contype='f' and c.convalidated
+      and c.confrelid=to_regclass('public.club_memberships') and c.confdeltype='r'
+      and c.conkey=array[(select attnum from pg_attribute where attrelid=t.rel
+        and attname='voided_by_membership_id')]::smallint[]),
+    'Creador y actor de anulación conservados por FK RESTRICT'
   union all select 'period_check',
     exists (select 1 from pg_constraint c, target t where c.conrelid=t.rel
       and c.conname='club_team_season_players_period_check' and c.contype='c' and c.convalidated
+      and pg_get_constraintdef(c.oid) like '%has_departed%'
       and pg_get_constraintdef(c.oid) like '%left_on%joined_on%'),
-    'CHECK de intervalo no vacío; revisar definición si falla'
-  union all select 'unique_start',
+    'CHECK: salida exacta exige has_departed y no precede a incorporación conocida'
+  union all select 'void_consistency_check',
     exists (select 1 from pg_constraint c, target t where c.conrelid=t.rel
-      and c.conname='club_team_season_players_start_key' and c.contype='u' and c.convalidated
-      and c.conkey=array[
-        (select attnum from pg_attribute where attrelid=t.rel and attname='club_team_season_id' and not attisdropped),
-        (select attnum from pg_attribute where attrelid=t.rel and attname='player_id' and not attisdropped),
-        (select attnum from pg_attribute where attrelid=t.rel and attname='joined_on' and not attisdropped)
-      ]::smallint[]),
-    'No se repite el inicio para el mismo jugador y equipo-temporada'
+      and c.conname='club_team_season_players_void_check' and c.contype='c' and c.convalidated
+      and pg_get_constraintdef(c.oid) like '%voided_at%'
+      and pg_get_constraintdef(c.oid) like '%voided_by_membership_id%'
+      and pg_get_constraintdef(c.oid) like '%void_reason%'),
+    'Anulación exige fecha, actor y motivo conjuntamente'
   union all select 'no_overlap_exclusion',
     exists (select 1 from pg_constraint c, target t where c.conrelid=t.rel
       and c.conname='club_team_season_players_no_overlap' and c.contype='x' and c.convalidated
       and pg_get_constraintdef(c.oid) like '%EXCLUDE USING gist%'
       and pg_get_constraintdef(c.oid) like '%daterange%'
-      and pg_get_constraintdef(c.oid) like '%&&%'),
-    'Exclusión GiST validada; la definición exacta procede de la migración'
+      and pg_get_constraintdef(c.oid) like '%&&%'
+      and pg_get_constraintdef(c.oid) like '%voided_at IS NULL%'),
+    'Exclusión GiST solo para registros no anulados; NULL de fecha es límite abierto conservador'
   union all select 'btree_gist_installed',
     exists (select 1 from pg_extension e join pg_namespace n on n.oid=e.extnamespace
       where e.extname='btree_gist' and n.nspname in ('extensions','public')),
@@ -98,31 +127,43 @@ target as (
   union all select 'indexes',
     (select count(*) from pg_class i join pg_index ix on ix.indexrelid=i.oid, target t
       where ix.indrelid=t.rel and ix.indisvalid and i.relname in
-        ('club_team_season_players_date_idx','club_team_season_players_player_idx'))=2,
-    'Índices de fecha y jugador válidos'
+        ('club_team_season_players_date_idx','club_team_season_players_player_idx',
+         'club_team_season_players_active_start_uidx'))=3,
+    'Índices de fecha, jugador e inicio único parcial válidos'
+  union all select 'partial_unique_start',
+    exists (select 1 from pg_index ix join pg_class i on i.oid=ix.indexrelid, target t
+      where ix.indrelid=t.rel and i.relname='club_team_season_players_active_start_uidx'
+        and ix.indisunique and ix.indisvalid and ix.indpred is not null
+        and pg_get_expr(ix.indpred,ix.indrelid) like '%voided_at IS NULL%'
+        and pg_get_expr(ix.indpred,ix.indrelid) like '%joined_on IS NOT NULL%'),
+    'La unicidad de inicio no impide sustituciones anuladas ni altas de fecha desconocida'
   union all select 'rls_enabled',
-    exists (select 1 from pg_class c, target t where c.oid=t.rel and c.relrowsecurity),
-    'RLS activado'
-  union all select 'three_exact_policies',
+    exists (select 1 from pg_class c, target t where c.oid=t.rel and c.relrowsecurity
+      and not c.relforcerowsecurity and c.relowner='postgres'::regrole),
+    'RLS activado y tabla propiedad de postgres; clientes no son propietarios'
+  union all select 'three_policies_security_shape',
     (select count(*) from pg_policy p, target t where p.polrelid=t.rel)=3
     and (select count(*) from pg_policy p, target t where p.polrelid=t.rel
       and p.polpermissive and p.polroles=array['authenticated'::regrole::oid]
       and ((p.polname='ctsp_read' and p.polcmd='r' and p.polwithcheck is null
-        and replace(regexp_replace(lower(pg_get_expr(p.polqual,p.polrelid)),'[[:space:]()]','','g'),'public.','')='can_read_club_team_seasonclub_team_season_id')
+        and position('can_read_club_team_season' in lower(pg_get_expr(p.polqual,p.polrelid)))>0
+        and position('has_club_role' in lower(pg_get_expr(p.polqual,p.polrelid)))>0
+        and position('voided_at is null' in lower(pg_get_expr(p.polqual,p.polrelid)))>0
+        and position('owner' in lower(pg_get_expr(p.polqual,p.polrelid)))>0)
       or (p.polname='ctsp_insert' and p.polcmd='a' and p.polqual is null
         and replace(regexp_replace(lower(pg_get_expr(p.polwithcheck,p.polrelid)),'[[:space:]()]','','g'),'public.','')='can_write_club_team_seasonclub_team_season_id')
       or (p.polname='ctsp_update' and p.polcmd='w'
         and replace(regexp_replace(lower(pg_get_expr(p.polqual,p.polrelid)),'[[:space:]()]','','g'),'public.','')='can_write_club_team_seasonclub_team_season_id'
         and replace(regexp_replace(lower(pg_get_expr(p.polwithcheck,p.polrelid)),'[[:space:]()]','','g'),'public.','')='can_write_club_team_seasonclub_team_season_id')))=3,
-    'Solo SELECT, INSERT y UPDATE para authenticated; helpers por equipo-temporada'
+    'Tres políticas únicas; SELECT oculta anulaciones al staff. Validar lógica con identidades reales'
   union all select 'guard_exact_body',
     exists (select 1 from pg_proc p, target t where p.oid=t.guard and p.prosecdef
       and p.proowner='postgres'::regrole
       and p.prorettype='trigger'::regtype
       and p.proconfig @> array['search_path=pg_catalog']::text[]
       and md5(regexp_replace(lower(p.prosrc),'[[:space:]]','','g'))=
-        '4f389c9c1daa98720c1e4853cf8d74f3'),
-    'Guard verificado por hash; incluye auth.uid, temporada abierta y fechas'
+        'c44e06581eb706161ae094456b67c11c'),
+    'Guard verificado por hash; fechas opcionales, hechos monotónicos y anulación owner'
   union all select 'guard_trigger_enabled',
     exists (select 1 from pg_trigger tr, target t where tr.tgrelid=t.rel
       and tr.tgname='club_team_season_players_guard' and tr.tgfoid=t.guard
@@ -138,56 +179,94 @@ target as (
   union all select 'source_helpers_unchanged',
     exists (select 1 from pg_proc p
       where p.oid=to_regprocedure('public.can_read_club_team_season(uuid)')
+        and p.prosecdef and p.proowner='postgres'::regrole
+        and p.proconfig @> array['search_path=pg_catalog']::text[]
         and md5(regexp_replace(lower(p.prosrc),'[[:space:]]','','g'))=
           '2f244dec658b347e50a0591ce1dba3dd')
     and exists (select 1 from pg_proc p
       where p.oid=to_regprocedure('public.can_write_club_team_season(uuid)')
+        and p.prosecdef and p.proowner='postgres'::regrole
+        and p.proconfig @> array['search_path=pg_catalog']::text[]
         and md5(regexp_replace(lower(p.prosrc),'[[:space:]]','','g'))=
-          '1c7f46f430cba9c9c16f298af6cd4c3b'),
-    'Los dos helpers existentes conservan su cuerpo aprobado'
+          '1c7f46f430cba9c9c16f298af6cd4c3b')
+    and exists (select 1 from pg_proc p
+      where p.oid=to_regprocedure('public.has_club_role(uuid,text[])')
+        and p.prosecdef and p.proowner='postgres'::regrole
+        and p.proconfig @> array['search_path=pg_catalog']::text[]
+        and md5(regexp_replace(lower(p.prosrc),'[[:space:]]','','g'))=
+          '774a3d46785e0253f305fb6c484f0a21'),
+    'Los tres helpers existentes conservan su cuerpo aprobado'
   union all select 'authenticated_privileges',
     has_table_privilege('authenticated', t.rel, 'SELECT')
-      and has_table_privilege('authenticated', t.rel, 'INSERT')
+      and not has_table_privilege('authenticated', t.rel, 'INSERT')
+      and has_column_privilege('authenticated', t.rel, 'club_team_season_id', 'INSERT')
+      and has_column_privilege('authenticated', t.rel, 'player_id', 'INSERT')
+      and has_column_privilege('authenticated', t.rel, 'joined_on', 'INSERT')
+      and has_column_privilege('authenticated', t.rel, 'left_on', 'INSERT')
+      and has_column_privilege('authenticated', t.rel, 'has_departed', 'INSERT')
+      and not has_column_privilege('authenticated', t.rel, 'id', 'INSERT')
+      and not has_column_privilege('authenticated', t.rel, 'created_by_membership_id', 'INSERT')
+      and not has_column_privilege('authenticated', t.rel, 'voided_at', 'INSERT')
+      and not has_column_privilege('authenticated', t.rel, 'voided_by_membership_id', 'INSERT')
+      and not has_column_privilege('authenticated', t.rel, 'void_reason', 'INSERT')
+      and not has_column_privilege('authenticated', t.rel, 'created_at', 'INSERT')
+      and not has_column_privilege('authenticated', t.rel, 'updated_at', 'INSERT')
       and not has_table_privilege('authenticated', t.rel, 'UPDATE')
       and has_column_privilege('authenticated', t.rel, 'joined_on', 'UPDATE')
       and has_column_privilege('authenticated', t.rel, 'left_on', 'UPDATE')
+      and has_column_privilege('authenticated', t.rel, 'has_departed', 'UPDATE')
+      and has_column_privilege('authenticated', t.rel, 'void_reason', 'UPDATE')
       and not has_column_privilege('authenticated', t.rel, 'id', 'UPDATE')
       and not has_column_privilege('authenticated', t.rel, 'player_id', 'UPDATE')
       and not has_column_privilege('authenticated', t.rel, 'club_team_season_id', 'UPDATE')
+      and not has_column_privilege('authenticated', t.rel, 'created_by_membership_id', 'UPDATE')
+      and not has_column_privilege('authenticated', t.rel, 'voided_at', 'UPDATE')
+      and not has_column_privilege('authenticated', t.rel, 'voided_by_membership_id', 'UPDATE')
+      and not has_column_privilege('authenticated', t.rel, 'created_at', 'UPDATE')
+      and not has_column_privilege('authenticated', t.rel, 'updated_at', 'UPDATE')
       and not has_table_privilege('authenticated', t.rel, 'DELETE')
+      and not has_table_privilege('authenticated', t.rel, 'REFERENCES')
+      and not has_any_column_privilege('authenticated', t.rel, 'REFERENCES')
       and not has_table_privilege('authenticated', t.rel, 'TRUNCATE')
       and not has_table_privilege('authenticated', t.rel, 'TRIGGER')
       and not has_table_privilege('authenticated', t.rel, 'MAINTAIN'),
-    'Lectura/alta y corrección de fechas; sin DELETE ni privilegios administrativos'
+    'DML solo en columnas permitidas; metadatos administrativos fijados por guard'
     from target t
   union all select 'anon_no_effective_access',
     not (has_table_privilege('anon', t.rel, 'SELECT')
+      or has_any_column_privilege('anon', t.rel, 'SELECT')
       or has_table_privilege('anon', t.rel, 'INSERT')
+      or has_any_column_privilege('anon', t.rel, 'INSERT')
       or has_table_privilege('anon', t.rel, 'UPDATE')
+      or has_any_column_privilege('anon', t.rel, 'UPDATE')
       or has_table_privilege('anon', t.rel, 'DELETE')
+      or has_table_privilege('anon', t.rel, 'REFERENCES')
+      or has_any_column_privilege('anon', t.rel, 'REFERENCES')
       or has_table_privilege('anon', t.rel, 'TRUNCATE')
       or has_table_privilege('anon', t.rel, 'TRIGGER')
       or has_table_privilege('anon', t.rel, 'MAINTAIN')),
     'Sin privilegios efectivos de tabla para anon' from target t
-  union all select 'initially_empty',
-    (select count(*) from public.club_team_season_players)=0,
-    'Solo válido inmediatamente tras la primera aplicación, antes de la carga aprobada'
-  union all select 'legacy_27_memberships_unchanged',
-    (select count(*) from public.player_team_memberships
-      where team_id='85a16f33-9fe5-44d4-b85d-37d73651ebf6'::uuid and is_current)=27,
-    'Referencia de inventario; cambios concurrentes legítimos pueden cambiar este recuento'
-  union all select 'legacy_24_active_fichas_unchanged',
-    (select count(*) from public.jugadores j
-      join public.player_team_memberships stage on stage.id=j.membership_id
-      where stage.team_id='85a16f33-9fe5-44d4-b85d-37d73651ebf6'::uuid
-        and stage.is_current and j.active_in_squad
-        and j.global_player_id=stage.player_id)=24,
-    'Referencia de inventario; no prueba por sí sola ausencia absoluta de cambios'
 ), report as (
   select check_name, case when ok then 'PASS' else 'FAIL' end as result, explanation
   from checks
 ), output as (
   select check_name, result, explanation from report
+  union all
+  select 'current_relation_row_count', 'INFO',
+    format('%s filas; primera aplicación debe ser 0, reejecuciones posteriores pueden tener datos',
+      (select count(*) from public.club_team_season_players))
+  union all
+  select 'legacy_current_membership_count', 'INFO',
+    format('%s etapas actuales; inventario anterior: 27',
+      (select count(*) from public.player_team_memberships
+       where team_id='85a16f33-9fe5-44d4-b85d-37d73651ebf6'::uuid and is_current))
+  union all
+  select 'legacy_active_ficha_count', 'INFO',
+    format('%s fichas activas coincidentes; inventario anterior: 24',
+      (select count(*) from public.jugadores j
+       join public.player_team_memberships stage on stage.id=j.membership_id
+       where stage.team_id='85a16f33-9fe5-44d4-b85d-37d73651ebf6'::uuid
+         and stage.is_current and j.active_in_squad and j.global_player_id=stage.player_id))
   union all
   select 'source_catalog_fingerprint', 'INFO', value from source_fingerprint
   union all
@@ -202,6 +281,9 @@ target as (
   union all
   select 'identity_runtime', 'PENDING',
     'Owner, staff asignado/no asignado, player y anon requieren prueba aparte con identidades reales'
+  union all
+  select 'void_and_date_runtime', 'PENDING',
+    'Anulación owner, fechas desconocidas, retorno y rechazo de solapamientos requieren ensayos reversibles'
 )
 select check_name, result, explanation from output
 order by case when check_name='GLOBAL' then 2 when result='PENDING' then 1 else 0 end, check_name;

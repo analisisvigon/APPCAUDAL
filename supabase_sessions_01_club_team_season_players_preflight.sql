@@ -44,13 +44,14 @@ checks as (
     and to_regclass('public.club_team_seasons') is not null
     and to_regclass('public.club_teams') is not null
     and to_regclass('public.club_seasons') is not null
+    and to_regclass('public.club_memberships') is not null
     and to_regclass('public.players_database') is not null
     and to_regclass('public.player_team_memberships') is not null,
     'Tablas origen por nombre exacto'
   union all select 'target_name_safe',
     to_regclass('public.club_team_season_players') is null
     or obj_description(to_regclass('public.club_team_season_players'), 'pg_class') =
-      'APPCAUDAL Sesiones 01: canonical dated player membership in a club team-season',
+      'APPCAUDAL Sesiones 01: canonical player membership in a club team-season, dates optional',
     'Si existe, debe ser nuestra tabla identificada; su estructura se valida después'
   union all select 'guard_name_safe',
     to_regprocedure('public.guard_club_team_season_player_mutation()') is null
@@ -66,19 +67,36 @@ checks as (
   union all select 'helper_read_exact',
     exists (select 1 from pg_proc p
       where p.oid=to_regprocedure('public.can_read_club_team_season(uuid)')
-        and p.prosecdef and p.provolatile='s' and p.prorettype='boolean'::regtype
+        and p.prosecdef and p.provolatile='s' and p.proowner='postgres'::regrole
+        and p.prorettype='boolean'::regtype
         and p.proconfig @> array['search_path=pg_catalog']::text[]
+        and has_function_privilege('authenticated',p.oid,'EXECUTE')
+        and not has_function_privilege('anon',p.oid,'EXECUTE')
         and md5(regexp_replace(lower(p.prosrc),'[[:space:]]','','g'))=
           '2f244dec658b347e50a0591ce1dba3dd'),
     'Hash normalizado y metadatos del helper de lectura aprobado'
   union all select 'helper_write_exact',
     exists (select 1 from pg_proc p
       where p.oid=to_regprocedure('public.can_write_club_team_season(uuid)')
-        and p.prosecdef and p.provolatile='s' and p.prorettype='boolean'::regtype
+        and p.prosecdef and p.provolatile='s' and p.proowner='postgres'::regrole
+        and p.prorettype='boolean'::regtype
         and p.proconfig @> array['search_path=pg_catalog']::text[]
+        and has_function_privilege('authenticated',p.oid,'EXECUTE')
+        and not has_function_privilege('anon',p.oid,'EXECUTE')
         and md5(regexp_replace(lower(p.prosrc),'[[:space:]]','','g'))=
           '1c7f46f430cba9c9c16f298af6cd4c3b'),
     'Hash normalizado y metadatos del helper de escritura aprobado'
+  union all select 'helper_owner_role_exact',
+    exists (select 1 from pg_proc p
+      where p.oid=to_regprocedure('public.has_club_role(uuid,text[])')
+        and p.prosecdef and p.provolatile='s' and p.proowner='postgres'::regrole
+        and p.prorettype='boolean'::regtype
+        and p.proconfig @> array['search_path=pg_catalog']::text[]
+        and md5(regexp_replace(lower(p.prosrc),'[[:space:]]','','g'))=
+          '774a3d46785e0253f305fb6c484f0a21'
+        and has_function_privilege('authenticated',p.oid,'EXECUTE')
+        and not has_function_privilege('anon',p.oid,'EXECUTE')),
+    'Helper owner activo usado para la anulación; ninguna función existente se modifica'
   union all select 'source_columns',
     (select count(*) from pg_attribute a where a.attrelid=to_regclass('public.club_team_seasons')
       and not a.attisdropped and
@@ -99,7 +117,14 @@ checks as (
       and not a.attisdropped and
       ((a.attname='player_id' and a.atttypid='uuid'::regtype) or
        (a.attname='team_id' and a.atttypid='uuid'::regtype) or
-       (a.attname='is_current' and a.atttypid='boolean'::regtype)))=3,
+       (a.attname='is_current' and a.atttypid='boolean'::regtype)))=3
+    and (select count(*) from pg_attribute a where a.attrelid=to_regclass('public.club_memberships')
+      and not a.attisdropped and
+      ((a.attname='id' and a.atttypid='uuid'::regtype) or
+       (a.attname='club_id' and a.atttypid='uuid'::regtype) or
+       (a.attname='user_id' and a.atttypid='uuid'::regtype) or
+       (a.attname='role' and a.atttypid='text'::regtype) or
+       (a.attname='is_active' and a.atttypid='boolean'::regtype)))=5,
     'Columnas y tipos realmente usados por la migración'
   union all select 'canonical_foreign_keys',
     exists (select 1 from pg_constraint where conrelid=to_regclass('public.club_team_seasons')
@@ -109,7 +134,9 @@ checks as (
     and exists (select 1 from pg_constraint where conrelid=to_regclass('public.player_team_memberships')
       and confrelid=to_regclass('public.players_database') and contype='f' and convalidated)
     and exists (select 1 from pg_constraint where conrelid=to_regclass('public.player_team_memberships')
-      and confrelid=to_regclass('public.equipos_rivales') and contype='f' and convalidated),
+      and confrelid=to_regclass('public.equipos_rivales') and contype='f' and convalidated)
+    and exists (select 1 from pg_constraint where conrelid=to_regclass('public.club_memberships')
+      and conname='club_memberships_club_user_key' and contype='u' and convalidated),
     'FK validadas de relaciones fuente; comprobar columnas exactas en el inventario'
   union all select 'current_team_season',
     (select count(*) from public.club_team_seasons cts
