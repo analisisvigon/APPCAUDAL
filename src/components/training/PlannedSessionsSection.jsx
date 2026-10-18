@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   buildPlannedSavePayload,
   createEmptyPlannedEditor,
@@ -15,6 +15,7 @@ import {
   loadPlannedSession,
   savePlannedSession,
 } from '../../data/plannedSessionsStore';
+import PlannedSessionDocument from './PlannedSessionDocument';
 
 const panel = 'rounded-2xl border border-white/10 bg-[#0b1a2d]/85 p-4 sm:p-5';
 const input = 'min-h-11 w-full rounded-xl border border-white/15 bg-[#071325] px-3 py-2 text-sm text-white outline-none focus:border-caudal-electric';
@@ -25,14 +26,6 @@ const formatDate = (value) => value
 const createId = () => globalThis.crypto?.randomUUID?.() || null;
 const readError = (error) => error?.message || 'No se pudo completar la operación.';
 
-const detailFields = [
-  ['period_label', 'Periodo', 'text'],
-  ['morphology_pattern', 'Patrón morfológico', 'text'],
-  ['next_opponent_label', 'Próximo rival', 'text'],
-  ['material', 'Material', 'textarea'],
-  ['notes', 'Notas', 'textarea'],
-  ['staff_observations', 'Observaciones del cuerpo técnico', 'textarea'],
-];
 const blankTask = (id) => ({ id, title: '', description: '', comments: '', url: '', minutes: '' });
 const errorKind = (error) => {
   if (error?.code === '42501' || error?.code === 'PGRST301' || error?.status === 401 || error?.status === 403) return 'Permisos';
@@ -79,6 +72,10 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
+  useEffect(() => {
+    if (!expandedSlotId) return;
+    document.querySelector(`[data-planned-slot-id="${expandedSlotId}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [expandedSlotId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -147,6 +144,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     if (!canWriteContext || busy || !requestDiscard()) return;
     setEditor(createEmptyPlannedEditor()); setBaseline(null);
     setUnsupportedItems(false); setError(''); setNotice(''); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null);
+    requestAnimationFrame(() => document.querySelector('[data-planned-session-document]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
   const updateEditor = (update) => {
     setValidationIssues([]);
@@ -154,10 +152,6 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   };
   const fieldIssue = (field, slotId = null, itemId = null) => validationIssues.find((issue) =>
     issue.field === field && issue.slotId === slotId && issue.itemId === itemId)?.message;
-  const issueText = (field, slotId = null, itemId = null) => {
-    const message = fieldIssue(field, slotId, itemId);
-    return message ? <span className="mt-1 block text-xs font-medium text-rose-300">{message}</span> : null;
-  };
   const updateSlot = (slotId, update) => updateEditor((current) => ({
     ...current, slots: current.slots.map((slot) => slot.id === slotId ? update(slot) : slot),
   }));
@@ -272,11 +266,6 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     } finally { operationRef.current = false; setBusy(false); }
   };
 
-  const phaseSlots = useMemo(() => Object.fromEntries(PLANNED_PHASES.map((phase) => [
-    phase.key, editor?.slots.filter((slot) => slot.phase === phase.key) || [],
-  ])), [editor?.slots]);
-  const orderedSlots = useMemo(() => PLANNED_PHASES.flatMap((phase) => phaseSlots[phase.key]), [phaseSlots]);
-  const exerciseNumber = (id) => orderedSlots.findIndex((slot) => slot.id === id) + 1;
   const addExercise = (phase) => {
     const slotId = createId();
     const taskId = createId();
@@ -285,12 +274,32 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       { id: slotId, phase, duration: '', items: [blankTask(taskId)] }] }));
     setExpandedSlotId(slotId);
   };
-  const updateHeader = (key, value) => updateEditor((current) => ({ ...current,
-    header: { ...current.header, [key]: value },
-  }));
   const updateTask = (slotId, itemId, key, value) => updateSlot(slotId, (slot) => ({
     ...slot, items: slot.items.map((item) => item.id === itemId ? { ...item, [key]: value } : item),
   }));
+  const addTask = (slotId) => {
+    const id = createId();
+    if (!id) { setError('Este navegador no puede crear UUID seguros.'); return; }
+    updateSlot(slotId, (slot) => slot.items.length >= 2 ? slot :
+      { ...slot, items: [...slot.items, blankTask(id)] });
+  };
+  const removeTask = (slotId, itemId) => {
+    if (!window.confirm('¿Retirar la segunda tarea al guardar? Sus datos dejarán de formar parte de este ejercicio.')) return;
+    updateSlot(slotId, (slot) => ({ ...slot, items: slot.items.filter((item) => item.id !== itemId) }));
+  };
+  const removeSlot = (slotId, number) => {
+    const slot = editor?.slots.find((entry) => entry.id === slotId);
+    if (!slot || !window.confirm(`¿Retirar el ejercicio ${number} y sus ${slot.items.length} tareas al guardar?`)) return;
+    updateEditor((current) => ({ ...current, slots: current.slots.filter((entry) => entry.id !== slotId) }));
+  };
+  const changePhase = (slotId, nextPhase) => updateEditor((current) => {
+    const slot = current.slots.find((entry) => entry.id === slotId);
+    if (!slot || !PLANNED_PHASES.some((phase) => phase.key === nextPhase)) return current;
+    const without = current.slots.filter((entry) => entry.id !== slotId);
+    const last = without.reduce((found, entry, index) => entry.phase === nextPhase ? index : found, -1);
+    without.splice(last + 1, 0, { ...slot, phase: nextPhase });
+    return { ...current, slots: without };
+  });
 
   return (
     <main className="space-y-5 pb-24 xl:pb-8">
@@ -349,24 +358,18 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         </div>
       </section> : null}
 
-      {editor && selected ? <section className="space-y-4" aria-label="Ficha de sesión">
-        <div className={`${panel} border-caudal-electric/20 bg-gradient-to-br from-[#102a43] to-[#091726]`}>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-caudal-electric">Plan de entrenamiento</p>
-              <h3 className="mt-1 text-xl font-black sm:text-2xl">{editor.id ?
-                (editor.planning_state === 'confirmed'
-                  ? editor.session_number == null ? 'Sesión confirmada · recarga pendiente' : `Sesión nº ${editor.session_number}`
-                  : 'Borrador de sesión') : 'Nueva sesión'}</h3>
-              <p className="mt-1 text-xs text-slate-400">{editor.id ? `Revisión ${editor.revision}` : 'El borrador se crea al guardar'} · {selected.team_name} · {selected.label}</p>
-            </div>
-            <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-300">
-              <span className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5"><strong className="mr-1 text-base text-white">{getPlannedDuration(editor.slots)}</strong>min</span>
-              <span className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5"><strong className="mr-1 text-base text-white">{editor.slots.length}</strong>ejercicios</span>
-              <span className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-white">{editor.planning_state === 'confirmed' ? 'Confirmada' : 'Borrador'}</span>
-            </div>
+      {editor && selected ? <section className="space-y-3" aria-label="Ficha de sesión">
+        <div className={`${panel} flex flex-wrap items-center justify-between gap-3`}>
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-caudal-electric">Editor de plantilla</p>
+            <h3 className="text-lg font-bold text-white">{editor.id
+              ? editor.planning_state === 'confirmed' ? `Sesión nº ${editor.session_number ?? '—'}` : 'Borrador de sesión'
+              : 'Nueva sesión'}</h3>
+            <p className="text-xs text-slate-400">{selected.team_name} · {selected.label} ·
+              {editor.id ? ` Revisión ${editor.revision}` : ' Se creará al guardar'} ·
+              {getPlannedDuration(editor.slots)} min</p>
           </div>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2">
             {canEdit ? <button type="button" className={`${button} bg-caudal-electric text-slate-950`}
               onClick={save} disabled={busy || !dirty || conflict || creationUncertain}>
               {busy ? 'Procesando…' : 'Guardar cambios'}</button> : null}
@@ -377,184 +380,17 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
               onClick={() => { if (requestDiscard()) openSession(editor.id, true); }} disabled={busy}>Recargar</button> : null}
             <button type="button" className={`${button} border border-white/15 text-slate-200`}
               onClick={() => { if (requestDiscard()) { setEditor(null); setBaseline(null); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null); } }}
-              disabled={busy}>Cerrar ficha</button>
+              disabled={busy}>Cerrar plantilla</button>
           </div>
-          {dirty ? <p className="mt-3 text-xs text-amber-200">Cambios sin guardar. Guarda antes de confirmar.</p> : null}
-          {creationUncertain ? <p className="mt-3 text-xs text-amber-200">Guardado bloqueado: revisa la lista antes de cerrar esta ficha o crear otra sesión.</p> : null}
-          {unsupportedItems ? <p className="mt-3 text-xs text-amber-200">Esta sesión contiene tareas de Biblioteca o ejercicios con más de dos tareas. 03B bloquea su edición para conservar los datos originales; las tareas de Biblioteca no se muestran en esta ficha.</p> : null}
+          {dirty ? <p className="w-full text-xs text-amber-200">Cambios sin guardar. Guarda antes de confirmar.</p> : null}
+          {creationUncertain ? <p className="w-full text-xs text-amber-200">Guardado bloqueado: revisa la lista antes de crear otra sesión.</p> : null}
+          {unsupportedItems ? <p className="w-full text-xs text-amber-200">Esta sesión contiene tareas de Biblioteca o más de dos tareas en un ejercicio. Se muestra sin edición para preservar sus datos.</p> : null}
         </div>
-
-        <div className={panel}>
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <div><p className="text-xs font-bold uppercase tracking-widest text-caudal-electric">Datos esenciales</p><h4 className="text-lg font-bold">Cuándo y para qué</h4></div>
-            <span className="text-xs text-slate-400">{formatDate(editor.session_date)}</span>
-          </div>
-          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-            <label className="text-xs font-semibold text-slate-300">Fecha
-              <input className={`${input} mt-1`} type="date" min={selected.starts_on} max={selected.ends_on}
-                value={editor.session_date} disabled={!canEdit || busy}
-                aria-invalid={Boolean(fieldIssue('session_date'))}
-                onChange={(event) => updateEditor((current) => ({ ...current, session_date: event.target.value }))} />
-              {issueText('session_date')}
-            </label>
-            {[
-              ['starts_at', 'Hora de inicio', 'time'], ['location', 'Lugar', 'text'],
-            ].map(([key, label, type]) => <label key={key} className="text-xs font-semibold text-slate-300">{label}
-              <input className={`${input} mt-1`} type={type} value={editor.header[key]} disabled={!canEdit || busy}
-                aria-invalid={Boolean(fieldIssue(key))} onChange={(event) => updateHeader(key, event.target.value)} />
-              {issueText(key)}
-            </label>)}
-            <label className="text-xs font-semibold text-slate-300 sm:col-span-2 lg:col-span-3">Objetivos
-              <textarea className={`${input} mt-1 min-h-16 resize-y`} value={editor.header.objectives}
-                disabled={!canEdit || busy} aria-invalid={Boolean(fieldIssue('objectives'))}
-                onChange={(event) => updateHeader('objectives', event.target.value)} />
-              {issueText('objectives')}
-            </label>
-          </div>
-          <details className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-3" open={validationIssues.some((issue) => detailFields.some(([key]) => key === issue.field)) || undefined}>
-            <summary className="cursor-pointer text-sm font-semibold text-slate-200">Más detalles</summary>
-            <div className="mt-2 grid gap-2.5 sm:grid-cols-2">
-              {detailFields.map(([key, label, type]) => <label key={key}
-                className={`text-xs font-semibold text-slate-300 ${type === 'textarea' ? 'sm:col-span-2' : ''}`}>{label}
-                {type === 'textarea' ? <textarea className={`${input} mt-1 min-h-20 resize-y`}
-                  value={editor.header[key]} disabled={!canEdit || busy} aria-invalid={Boolean(fieldIssue(key))}
-                  onChange={(event) => updateHeader(key, event.target.value)} /> :
-                  <input className={`${input} mt-1`} type={type} value={editor.header[key]}
-                    disabled={!canEdit || busy} aria-invalid={Boolean(fieldIssue(key))}
-                    onChange={(event) => updateHeader(key, event.target.value)} />}
-                {issueText(key)}
-              </label>)}
-            </div>
-          </details>
-        </div>
-
-        {PLANNED_PHASES.map((phase) => <section className={panel} key={phase.key}>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-caudal-electric">{phaseSlots[phase.key].length} ejercicios · {getPlannedDuration(phaseSlots[phase.key])} min</p>
-              <h4 className="text-lg font-bold">{phase.label}</h4>
-            </div>
-            {canEdit ? <button type="button" className={`${button} border border-caudal-electric/40 text-caudal-electric`}
-              disabled={busy} onClick={() => addExercise(phase.key)}>+ Añadir ejercicio</button> : null}
-          </div>
-          {!phaseSlots[phase.key].length ? <p className="mt-3 rounded-xl border border-dashed border-white/10 px-4 py-5 text-sm text-slate-400">Sin ejercicios en esta fase.</p> : null}
-          <div className="mt-3 space-y-2">
-            {phaseSlots[phase.key].map((slot, slotIndex) => {
-              const isExpanded = expandedSlotId === slot.id;
-              const slotHasIssue = validationIssues.some((issue) => issue.slotId === slot.id);
-              return <article key={slot.id} className={`overflow-hidden rounded-xl border bg-[#071325] ${slotHasIssue ? 'border-rose-400/60' : isExpanded ? 'border-caudal-electric/40' : 'border-white/10'}`}>
-                <button type="button" className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-white/[0.035] sm:px-4"
-                  aria-expanded={isExpanded} aria-controls={`exercise-${slot.id}`}
-                  onClick={() => setExpandedSlotId(isExpanded ? null : slot.id)}>
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-caudal-electric/15 text-sm font-black text-caudal-electric">{exerciseNumber(slot.id)}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-bold text-white">Ejercicio {exerciseNumber(slot.id)} <span className="font-normal text-slate-400">· {phase.label}</span></span>
-                    {slot.items.length ? slot.items.map((item, index) =>
-                      <span key={item.id} className="block truncate text-xs text-slate-300">
-                        <span className="font-semibold text-caudal-electric">Tarea {String.fromCharCode(65 + index)}:</span> {item.title.trim() || 'Sin título'}
-                      </span>) : <span className="block text-xs text-amber-200">Sin Tarea A</span>}
-                  </span>
-                  <span className="shrink-0 text-right text-xs text-slate-300"><strong className="block text-sm text-white">{slot.duration || '—'} min</strong>{slot.items.length === 2 ? '2 simultáneas' : `${slot.items.length} ${slot.items.length === 1 ? 'tarea' : 'tareas'}`}</span>
-                  <span aria-hidden="true" className="ml-1 text-caudal-electric">{isExpanded ? '−' : '+'}</span>
-                </button>
-                {isExpanded ? <div id={`exercise-${slot.id}`} className="border-t border-white/10 px-3 pb-3 pt-2.5 sm:px-4">
-                  <div className="flex flex-wrap items-end gap-2">
-                    <label className="min-w-36 max-w-48 flex-1 text-xs font-semibold text-slate-300">Duración total · min
-                      <input className={`${input} mt-1`} type="number" min="1" step="1" value={slot.duration}
-                        disabled={!canEdit || busy} aria-invalid={Boolean(fieldIssue('duration', slot.id))}
-                        onChange={(event) => updateSlot(slot.id, (current) => ({ ...current, duration: event.target.value }))} />
-                      {issueText('duration', slot.id)}
-                    </label>
-                    {canEdit ? <div className="flex flex-wrap gap-1.5">
-                      <button type="button" aria-label={`Subir ejercicio ${exerciseNumber(slot.id)} en ${phase.label}`} className={`${button} border border-white/15 px-3`}
-                        disabled={busy || slotIndex === 0} onClick={() => moveSlot(slot.id, -1)}>↑ Subir</button>
-                      <button type="button" aria-label={`Bajar ejercicio ${exerciseNumber(slot.id)} en ${phase.label}`} className={`${button} border border-white/15 px-3`}
-                        disabled={busy || slotIndex === phaseSlots[phase.key].length - 1} onClick={() => moveSlot(slot.id, 1)}>↓ Bajar</button>
-                      <button type="button" className={`${button} border border-rose-400/25 px-3 text-rose-200`}
-                        disabled={busy} onClick={() => {
-                          if (window.confirm(`¿Retirar el ejercicio ${exerciseNumber(slot.id)} y sus ${slot.items.length} tareas al guardar? Esta acción se aplicará al guardar la sesión.`)) {
-                            updateEditor((current) => ({ ...current, slots: current.slots.filter((entry) => entry.id !== slot.id) }));
-                            setExpandedSlotId(null);
-                          }
-                        }}>Retirar ejercicio</button>
-                    </div> : null}
-                  </div>
-                  {canEdit ? <label className="mt-2 block max-w-xs text-xs text-slate-400">Cambiar de fase
-                    <select className={`${input} mt-1`} value={slot.phase} disabled={busy}
-                      onChange={(event) => updateEditor((current) => {
-                        const without = current.slots.filter((entry) => entry.id !== slot.id);
-                        const last = without.reduce((found, entry, index) => entry.phase === event.target.value ? index : found, -1);
-                        without.splice(last + 1, 0, { ...slot, phase: event.target.value });
-                        return { ...current, slots: without };
-                      })}>
-                      {PLANNED_PHASES.map((entry) => <option key={entry.key} value={entry.key}>{entry.label}</option>)}
-                    </select>
-                  </label> : null}
-                  <p className="mt-2 text-xs text-slate-400">Tarea A y Tarea B son simultáneas; la duración se cuenta una sola vez.</p>
-                  {issueText('items', slot.id)}
-                  <div className={`mt-2 grid gap-2.5 ${slot.items.length === 2 ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
-                    {slot.items.map((item, itemIndex) => <div key={item.id} className={`min-w-0 rounded-xl border p-3 ${itemIndex === 0 ? 'border-caudal-electric/25 bg-caudal-electric/[0.045]' : 'border-sky-300/25 bg-sky-300/[0.035]'}`}>
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <h5 className="text-sm font-bold text-caudal-electric">Tarea {String.fromCharCode(65 + itemIndex)}{itemIndex === 0 ? ' · principal' : ' · opcional'}</h5>
-                        {canEdit && itemIndex > 0 ? <div className="flex gap-1">
-                          <button type="button" className="rounded-lg border border-white/15 px-2 py-1 text-xs text-slate-200" disabled={busy}
-                            onClick={() => moveItem(slot.id, item.id, -1)}>Pasar a A</button>
-                          <button type="button" className="rounded-lg border border-rose-400/25 px-2 py-1 text-xs text-rose-200" disabled={busy}
-                            onClick={() => {
-                              if (window.confirm('¿Retirar la segunda tarea al guardar? Sus datos dejarán de formar parte de este ejercicio.')) {
-                                updateSlot(slot.id, (current) => ({ ...current, items: current.items.filter((entry) => entry.id !== item.id) }));
-                              }
-                            }}>Retirar segunda tarea</button>
-                        </div> : null}
-                      </div>
-                      <div className={`grid gap-2.5 sm:grid-cols-2 ${slot.items.length === 2 ? 'lg:grid-cols-1 xl:grid-cols-2' : ''}`}>
-                        <label className="text-xs text-slate-300">Título
-                          <input className={`${input} mt-1`} value={item.title} disabled={!canEdit || busy}
-                            aria-invalid={Boolean(fieldIssue('title', slot.id, item.id))}
-                            onChange={(event) => updateTask(slot.id, item.id, 'title', event.target.value)} />
-                          {issueText('title', slot.id, item.id)}
-                        </label>
-                        <label className="text-xs text-slate-300">Duración propia (opcional)
-                          <input className={`${input} mt-1`} type="number" min="1" step="1" value={item.minutes}
-                            disabled={!canEdit || busy} aria-invalid={Boolean(fieldIssue('minutes', slot.id, item.id))}
-                            onChange={(event) => updateTask(slot.id, item.id, 'minutes', event.target.value)} />
-                          {issueText('minutes', slot.id, item.id)}
-                        </label>
-                        {[
-                          ['description', 'Descripción', 'textarea'], ['comments', 'Comentarios', 'textarea'], ['url', 'Enlace HTTPS', 'url'],
-                        ].map(([key, label, type]) => <label key={key}
-                          className={`text-xs text-slate-300 ${type === 'textarea' ? slot.items.length === 2 ? 'sm:col-span-2 lg:col-span-1 xl:col-span-2' : 'sm:col-span-2' : ''}`}>{label}
-                          {type === 'textarea' ? <textarea className={`${input} mt-1 min-h-16 resize-y`} value={item[key]}
-                            disabled={!canEdit || busy} aria-invalid={Boolean(fieldIssue(key, slot.id, item.id))}
-                            onChange={(event) => updateTask(slot.id, item.id, key, event.target.value)} /> :
-                            <input className={`${input} mt-1`} type={type} value={item[key]} disabled={!canEdit || busy}
-                              aria-invalid={Boolean(fieldIssue(key, slot.id, item.id))}
-                              onChange={(event) => updateTask(slot.id, item.id, key, event.target.value)} />}
-                          {issueText(key, slot.id, item.id)}
-                        </label>)}
-                      </div>
-                      {canEdit && slot.items.length > 1 && editor.slots.some((target) => target.id !== slot.id && target.items.length < 2) ?
-                        <label className="mt-3 block text-xs text-slate-400">Mover tarea a otro ejercicio
-                          <select className={`${input} mt-1`} value={slot.id} disabled={busy}
-                            onChange={(event) => moveItemToSlot(slot.id, item.id, event.target.value)}>
-                            <option value={slot.id}>Este ejercicio</option>
-                            {orderedSlots.filter((target) => target.id !== slot.id && target.items.length < 2).map((target) =>
-                              <option key={target.id} value={target.id}>Ejercicio {exerciseNumber(target.id)} · {PLANNED_PHASES.find((entry) => entry.key === target.phase)?.label}</option>)}
-                          </select>
-                        </label> : null}
-                    </div>)}
-                  </div>
-                  {canEdit && slot.items.length < 2 ? <button type="button" className={`${button} mt-2 border border-caudal-electric/40 text-caudal-electric`}
-                    disabled={busy} onClick={() => {
-                      const id = createId();
-                      if (!id) { setError('Este navegador no puede crear UUID seguros.'); return; }
-                      updateSlot(slot.id, (current) => ({ ...current, items: [...current.items, blankTask(id)] }));
-                    }}>{slot.items.length ? '+ Añadir segunda tarea' : '+ Añadir Tarea A'}</button> : null}
-                </div> : null}
-              </article>;
-            })}
-          </div>
-        </section>)}
+        <PlannedSessionDocument editor={editor} selected={selected} canEdit={canEdit} busy={busy}
+          fieldIssue={fieldIssue} updateEditor={updateEditor} updateSlot={updateSlot} updateTask={updateTask}
+          moveSlot={moveSlot} moveItem={moveItem} moveItemToSlot={moveItemToSlot}
+          addExercise={addExercise} addTask={addTask} removeTask={removeTask} removeSlot={removeSlot}
+          changePhase={changePhase} />
       </section> : null}
     </main>
   );
