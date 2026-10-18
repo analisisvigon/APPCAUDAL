@@ -1,6 +1,7 @@
 -- APPCAUDAL Sesiones 03C: preflight de contrato, SOLO SELECT.
 -- Preparado localmente; NO ejecutado por Codex. No inspecciona datos personales.
--- READY_TO_DESIGN no autoriza aplicar una migración: falta decidir la custodia de Storage.
+-- READY_TO_DESIGN no autoriza aplicar una migración: la copia selectiva de
+-- Storage está decidida, pero aún no está implementada ni probada.
 with
 required_tables(name) as (values
   ('training_tasks'),('training_task_shares'),('training_task_media'),
@@ -73,6 +74,44 @@ checks as (
   from required_functions f
   left join pg_catalog.pg_proc p on p.oid=to_regprocedure(f.signature)
   union all
+  select '03C overloads',
+    case when not exists(select 1 from pg_catalog.pg_proc p
+      join pg_catalog.pg_namespace n on n.oid=p.pronamespace
+      where n.nspname='public' and p.proname in
+        ('planned_editor_payload_snapshot_safe','planned_library_snapshot',
+         'save_planned_session_03c','confirm_planned_session_03c')
+        and p.oid not in (
+          coalesce(to_regprocedure('public.planned_editor_payload_snapshot_safe(jsonb)')::oid,'0'::oid),
+          coalesce(to_regprocedure('public.planned_library_snapshot(uuid)')::oid,'0'::oid),
+          coalesce(to_regprocedure('public.save_planned_session_03c(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])')::oid,'0'::oid),
+          coalesce(to_regprocedure('public.confirm_planned_session_03c(uuid,integer)')::oid,'0'::oid)))
+      then 'READY' else 'BLOCKED' end,
+    'No debe existir ninguna firma alternativa de los cuatro helpers/RPC nuevos'
+  union all
+  select '03C existing function marker '||v.signature,
+    case when to_regprocedure(v.signature) is null or
+      obj_description(to_regprocedure(v.signature)::oid,'pg_proc')=v.description
+      then 'READY' else 'BLOCKED' end,
+    'Una función preexistente con igual firma debe pertenecer a 03C'
+  from (values
+    ('public.planned_editor_payload_snapshot_safe(jsonb)',
+      'APPCAUDAL Sesiones 03C: filtro cerrado para recursos ocultos en editor_payload'),
+    ('public.planned_library_snapshot(uuid)',
+      'APPCAUDAL Sesiones 03C: snapshot sin uploads, emitido solo desde RPC'),
+    ('public.save_planned_session_03c(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])',
+      'APPCAUDAL Sesiones 03C: guardado diferencial de actividades libres y Biblioteca'),
+    ('public.confirm_planned_session_03c(uuid,integer)',
+      'APPCAUDAL Sesiones 03C: confirmación de actividades libres y Biblioteca')
+  ) v(signature,description)
+  union all
+  select 'GUARD marker 03A/03C',
+    case when coalesce(obj_description(to_regprocedure(
+      'public.guard_planned_session_child()')::oid,'pg_proc'),'') in
+      ('APPCAUDAL Sesiones 03A: guard_planned_session_child',
+       'APPCAUDAL Sesiones 03C: guard_planned_session_child')
+      then 'READY' else 'BLOCKED' end,
+    'El único reemplazo de función existente exige una marca conocida'
+  union all
   select 'CONSTRAINT '||v.name,
     case when c.oid is not null and c.convalidated then 'READY' else 'BLOCKED' end,
     coalesce(pg_get_constraintdef(c.oid,true),'ausente')
@@ -110,6 +149,16 @@ checks as (
       and to_regclass('storage.objects') is not null then 'INFO' else 'BLOCKED' end,
     'Este inventario no verifica bytes, bucket ni políticas efectivas de Storage'
   union all
+  select 'EDITOR payload inventory','INFO',
+    'tareas='||count(*)::text||'; vacío='||
+    count(*) filter (where editor_payload='{}'::jsonb)::text||'; V1='||
+    count(*) filter (where editor_payload->'schemaVersion'='1'::jsonb)::text||
+    '; versión distinta/ausente no vacía='||count(*) filter (where
+      editor_payload<>'{}'::jsonb and
+      editor_payload->'schemaVersion' is distinct from '1'::jsonb)::text||
+    '. Solo son recuentos; no certifican ausencia de recursos ocultos.'
+  from public.training_tasks
+  union all
   select 'FREE RPC hash '||v.signature,'INFO',
     coalesce(md5(pg_get_functiondef(to_regprocedure(v.signature)::oid)), 'función ausente')
   from (values
@@ -131,17 +180,20 @@ checks as (
   union all
   select 'SESSION state fingerprint','INFO',
     'sessions='||count(*)::text||'; number_1='||
-    count(*) filter (where session_number=1)::text||'; hash='||
-    coalesce(md5(string_agg(id::text||':'||revision::text||':'||planning_state||':'||
-      coalesce(session_number::text,'null'),'|' order by id)),'sin sesiones')
-  from public.planned_training_sessions
+    count(*) filter (where s.session_number=1)::text||'; state_hash='||
+    coalesce(md5(string_agg(s.id::text||':'||
+      md5(public.planned_session_state(s.id)::text),'|' order by s.id)),'sin sesiones')||
+    '; number_1_hash='||coalesce(md5(string_agg(s.id::text||':'||
+      md5(public.planned_session_state(s.id)::text),'|' order by s.id)
+      filter (where s.session_number=1)),'sin número 1')
+  from public.planned_training_sessions s
   union all
   select 'ITEM state fingerprint','INFO',
     'items='||count(*)::text||'; library='||
-    count(*) filter (where kind='library_task')::text||'; hash='||
-    coalesce(md5(string_agg(id::text||':'||kind||':'||
-      coalesce(md5(task_snapshot::text),'null'),'|' order by id)),'sin ítems')
-  from public.planned_session_items
+    count(*) filter (where it.kind='library_task')::text||'; hash='||
+    coalesce(md5(string_agg(it.id::text||':'||md5(to_jsonb(it)::text),
+      '|' order by it.id)),'sin ítems')
+  from public.planned_session_items it
 )
 select object_name,status,detail from checks
 union all

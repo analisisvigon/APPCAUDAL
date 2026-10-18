@@ -98,14 +98,18 @@ begin
   end if;
   if exists (select 1 from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid=p.pronamespace
       where n.nspname='public' and p.proname in
-        ('planned_library_snapshot','save_planned_session_03c','confirm_planned_session_03c')
+        ('planned_editor_payload_snapshot_safe','planned_library_snapshot',
+         'save_planned_session_03c','confirm_planned_session_03c')
       and p.oid not in (
+        coalesce(to_regprocedure('public.planned_editor_payload_snapshot_safe(jsonb)')::oid,'0'::oid),
         coalesce(to_regprocedure('public.planned_library_snapshot(uuid)')::oid,'0'::oid),
         coalesce(to_regprocedure('public.save_planned_session_03c(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])')::oid,'0'::oid),
         coalesce(to_regprocedure('public.confirm_planned_session_03c(uuid,integer)')::oid,'0'::oid))) then
     raise exception 'Sesiones 03C: sobrecarga incompatible preexistente';
   end if;
   if exists(select 1 from (values
+      ('public.planned_editor_payload_snapshot_safe(jsonb)',
+       'APPCAUDAL Sesiones 03C: filtro cerrado para recursos ocultos en editor_payload'),
       ('public.planned_library_snapshot(uuid)',
        'APPCAUDAL Sesiones 03C: snapshot sin uploads, emitido solo desde RPC'),
       ('public.save_planned_session_03c(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])',
@@ -145,6 +149,158 @@ begin
       'public.confirm_planned_session(uuid,integer)')::oid)),true);
 end $pre$;
 
+-- Solo el formato V1 conocido (o el objeto vacío) es importable. Las claves
+-- desconocidas se rechazan, nunca se eliminan del JSON original. Esto evita
+-- que una extensión futura convierta una ruta opaca en recurso histórico roto.
+create or replace function public.planned_editor_payload_snapshot_safe(p_payload jsonb)
+returns boolean language plpgsql immutable security invoker set search_path=pg_catalog as $fn$
+declare
+  v_board jsonb; v_element jsonb; v_assignments jsonb; v_assignment jsonb;
+  v_ref jsonb; v_player_snapshot jsonb; v_text text; v_key text; v_value jsonb;
+begin
+  if p_payload='{}'::jsonb then return true; end if;
+  if jsonb_typeof(p_payload) is distinct from 'object' then return false; end if;
+  if p_payload->'schemaVersion' is distinct from '1'::jsonb or
+     (p_payload - array['schemaVersion','board','assignments'])<>'{}'::jsonb then
+    return false;
+  end if;
+  v_board:=p_payload->'board';
+  if jsonb_typeof(v_board) is distinct from 'object' then return false; end if;
+  if (v_board - array['pitchType','elements'])<>'{}'::jsonb or
+     coalesce(v_board->>'pitchType','') not in ('full','half','blank','penalty-area') or
+     jsonb_typeof(v_board->'elements') is distinct from 'array' then
+    return false;
+  end if;
+  for v_element in select value from jsonb_array_elements(v_board->'elements') loop
+    if jsonb_typeof(v_element) is distinct from 'object' then return false; end if;
+    if coalesce(v_element->>'id','')='' or
+       coalesce(v_element->>'type','') not in
+         ('player','opponent','ball','arrow','dashed_arrow','curved_arrow',
+          'double_arrow','zone','block','text','text_box','participant','cone',
+          'pole','mannequin','hoop','goal','mini_goal','line','dashed_line') or
+       (v_element - array['id','type','x','y','x1','y1','x2','y2','controlX',
+         'controlY','teamKey','role','colorKey','label','rotation','width',
+         'height','opacity','borderStyle','playerRef','dashed','color'])<>'{}'::jsonb then
+      return false;
+    end if;
+    for v_key,v_value in select key,value from jsonb_each(v_element) loop
+      if v_key<>'playerRef' and
+         jsonb_typeof(v_value) not in ('string','number','boolean','null') then
+        return false;
+      end if;
+    end loop;
+    if v_element ? 'playerRef' then
+      v_ref:=v_element->'playerRef';
+      if jsonb_typeof(v_ref) is distinct from 'object' then return false; end if;
+      if (v_ref - array['globalPlayerId','legacyPlayerId','snapshot'])<>'{}'::jsonb then
+        return false;
+      end if;
+      for v_key,v_value in select key,value from jsonb_each(v_ref) loop
+        if v_key<>'snapshot' and jsonb_typeof(v_value) not in ('string','null') then
+          return false;
+        end if;
+      end loop;
+      if v_ref ? 'snapshot' then
+        v_player_snapshot:=v_ref->'snapshot';
+        if jsonb_typeof(v_player_snapshot) is distinct from 'object' then return false; end if;
+        if (v_player_snapshot - array['name','number','position','specificPosition'])<>'{}'::jsonb then
+          return false;
+        end if;
+        if exists(select 1 from jsonb_each(v_player_snapshot) field
+            where jsonb_typeof(field.value) not in ('string','null')) then
+          return false;
+        end if;
+      end if;
+    end if;
+  end loop;
+  if p_payload ? 'assignments' then
+    v_assignments:=p_payload->'assignments';
+    if jsonb_typeof(v_assignments) is distinct from 'object' then return false; end if;
+    if (v_assignments - array['teamColors','players'])<>'{}'::jsonb then
+      return false;
+    end if;
+    if v_assignments ? 'teamColors' then
+      if jsonb_typeof(v_assignments->'teamColors') is distinct from 'object' then
+        return false;
+      end if;
+      if ((v_assignments->'teamColors') -
+           array['team-1','team-2','team-3','neutral'])<>'{}'::jsonb then
+        return false;
+      end if;
+      if exists(select 1 from jsonb_each(v_assignments->'teamColors') field
+          where jsonb_typeof(field.value) is distinct from 'string') then
+        return false;
+      end if;
+    end if;
+    if v_assignments ? 'players' then
+      if jsonb_typeof(v_assignments->'players') is distinct from 'array' then
+        return false;
+      end if;
+      for v_assignment in select value from jsonb_array_elements(v_assignments->'players') loop
+        if jsonb_typeof(v_assignment) is distinct from 'object' then return false; end if;
+        if (v_assignment - array['playerRef','teamKey','role','colorKey'])<>'{}'::jsonb or
+           jsonb_typeof(v_assignment->'playerRef') is distinct from 'object' then
+          return false;
+        end if;
+        for v_key,v_value in select key,value from jsonb_each(v_assignment) loop
+          if v_key<>'playerRef' and jsonb_typeof(v_value) not in ('string','null') then
+            return false;
+          end if;
+        end loop;
+        v_ref:=v_assignment->'playerRef';
+        if (v_ref - array['globalPlayerId','legacyPlayerId','snapshot'])<>'{}'::jsonb then
+          return false;
+        end if;
+        for v_key,v_value in select key,value from jsonb_each(v_ref) loop
+          if v_key<>'snapshot' and jsonb_typeof(v_value) not in ('string','null') then
+            return false;
+          end if;
+        end loop;
+        if v_ref ? 'snapshot' then
+          v_player_snapshot:=v_ref->'snapshot';
+          if jsonb_typeof(v_player_snapshot) is distinct from 'object' then return false; end if;
+          if (v_player_snapshot - array['name','number','position','specificPosition'])<>'{}'::jsonb then
+            return false;
+          end if;
+          if exists(select 1 from jsonb_each(v_player_snapshot) field
+              where jsonb_typeof(field.value) not in ('string','null')) then
+            return false;
+          end if;
+        end if;
+      end loop;
+    end if;
+  end if;
+  -- Una cadena con ruta, URL o URI no es un recurso duradero de la sesión.
+  -- El filtro es deliberadamente conservador: también rechaza etiquetas con '/'.
+  for v_text in
+    with recursive nodes(value) as (
+      select p_payload
+      union all
+      select child.value from nodes n cross join lateral (
+        select value from jsonb_each(case when jsonb_typeof(n.value)='object'
+          then n.value else '{}'::jsonb end)
+        union all
+        select value from jsonb_array_elements(case when jsonb_typeof(n.value)='array'
+          then n.value else '[]'::jsonb end)
+      ) child
+    )
+    select value #>> '{}' from nodes where jsonb_typeof(value)='string'
+  loop
+    if position('/' in v_text)>0 or position(chr(92) in v_text)>0 or
+       lower(ltrim(v_text)) like 'blob:%' or
+       lower(ltrim(v_text)) like 'data:%' or
+       lower(ltrim(v_text)) like 'file:%' then
+      return false;
+    end if;
+  end loop;
+  return true;
+end $fn$;
+alter function public.planned_editor_payload_snapshot_safe(jsonb) owner to postgres;
+revoke all on function public.planned_editor_payload_snapshot_safe(jsonb)
+  from public,anon,authenticated,service_role;
+comment on function public.planned_editor_payload_snapshot_safe(jsonb) is
+  'APPCAUDAL Sesiones 03C: filtro cerrado para recursos ocultos en editor_payload';
+
 -- Snapshot emitido exclusivamente por el servidor. El helper carece de EXECUTE
 -- para clientes; solo puede llamarlo la RPC 03C como propietario postgres.
 create or replace function public.planned_library_snapshot(p_task_id uuid)
@@ -158,6 +314,10 @@ begin
   select * into v_task from public.training_tasks t where t.id=p_task_id for update;
   if not found or public.training_task_authorized(p_task_id,'read') is not true then
     raise exception 'Tarea no autorizada' using errcode='42501';
+  end if;
+  if public.planned_editor_payload_snapshot_safe(v_task.editor_payload) is not true then
+    raise exception '03C: pizarra con formato o recurso no incorporable sin copia histórica'
+      using errcode='0A000';
   end if;
   -- La FK media.task_id -> task.id obliga a inserciones concurrentes a esperar
   -- el lock FOR UPDATE de la tarea; las filas existentes se bloquean antes
@@ -278,7 +438,7 @@ comment on function public.guard_planned_session_child() is
   'APPCAUDAL Sesiones 03C: guard_planned_session_child';
 
 -- Nuevo contrato; 03A permanece disponible e idéntico para 03B. La interfaz
--- futura solo enviará source_task_id al incorporar y working al editar copia.
+-- futura solo enviará source_task_id al incorporar y un PATCH working al editar.
 create or replace function public.save_planned_session_03c(
   p_session_id uuid,p_expected_revision integer,p_session_date date,
   p_header jsonb,p_slots jsonb,p_requested_number integer default null,
@@ -453,7 +613,18 @@ begin
                 raise exception 'Campo de copia no admitido' using errcode='22023';
               end if;
             end loop;
-            v_snapshot:=jsonb_set(v_snapshot,'{working}',v_working,false);
+            -- PATCH superficial: conserva las ediciones anteriores de otros
+            -- campos. editor_payload, si se envía, es un objeto completo.
+            if v_working ? 'editor_payload' and
+               (public.planned_editor_payload_snapshot_safe(
+                  v_snapshot->'source'->'editor_payload') is not true or
+                public.planned_editor_payload_snapshot_safe(
+                  v_working->'editor_payload') is not true) then
+              raise exception '03C: pizarra no editable o con recursos externos'
+                using errcode='0A000';
+            end if;
+            v_snapshot:=jsonb_set(v_snapshot,'{working}',
+              (v_snapshot->'working') || v_working,false);
           end if;
         end if;
         if octet_length(v_snapshot::text)>262144 then
@@ -752,12 +923,15 @@ do $post$
 declare v_signature text; v_p pg_catalog.pg_proc%rowtype; v_rls_hash text;
 begin
   foreach v_signature in array array[
+    'public.planned_editor_payload_snapshot_safe(jsonb)',
     'public.planned_library_snapshot(uuid)',
     'public.save_planned_session_03c(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])',
     'public.confirm_planned_session_03c(uuid,integer)'] loop
     select * into v_p from pg_catalog.pg_proc
       where oid=to_regprocedure(v_signature);
-    if v_p.oid is null or v_p.prosecdef is not true or
+    if v_p.oid is null or
+       (v_p.prosecdef is distinct from
+         (v_signature<>'public.planned_editor_payload_snapshot_safe(jsonb)')) or
        pg_get_userbyid(v_p.proowner) is distinct from 'postgres' or
        not (coalesce(v_p.proconfig,'{}'::text[]) @>
          array['search_path=pg_catalog']::text[]) or
@@ -770,6 +944,8 @@ begin
     end if;
   end loop;
   if has_function_privilege('authenticated',
+       'public.planned_editor_payload_snapshot_safe(jsonb)','EXECUTE') or
+     has_function_privilege('authenticated',
        'public.planned_library_snapshot(uuid)','EXECUTE') or
      not has_function_privilege('authenticated',
        'public.save_planned_session_03c(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])','EXECUTE') or

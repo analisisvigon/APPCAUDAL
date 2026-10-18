@@ -2,23 +2,26 @@
 -- No ejecutado por Codex. GLOBAL PASS no sustituye pruebas por identidad,
 -- ejecución de RPC ni verificación de bytes en Storage.
 with
-expected_functions(signature, authenticated_execute, expected_comment) as (values
+expected_functions(signature, authenticated_execute, expected_comment, definer) as (values
+  ('public.planned_editor_payload_snapshot_safe(jsonb)',false,
+    'APPCAUDAL Sesiones 03C: filtro cerrado para recursos ocultos en editor_payload',false),
   ('public.planned_library_snapshot(uuid)',false,
-    'APPCAUDAL Sesiones 03C: snapshot sin uploads, emitido solo desde RPC'),
+    'APPCAUDAL Sesiones 03C: snapshot sin uploads, emitido solo desde RPC',true),
   ('public.save_planned_session_03c(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])',true,
-    'APPCAUDAL Sesiones 03C: guardado diferencial de actividades libres y Biblioteca'),
+    'APPCAUDAL Sesiones 03C: guardado diferencial de actividades libres y Biblioteca',true),
   ('public.confirm_planned_session_03c(uuid,integer)',true,
-    'APPCAUDAL Sesiones 03C: confirmación de actividades libres y Biblioteca')
+    'APPCAUDAL Sesiones 03C: confirmación de actividades libres y Biblioteca',true)
 ),
 functions as (
-  select e.signature,e.authenticated_execute,e.expected_comment,p.oid,p.prosecdef,p.proconfig,
+  select e.signature,e.authenticated_execute,e.expected_comment,e.definer,
+    p.oid,p.prosecdef,p.proconfig,
     p.proowner,p.proacl,pg_get_userbyid(p.proowner) owner_name
   from expected_functions e
   left join pg_catalog.pg_proc p on p.oid=to_regprocedure(e.signature)
 ),
 checks as (
   select 'FUNCTION '||f.signature as check_name,
-    case when f.oid is not null and f.prosecdef and f.owner_name='postgres'
+    case when f.oid is not null and f.prosecdef=f.definer and f.owner_name='postgres'
       and coalesce(f.proconfig,'{}'::text[]) @> array['search_path=pg_catalog']::text[]
       and obj_description(f.oid,'pg_proc')=f.expected_comment
       and has_function_privilege('authenticated',f.oid,'EXECUTE')=f.authenticated_execute
@@ -27,7 +30,8 @@ checks as (
         coalesce(f.proacl,acldefault('f',f.proowner))) acl
         where acl.grantee=0 and acl.privilege_type='EXECUTE')
       then 'PASS' else 'FAIL' end as result,
-    'SECURITY DEFINER, owner=postgres, search_path=pg_catalog; EXECUTE authenticated='||
+    'SECURITY DEFINER='||f.definer::text||
+      ', owner=postgres, search_path=pg_catalog; EXECUTE authenticated='||
       f.authenticated_execute::text||', anon/PUBLIC=false' as detail
   from functions f
   union all
@@ -38,6 +42,25 @@ checks as (
           and p.proname=split_part(split_part(f.signature,'(',1),'.',2))=1
       then 'PASS' else 'FAIL' end,
     'No debe existir otra firma con el mismo nombre' from functions f
+  union all
+  select 'EDITOR FILTER '||sample.name,
+    case when public.planned_editor_payload_snapshot_safe(sample.payload)
+      is not distinct from sample.expected then 'PASS' else 'FAIL' end,
+    'Caso sintético sin datos de usuarios; esperado='||sample.expected::text
+  from (values
+    ('V1 simple',
+      '{"schemaVersion":1,"board":{"pitchType":"full","elements":[]}}'::jsonb,true),
+    ('V1 con roster',
+      '{"schemaVersion":1,"board":{"pitchType":"full","elements":[]},"assignments":{"teamColors":{"team-1":"blue"},"players":[]}}'::jsonb,true),
+    ('URL en clave desconocida',
+      '{"schemaVersion":1,"board":{"pitchType":"full","elements":[],"background":{"url":"https://private.example/a.png"}}}'::jsonb,false),
+    ('URL en texto conocido',
+      '{"schemaVersion":1,"board":{"pitchType":"full","elements":[{"id":"text-1","type":"text","x":1,"y":1,"label":"https://private.example/a.png"}]}}'::jsonb,false),
+    ('Extensión desconocida sin URL',
+      '{"schemaVersion":1,"board":{"pitchType":"full","elements":[],"background":{"color":"green"}}}'::jsonb,false),
+    ('Versión futura intacta pero no importable',
+      '{"schemaVersion":2,"scenes":[{"id":"scene-1"}]}'::jsonb,false)
+  ) sample(name,payload,expected)
   union all
   select 'GUARD planned_items_guard',
     case when exists(select 1 from pg_catalog.pg_trigger t
@@ -110,7 +133,16 @@ checks as (
   from public.planned_session_items where kind='library_task'
   union all
   select 'DYNAMIC identity tests','PENDING',
-    'Owner, staff compartido/no compartido, player, temporada cerrada y CAS no se han probado aquí'
+    'Owner, staff asignado/no asignado, player y lectura de Biblioteca no se han probado aquí'
+  union all
+  select 'DYNAMIC compatibility 03A/03C','PENDING',
+    '03A con actividades libres, rechazo de snapshot en 03A y sesión número 1 requieren prueba reversible'
+  union all
+  select 'DYNAMIC working PATCH','PENDING',
+    'Dos ediciones sucesivas, inmutabilidad de source y pizarra futura readonly requieren prueba reversible'
+  union all
+  select 'DYNAMIC closed/CAS','PENDING',
+    'Temporada cerrada y revisión obsoleta requieren casos reales o pruebas reversibles autorizadas'
   union all
   select 'STORAGE bytes','PENDING',
     'La copia selectiva de uploads aún no está instalada; la RPC debe rechazarlos'
@@ -130,17 +162,20 @@ checks as (
   union all
   select 'SESSION state fingerprint','INFO',
     'sessions='||count(*)::text||'; number_1='||
-    count(*) filter (where session_number=1)::text||'; hash='||
-    coalesce(md5(string_agg(id::text||':'||revision::text||':'||planning_state||':'||
-      coalesce(session_number::text,'null'),'|' order by id)),'sin sesiones')
-  from public.planned_training_sessions
+    count(*) filter (where s.session_number=1)::text||'; state_hash='||
+    coalesce(md5(string_agg(s.id::text||':'||
+      md5(public.planned_session_state(s.id)::text),'|' order by s.id)),'sin sesiones')||
+    '; number_1_hash='||coalesce(md5(string_agg(s.id::text||':'||
+      md5(public.planned_session_state(s.id)::text),'|' order by s.id)
+      filter (where s.session_number=1)),'sin número 1')
+  from public.planned_training_sessions s
   union all
   select 'ITEM state fingerprint','INFO',
     'items='||count(*)::text||'; library='||
-    count(*) filter (where kind='library_task')::text||'; hash='||
-    coalesce(md5(string_agg(id::text||':'||kind||':'||
-      coalesce(md5(task_snapshot::text),'null'),'|' order by id)),'sin ítems')
-  from public.planned_session_items
+    count(*) filter (where it.kind='library_task')::text||'; hash='||
+    coalesce(md5(string_agg(it.id::text||':'||md5(to_jsonb(it)::text),
+      '|' order by it.id)),'sin ítems')
+  from public.planned_session_items it
 )
 select check_name,result,detail from checks
 union all
