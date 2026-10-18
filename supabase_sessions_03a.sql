@@ -1060,7 +1060,9 @@ grant execute on function public.create_planned_session_draft(uuid,date),
 
 -- Verificación transaccional mínima. El postflight realiza el inventario completo.
 do $post$
-declare v_name text; v_signature text;
+declare
+  v_name text; v_signature text; v_expected record; v_actual record;
+  v_expected_attnums smallint[]; v_predicate text;
 begin
   foreach v_name in array array[
     'planned_training_sessions','planned_session_number_state','planned_session_slots',
@@ -1085,31 +1087,72 @@ begin
       raise exception 'Sesiones 03A: privilegios de cliente inválidos %',v_name;
     end if;
   end loop;
-  if not exists(select 1 from pg_index ix
-      where ix.indrelid='public.planned_training_sessions'::regclass
-        and ix.indexrelid=to_regclass('public.planned_sessions_number_uidx')
-        and ix.indisvalid and ix.indisunique and ix.indnkeyatts=2
-        and ix.indkey::smallint[]=array[
-          (select a.attnum from pg_attribute a
-           where a.attrelid=ix.indrelid and a.attname='club_team_season_id'),
-          (select a.attnum from pg_attribute a
-           where a.attrelid=ix.indrelid and a.attname='session_number')]
-        and regexp_replace(lower(pg_get_expr(ix.indpred,ix.indrelid)),
-          '[[:space:]()]','','g')='session_numberisnotnull')
-     or not exists(select 1 from pg_index ix
-      where ix.indrelid='public.planned_training_sessions'::regclass
-        and ix.indexrelid=to_regclass('public.planned_sessions_date_idx')
-        and ix.indisvalid)
-     or not exists(select 1 from pg_index ix
-      where ix.indrelid='public.planned_session_items'::regclass
-        and ix.indexrelid=to_regclass('public.planned_items_session_slot_idx')
-        and ix.indisvalid)
-     or not exists(select 1 from pg_index ix
-      where ix.indrelid='public.planned_session_audit_events'::regclass
-        and ix.indexrelid=to_regclass('public.planned_audit_session_date_idx')
-        and ix.indisvalid) then
-    raise exception 'Sesiones 03A: índice inexistente o incompatible';
-  end if;
+  for v_expected in select * from (values
+    ('planned_sessions_number_uidx','planned_training_sessions',true,true,
+      array['club_team_season_id','session_number']),
+    ('planned_sessions_date_idx','planned_training_sessions',false,false,
+      array['club_team_season_id','session_date','id']),
+    ('planned_items_session_slot_idx','planned_session_items',false,false,
+      array['session_id','slot_id']),
+    ('planned_audit_session_date_idx','planned_session_audit_events',false,false,
+      array['session_id','occurred_at'])
+  ) as e(index_name,table_name,unique_required,predicate_required,key_columns) loop
+    select ix.*,
+      (select array_agg(k.attnum order by k.ord)
+       from unnest(ix.indkey::smallint[]) with ordinality k(attnum,ord)) as normalized_keys,
+      am.amname as access_method
+      into v_actual
+    from pg_index ix
+    join pg_class index_class on index_class.oid=ix.indexrelid
+    join pg_am am on am.oid=index_class.relam
+    where ix.indexrelid=to_regclass('public.'||v_expected.index_name);
+    if not found then
+      raise exception 'Sesiones 03A: índice % ausente o no es un índice',
+        v_expected.index_name;
+    end if;
+    if v_actual.indrelid is distinct from
+       to_regclass('public.'||v_expected.table_name) then
+      raise exception 'Sesiones 03A: índice % pertenece a otra tabla',
+        v_expected.index_name;
+    end if;
+    if not v_actual.indisvalid or not v_actual.indisready or
+       not v_actual.indislive then
+      raise exception 'Sesiones 03A: índice % no está válido/listo/vivo',
+        v_expected.index_name;
+    end if;
+    if v_actual.access_method<>'btree' or
+       v_actual.indisunique is distinct from v_expected.unique_required then
+      raise exception 'Sesiones 03A: índice % tiene método o unicidad incompatibles',
+        v_expected.index_name;
+    end if;
+    select array_agg(a.attnum order by x.ord) into v_expected_attnums
+    from unnest(v_expected.key_columns) with ordinality x(attname,ord)
+    join pg_attribute a on a.attrelid=v_actual.indrelid
+      and a.attname=x.attname and not a.attisdropped;
+    if v_actual.indnatts<>cardinality(v_expected.key_columns) or
+       v_actual.indnkeyatts<>cardinality(v_expected.key_columns) or
+       v_actual.indexprs is not null or
+       cardinality(v_expected_attnums) is distinct from
+         cardinality(v_expected.key_columns) or
+       v_actual.normalized_keys is distinct from v_expected_attnums then
+      raise exception 'Sesiones 03A: índice % tiene columnas, orden o INCLUDE incompatibles',
+        v_expected.index_name;
+    end if;
+    if v_expected.predicate_required then
+      v_predicate:=regexp_replace(lower(pg_get_expr(
+        v_actual.indpred,v_actual.indrelid)), '[[:space:]()"]','','g');
+      if v_actual.indpred is null or coalesce(v_predicate,'') not in (
+        'session_numberisnotnull',
+        'planned_training_sessions.session_numberisnotnull',
+        'public.planned_training_sessions.session_numberisnotnull') then
+        raise exception 'Sesiones 03A: índice % tiene predicado incompatible: %',
+          v_expected.index_name,coalesce(v_predicate,'NULL');
+      end if;
+    elsif v_actual.indpred is not null then
+      raise exception 'Sesiones 03A: índice % tiene predicado parcial inesperado',
+        v_expected.index_name;
+    end if;
+  end loop;
   foreach v_signature in array array[
     'public.planned_session_state(uuid)',
     'public.guard_planned_session_row()',

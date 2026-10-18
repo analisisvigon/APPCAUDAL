@@ -288,21 +288,29 @@ checks as (
   union all
   select 'index:'||index_name,
     exists(select 1 from pg_catalog.pg_index ix
+      join pg_catalog.pg_class index_class on index_class.oid=ix.indexrelid
+      join pg_catalog.pg_am am on am.oid=index_class.relam
       where ix.indrelid=to_regclass('public.'||table_name)
         and ix.indexrelid=to_regclass('public.'||index_name)
-        and ix.indisvalid and ix.indisready
+        and ix.indisvalid and ix.indisready and ix.indislive
+        and am.amname='btree' and ix.indexprs is null
         and ix.indisunique=unique_required
         and ix.indnatts=cardinality(key_columns)
         and ix.indnkeyatts=cardinality(key_columns)
-        and ix.indkey::smallint[]=(select array_agg(a.attnum order by x.ord)
+        and (select array_agg(k.attnum order by k.ord)
+          from unnest(ix.indkey::smallint[]) with ordinality k(attnum,ord))=
+          (select array_agg(a.attnum order by x.ord)
           from unnest(key_columns) with ordinality x(attname,ord)
           join pg_catalog.pg_attribute a
             on a.attrelid=ix.indrelid and a.attname=x.attname and not a.attisdropped)
         and ((predicate_required and regexp_replace(lower(
               pg_get_expr(ix.indpred,ix.indrelid)),
-              '[[:space:]()]','','g')='session_numberisnotnull')
+              '[[:space:]()"]','','g') in (
+                'session_numberisnotnull',
+                'planned_training_sessions.session_numberisnotnull',
+                'public.planned_training_sessions.session_numberisnotnull'))
           or (not predicate_required and ix.indpred is null))),
-    'Índice válido, columnas exactas, unicidad y predicado parcial esperado'
+    'Índice btree válido/listo/vivo, columnas ordenadas sin INCLUDE, unicidad y predicado esperado'
   from expected_indexes
   union all
   select 'rls_policy:'||name,
