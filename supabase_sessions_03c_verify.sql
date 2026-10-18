@@ -1,0 +1,114 @@
+-- APPCAUDAL Sesiones 03C: postflight estructural SOLO SELECT.
+-- No ejecutado por Codex. GLOBAL PASS no sustituye pruebas por identidad,
+-- ejecución de RPC ni verificación de bytes en Storage.
+with
+expected_functions(signature, authenticated_execute) as (values
+  ('public.planned_library_snapshot(uuid)',false),
+  ('public.save_planned_session_03c(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])',true),
+  ('public.confirm_planned_session_03c(uuid,integer)',true)
+),
+functions as (
+  select e.signature,e.authenticated_execute,p.oid,p.prosecdef,p.proconfig,
+    p.proowner,p.proacl,pg_get_userbyid(p.proowner) owner_name
+  from expected_functions e
+  left join pg_catalog.pg_proc p on p.oid=to_regprocedure(e.signature)
+),
+checks as (
+  select 'FUNCTION '||f.signature as check_name,
+    case when f.oid is not null and f.prosecdef and f.owner_name='postgres'
+      and coalesce(f.proconfig,'{}'::text[]) @> array['search_path=pg_catalog']::text[]
+      and has_function_privilege('authenticated',f.oid,'EXECUTE')=f.authenticated_execute
+      and not has_function_privilege('anon',f.oid,'EXECUTE')
+      and not exists(select 1 from pg_catalog.aclexplode(
+        coalesce(f.proacl,acldefault('f',f.proowner))) acl
+        where acl.grantee=0 and acl.privilege_type='EXECUTE')
+      then 'PASS' else 'FAIL' end as result,
+    'SECURITY DEFINER, owner=postgres, search_path=pg_catalog; EXECUTE authenticated='||
+      f.authenticated_execute::text||', anon/PUBLIC=false' as detail
+  from functions f
+  union all
+  select 'OVERLOAD '||f.signature,
+    case when f.oid is not null and (select count(*) from pg_catalog.pg_proc p
+        join pg_catalog.pg_namespace n on n.oid=p.pronamespace
+        where n.nspname='public'
+          and p.proname=split_part(split_part(f.signature,'(',1),'.',2))=1
+      then 'PASS' else 'FAIL' end,
+    'No debe existir otra firma con el mismo nombre' from functions f
+  union all
+  select 'GUARD planned_items_guard',
+    case when exists(select 1 from pg_catalog.pg_trigger t
+      where t.tgrelid=to_regclass('public.planned_session_items')
+        and t.tgname='planned_items_guard' and t.tgenabled in ('O','A')
+        and t.tgfoid=to_regprocedure('public.guard_planned_session_child()'))
+      then 'PASS' else 'FAIL' end,
+    'Trigger de ítems activo, unido a guard_planned_session_child'
+  union all
+  select 'GUARD function',
+    case when p.oid is not null and p.prosecdef and
+      pg_get_userbyid(p.proowner)='postgres' and
+      coalesce(p.proconfig,'{}'::text[]) @> array['search_path=pg_catalog']::text[]
+      then 'PASS' else 'FAIL' end,
+    'Guard compartido sigue siendo SECURITY DEFINER con search_path seguro'
+  from (values (1)) expected(dummy)
+  left join pg_catalog.pg_proc p
+    on p.oid=to_regprocedure('public.guard_planned_session_child()')
+  union all
+  select 'ITEMS direct writes authenticated',
+    case when not has_table_privilege('authenticated','public.planned_session_items','INSERT')
+      and not has_table_privilege('authenticated','public.planned_session_items','UPDATE')
+      and not has_table_privilege('authenticated','public.planned_session_items','DELETE')
+      then 'PASS' else 'FAIL' end,
+    'Las filas solo se escriben mediante RPC autorizada'
+  union all
+  select 'ITEMS RLS',
+    case when c.relrowsecurity is true and exists(select 1 from pg_catalog.pg_policy p
+      where p.polrelid=c.oid and p.polname='planned_items_read')
+      then 'PASS' else 'FAIL' end,
+    'RLS y política de lectura 03A continúan presentes'
+  from (values (1)) expected(dummy)
+  left join pg_catalog.pg_class c
+    on c.oid=to_regclass('public.planned_session_items')
+  union all
+  select 'FREE RPC 03A preserved',
+    case when to_regprocedure(
+      'public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])')
+      is not null and to_regprocedure('public.confirm_planned_session(uuid,integer)')
+      is not null then 'PASS' else 'FAIL' end,
+    'Las firmas 03A siguen disponibles; comparar sus hashes con el preflight'
+  union all
+  select 'SESSION number 1', 'INFO',
+    'Recuento de sesiones confirmadas con número 1: '||count(*)::text
+  from public.planned_training_sessions where session_number=1
+  union all
+  select 'LIBRARY snapshots', 'INFO',
+    'Recuento de ítems library_task: '||count(*)::text
+  from public.planned_session_items where kind='library_task'
+  union all
+  select 'DYNAMIC identity tests','PENDING',
+    'Owner, staff compartido/no compartido, player, temporada cerrada y CAS no se han probado aquí'
+  union all
+  select 'STORAGE bytes','PENDING',
+    'La copia selectiva de uploads aún no está instalada; la RPC debe rechazarlos'
+  union all
+  select 'RLS fingerprint 03A','INFO',
+    coalesce(md5(string_agg(
+      c.relname||':'||p.polname||':'||p.polcmd::text||':'||p.polpermissive::text||':'||
+      p.polroles::text||':'||coalesce(pg_get_expr(p.polqual,p.polrelid),'')||':'||
+      coalesce(pg_get_expr(p.polwithcheck,p.polrelid),''),
+      '|' order by c.relname,p.polname)),'sin políticas')
+  from pg_catalog.pg_policy p
+  join pg_catalog.pg_class c on c.oid=p.polrelid
+  join pg_catalog.pg_namespace n on n.oid=c.relnamespace
+  where n.nspname='public' and c.relname in
+    ('planned_training_sessions','planned_session_slots','planned_session_items',
+     'planned_session_number_state','planned_session_audit_events')
+)
+select check_name,result,detail from checks
+union all
+select 'GLOBAL STRUCTURAL',
+  case when count(*) filter (where result='FAIL')=0 then 'PASS' else 'FAIL' end,
+  'PASS estructural no significa autorización dinámica ni multimedia comprobada. FAIL='||
+  count(*) filter (where result='FAIL')||', PENDING='||
+  count(*) filter (where result='PENDING')
+from checks
+order by check_name;

@@ -10,6 +10,8 @@ required_tables(name) as (values
 required_columns(table_name, column_name, type_name) as (values
   ('training_tasks','id','uuid'),('training_tasks','club_id','uuid'),
   ('training_tasks','name','text'),('training_tasks','editor_payload','jsonb'),
+  ('training_tasks','task_code','text'),('training_tasks','stage_keys','_text'),
+  ('training_tasks','variants','text'),
   ('training_tasks','preview_path','text'),('training_tasks','attachment_path','text'),
   ('training_task_media','task_id','uuid'),('training_task_media','source','text'),
   ('training_task_media','storage_path','text'),('training_task_media','original_url','text'),
@@ -50,6 +52,7 @@ checks as (
   union all
   select 'FUNCTION '||f.signature,
     case when p.oid is not null and p.prosecdef and pg_get_userbyid(p.proowner)='postgres'
+      and coalesce(p.proconfig,'{}'::text[]) @> array['search_path=pg_catalog']::text[]
       then 'READY' else 'BLOCKED' end,
     'owner='||coalesce(pg_get_userbyid(p.proowner),'ausente')||
       '; SECURITY DEFINER='||coalesce(p.prosecdef::text,'ausente')||
@@ -80,6 +83,19 @@ checks as (
     case when to_regclass('storage.buckets') is not null
       and to_regclass('storage.objects') is not null then 'INFO' else 'BLOCKED' end,
     'Este inventario no verifica bytes, bucket ni políticas efectivas de Storage'
+  union all
+  select 'RLS fingerprint 03A','INFO',
+    coalesce(md5(string_agg(
+      c.relname||':'||p.polname||':'||p.polcmd::text||':'||p.polpermissive::text||':'||
+      p.polroles::text||':'||coalesce(pg_get_expr(p.polqual,p.polrelid),'')||':'||
+      coalesce(pg_get_expr(p.polwithcheck,p.polrelid),''),
+      '|' order by c.relname,p.polname)),'sin políticas')
+  from pg_catalog.pg_policy p
+  join pg_catalog.pg_class c on c.oid=p.polrelid
+  join pg_catalog.pg_namespace n on n.oid=c.relnamespace
+  where n.nspname='public' and c.relname in
+    ('planned_training_sessions','planned_session_slots','planned_session_items',
+     'planned_session_number_state','planned_session_audit_events')
 )
 select object_name,status,detail from checks
 union all
