@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getPlannedDuration, PLANNED_PHASES } from '../../utils/plannedSessions';
 import { planPlannedSessionSheets } from '../../utils/plannedSessionSheetPages';
 import './plannedSessionDocument.css';
 
 const PhaseName = ({ phase }) => PLANNED_PHASES.find((entry) => entry.key === phase)?.label || phase;
 const CAUDAL_TEAM_ID = '85a16f33-9fe5-44d4-b85d-37d73651ebf6';
+const A4_LANDSCAPE_WIDTH_PX = 297 * 96 / 25.4;
 
 function SheetField({ label, value, onChange, disabled, issue, type = 'text', multiline = false, className = '' }) {
   return <label className={`planned-sheet-field ${className}`}>
@@ -17,8 +18,8 @@ function SheetField({ label, value, onChange, disabled, issue, type = 'text', mu
 }
 
 function PendingArea({ label, children, className = '' }) {
-  return <div className={`planned-sheet-pending ${className}`} aria-label={`${label}: pendiente de implementación`}>
-    <b>{label}</b>{children}<span>Pendiente de integración · sin datos guardados</span>
+  return <div className={`planned-sheet-pending ${className}`} aria-label={`${label}: área reservada`}>
+    <b>{label}</b>{children}
   </div>;
 }
 
@@ -34,9 +35,9 @@ function SheetIdentity({ selected, page }) {
   return <header className="planned-sheet-identity">
     {selected.team_id === CAUDAL_TEAM_ID
       ? <img src="/pwa-512x512.png" alt="Escudo del C.D. Caudal" />
-      : <div className="planned-sheet-team-crest-pending">Escudo del equipo pendiente</div>}
+      : <div className="planned-sheet-team-crest-pending" aria-label="Espacio reservado para el escudo del equipo"><span className="planned-sheet-reserved-hint">Escudo pendiente</span></div>}
     <div><strong>{selected.team_name}</strong><span>{selected.label} · Hoja {page}</span></div>
-    <div className="planned-sheet-federation" aria-label="Escudo de competición pendiente">Escudo de competición<br />pendiente</div>
+    <div className="planned-sheet-federation" aria-label="Espacio reservado para el escudo de competición"><span className="planned-sheet-reserved-hint">Escudo de competición</span></div>
   </header>;
 }
 
@@ -44,7 +45,7 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
   moveSlot, phaseIndex, phaseCount, changePhase, removeSlot, addTask, removeTask,
   swapTasks, moveTaskToSlot, targets, fieldIssue }) {
   if (!slot) return <div className="planned-sheet-exercise planned-sheet-exercise-empty">
-    <h3><PhaseName phase={phase} /></h3><p>Sin ejercicio planificado en esta fase.</p>
+    <h3><PhaseName phase={phase} /></h3><p className="planned-sheet-reserved-hint">Sin ejercicio planificado en esta fase.</p>
   </div>;
   const dual = slot.items.length === 2;
   return <section className={`planned-sheet-exercise ${dual ? 'planned-sheet-exercise-dual' : ''} ${issue ? 'planned-sheet-exercise-error' : ''}`}
@@ -88,9 +89,8 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
             </select>
           </label> : null}
         </div> : null}
-        {canEdit ? <p className="planned-sheet-library-pending">Biblioteca de Tareas · vinculación pendiente</p> : null}
       </div>)}
-      {!slot.items.length ? <p className="planned-sheet-empty-task">Tarea A pendiente · añade una tarea para poder guardar.</p> : null}
+      {!slot.items.length ? <p className="planned-sheet-empty-task planned-sheet-reserved-hint">Tarea A pendiente · añade una tarea para poder guardar.</p> : null}
     </div>
     <div className="planned-sheet-exercise-foot">
       <SheetField label="Tº total · min" type="number" value={slot.duration} disabled={!canEdit || busy}
@@ -115,6 +115,22 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   updateEditor, updateSlot, updateTask, moveSlot, moveItem, moveItemToSlot,
   addExercise, addTask, removeTask, removeSlot, changePhase }) {
   const [zoom, setZoom] = useState(100);
+  const [fitZoom, setFitZoom] = useState(100);
+  const viewportRef = useRef(null);
+  useEffect(() => {
+    if (zoom !== 'fit' || !viewportRef.current) return undefined;
+    const viewport = viewportRef.current;
+    const updateFitZoom = () => setFitZoom(Math.min(100,
+      Math.max(25, Math.floor((viewport.clientWidth - 16) / A4_LANDSCAPE_WIDTH_PX * 100))));
+    updateFitZoom();
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateFitZoom);
+      observer.observe(viewport);
+      return () => observer.disconnect();
+    }
+    window.addEventListener('resize', updateFitZoom);
+    return () => window.removeEventListener('resize', updateFitZoom);
+  }, [zoom]);
   const sheets = planPlannedSessionSheets(editor.slots);
   const ordered = PLANNED_PHASES.flatMap((phase) => editor.slots.filter((slot) => slot.phase === phase.key));
   const numberOf = (id) => ordered.findIndex((slot) => slot.id === id) + 1;
@@ -139,13 +155,14 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   return <div className="planned-document" data-planned-session-document>
     <div className="planned-document-toolbar" aria-label="Vista de hojas">
       <span>Plantilla de sesión · A4 horizontal · {sheets.length} {sheets.length === 1 ? 'hoja' : 'hojas'}</span>
-      <label>Vista <select value={zoom} onChange={(event) => setZoom(Number(event.target.value))}>
+      <label>Vista <select value={zoom} onChange={(event) => setZoom(event.target.value === 'fit' ? 'fit' : Number(event.target.value))}>
+        <option value="fit">Ajustar a pantalla</option>
         <option value={75}>75 %</option><option value={100}>100 %</option><option value={125}>125 %</option>
       </select></label>
       <span>Desliza horizontalmente en móvil para recorrer la hoja.</span>
     </div>
-    <div className="planned-document-viewport">
-      <div className="planned-document-pages" style={{ zoom: `${zoom}%` }}>
+    <div className="planned-document-viewport" ref={viewportRef}>
+      <div className="planned-document-pages" style={{ zoom: `${zoom === 'fit' ? fitZoom : zoom}%` }}>
         {sheets.map((sheet, index) => <article className="planned-session-sheet" key={`${sheet.kind}-${index}`}
           data-planned-sheet={sheet.kind}>
           <SheetIdentity selected={selected} page={index + 1} />
@@ -168,12 +185,16 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
               <div className="planned-sheet-cover-notes">
                 {field('Observaciones', editor.header.notes, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, notes: value } })), fieldIssue('notes'), { multiline: true })}
                 {field('Objetivos', editor.header.objectives, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, objectives: value } })), fieldIssue('objectives'), { multiline: true })}
+                {field('Material', editor.header.material, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, material: value } })), fieldIssue('material'), { multiline: true })}
+                {field('Observaciones del cuerpo técnico', editor.header.staff_observations,
+                  (value) => updateEditor((current) => ({ ...current, header: { ...current.header, staff_observations: value } })),
+                  fieldIssue('staff_observations'), { multiline: true })}
               </div>
               <div className="planned-sheet-side-metrics"><PendingArea label="Valor (0–10)" /><PendingArea label="UA Tom Scale" /></div>
             </div>
             <div className="planned-sheet-roster">
               {['Porteros', 'Defensas', 'Centrocampistas', 'Delanteros'].map((position) =>
-                <PendingArea key={position} label={position}><span>Plantilla actual pendiente</span></PendingArea>)}
+                <PendingArea key={position} label={position} />)}
             </div>
             <div className="planned-sheet-cover-lower">
               <PendingArea label="Distribución jugadores disponibles sesión"><PitchOutline /></PendingArea>
@@ -196,13 +217,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
                 {renderExercise(slot, 'cooldown')}
               </div>)}
               {sheet.kind === 'main' && !sheet.cooldown?.length && sheet.slots.length < 4 ?
-                <div className="planned-sheet-cooldown-placeholder">VUELTA A LA CALMA · sin ejercicio planificado</div> : null}
-            </div>
-            <div className="planned-sheet-bottom-row">
-              {field('Material', editor.header.material, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, material: value } })), fieldIssue('material'), { multiline: true })}
-              {field('Observaciones del cuerpo técnico', editor.header.staff_observations,
-                (value) => updateEditor((current) => ({ ...current, header: { ...current.header, staff_observations: value } })),
-                fieldIssue('staff_observations'), { multiline: true })}
+                <div className="planned-sheet-cooldown-placeholder"><span className="planned-sheet-reserved-hint">VUELTA A LA CALMA · sin ejercicio planificado</span></div> : null}
             </div>
             <PendingArea label="Datos POST y valoración final" className="planned-sheet-post-pending" />
             {canEdit ? <div className="planned-sheet-page-tools">

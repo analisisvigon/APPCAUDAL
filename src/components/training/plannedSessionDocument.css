@@ -23,9 +23,9 @@
 .planned-sheet-field small, .planned-sheet-inline-error { color: #b12323; font-size: 7pt; font-weight: 700; }
 .planned-sheet-cover-meta > .planned-sheet-pending { min-height: 13mm; border-right: 1px solid #222; border-bottom: 1px solid #222; }
 .planned-sheet-cover-objectives { display: grid; grid-template-columns: 19mm minmax(0, 1fr) 19mm; min-height: 24mm; }
-.planned-sheet-cover-notes { display: grid; grid-template-rows: 1fr 1fr; border-left: 1px solid #222; }
-.planned-sheet-cover-notes .planned-sheet-field { display: grid; grid-template-columns: 38mm 1fr; align-items: center; padding: 1mm 2mm; }
-.planned-sheet-cover-notes .planned-sheet-field input, .planned-sheet-cover-notes .planned-sheet-field textarea { min-height: 8mm; }
+.planned-sheet-cover-notes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); border-left: 1px solid #222; }
+.planned-sheet-cover-notes .planned-sheet-field { display: grid; grid-template-columns: minmax(0, 30mm) minmax(0, 1fr); align-items: center; padding: 1mm 2mm; }
+.planned-sheet-cover-notes .planned-sheet-field input, .planned-sheet-cover-notes .planned-sheet-field textarea { min-height: 7mm; }
 .planned-sheet-side-metrics { display: grid; grid-template-rows: 1fr 1fr; font-size: 8pt; font-weight: 700; text-align: center; }
 .planned-sheet-side-metrics > span, .planned-sheet-side-metrics > .planned-sheet-pending { display: grid; align-content: center; border-bottom: 1px solid #222; }
 .planned-sheet-side-metrics b { font-size: 11pt; }
@@ -33,11 +33,9 @@
 .planned-sheet-roster .planned-sheet-pending { border-right: 1px solid #111; text-align: center; }
 .planned-sheet-roster .planned-sheet-pending:last-child { border-right: 0; }
 .planned-sheet-roster .planned-sheet-pending b { display: block; padding: 1.5mm; background: #111; color: #fff; font-size: 10pt; }
-.planned-sheet-roster .planned-sheet-pending > span { display: block; margin: 7mm 2mm 0; color: #777; font-size: 8pt; }
 .planned-sheet-cover-lower { display: grid; grid-template-columns: 24% 24% 52%; min-height: 85mm; }
 .planned-sheet-pending { box-sizing: border-box; position: relative; min-width: 0; padding: 2mm; color: #777; background: #fbfbfb; font-size: 7pt; text-align: center; }
 .planned-sheet-pending b { display: block; color: #333; font-size: 8pt; text-transform: uppercase; }
-.planned-sheet-pending > span:last-child { display: block; color: #888; font-size: 6.5pt; }
 .planned-sheet-cover-lower > .planned-sheet-pending { border-right: 2px dashed #555; }
 .planned-sheet-pitch { position: relative; height: 63mm; margin: 2mm 1mm; border: 1px solid #d1d1d1; background: #fff; }
 .planned-sheet-pitch-midline { position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid #d1d1d1; }
@@ -81,8 +79,6 @@
 .planned-sheet-quadrant-wide { grid-column: span 2; }
 .planned-sheet-quadrant-wide .planned-sheet-exercise { min-height: 70mm; }
 .planned-sheet-cooldown-placeholder { display: grid; place-items: center; color: #777; border: 1px dashed #bbb !important; font-size: 9pt; }
-.planned-sheet-bottom-row { display: grid; grid-template-columns: 1fr 1fr; min-height: 20mm; margin-top: 2mm; border-top: 1px solid #111; border-left: 1px solid #111; }
-.planned-sheet-bottom-row .planned-sheet-field textarea { min-height: 10mm; }
 .planned-sheet-tools, .planned-sheet-task-tools, .planned-sheet-page-tools, .planned-sheet-add { font: 700 11px Arial, Helvetica, sans-serif; }
 .planned-sheet-tools { position: absolute; z-index: 2; right: 1mm; bottom: 100%; display: flex; flex-wrap: wrap; gap: 3px; max-width: 100%; padding: 3px; border: 1px solid #aac6e0; background: #eef7ff; opacity: 0; pointer-events: none; }
 .planned-sheet-exercise:hover > .planned-sheet-tools, .planned-sheet-exercise:focus-within > .planned-sheet-tools { opacity: 1; pointer-events: auto; }
@@ -91,10 +87,9 @@
 .planned-sheet-tools label, .planned-sheet-task-tools label { display: flex; align-items: center; gap: 4px; color: #123b60; }
 .planned-sheet-tools select, .planned-sheet-task-tools select { max-width: 36mm; border: 1px solid #6487a4; background: #fff; color: #111; }
 .planned-sheet-task-tools { display: flex; flex-wrap: wrap; gap: 3px; padding: 1mm; border-top: 1px solid #bdd0df; background: #f3f9fe; }
-.planned-sheet-library-pending { margin: 0; padding: 1mm 2mm; color: #778897; background: #f3f9fe; font-size: 7pt; }
 .planned-sheet-post-pending { min-height: 7mm; margin-top: 1mm; border: 1px dashed #ddd; }
 .planned-sheet-page-tools { display: flex; gap: 5px; margin-top: 2mm; }
 .planned-sheet-add { margin-top: 2mm; }
 .planned-document-note { margin: 8px 0 0; color: #b8c9dc; font-size: 12px; }
 @media (hover: none) { .planned-sheet-tools { position: static; opacity: 1; pointer-events: auto; } }
-@media print { .planned-document-toolbar, .planned-document-note, .planned-sheet-tools, .planned-sheet-task-tools, .planned-sheet-page-tools, .planned-sheet-add, .planned-sheet-library-pending { display: none !important; } .planned-document-viewport { overflow: visible; padding: 0; } .planned-document-pages { zoom: 100% !important; gap: 0; } .planned-session-sheet { box-shadow: none; break-after: page; } .planned-sheet-field input, .planned-sheet-field textarea { border-color: transparent !important; background: transparent !important; outline: 0 !important; } }
+@media print { .planned-document-toolbar, .planned-document-note, .planned-sheet-tools, .planned-sheet-task-tools, .planned-sheet-page-tools, .planned-sheet-add, .planned-sheet-reserved-hint { display: none !important; } .planned-document-viewport { overflow: visible; padding: 0; } .planned-document-pages { zoom: 100% !important; gap: 0; } .planned-session-sheet { box-shadow: none; break-after: page; } .planned-sheet-field input, .planned-sheet-field textarea { border-color: transparent !important; background: transparent !important; outline: 0 !important; } }

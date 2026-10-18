@@ -15,6 +15,20 @@ assert.match(css, /width: 297mm; min-height: 210mm/,
   'la hoja conserva el formato A4 horizontal');
 assert.match(css, /background: #fff; color: #111/,
   'la hoja es blanca con tipografía oscura');
+assert.match(document, /<div className="planned-sheet-cover-notes">[\s\S]*?field\('Material'[\s\S]*?field\('Observaciones del cuerpo técnico'/,
+  'material y observaciones del cuerpo técnico están en la primera hoja');
+assert.equal((document.match(/field\('Material'/g) || []).length, 1,
+  'material no se repite en hojas posteriores');
+assert.equal((document.match(/field\('Observaciones del cuerpo técnico'/g) || []).length, 1,
+  'observaciones del cuerpo técnico no se repiten');
+assert.doesNotMatch(document, /Pendiente de integración · sin datos guardados|Plantilla actual pendiente|planned-sheet-library-pending/,
+  'las zonas reservadas no imprimen avisos repetitivos');
+assert.match(document, /<option value="fit">Ajustar a pantalla<\/option>/,
+  'el zoom manual conserva una opción de ajuste a pantalla');
+assert.match(css, /\.planned-document-pages \{ zoom: 100% !important/,
+  'el zoom de pantalla no cambia la escala de impresión');
+assert.match(css, /\.planned-sheet-reserved-hint \{ display: none !important/,
+  'las indicaciones de zonas reservadas se ocultan al imprimir');
 assert.match(document, /\+ Añadir segunda tarea/);
 assert.match(document, /Retirar segunda tarea/);
 assert.match(section, /window\.confirm\('¿Retirar la segunda tarea al guardar\?/,
