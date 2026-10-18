@@ -5,8 +5,10 @@ const source = readFileSync(new URL('../src/components/training/PlannedSessionsS
 
 assert.match(source, /let creating = false;[\s\S]*?creating = true;\s*const id = await createPlannedDraft\([\s\S]*?creating = false;/,
   'el primer guardado reconoce si falló antes de recibir el UUID del borrador');
-assert.match(source, /if \(creating\) \{\s*setCreationUncertain\(true\);/,
+assert.match(source, /else if \(creating\) \{\s*setCreationUncertain\(true\);/,
   'una respuesta incierta bloquea el reintento de creación');
+assert.match(source, /creating && \['42501', '23514', '22023'\]\.includes\(cause\?\.code\)/,
+  'un rechazo explícito de permisos o validación no se confunde con una respuesta incierta');
 assert.match(source, /operationRef\.current \|\| creationUncertain\) return;/,
   'Guardar no vuelve a crear un borrador tras una respuesta incierta');
 assert.match(source, /disabled=\{busy \|\| !dirty \|\| conflict \|\| creationUncertain\}/,

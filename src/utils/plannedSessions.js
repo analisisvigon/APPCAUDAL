@@ -68,39 +68,45 @@ export const hydratePlannedEditor = (session, slots = [], items = []) => {
 export const getPlannedDuration = (slots = []) =>
   slots.reduce((total, slot) => total + (Number(slot.duration_minutes ?? slot.duration) || 0), 0);
 
-export const validatePlannedEditor = (editor, season) => {
-  const errors = [];
+export const getPlannedEditorIssues = (editor, season) => {
+  const issues = [];
+  const add = (message, field, slotId = null, itemId = null) =>
+    issues.push({ message, field, slotId, itemId });
   if (!editor.session_date || editor.session_date < season.starts_on ||
       editor.session_date > season.ends_on) {
-    errors.push('La fecha debe estar dentro de la temporada seleccionada.');
+    add('La fecha debe estar dentro de la temporada seleccionada.', 'session_date');
   }
   const seenSlots = new Set();
   const seenItems = new Set();
-  for (const slot of editor.slots) {
+  const orderedSlots = [
+    ...PLANNED_PHASES.flatMap((phase) => editor.slots.filter((slot) => slot.phase === phase.key)),
+    ...editor.slots.filter((slot) => !PLANNED_PHASES.some((phase) => phase.key === slot.phase)),
+  ];
+  for (const [slotIndex, slot] of orderedSlots.entries()) {
+    const exercise = `Ejercicio ${slotIndex + 1}`;
     if (!PLANNED_PHASES.some((phase) => phase.key === slot.phase) ||
-        !slot.id || seenSlots.has(slot.id)) errors.push('Hay una franja sin identidad o fase válida.');
+        !slot.id || seenSlots.has(slot.id)) add(`${exercise}: identidad o fase inválida.`, 'phase', slot.id);
     seenSlots.add(slot.id);
     const minutes = positiveInteger(slot.duration);
-    if (!minutes || minutes > 2147483647) errors.push('Cada franja necesita una duración positiva en minutos.');
-    if (editor.planning_state === 'confirmed' && !slot.items.length) {
-      errors.push('Una sesión confirmada no puede tener franjas sin actividades.');
-    }
-    for (const item of slot.items) {
-      if (!item.id || seenItems.has(item.id)) errors.push('Hay una actividad sin identidad o repetida.');
+    if (!minutes || minutes > 2147483647) add(`${exercise}: indica una duración positiva en minutos.`, 'duration', slot.id);
+    if (!slot.items.length) add(`${exercise}: la Tarea A es obligatoria.`, 'items', slot.id);
+    if (slot.items.length > 2) add(`${exercise}: 03B admite un máximo de dos tareas.`, 'items', slot.id);
+    for (const [itemIndex, item] of slot.items.entries()) {
+      const task = `${exercise}, Tarea ${String.fromCharCode(65 + itemIndex)}`;
+      if (!item.id || seenItems.has(item.id)) add(`${task}: identidad inválida o repetida.`, 'id', slot.id, item.id);
       seenItems.add(item.id);
       if (!item.title.trim() || item.title.length > 160) {
-        errors.push('Cada actividad necesita un título de hasta 160 caracteres.');
+        add(`${task}: escribe un título de hasta 160 caracteres.`, 'title', slot.id, item.id);
       }
-      if (item.description.length > 10000 || item.comments.length > 5000) {
-        errors.push('La descripción o los comentarios superan el límite permitido.');
-      }
+      if (item.description.length > 10000) add(`${task}: la descripción supera 10000 caracteres.`, 'description', slot.id, item.id);
+      if (item.comments.length > 5000) add(`${task}: los comentarios superan 5000 caracteres.`, 'comments', slot.id, item.id);
       if (item.url && (item.url.length > 2048 || !/^https:\/\/[^\s<>]+$/.test(item.url))) {
-        errors.push('El enlace de la actividad debe ser HTTPS.');
+        add(`${task}: utiliza un enlace HTTPS de hasta 2048 caracteres.`, 'url', slot.id, item.id);
       }
       if (item.minutes !== '') {
         const itemMinutes = positiveInteger(item.minutes);
         if (!itemMinutes || itemMinutes > minutes) {
-          errors.push('La duración de una actividad debe ser positiva y no superar su franja.');
+          add(`${task}: la duración propia debe ser positiva y no superar el ejercicio.`, 'minutes', slot.id, item.id);
         }
       }
     }
@@ -111,10 +117,16 @@ export const validatePlannedEditor = (editor, season) => {
     material: 5000, staff_observations: 10000,
   };
   for (const [field, max] of Object.entries(headerLimits)) {
-    if (editor.header[field]?.length > max) errors.push(`El campo ${field} supera ${max} caracteres.`);
+    if (editor.header[field]?.length > max) add(`El campo ${field} supera ${max} caracteres.`, field);
   }
-  return [...new Set(errors)];
+  if (editor.header.starts_at && !/^([01]\d|2[0-3]):[0-5]\d$/.test(editor.header.starts_at)) {
+    add('La hora de inicio debe tener formato HH:MM.', 'starts_at');
+  }
+  return issues;
 };
+
+export const validatePlannedEditor = (editor, season) =>
+  [...new Set(getPlannedEditorIssues(editor, season).map((issue) => issue.message))];
 
 export const buildPlannedSavePayload = (editor, original) => {
   const p_header = {};
