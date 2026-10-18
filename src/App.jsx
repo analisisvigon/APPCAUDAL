@@ -9,6 +9,7 @@ import {
 } from './utils/authenticatedDataLoad';
 import LibrarySection from './components/library/LibrarySection';
 import TrainingTasksSection from './components/training/TrainingTasksSection';
+import PlannedSessionsSection from './components/training/PlannedSessionsSection';
 import MatchVideoPlayer, { detectMatchVideoProvider } from './components/matches/MatchVideoPlayer';
 import MatchPrintTab from './components/print/MatchPrintTab';
 import FootballZoneMap from './components/visualization/FootballZoneMap';
@@ -5262,6 +5263,7 @@ const renderTacticalBlock = (block) => (
 function App({ controlledSession = undefined, onControlledSignOut = null, identity = null }) {
   const hasControlledAuth = controlledSession !== undefined;
   const [activeTab, setActiveTab] = useState('Inicio');
+  const [plannedSessionsDirty, setPlannedSessionsDirty] = useState(false);
   const [players, setPlayers] = useState([]);
   const [captainPriorities, setCaptainPriorities] = useState([]);
   const [captainPrioritiesLoading, setCaptainPrioritiesLoading] = useState(false);
@@ -29837,7 +29839,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
   };
 
   const authUser = session?.user ?? null;
-  const desktopTabs = ['Inicio', 'Plantilla', 'Perfiles', 'Equipos', 'Partidos', 'Biblioteca', 'Tareas', 'Rendimiento', 'Fisio', 'Multas', 'Registro Delegado', 'Análisis Grupal'];
+  const desktopTabs = ['Inicio', 'Plantilla', 'Perfiles', 'Equipos', 'Partidos', 'Biblioteca', 'Tareas', 'Sesiones', 'Rendimiento', 'Fisio', 'Multas', 'Registro Delegado', 'Análisis Grupal'];
   const mobilePrimaryTabs = [
     ['Inicio', 'Inicio'],
     ['Partidos', 'Partidos'],
@@ -29845,12 +29847,14 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
     ['Registro Delegado', 'Deleg.'],
     ['Análisis Grupal', 'Análisis'],
   ];
-  const mobileMoreTabs = ['Perfiles', 'Equipos', 'Biblioteca', 'Tareas', 'Rendimiento', 'Fisio', 'Multas'];
+  const mobileMoreTabs = ['Perfiles', 'Equipos', 'Biblioteca', 'Tareas', 'Sesiones', 'Rendimiento', 'Fisio', 'Multas'];
   const goToTab = (tab) => {
     if (tab === activeTab) {
       setIsMobileMoreOpen(false);
       return;
     }
+    if (activeTab === 'Sesiones' && plannedSessionsDirty &&
+        !window.confirm('Hay cambios de sesión sin guardar. ¿Salir y descartarlos?')) return;
     requestMatchPlanNavigation({
       type: 'change-module',
       execute: () => {
@@ -33209,6 +33213,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
         ) : null}
         {activeTab === 'Tareas' ? (
           <TrainingTasksSection membership={identity?.membership} userId={session?.user?.id || ''} players={players} />
+        ) : null}
+        {activeTab === 'Sesiones' ? (
+          <PlannedSessionsSection key={`${session?.user?.id || ''}:${identity?.membership?.club_id || ''}`}
+            client={supabase} membership={identity?.membership}
+            userId={session?.user?.id || ''} onDirtyChange={setPlannedSessionsDirty} />
         ) : null}
 
         {activeTab === 'Rendimiento' ? (
