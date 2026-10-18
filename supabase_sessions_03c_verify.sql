@@ -2,13 +2,16 @@
 -- No ejecutado por Codex. GLOBAL PASS no sustituye pruebas por identidad,
 -- ejecución de RPC ni verificación de bytes en Storage.
 with
-expected_functions(signature, authenticated_execute) as (values
-  ('public.planned_library_snapshot(uuid)',false),
-  ('public.save_planned_session_03c(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])',true),
-  ('public.confirm_planned_session_03c(uuid,integer)',true)
+expected_functions(signature, authenticated_execute, expected_comment) as (values
+  ('public.planned_library_snapshot(uuid)',false,
+    'APPCAUDAL Sesiones 03C: snapshot sin uploads, emitido solo desde RPC'),
+  ('public.save_planned_session_03c(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])',true,
+    'APPCAUDAL Sesiones 03C: guardado diferencial de actividades libres y Biblioteca'),
+  ('public.confirm_planned_session_03c(uuid,integer)',true,
+    'APPCAUDAL Sesiones 03C: confirmación de actividades libres y Biblioteca')
 ),
 functions as (
-  select e.signature,e.authenticated_execute,p.oid,p.prosecdef,p.proconfig,
+  select e.signature,e.authenticated_execute,e.expected_comment,p.oid,p.prosecdef,p.proconfig,
     p.proowner,p.proacl,pg_get_userbyid(p.proowner) owner_name
   from expected_functions e
   left join pg_catalog.pg_proc p on p.oid=to_regprocedure(e.signature)
@@ -17,6 +20,7 @@ checks as (
   select 'FUNCTION '||f.signature as check_name,
     case when f.oid is not null and f.prosecdef and f.owner_name='postgres'
       and coalesce(f.proconfig,'{}'::text[]) @> array['search_path=pg_catalog']::text[]
+      and obj_description(f.oid,'pg_proc')=f.expected_comment
       and has_function_privilege('authenticated',f.oid,'EXECUTE')=f.authenticated_execute
       and not has_function_privilege('anon',f.oid,'EXECUTE')
       and not exists(select 1 from pg_catalog.aclexplode(
@@ -46,6 +50,7 @@ checks as (
   select 'GUARD function',
     case when p.oid is not null and p.prosecdef and
       pg_get_userbyid(p.proowner)='postgres' and
+      obj_description(p.oid,'pg_proc')='APPCAUDAL Sesiones 03C: guard_planned_session_child' and
       coalesce(p.proconfig,'{}'::text[]) @> array['search_path=pg_catalog']::text[]
       then 'PASS' else 'FAIL' end,
     'Guard compartido sigue siendo SECURITY DEFINER con search_path seguro'
@@ -59,6 +64,20 @@ checks as (
       and not has_table_privilege('authenticated','public.planned_session_items','DELETE')
       then 'PASS' else 'FAIL' end,
     'Las filas solo se escriben mediante RPC autorizada'
+  union all
+  select 'MEDIA FK immediate',
+    case when exists(select 1 from pg_catalog.pg_constraint c
+      join pg_catalog.pg_attribute child_col
+        on child_col.attrelid=c.conrelid and child_col.attnum=any(c.conkey)
+      join pg_catalog.pg_attribute parent_col
+        on parent_col.attrelid=c.confrelid and parent_col.attnum=any(c.confkey)
+      where c.conrelid=to_regclass('public.training_task_media')
+        and c.confrelid=to_regclass('public.training_tasks')
+        and c.contype='f' and c.convalidated and not c.condeferrable
+        and cardinality(c.conkey)=1 and cardinality(c.confkey)=1
+        and child_col.attname='task_id' and parent_col.attname='id')
+      then 'PASS' else 'FAIL' end,
+    'La FK validada e inmediata serializa inserciones de multimedia con el bloqueo de tarea'
   union all
   select 'ITEMS RLS',
     case when c.relrowsecurity is true and exists(select 1 from pg_catalog.pg_policy p
@@ -75,6 +94,12 @@ checks as (
       is not null and to_regprocedure('public.confirm_planned_session(uuid,integer)')
       is not null then 'PASS' else 'FAIL' end,
     'Las firmas 03A siguen disponibles; comparar sus hashes con el preflight'
+  union all
+  select 'FREE RPC hash '||v.signature,'INFO',
+    coalesce(md5(pg_get_functiondef(to_regprocedure(v.signature)::oid)), 'función ausente')
+  from (values
+    ('public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])'),
+    ('public.confirm_planned_session(uuid,integer)')) v(signature)
   union all
   select 'SESSION number 1', 'INFO',
     'Recuento de sesiones confirmadas con número 1: '||count(*)::text
@@ -102,6 +127,20 @@ checks as (
   where n.nspname='public' and c.relname in
     ('planned_training_sessions','planned_session_slots','planned_session_items',
      'planned_session_number_state','planned_session_audit_events')
+  union all
+  select 'SESSION state fingerprint','INFO',
+    'sessions='||count(*)::text||'; number_1='||
+    count(*) filter (where session_number=1)::text||'; hash='||
+    coalesce(md5(string_agg(id::text||':'||revision::text||':'||planning_state||':'||
+      coalesce(session_number::text,'null'),'|' order by id)),'sin sesiones')
+  from public.planned_training_sessions
+  union all
+  select 'ITEM state fingerprint','INFO',
+    'items='||count(*)::text||'; library='||
+    count(*) filter (where kind='library_task')::text||'; hash='||
+    coalesce(md5(string_agg(id::text||':'||kind||':'||
+      coalesce(md5(task_snapshot::text),'null'),'|' order by id)),'sin ítems')
+  from public.planned_session_items
 )
 select check_name,result,detail from checks
 union all

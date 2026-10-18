@@ -4,6 +4,7 @@
 begin;
 
 do $pre$
+declare v_rls_hash text;
 begin
   if to_regclass('public.training_tasks') is null or
      to_regclass('public.training_task_media') is null or
@@ -16,12 +17,44 @@ begin
     raise exception 'Sesiones 03C: falta el contrato 03A/Biblioteca requerido';
   end if;
   if exists(select 1 from (values
+      ('training_tasks','id','uuid'),
+      ('training_tasks','club_id','uuid'),
+      ('training_tasks','name','text'),
       ('training_tasks','task_code','text'),
+      ('training_tasks','description','text'),
+      ('training_tasks','objective','text'),
+      ('training_tasks','task_type','text'),
+      ('training_tasks','players_spec','text'),
+      ('training_tasks','players_min','int4'),
+      ('training_tasks','players_max','int4'),
+      ('training_tasks','duration_minutes','int4'),
+      ('training_tasks','space_width_m','numeric'),
+      ('training_tasks','space_length_m','numeric'),
+      ('training_tasks','material','text'),
+      ('training_tasks','technical_content','text'),
+      ('training_tasks','tactical_content','text'),
+      ('training_tasks','game_phase','text'),
+      ('training_tasks','game_moment','text'),
+      ('training_tasks','observations','text'),
       ('training_tasks','stage_keys','_text'),
       ('training_tasks','variants','text'),
       ('training_tasks','editor_payload','jsonb'),
+      ('training_tasks','preview_path','text'),
+      ('training_tasks','attachment_path','text'),
+      ('training_task_media','id','uuid'),
+      ('training_task_media','task_id','uuid'),
+      ('training_task_media','club_id','uuid'),
+      ('training_task_media','kind','text'),
       ('training_task_media','source','text'),
+      ('training_task_media','storage_path','text'),
       ('training_task_media','original_url','text'),
+      ('training_task_media','provider','text'),
+      ('training_task_media','provider_key','text'),
+      ('training_task_media','title','text'),
+      ('training_task_media','caption','text'),
+      ('training_task_media','sort_order','int4'),
+      ('training_task_media','is_primary','bool'),
+      ('training_task_media','created_at','timestamptz'),
       ('planned_session_items','task_snapshot','jsonb'),
       ('planned_session_items','source_task_uuid_snapshot','uuid'))
     expected(table_name,column_name,type_name)
@@ -30,6 +63,18 @@ begin
         and a.attname=expected.column_name and not a.attisdropped
         and a.atttypid=to_regtype('pg_catalog.'||expected.type_name))) then
     raise exception 'Sesiones 03C: columnas o tipos de Biblioteca/03A incompatibles';
+  end if;
+  if not exists(select 1 from pg_catalog.pg_constraint c
+      join pg_catalog.pg_attribute child_col
+        on child_col.attrelid=c.conrelid and child_col.attnum=any(c.conkey)
+      join pg_catalog.pg_attribute parent_col
+        on parent_col.attrelid=c.confrelid and parent_col.attnum=any(c.confkey)
+      where c.conrelid=to_regclass('public.training_task_media')
+        and c.confrelid=to_regclass('public.training_tasks')
+        and c.contype='f' and c.convalidated and not c.condeferrable
+        and cardinality(c.conkey)=1 and cardinality(c.confkey)=1
+        and child_col.attname='task_id' and parent_col.attname='id') then
+    raise exception 'Sesiones 03C: falta FK inmediata y validada de multimedia a tarea';
   end if;
   if not exists(select 1 from pg_catalog.pg_trigger t
       where t.tgrelid=to_regclass('public.planned_session_items')
@@ -79,6 +124,25 @@ begin
         'APPCAUDAL Sesiones 03C: guard_planned_session_child') then
     raise exception 'Sesiones 03C: guard existente sin marca conocida';
   end if;
+  select coalesce(md5(string_agg(
+    c.relname||':'||p.polname||':'||p.polcmd::text||':'||p.polpermissive::text||':'||
+    p.polroles::text||':'||coalesce(pg_get_expr(p.polqual,p.polrelid),'')||':'||
+    coalesce(pg_get_expr(p.polwithcheck,p.polrelid),''),
+    '|' order by c.relname,p.polname)),'sin políticas')
+    into v_rls_hash
+  from pg_catalog.pg_policy p
+  join pg_catalog.pg_class c on c.oid=p.polrelid
+  join pg_catalog.pg_namespace n on n.oid=c.relnamespace
+  where n.nspname='public' and c.relname in
+    ('planned_training_sessions','planned_session_slots','planned_session_items',
+     'planned_session_number_state','planned_session_audit_events');
+  perform set_config('appcaudal.sessions03c.rls_before',v_rls_hash,true);
+  perform set_config('appcaudal.sessions03c.save03a_before',
+    md5(pg_get_functiondef(to_regprocedure(
+      'public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])')::oid)),true);
+  perform set_config('appcaudal.sessions03c.confirm03a_before',
+    md5(pg_get_functiondef(to_regprocedure(
+      'public.confirm_planned_session(uuid,integer)')::oid)),true);
 end $pre$;
 
 -- Snapshot emitido exclusivamente por el servidor. El helper carece de EXECUTE
@@ -95,14 +159,22 @@ begin
   if not found or public.training_task_authorized(p_task_id,'read') is not true then
     raise exception 'Tarea no autorizada' using errcode='42501';
   end if;
+  -- La FK media.task_id -> task.id obliga a inserciones concurrentes a esperar
+  -- el lock FOR UPDATE de la tarea; las filas existentes se bloquean antes
+  -- de comprobar el tipo, para no aceptar una conversión URL -> upload.
+  perform 1 from public.training_task_media m
+    where m.task_id=p_task_id for share of m;
+  if exists(select 1 from public.training_task_media m
+      where m.task_id=p_task_id and m.club_id is distinct from v_task.club_id) then
+    raise exception 'Multimedia de Biblioteca con club incoherente' using errcode='23514';
+  end if;
   if v_task.preview_path is not null or v_task.attachment_path is not null or
      exists(select 1 from public.training_task_media m
-       where m.task_id=p_task_id and m.source='upload') then
+       where m.task_id=p_task_id and
+         (m.source is distinct from 'url' or m.storage_path is not null)) then
     raise exception '03C: los archivos subidos requieren copia histórica verificada'
       using errcode='0A000';
   end if;
-  perform 1 from public.training_task_media m
-    where m.task_id=p_task_id for share of m;
   select coalesce(jsonb_agg(jsonb_build_object(
     'id',m.id,'kind',m.kind,'source',m.source,'original_url',m.original_url,
     'provider',m.provider,'provider_key',m.provider_key,'title',m.title,
@@ -677,7 +749,7 @@ comment on function public.confirm_planned_session_03c(uuid,integer) is
   'APPCAUDAL Sesiones 03C: confirmación de actividades libres y Biblioteca';
 
 do $post$
-declare v_signature text; v_p pg_catalog.pg_proc%rowtype;
+declare v_signature text; v_p pg_catalog.pg_proc%rowtype; v_rls_hash text;
 begin
   foreach v_signature in array array[
     'public.planned_library_snapshot(uuid)',
@@ -713,6 +785,28 @@ begin
      has_table_privilege('authenticated','public.planned_session_items','UPDATE') or
      has_table_privilege('authenticated','public.planned_session_items','DELETE') then
     raise exception 'Sesiones 03C: guard o privilegios de ítems incompatibles';
+  end if;
+  select coalesce(md5(string_agg(
+    c.relname||':'||p.polname||':'||p.polcmd::text||':'||p.polpermissive::text||':'||
+    p.polroles::text||':'||coalesce(pg_get_expr(p.polqual,p.polrelid),'')||':'||
+    coalesce(pg_get_expr(p.polwithcheck,p.polrelid),''),
+    '|' order by c.relname,p.polname)),'sin políticas')
+    into v_rls_hash
+  from pg_catalog.pg_policy p
+  join pg_catalog.pg_class c on c.oid=p.polrelid
+  join pg_catalog.pg_namespace n on n.oid=c.relnamespace
+  where n.nspname='public' and c.relname in
+    ('planned_training_sessions','planned_session_slots','planned_session_items',
+     'planned_session_number_state','planned_session_audit_events');
+  if v_rls_hash is distinct from
+       current_setting('appcaudal.sessions03c.rls_before',true) or
+     md5(pg_get_functiondef(to_regprocedure(
+       'public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])')::oid))
+       is distinct from current_setting('appcaudal.sessions03c.save03a_before',true) or
+     md5(pg_get_functiondef(to_regprocedure(
+       'public.confirm_planned_session(uuid,integer)')::oid))
+       is distinct from current_setting('appcaudal.sessions03c.confirm03a_before',true) then
+    raise exception 'Sesiones 03C: cambiaron RLS o RPC 03A durante la instalación';
   end if;
 end $post$;
 
