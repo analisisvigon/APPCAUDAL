@@ -43,6 +43,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [contextsLoading, setContextsLoading] = useState(true);
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsLoadError, setSessionsLoadError] = useState(false);
   const [editor, setEditor] = useState(null);
   const [baseline, setBaseline] = useState(null);
   const [unsupportedItems, setUnsupportedItems] = useState(false);
@@ -51,6 +52,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [conflict, setConflict] = useState(false);
+  const [creationUncertain, setCreationUncertain] = useState(false);
   const selected = contexts.find((row) => row.id === contextId) || null;
   const isManager = membership?.is_active === true && ['owner', 'admin'].includes(membership?.role);
   const canWriteContext = isManager && selected?.status === 'open';
@@ -63,8 +65,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   useEffect(() => {
-    setEditor(null); setBaseline(null); setSessions([]);
-    setUnsupportedItems(false); setConflict(false); setContextId('');
+    setEditor(null); setBaseline(null); setSessions([]); setSessionsLoadError(false);
+    setUnsupportedItems(false); setConflict(false); setCreationUncertain(false); setContextId('');
   }, [membership?.club_id, userId]);
   useEffect(() => {
     if (!dirty) return undefined;
@@ -77,6 +79,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     let cancelled = false;
     setContextsLoading(true);
     setError('');
+    setContexts([]);
     loadPlannedContexts(client, membership?.club_id).then((rows) => {
       if (cancelled) return;
       setContexts(rows);
@@ -92,23 +95,25 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   }, [client, membership?.club_id, storageKey]);
 
   const refreshList = useCallback(async (targetId = contextId) => {
-    if (!targetId) { setSessions([]); return; }
+    if (!targetId) { setSessions([]); setSessionsLoadError(false); return; }
     setSessionsLoading(true);
     try {
       setSessions(await listPlannedSessions(client, targetId));
+      setSessionsLoadError(false);
     } catch (cause) {
+      setSessionsLoadError(true);
       setError(`No se pudieron cargar las sesiones: ${readError(cause)}`);
     } finally { setSessionsLoading(false); }
   }, [client, contextId]);
 
   useEffect(() => {
     let cancelled = false;
-    if (!contextId) { setSessions([]); return undefined; }
+    if (!contextId) { setSessions([]); setSessionsLoadError(false); return undefined; }
     setSessionsLoading(true);
     listPlannedSessions(client, contextId).then((rows) => {
-      if (!cancelled) setSessions(rows);
+      if (!cancelled) { setSessions(rows); setSessionsLoadError(false); }
     }).catch((cause) => {
-      if (!cancelled) setError(`No se pudieron cargar las sesiones: ${readError(cause)}`);
+      if (!cancelled) { setSessionsLoadError(true); setError(`No se pudieron cargar las sesiones: ${readError(cause)}`); }
     }).finally(() => { if (!cancelled) setSessionsLoading(false); });
     return () => { cancelled = true; };
   }, [client, contextId]);
@@ -117,7 +122,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const changeContext = (nextId) => {
     if (busy || !requestDiscard()) return;
     setEditor(null); setBaseline(null); setUnsupportedItems(false);
-    setContextId(nextId); setError(''); setNotice(''); setConflict(false);
+    setContextId(nextId); setError(''); setNotice(''); setConflict(false); setCreationUncertain(false);
     try { if (storageKey) window.localStorage.setItem(storageKey, nextId); } catch { /* opcional */ }
   };
   const openSession = async (sessionId, discard = false) => {
@@ -128,7 +133,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       const data = await loadPlannedSession(client, sessionId, contextId);
       const next = hydratePlannedEditor(data.session, data.slots, data.items);
       setUnsupportedItems(data.items.some((item) => item.kind !== 'free'));
-      setEditor(next); setBaseline(next); setConflict(false);
+      setEditor(next); setBaseline(next); setConflict(false); setCreationUncertain(false);
     } catch (cause) {
       setError(`No se pudo abrir la sesión: ${readError(cause)}`);
     } finally { operationRef.current = false; setBusy(false); }
@@ -136,7 +141,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const startNew = () => {
     if (!canWriteContext || busy || !requestDiscard()) return;
     setEditor(createEmptyPlannedEditor()); setBaseline(null);
-    setUnsupportedItems(false); setError(''); setNotice(''); setConflict(false);
+    setUnsupportedItems(false); setError(''); setNotice(''); setConflict(false); setCreationUncertain(false);
   };
   const updateEditor = (update) => setEditor((current) => current ? update(current) : current);
   const updateSlot = (slotId, update) => updateEditor((current) => ({
@@ -172,16 +177,19 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   });
 
   const save = async () => {
-    if (!editor || !selected || !canEdit || busy || operationRef.current) return;
+    if (!editor || !selected || !canEdit || busy || operationRef.current || creationUncertain) return;
     const issues = validatePlannedEditor(editor, selected);
     if (issues.length) { setError(issues.join(' ')); return; }
     operationRef.current = true;
     setBusy(true); setError(''); setNotice(''); setConflict(false);
     let working = editor;
     let original = baseline;
+    let creating = false;
     try {
       if (!working.id) {
+        creating = true;
         const id = await createPlannedDraft(client, selected.id, working.session_date);
+        creating = false;
         working = { ...working, id, revision: 1 };
         original = { ...createEmptyPlannedEditor(), id, revision: 1,
           session_date: working.session_date };
@@ -201,7 +209,10 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       }
       await refreshList(selected.id);
     } catch (cause) {
-      if (cause?.code === '40001') {
+      if (creating) {
+        setCreationUncertain(true);
+        setError('No se pudo confirmar si el servidor creó el borrador. No repitas Guardar: actualiza la lista y comprueba si apareció una sesión nueva antes de iniciar otra. ' + readError(cause));
+      } else if (cause?.code === '40001') {
         setConflict(true);
         setError('Otra edición cambió esta sesión. Tus cambios siguen aquí; recarga para ver la versión actual antes de volver a editar.');
       } else {
@@ -251,7 +262,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         <h2 className="mt-1 text-2xl font-black text-white">Sesiones</h2>
         {contextsLoading ? <p className="mt-3 text-sm text-slate-300">Cargando equipo y temporada…</p> : null}
         {!contextsLoading && !contexts.length && !error ? (
-          <p className="mt-3 text-sm text-slate-300">No hay una relación canónica equipo-temporada disponible para este club y usuario. No se ha creado ninguna asociación.</p>
+          <p className="mt-3 text-sm text-slate-300">No hay relaciones equipo-temporada visibles para esta cuenta. Puede que no exista ninguna o que falte autorización; la aplicación no puede distinguir ambos casos con esta consulta.</p>
         ) : null}
         {contexts.length ? (
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -285,7 +296,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
             disabled={sessionsLoading || busy} onClick={() => refreshList()}>Actualizar</button>
         </div>
         {sessionsLoading ? <p className="mt-3 text-sm text-slate-400">Cargando sesiones…</p> : null}
-        {!sessionsLoading && !sessions.length ? <p className="mt-3 text-sm text-slate-400">Todavía no hay sesiones planificadas para este equipo-temporada.</p> : null}
+        {!sessionsLoading && !sessionsLoadError && !sessions.length ? <p className="mt-3 text-sm text-slate-400">Todavía no hay sesiones planificadas para este equipo-temporada.</p> : null}
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           {sessions.map((row) => <button type="button" key={row.id} onClick={() => openSession(row.id)}
             disabled={busy} className="rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left transition hover:border-caudal-electric/50 disabled:opacity-60">
@@ -312,7 +323,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           </div>
           <div className="flex flex-wrap gap-2">
             {canEdit ? <button type="button" className={`${button} bg-caudal-electric text-slate-950`}
-              onClick={save} disabled={busy || !dirty || conflict}>
+              onClick={save} disabled={busy || !dirty || conflict || creationUncertain}>
               {busy ? 'Procesando…' : 'Guardar'}</button> : null}
             {canEdit && editor.id && editor.planning_state === 'draft' ?
               <button type="button" className={`${button} border border-caudal-electric/50 text-caudal-electric`}
@@ -320,10 +331,11 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
             {editor.id ? <button type="button" className={`${button} border border-white/15 text-slate-200`}
               onClick={() => { if (requestDiscard()) openSession(editor.id, true); }} disabled={busy}>Recargar</button> : null}
             <button type="button" className={`${button} border border-white/15 text-slate-200`}
-              onClick={() => { if (requestDiscard()) { setEditor(null); setBaseline(null); setConflict(false); } }}
+              onClick={() => { if (requestDiscard()) { setEditor(null); setBaseline(null); setConflict(false); setCreationUncertain(false); } }}
               disabled={busy}>Cerrar ficha</button>
           </div>
           {dirty ? <p className="w-full text-xs text-amber-200">Hay cambios sin guardar. La confirmación exige guardarlos primero.</p> : null}
+          {creationUncertain ? <p className="w-full text-xs text-amber-200">Guardado bloqueado hasta revisar la lista de sesiones y cerrar esta ficha.</p> : null}
           {unsupportedItems ? <p className="w-full text-xs text-amber-200">Esta sesión contiene tareas de Biblioteca; 03B solo permite consultarla, no editarla.</p> : null}
         </div>
 
