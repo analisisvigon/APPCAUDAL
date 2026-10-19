@@ -1,0 +1,71 @@
+/* Hoja independiente de los formularios: las medidas de aquí se usan también
+   para comprobar desbordamientos antes de abrir la impresión del navegador. */
+.planned-print-portal { position: absolute; left: -20000px; top: 0; width: 297mm; visibility: hidden; pointer-events: none; }
+.planned-print-pages { width: 297mm; color: #111; font: 8pt/1.2 Arial, Helvetica, sans-serif; }
+.planned-print-sheet { box-sizing: border-box; width: 297mm; min-height: 209mm; padding: 5mm; background: #fff; }
+.planned-print-identity { display: grid; grid-template-columns: 19mm minmax(0, 1fr) 19mm; align-items: center; gap: 3mm; height: 19mm; text-align: center; }
+.planned-print-identity img, .planned-print-crest-space { width: 18mm; height: 18mm; object-fit: contain; }
+.planned-print-crest-space { border: 1px dashed #bbb; }
+.planned-print-identity strong { display: block; font-size: 15pt; text-transform: uppercase; }
+.planned-print-identity span { display: block; font-size: 7.5pt; }
+.planned-print-meta { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); border-top: 1px solid #111; border-left: 1px solid #111; }
+.planned-print-field { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: start; gap: 2mm; min-width: 0; border-right: 1px solid #111; border-bottom: 1px solid #111; padding: 1mm 1.5mm; white-space: pre-wrap; overflow-wrap: anywhere; }
+.planned-print-field strong { font-size: 7pt; }
+.planned-print-field span { min-width: 0; }
+.planned-print-meta .planned-print-field { min-height: 8mm; }
+.planned-print-cover-details { display: grid; grid-template-columns: 19mm minmax(0,1fr) 19mm; min-height: 26mm; }
+.planned-print-session-numbers { display: grid; grid-template-rows: 1fr 1fr; border-left: 1px solid #111; text-align: center; }
+.planned-print-session-numbers span { display: grid; align-content: center; border-right: 1px solid #111; border-bottom: 1px solid #111; padding: 1mm; }
+.planned-print-session-numbers b { display: block; font-size: 10pt; }
+.planned-print-cover-notes { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; border-left: 1px solid #111; }
+.planned-print-cover-notes .planned-print-field { min-height: 11mm; }
+.planned-print-roster { display: grid; grid-template-columns: 1fr 2fr 2fr 2fr; height: 33mm; border: 1px solid #111; border-top: 0; }
+.planned-print-roster > div { border-right: 1px solid #111; }
+.planned-print-roster > div:last-child { border-right: 0; }
+.planned-print-roster b { display: block; padding: 1mm; background: #111; color: white; text-align: center; font-size: 8pt; }
+.planned-print-cover-lower { display: grid; grid-template-columns: 23% 23% 54%; min-height: 96mm; }
+.planned-print-pitch { border-right: 2px dashed #555; padding: 2mm; text-align: center; }
+.planned-print-pitch strong { display: block; min-height: 8mm; font-size: 7pt; text-transform: uppercase; }
+.planned-print-pitch svg { display: block; width: 100%; height: 74mm; }
+.planned-print-cover-activation { min-width: 0; padding: 2mm 0 0 2mm; }
+.planned-print-cover-activation .planned-print-exercise { min-height: 90mm; }
+.planned-print-empty-activation { display: grid; place-items: center; min-height: 89mm; border: 1px solid #111; color: #555; font-weight: 700; text-align: center; }
+.planned-print-page-title { display: block; margin: 0 0 2mm; padding: 1mm 2mm; background: #f5ee00; font-size: 11pt; }
+.planned-print-exercise-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-auto-rows: minmax(77mm,auto); align-content: start; gap: 1.5mm; }
+.planned-print-exercise { display: flex; flex-direction: column; min-width: 0; min-height: 77mm; border: 1px solid #111; break-inside: avoid; page-break-inside: avoid; }
+.planned-print-exercise.planned-print-dual { grid-column: span 2; }
+.planned-print-exercise-head { display: flex; justify-content: space-between; gap: 2mm; padding: 1mm 1.5mm; border-bottom: 1px solid #111; }
+.planned-print-exercise-head strong { background: #f5ee00; padding: 0 .8mm; }
+.planned-print-tasks { display: grid; grid-template-columns: repeat(auto-fit,minmax(0,1fr)); flex: 1; min-height: 0; }
+.planned-print-task { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid #111; }
+.planned-print-task:last-child { border-right: 0; }
+.planned-print-task-name { display: flex; align-items: baseline; gap: 2mm; min-height: 7mm; padding: 1mm 1.5mm; border-bottom: 1px solid #111; overflow-wrap: anywhere; }
+.planned-print-task-name b { flex: none; background: #00e9df; padding: 0 .8mm; }
+.planned-print-task-name strong { font-size: 8pt; }
+.planned-print-task-content { display: grid; grid-template-columns: 46% 54%; flex: 1; min-width: 0; }
+.planned-print-development { min-width: 0; padding: 1mm 1.5mm; border-right: 1px dashed #555; overflow-wrap: anywhere; white-space: pre-wrap; }
+.planned-print-development > b, .planned-print-graphic > b { display: block; margin-bottom: 1mm; font-size: 7pt; font-weight: 500; text-align: center; }
+.planned-print-development p { margin: 0; }
+.planned-print-development .planned-print-material { margin-top: 2mm; }
+.planned-print-graphic { display: flex; flex-direction: column; min-width: 0; padding: 1mm; }
+.planned-print-board { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 43mm; }
+.planned-print-board > div { display: flex; align-items: center; justify-content: center; width: 100%; height: auto; max-height: none; overflow: visible; }
+.planned-print-board svg { display: block; width: 100%; height: auto; max-width: 100%; aspect-ratio: 100 / 72; }
+.planned-print-board-empty { flex: 1; min-height: 38mm; border: 1px dashed #d3d3d3; }
+.planned-print-teams { display: grid; gap: .7mm; margin-top: 1mm; font-size: 6.5pt; line-height: 1.15; overflow-wrap: anywhere; }
+.planned-print-teams > div { border-left: 2.5px solid #333; padding-left: 1mm; }
+.planned-print-task-space { padding: .5mm 1.5mm; border-top: 1px solid #aaa; font-size: 7pt; }
+.planned-print-exercise-foot { display: flex; justify-content: space-between; gap: 2mm; padding: 1mm 1.5mm; border-top: 1px solid #111; font-style: italic; }
+.planned-print-final-notes { min-height: 6mm; margin-top: 2mm; border-top: 1px solid #111; border-bottom: 1px dashed #bbb; padding: 1mm; font-size: 7pt; }
+
+/* Mientras Sesiones está montado, también Ctrl+P utiliza papel A4 horizontal.
+   Una selección manual distinta en el diálogo del navegador puede prevalecer. */
+@page { size: A4 landscape; margin: 0; }
+@media print {
+  html:has(body > .planned-print-portal), body:has(> .planned-print-portal) { width: 297mm !important; margin: 0 !important; padding: 0 !important; }
+  body:has(> .planned-print-portal) > :not(.planned-print-portal):not(script):not(style) { display: none !important; }
+  body > .planned-print-portal, body > .planned-print-portal * { visibility: visible !important; }
+  body > .planned-print-portal { position: static !important; left: auto !important; top: auto !important; width: 297mm !important; pointer-events: auto !important; }
+  .planned-print-sheet { break-after: page; page-break-after: always; box-shadow: none; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .planned-print-sheet:last-child { break-after: auto; page-break-after: auto; }
+}

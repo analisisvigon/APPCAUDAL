@@ -52,3 +52,30 @@ export const planPlannedSessionSheets = (slots = []) => {
   }
   return sheets;
 };
+
+// La composición impresa utiliza el contenido deportivo, no la altura de los
+// formularios editables. Una tarea doble ocupa una fila; las sencillas ocupan
+// medio ancho. El desbordamiento de texto se comprueba después en el DOM real.
+export const planPlannedSessionPrintSheets = (slots = []) => {
+  const ordered = ['activation', 'main', 'cooldown'].flatMap((phase) =>
+    slots.filter((slot) => slot.phase === phase));
+  const firstActivation = ordered[0]?.phase === 'activation' ? ordered[0] : null;
+  const activationOnCover = firstActivation && firstActivation.items.length <= 1 &&
+    !needsPlannedTextFragmentation(firstActivation) ? firstActivation : null;
+  const remaining = activationOnCover ? ordered.slice(1) : ordered;
+  const pages = [{ kind: 'cover', activation: activationOnCover }];
+  let group = [];
+  let units = 0;
+  for (const slot of remaining) {
+    const weight = slot.items.length > 1 ? 2 : 1;
+    if (group.length && units + weight > 4) {
+      pages.push({ kind: 'exercises', slots: group });
+      group = [];
+      units = 0;
+    }
+    group.push(slot);
+    units += weight;
+  }
+  if (group.length) pages.push({ kind: 'exercises', slots: group });
+  return pages;
+};

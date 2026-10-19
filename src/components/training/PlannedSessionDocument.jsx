@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import {
   getPlannedDuration, getPlannedLibrarySource, getPlannedLibraryValue, PLANNED_PHASES,
 } from '../../utils/plannedSessions';
-import { needsPlannedTextFragmentation, needsPlannedWideSheet, planPlannedSessionSheets } from '../../utils/plannedSessionSheetPages';
+import { needsPlannedTextFragmentation, needsPlannedWideSheet, planPlannedSessionPrintSheets, planPlannedSessionSheets } from '../../utils/plannedSessionSheetPages';
 import { getPlannedSessionBoardTeams } from '../../utils/plannedSessionBoardTeams';
 import { readTrainingTaskEditorPayload } from '../../utils/trainingTaskEditorPayload';
 import TrainingTaskBoardPreview from './TrainingTaskBoardPreview';
 import TrainingTaskBoardEditor from './TrainingTaskBoardEditor';
+import PlannedSessionPrint from './PlannedSessionPrint';
 import './plannedSessionDocument.css';
 
 const PhaseName = ({ phase }) => PLANNED_PHASES.find((entry) => entry.key === phase)?.label || phase;
@@ -224,6 +225,8 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   const [zoom, setZoom] = useState(100);
   const [fitZoom, setFitZoom] = useState(100);
   const viewportRef = useRef(null);
+  const printRef = useRef(null);
+  const [printOverflow, setPrintOverflow] = useState(false);
   const [boardTaskId, setBoardTaskId] = useState(null);
   useEffect(() => { setBoardTaskId(null); }, [editor.id, editor.revision]);
   useEffect(() => {
@@ -241,6 +244,28 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
     return () => window.removeEventListener('resize', updateFitZoom);
   }, [zoom]);
   const sheets = planPlannedSessionSheets(editor.slots);
+  const printSheets = planPlannedSessionPrintSheets(editor.slots);
+  useEffect(() => {
+    let frame = 0;
+    const measure = () => {
+      const paperHeight = 210 * 96 / 25.4;
+      const sheetNodes = printRef.current?.querySelectorAll('.planned-print-sheet') || [];
+      const tooTall = [...sheetNodes].some((sheet) =>
+        sheet.getBoundingClientRect().height > paperHeight + 2 || sheet.scrollHeight > paperHeight + 2);
+      setPrintOverflow(sheetNodes.length > 2 || tooTall);
+    };
+    frame = window.requestAnimationFrame(measure);
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(measure);
+    }) : null;
+    printRef.current?.querySelectorAll('.planned-print-sheet').forEach((sheet) => observer?.observe(sheet));
+    return () => { window.cancelAnimationFrame(frame); observer?.disconnect(); };
+  }, [editor, selected, printSheets.length]);
+  const printDocument = () => {
+    if (printOverflow && !window.confirm('El contenido supera dos hojas A4. La impresión conservará todo el contenido y puede necesitar más páginas. ¿Continuar?')) return;
+    window.print();
+  };
   const ordered = PLANNED_PHASES.flatMap((phase) => editor.slots.filter((slot) => slot.phase === phase.key));
   const numberOf = (id) => ordered.findIndex((slot) => slot.id === id) + 1;
   const field = (label, value, onChange, issue, options = {}) =>
@@ -268,13 +293,15 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
 
   return <div className="planned-document" data-planned-session-document>
     <div className="planned-document-toolbar" aria-label="Vista de hojas">
-      <span>Plantilla de sesión · A4 horizontal · {sheets.length} {sheets.length === 1 ? 'hoja' : 'hojas'}</span>
+      <span>Plantilla de sesión · A4 horizontal · {printSheets.length} hojas para imprimir</span>
+      <button type="button" onClick={printDocument}>Imprimir sesión · A4 horizontal</button>
       <label>Vista <select value={zoom} onChange={(event) => setZoom(event.target.value === 'fit' ? 'fit' : Number(event.target.value))}>
         <option value="fit">Ajustar a pantalla</option>
         <option value={75}>75 %</option><option value={100}>100 %</option><option value={125}>125 %</option>
       </select></label>
       <span>Desliza horizontalmente en móvil para recorrer la hoja.</span>
     </div>
+    {printOverflow ? <p className="planned-document-print-warning" role="alert">Esta sesión supera el espacio de dos hojas A4 horizontales. Al imprimir se conservará todo el contenido y podrían generarse hojas adicionales.</p> : null}
     <div className="planned-document-viewport" ref={viewportRef}>
       <div className="planned-document-pages" style={{ zoom: `${zoom === 'fit' ? fitZoom : zoom}%` }}>
         {sheets.map((sheet, index) => <article className="planned-session-sheet" key={`${sheet.kind}-${index}`}
@@ -347,6 +374,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
       </div>
     </div>
     <p className="planned-document-note">Vista editorial de 03B. La exportación PDF definitiva y las zonas marcadas como pendientes no están activadas.</p>
+    <PlannedSessionPrint editor={editor} selected={selected} pages={printSheets} printRef={printRef} />
     {boardLocation?.item.kind === 'library_task' ? <div className="planned-board-dialog-backdrop">
       <div className="planned-board-dialog" role="dialog" aria-modal="true" aria-label="Editar pizarra de la copia">
         <div className="planned-board-dialog-head"><strong>Pizarra de la copia de Sesiones</strong>
