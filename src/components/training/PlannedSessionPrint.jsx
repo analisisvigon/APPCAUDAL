@@ -77,8 +77,14 @@ function PrintExercise({ slot, number }) {
 export function PlannedSessionPrintPages({ editor, selected, pages = planPlannedSessionPrintSheets(editor.slots) }) {
   const ordered = ['activation', 'main', 'cooldown'].flatMap((phase) => editor.slots.filter((slot) => slot.phase === phase));
   const numberOf = (id) => ordered.findIndex((slot) => slot.id === id) + 1;
+  const layoutOf = (slots) => {
+    if (slots.length === 1) return 'one';
+    if (slots.length === 2) return 'two';
+    if (slots.length === 3 && slots.every((slot) => slot.items.length === 1)) return 'three';
+    return 'grid';
+  };
   return <div className="planned-print-pages" data-planned-print-pages>
-    {pages.map((page, index) => <article className="planned-print-sheet" key={index} data-print-page={index + 1}>
+    {pages.map((page, index) => <article className={`planned-print-sheet ${page.kind === 'cover' ? '' : 'planned-print-sheet-exercises'}`} key={index} data-print-page={index + 1}>
       <PrintIdentity selected={selected} page={index + 1} />
       {page.kind === 'cover' ? <>
         <div className="planned-print-meta">
@@ -113,9 +119,8 @@ export function PlannedSessionPrintPages({ editor, selected, pages = planPlanned
         </div>
       </> : <>
         <h2 className="planned-print-page-title">{index === 1 ? 'PARTE PRINCIPAL · VUELTA A LA CALMA' : 'EJERCICIOS · CONTINUACIÓN'}</h2>
-        <div className="planned-print-exercise-grid">{page.slots.map((slot) =>
+        <div className="planned-print-exercise-grid" data-layout={layoutOf(page.slots)}>{page.slots.map((slot) =>
           <PrintExercise key={slot.id} slot={slot} number={numberOf(slot.id)} />)}</div>
-        <div className="planned-print-final-notes">DATOS POST Y VALORACIÓN FINAL</div>
       </>}
     </article>)}
   </div>;

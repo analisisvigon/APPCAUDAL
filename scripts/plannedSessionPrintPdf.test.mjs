@@ -53,7 +53,11 @@ const base = { id: 'fixture', session_date: '2026-10-25', session_number: 1,
     material: 'Balones, petos y conos.', notes: 'Observaciones generales.',
     staff_observations: 'Ajustar cargas de trabajo.' } };
 const fixtures = {
+  two_brief: [slot('m1', 'main'), slot('m2', 'main')],
+  three_normal: [slot('a', 'activation'), slot('m1', 'main'), slot('m2', 'main'), slot('m3', 'main')],
   four_normal: [slot('a', 'activation'), ...[1, 2, 3, 4].map((i) => slot(`m${i}`, 'main'))],
+  four_boards: [slot('a', 'activation', [library('a')]), ...[1, 2, 3, 4].map((i) => slot(`m${i}`, 'main', [library(`m${i}`)]))],
+  two_boards: [slot('m1', 'main', [library('m1')]), slot('m2', 'main', [library('m2')])],
   activation_main_cooldown: [slot('a', 'activation'), slot('m1', 'main'), slot('m2', 'main'), slot('c', 'cooldown')],
   parallel: [slot('a', 'activation'), slot('m1', 'main', [free('m1a'), free('m1b')]), slot('m2', 'main'), slot('c', 'cooldown')],
   board_teams: [slot('a', 'activation', [library('a')]), slot('m1', 'main', [library('m1')]), slot('m2', 'main')],
@@ -65,12 +69,19 @@ for (const [name, slots] of Object.entries(fixtures)) {
   const markup = renderToStaticMarkup(React.createElement(PlannedSessionPrintPages, { editor,
     selected: { team_id: '85a16f33-9fe5-44d4-b85d-37d73651ebf6', team_name: 'C.D. Caudal', label: '2026/2027' } }));
   assert.doesNotMatch(markup, /<button|<textarea|<input|Cambiar tarea de Biblioteca|Más detalles/);
+  if (name === 'two_brief' || name === 'two_boards') assert.match(markup, /data-layout="two"/);
+  if (name === 'three_normal') assert.match(markup, /data-layout="three"/);
+  if (name === 'four_normal' || name === 'four_boards') assert.match(markup, /data-layout="grid"/);
   if (name === 'board_teams') assert.match(markup, /Pepe[\s\S]*Luis/);
-  if (name === 'parallel') assert.match(markup, /Tarea A[\s\S]*Tarea B/);
+  if (name === 'parallel') {
+    assert.match(markup, /Tarea A[\s\S]*Tarea B/);
+    assert.equal((markup.match(/Tiempo total:/g) || []).length, slots.length,
+      'la duración se cuenta una sola vez por ejercicio, también con tareas A y B');
+  }
   const css = pathToFileURL(path.join(root, 'src/components/training/plannedSessionPrint.css')).href;
   const globalPrint = pathToFileURL(path.join(root, 'src/styles/print.css')).href;
   const crest = pathToFileURL(path.join(root, 'public/pwa-512x512.png')).href;
-  const html = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${globalPrint}"><link rel="stylesheet" href="${css}"></head><body><div class="planned-print-portal"><style media="print">@page { size: A4 landscape; margin: 0; }</style>${markup.replaceAll('/pwa-512x512.png', crest)}</div><script>window.addEventListener('load', () => { const limit = 210 * 96 / 25.4; document.documentElement.dataset.printOverflow = String([...document.querySelectorAll('.planned-print-sheet')].length > 2 || [...document.querySelectorAll('.planned-print-sheet')].some((sheet) => sheet.getBoundingClientRect().height > limit + 2 || sheet.scrollHeight > limit + 2)); });</script></body></html>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${globalPrint}"><link rel="stylesheet" href="${css}"></head><body><div class="planned-print-portal"><style media="print">@page { size: A4 landscape; margin: 0; }</style>${markup.replaceAll('/pwa-512x512.png', crest)}</div><script>window.addEventListener('load', () => { const limit = 210 * 96 / 25.4; const sheets = [...document.querySelectorAll('.planned-print-sheet')]; document.documentElement.dataset.printOverflow = String(sheets.length > 2 || sheets.some((sheet) => sheet.getBoundingClientRect().height > limit + 2 || sheet.scrollHeight > limit + 2)); });</script></body></html>`;
   const htmlPath = path.join(output, `${name}.html`);
   const pdfPath = path.join(output, `${name}.pdf`);
   writeFileSync(htmlPath, html, 'utf8');

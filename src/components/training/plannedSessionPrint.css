@@ -3,6 +3,10 @@
 .planned-print-portal { position: absolute; left: -20000px; top: 0; width: 297mm; visibility: hidden; pointer-events: none; }
 .planned-print-pages { width: 297mm; color: #111; font: 8pt/1.2 Arial, Helvetica, sans-serif; }
 .planned-print-sheet { box-sizing: border-box; width: 297mm; min-height: 209mm; padding: 5mm; background: #fff; }
+.planned-print-sheet-exercises { padding: 4mm 5mm; }
+.planned-print-sheet-exercises .planned-print-identity { height: 15mm; }
+.planned-print-sheet-exercises .planned-print-identity img,
+.planned-print-sheet-exercises .planned-print-crest-space { width: 14mm; height: 14mm; }
 .planned-print-identity { display: grid; grid-template-columns: 19mm minmax(0, 1fr) 19mm; align-items: center; gap: 3mm; height: 19mm; text-align: center; }
 .planned-print-identity img, .planned-print-crest-space { width: 18mm; height: 18mm; object-fit: contain; }
 .planned-print-crest-space { border: 1px dashed #bbb; }
@@ -30,34 +34,43 @@
 .planned-print-cover-activation { min-width: 0; padding: 2mm 0 0 2mm; }
 .planned-print-cover-activation .planned-print-exercise { min-height: 90mm; }
 .planned-print-empty-activation { display: grid; place-items: center; min-height: 89mm; border: 1px solid #111; color: #555; font-weight: 700; text-align: center; }
-.planned-print-page-title { display: block; margin: 0 0 2mm; padding: 1mm 2mm; background: #f5ee00; font-size: 11pt; }
-.planned-print-exercise-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-auto-rows: minmax(77mm,auto); align-content: start; gap: 1.5mm; }
+.planned-print-page-title { display: block; margin: 0; padding: 1mm 2mm; background: #f5ee00; font-size: 11pt; }
+.planned-print-exercise-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-auto-rows: minmax(77mm,auto); align-content: start; gap: .5mm; }
+.planned-print-exercise-grid[data-layout="one"] > .planned-print-exercise,
+.planned-print-exercise-grid[data-layout="two"] > .planned-print-exercise,
+.planned-print-exercise-grid[data-layout="three"] > .planned-print-exercise:last-child { grid-column: span 2; }
+.planned-print-exercise-grid[data-layout="one"] > .planned-print-exercise { min-height: 145mm; }
+.planned-print-exercise-grid[data-layout="two"] > .planned-print-exercise:not(.planned-print-dual) .planned-print-task-content,
+.planned-print-exercise-grid[data-layout="three"] > .planned-print-exercise:last-child .planned-print-task-content { grid-template-columns: 70% 30%; }
+.planned-print-exercise-grid[data-layout="one"] > .planned-print-exercise:not(.planned-print-dual) .planned-print-task-content { grid-template-columns: 58% 42%; }
 .planned-print-exercise { display: flex; flex-direction: column; min-width: 0; min-height: 77mm; border: 1px solid #111; break-inside: avoid; page-break-inside: avoid; }
 .planned-print-exercise-overflow { break-inside: auto; page-break-inside: auto; }
 .planned-print-exercise.planned-print-dual { grid-column: span 2; }
-.planned-print-exercise-head { display: flex; justify-content: space-between; gap: 2mm; padding: 1mm 1.5mm; border-bottom: 1px solid #111; }
+.planned-print-exercise-head { display: flex; justify-content: space-between; gap: 2mm; padding: .5mm 1.5mm; border-bottom: 1px solid #111; }
 .planned-print-exercise-head strong { background: #f5ee00; padding: 0 .8mm; }
 .planned-print-tasks { display: grid; grid-template-columns: repeat(auto-fit,minmax(0,1fr)); flex: 1; min-height: 0; }
 .planned-print-task { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid #111; }
 .planned-print-task:last-child { border-right: 0; }
-.planned-print-task-name { display: flex; align-items: baseline; gap: 2mm; min-height: 7mm; padding: 1mm 1.5mm; border-bottom: 1px solid #111; overflow-wrap: anywhere; }
+.planned-print-task-name { display: flex; align-items: baseline; gap: 2mm; min-height: 5mm; padding: .5mm 1.5mm; border-bottom: 1px solid #111; overflow-wrap: anywhere; }
 .planned-print-task-name b { flex: none; background: #00e9df; padding: 0 .8mm; }
 .planned-print-task-name strong { font-size: 8pt; }
 .planned-print-task-content { display: grid; grid-template-columns: 46% 54%; flex: 1; min-width: 0; }
 .planned-print-development { min-width: 0; padding: 1mm 1.5mm; border-right: 1px dashed #555; overflow-wrap: anywhere; white-space: pre-wrap; }
-.planned-print-development > b, .planned-print-graphic > b { display: block; margin-bottom: 1mm; font-size: 7pt; font-weight: 500; text-align: center; }
+.planned-print-development > b, .planned-print-graphic > b { display: block; margin-bottom: .5mm; font-size: 7pt; font-weight: 500; text-align: center; }
 .planned-print-development p { margin: 0; }
 .planned-print-development .planned-print-material { margin-top: 2mm; }
-.planned-print-graphic { display: flex; flex-direction: column; min-width: 0; padding: 1mm; }
+.planned-print-graphic { display: flex; flex-direction: column; min-width: 0; padding: .5mm; }
 .planned-print-board { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 43mm; }
 .planned-print-board > div { display: flex; align-items: center; justify-content: center; width: 100%; height: auto; max-height: none; overflow: visible; }
 .planned-print-board svg { display: block; width: 100%; height: auto; max-width: 100%; aspect-ratio: 100 / 72; }
+.planned-print-exercise-grid[data-layout="two"] > .planned-print-exercise:not(.planned-print-dual) .planned-print-board svg,
+.planned-print-exercise-grid[data-layout="three"] > .planned-print-exercise:last-child .planned-print-board svg { width: auto; max-height: 59mm; }
+.planned-print-exercise-grid[data-layout="one"] > .planned-print-exercise:not(.planned-print-dual) .planned-print-board svg { width: auto; max-height: 92mm; }
 .planned-print-board-empty { flex: 1; min-height: 38mm; border: 1px dashed #d3d3d3; }
 .planned-print-teams { display: grid; gap: .7mm; margin-top: 1mm; font-size: 6.5pt; line-height: 1.15; overflow-wrap: anywhere; }
 .planned-print-teams > div { border-left: 2.5px solid #333; padding-left: 1mm; }
-.planned-print-task-space { padding: .5mm 1.5mm; border-top: 1px solid #aaa; font-size: 7pt; }
-.planned-print-exercise-foot { display: flex; justify-content: space-between; gap: 2mm; padding: 1mm 1.5mm; border-top: 1px solid #111; font-style: italic; }
-.planned-print-final-notes { min-height: 6mm; margin-top: 2mm; border-top: 1px solid #111; border-bottom: 1px dashed #bbb; padding: 1mm; font-size: 7pt; }
+.planned-print-task-space { padding: 0 1.5mm; border-top: 1px solid #aaa; font-size: 7pt; }
+.planned-print-exercise-foot { display: flex; justify-content: space-between; gap: 2mm; padding: .5mm 1.5mm; border-top: 1px solid #111; font-style: italic; }
 
 /* @page se monta solo junto al portal de Sesiones; no afecta a otros módulos. */
 @media print {
