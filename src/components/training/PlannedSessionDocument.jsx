@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   getPlannedDuration, getPlannedLibrarySource, getPlannedLibraryValue, PLANNED_PHASES,
 } from '../../utils/plannedSessions';
-import { planPlannedSessionSheets } from '../../utils/plannedSessionSheetPages';
+import { needsPlannedTextFragmentation, needsPlannedWideSheet, planPlannedSessionSheets } from '../../utils/plannedSessionSheetPages';
 import { getPlannedSessionBoardTeams } from '../../utils/plannedSessionBoardTeams';
 import { readTrainingTaskEditorPayload } from '../../utils/trainingTaskEditorPayload';
 import TrainingTaskBoardPreview from './TrainingTaskBoardPreview';
@@ -14,12 +14,17 @@ const CAUDAL_TEAM_ID = '85a16f33-9fe5-44d4-b85d-37d73651ebf6';
 const A4_LANDSCAPE_WIDTH_PX = 297 * 96 / 25.4;
 
 function SheetField({ label, value, onChange, disabled, issue, type = 'text', multiline = false,
-  printMirror = false, className = '' }) {
+  printMirror = multiline, positiveOptionalInteger = false, className = '' }) {
+  const handleChange = (nextValue) => {
+    if (!positiveOptionalInteger || nextValue === '' || /^[1-9]\d*$/.test(nextValue)) onChange(nextValue);
+  };
   return <label className={`planned-sheet-field ${printMirror ? 'planned-sheet-field-print-mirror' : ''} ${className}`}>
     <span>{label}</span>
-    {multiline ? <textarea value={value ?? ''} onChange={(event) => onChange(event.target.value)} disabled={disabled}
+    {multiline ? <textarea value={value ?? ''} onChange={(event) => handleChange(event.target.value)} disabled={disabled}
       aria-invalid={Boolean(issue)} /> : <input type={type} value={value ?? ''}
-      onChange={(event) => onChange(event.target.value)} disabled={disabled} aria-invalid={Boolean(issue)} />}
+      min={positiveOptionalInteger ? 1 : undefined} step={positiveOptionalInteger ? 1 : undefined}
+      inputMode={positiveOptionalInteger ? 'numeric' : undefined}
+      onChange={(event) => handleChange(event.target.value)} disabled={disabled} aria-invalid={Boolean(issue)} />}
     {printMirror ? <span className="planned-sheet-print-text" aria-hidden="true">{value ?? ''}</span> : null}
     {issue ? <small role="alert">{issue}</small> : null}
   </label>;
@@ -89,7 +94,7 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
     <h3><PhaseName phase={phase} /></h3><p className="planned-sheet-reserved-hint">Sin ejercicio planificado en esta fase.</p>
   </div>;
   const dual = slot.items.length === 2;
-  return <section className={`planned-sheet-exercise ${dual ? 'planned-sheet-exercise-dual' : ''} ${issue ? 'planned-sheet-exercise-error' : ''}`}
+  return <section className={`planned-sheet-exercise ${dual ? 'planned-sheet-exercise-dual' : ''} ${issue ? 'planned-sheet-exercise-error' : ''} ${needsPlannedTextFragmentation(slot) ? 'planned-sheet-exercise-continuation' : ''}`}
     data-planned-slot-id={slot.id}>
     <div className="planned-sheet-exercise-heading">
       <strong>{phase === 'main' ? `Tarea ${number}` : <PhaseName phase={phase} />}</strong>
@@ -150,7 +155,7 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
             </div>
           </div>
           <div className="planned-sheet-task-foot">
-            <SheetField label="Tiempo propio · min (opcional)" type="number" value={task.minutes}
+            <SheetField label="Tiempo propio · min (opcional)" type="number" positiveOptionalInteger value={task.minutes}
               disabled={!canEdit || busy} issue={fieldIssue('minutes', slot.id, task.id)}
               onChange={(value) => updateTask(slot.id, task.id, 'minutes', value)} />
             <div className="planned-sheet-copy-space">Espacio · {getPlannedLibrarySource(task).space_width_m ?? '—'} × {getPlannedLibrarySource(task).space_length_m ?? '—'} m</div>
@@ -163,7 +168,7 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
             <b>EXPLICACIÓN</b>
             <SheetField label="DESARROLLO" value={task.description} multiline disabled={!canEdit || busy}
               issue={fieldIssue('description', slot.id, task.id)} onChange={(value) => updateTask(slot.id, task.id, 'description', value)} />
-            <SheetField label="Comentarios" value={task.comments} multiline disabled={!canEdit || busy}
+            <SheetField label="Comentarios" value={task.comments} multiline className="planned-sheet-secondary-print-hidden" disabled={!canEdit || busy}
               issue={fieldIssue('comments', slot.id, task.id)} onChange={(value) => updateTask(slot.id, task.id, 'comments', value)} />
           </div>
           <div className="planned-sheet-representation">
@@ -172,10 +177,10 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
           </div>
         </div>
         <div className="planned-sheet-task-foot">
-          <SheetField label="Tiempo propio · min (opcional)" type="number" value={task.minutes}
+          <SheetField label="Tiempo propio · min (opcional)" type="number" positiveOptionalInteger value={task.minutes}
             disabled={!canEdit || busy} issue={fieldIssue('minutes', slot.id, task.id)}
             onChange={(value) => updateTask(slot.id, task.id, 'minutes', value)} />
-          <SheetField label="Enlace HTTPS" type="url" value={task.url} disabled={!canEdit || busy}
+          <SheetField label="Enlace HTTPS" type="url" value={task.url} className="planned-sheet-secondary-print-hidden" disabled={!canEdit || busy}
             issue={fieldIssue('url', slot.id, task.id)} onChange={(value) => updateTask(slot.id, task.id, 'url', value)} />
         </div>
         </>}
@@ -309,7 +314,9 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
               <PendingArea label="Distribución jugadores disponibles sesión"><PitchOutline /></PendingArea>
               <PendingArea label="Distribución del espacio"><PitchOutline /></PendingArea>
               <div className="planned-sheet-cover-activation">
-                {renderExercise(sheet.activation[0], 'activation')}
+                {sheet.coverOverflow
+                  ? <div className="planned-sheet-activation-reference">ACTIVACIÓN · ejercicio en la hoja siguiente</div>
+                  : renderExercise(sheet.activation[0], 'activation')}
                 {canEdit ? <button type="button" className="planned-sheet-add" disabled={busy}
                   onClick={() => addExercise('activation')}>+ Añadir ejercicio de activación</button> : null}
               </div>
@@ -319,10 +326,10 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
               {sheet.kind === 'main' ? 'PARTE PRINCIPAL' : sheet.kind === 'cooldown' ? 'VUELTA A LA CALMA' : 'ACTIVACIÓN · CONTINUACIÓN'}
             </div>
             <div className="planned-sheet-quadrants">
-              {(sheet.slots || []).map((slot) => <div key={slot.id} className={slot.items.length > 1 ? 'planned-sheet-quadrant-wide' : ''}>
+              {(sheet.slots || []).map((slot) => <div key={slot.id} className={slot.items.length > 1 || needsPlannedWideSheet(slot) || sheet.coverOverflow ? 'planned-sheet-quadrant-wide' : ''}>
                 {renderExercise(slot, slot.phase)}
               </div>)}
-              {(sheet.cooldown || []).map((slot) => <div key={slot.id} className={slot.items.length > 1 ? 'planned-sheet-quadrant-wide' : ''}>
+              {(sheet.cooldown || []).map((slot) => <div key={slot.id} className={slot.items.length > 1 || needsPlannedWideSheet(slot) ? 'planned-sheet-quadrant-wide' : ''}>
                 {renderExercise(slot, 'cooldown')}
               </div>)}
               {sheet.kind === 'main' && !sheet.cooldown?.length && sheet.slots.length < 4 ?

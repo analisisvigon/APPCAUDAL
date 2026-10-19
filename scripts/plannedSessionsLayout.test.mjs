@@ -25,11 +25,11 @@ assert.doesNotMatch(document, /Pendiente de integración · sin datos guardados|
   'las zonas reservadas no imprimen avisos repetitivos');
 assert.match(document, /<option value="fit">Ajustar a pantalla<\/option>/,
   'el zoom manual conserva una opción de ajuste a pantalla');
-assert.match(css, /\.planned-document-pages \{ zoom: 100% !important/,
+assert.match(css, /\.planned-document-pages \{[^}]*zoom: 100% !important/,
   'el zoom de pantalla no cambia la escala de impresión');
-assert.match(css, /@media print \{[^{}]*\.planned-sheet-reserved-hint[^{}]*\{ display: none !important/,
+assert.match(css, /@media print \{[\s\S]*?\.planned-sheet-reserved-hint[^{}]*\{ display: none !important/,
   'las indicaciones de zonas reservadas se ocultan al imprimir');
-assert.match(css, /@media print \{[^{}]*\.planned-sheet-library-picker[^{}]*\{ display: none !important/,
+assert.match(css, /@media print \{[\s\S]*?\.planned-sheet-library-picker[^{}]*\{ display: none !important/,
   'el selector de Biblioteca no se imprime');
 assert.match(document, /\+ Añadir segunda tarea/);
 assert.match(document, /Retirar segunda tarea/);
@@ -47,13 +47,13 @@ assert.match(css, /\.planned-sheet-board-visual \{[^}]*height: 36mm/,
   'la pizarra gana tamaño dentro de su columna sin deformar la hoja');
 assert.match(css, /\.planned-sheet-team-line \{[^}]*border-left:/,
   'los equipos muestran su color en la lista imprimible');
-assert.match(css, /@media print \{[^{}]*\.planned-sheet-task-details[^{}]*\{ display: none !important/,
+assert.match(css, /@media print \{[\s\S]*?\.planned-sheet-task-details[^{}]*\{ display: none !important/,
   'los detalles secundarios y controles no aparecen en impresión');
 assert.match(css, /\.planned-sheet-print-text \{ display: block; white-space: pre-wrap/,
   'el desarrollo extenso tiene un espejo de texto para impresión');
 assert.match(document, /label="DESARROLLO" value=\{getPlannedLibraryValue\(task, 'description'\)\} multiline printMirror/,
   'el campo principal imprime el texto completo en vez de recortar un textarea');
-assert.match(css, /\.planned-sheet-exercise \{ break-inside: avoid; page-break-inside: avoid; \}/,
+assert.match(css, /\.planned-sheet-exercise \{ break-inside: avoid-page; page-break-inside: avoid; \}/,
   'el ejercicio no se parte voluntariamente entre páginas');
 assert.match(document, /\['empty', 'v1'\]\.includes\(boardKind\)/,
   'la pizarra desconocida o inválida no se ofrece para edición');
@@ -64,11 +64,21 @@ assert.match(section, /window\.confirm\('¿Retirar la segunda tarea al guardar\?
 assert.match(document, /↑ Subir ejercicio/);
 assert.match(document, /↓ Bajar ejercicio/);
 assert.match(document, /Retirar ejercicio/);
-assert.match(css, /@media print \{ \.planned-document-toolbar, \.planned-document-note, \.planned-sheet-tools/,
+assert.match(css, /@media print \{[\s\S]*?\.planned-document-toolbar, \.planned-document-note, \.planned-sheet-tools/,
   'las herramientas de edición quedan fuera de la impresión');
 assert.match(section, /setValidationIssues\(issues\); setExpandedSlotId\(issues\.find\(\(issue\) => issue\.slotId\)/,
   'la validación local identifica el ejercicio afectado');
 assert.doesNotMatch(document, /ROBERTO JARA|JAVI MORAL|MIGUEL VIGÓN/i,
   'no se reutilizan nombres de la plantilla histórica como datos reales');
+
+assert.match(css, /@page planned-session-landscape \{ size: 297mm 210mm; margin: 0; \}/);
+assert.match(css, /\.planned-session-sheet \{[^}]*page: planned-session-landscape;[^}]*break-after: page/);
+assert.match(css, /\.planned-session-sheet:last-child \{ break-after: auto; \}/);
+assert.match(css, /\.planned-sheet-field-print-mirror textarea \{ display: none !important; \}/);
+assert.match(css, /\.planned-sheet-exercise-continuation \{ break-inside: auto; page-break-inside: auto; \}/);
+assert.match(document, /printMirror = multiline/);
+assert.equal((document.match(/type="number" positiveOptionalInteger value=\{task\.minutes\}/g) || []).length, 2);
+assert.match(document, /\^\[1-9\]\\d\*\$/,
+  'el campo de tiempo propio admite solo enteros positivos o vacío');
 
 console.log('planned sessions layout audit passed');

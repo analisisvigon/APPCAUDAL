@@ -80,6 +80,18 @@ assert.deepEqual(getPlannedEditorIssues(missingTitle, season).filter((issue) => 
     field: 'title', slotId: 'slot-1', itemId: 'item-2' },
 ]);
 assert.equal(getPlannedDuration([original.slots[0]]), 20, 'dos tareas no duplican el tiempo');
+for (const invalidMinutes of ['-1', '0', '1.5', '2e2']) {
+  const invalid = { ...original, slots: [{ ...original.slots[0], items: [
+    { ...original.slots[0].items[0], minutes: invalidMinutes }, original.slots[0].items[1],
+  ] }, original.slots[1]] };
+  assert.ok(getPlannedEditorIssues(invalid, season).some((issue) =>
+    issue.field === 'minutes' && issue.itemId === 'item-1'),
+  `el tiempo propio ${invalidMinutes} no puede llegar al guardado`);
+}
+assert.ok(!getPlannedEditorIssues({ ...original, slots: [{ ...original.slots[0], items: [
+  { ...original.slots[0].items[0], minutes: '' }, original.slots[0].items[1],
+] }, original.slots[1]] }, season).some((issue) => issue.field === 'minutes'),
+'el tiempo propio vacío sigue siendo válido');
 assert.ok(getPlannedEditorIssues({ ...original, slots: [{ ...original.slots[0], items: [
   ...original.slots[0].items, { ...original.slots[1].items[0], id: 'item-4' },
 ] }, original.slots[1]] }, season).some((issue) => issue.message.includes('máximo de dos tareas')));

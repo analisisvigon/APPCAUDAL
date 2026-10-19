@@ -46,6 +46,7 @@
 .planned-sheet-pitch-box-bottom { bottom: 0; border-bottom: 0; }
 .planned-sheet-cover-activation { min-width: 0; padding-left: 2mm; }
 .planned-sheet-cover-activation .planned-sheet-exercise { min-height: 80mm; }
+.planned-sheet-activation-reference { display: grid; place-items: center; min-height: 80mm; border: 1px solid #111; padding: 3mm; font-size: 9pt; font-weight: 700; text-align: center; }
 .planned-sheet-exercise { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 67mm; border: 1px solid #111; background: #fff; break-inside: avoid; page-break-inside: avoid; }
 .planned-sheet-exercise-error { outline: 2px solid #cf3333; }
 .planned-sheet-exercise-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2mm; padding: 1.5mm 2mm; border-bottom: 1px solid #111; font-size: 8pt; }
@@ -124,4 +125,44 @@
 .planned-sheet-add { margin-top: 2mm; }
 .planned-document-note { margin: 8px 0 0; color: #b8c9dc; font-size: 12px; }
 @media (hover: none) { .planned-sheet-tools { position: static; opacity: 1; pointer-events: auto; } }
-@media print { .planned-document-toolbar, .planned-document-note, .planned-sheet-tools, .planned-sheet-task-tools, .planned-sheet-page-tools, .planned-sheet-add, .planned-sheet-reserved-hint, .planned-sheet-library-picker, .planned-sheet-board-edit, .planned-sheet-copy-note, .planned-sheet-task-details, .planned-board-dialog-backdrop { display: none !important; } .planned-document-viewport { overflow: visible; padding: 0; } .planned-document-pages { zoom: 100% !important; gap: 0; } .planned-session-sheet { box-shadow: none; break-after: page; } .planned-sheet-field input, .planned-sheet-field textarea { border-color: transparent !important; background: transparent !important; outline: 0 !important; } .planned-sheet-field-print-mirror textarea { display: none !important; } .planned-sheet-print-text { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 8pt Arial, Helvetica, sans-serif; } .planned-sheet-library-task .planned-sheet-task-body { height: auto; overflow: visible; } .planned-sheet-library-task .planned-sheet-explanation, .planned-sheet-library-task .planned-sheet-representation, .planned-sheet-team-lists { max-height: none; overflow: visible; } .planned-sheet-team-line { print-color-adjust: exact; -webkit-print-color-adjust: exact; } .planned-sheet-exercise { break-inside: avoid; page-break-inside: avoid; } }
+@page planned-session-landscape { size: 297mm 210mm; margin: 0; }
+@media print {
+  /* The application's general print stylesheet hides body descendants. Keep only
+     the active session and its ancestors in the browser's print tree. */
+  body:has(.planned-document) #root *:not(:has(.planned-document)):not(.planned-document):not(.planned-document *) { display: none !important; }
+  body:has(.planned-document) #root :has(.planned-document) { display: block !important; position: static !important; width: auto !important; height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }
+  .planned-document, .planned-document * { visibility: visible !important; }
+  .planned-document { width: 297mm; margin: 0; background: #fff; }
+  .planned-document-toolbar, .planned-document-note, .planned-sheet-tools, .planned-sheet-task-tools,
+  .planned-sheet-page-tools, .planned-sheet-add, .planned-sheet-reserved-hint,
+  .planned-sheet-library-picker, .planned-sheet-board-edit, .planned-sheet-copy-note,
+  .planned-sheet-task-details, .planned-sheet-secondary-print-hidden,
+  .planned-sheet-field small, .planned-sheet-inline-error, .planned-board-dialog-backdrop { display: none !important; }
+  .planned-document-viewport { overflow: visible; padding: 0; }
+  .planned-document-pages { display: block; width: 297mm; min-width: 0; zoom: 100% !important; gap: 0; }
+  .planned-session-sheet { page: planned-session-landscape; width: 297mm; min-height: 209mm; margin: 0; box-shadow: none; break-after: page; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .planned-session-sheet:last-child { break-after: auto; }
+  .planned-sheet-field input, .planned-sheet-field textarea { border-color: transparent !important; background: transparent !important; outline: 0 !important; }
+  .planned-sheet-field-print-mirror textarea { display: none !important; }
+  .planned-sheet-print-text { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 8pt Arial, Helvetica, sans-serif; line-height: 1.25; }
+  .planned-sheet-identity { min-height: 20mm; }
+  .planned-sheet-cover-meta .planned-sheet-field { gap: 0; padding: 1mm; }
+  .planned-sheet-cover-meta .planned-sheet-field input { min-height: 5mm; padding: 0; }
+  .planned-sheet-roster { min-height: 41mm; }
+  .planned-sheet-cover-lower { min-height: 0; }
+  .planned-sheet-task > .planned-sheet-field,
+  .planned-sheet-task-foot .planned-sheet-field,
+  .planned-sheet-exercise-foot .planned-sheet-field { flex-direction: row; align-items: center; gap: 1mm; padding: 1mm; }
+  .planned-sheet-task > .planned-sheet-field input,
+  .planned-sheet-task-foot .planned-sheet-field input,
+  .planned-sheet-exercise-foot .planned-sheet-field input { min-height: 5mm; padding: 0; }
+  .planned-sheet-exercise-foot .planned-sheet-field input { width: 14mm; }
+  .planned-sheet-exercise-foot .planned-sheet-pending { padding: 1mm; }
+  .planned-sheet-task:not(.planned-sheet-library-task) .planned-sheet-task-foot { grid-template-columns: 1fr; }
+  .planned-sheet-library-task .planned-sheet-task-body { height: auto; overflow: visible; }
+  .planned-sheet-library-task .planned-sheet-explanation, .planned-sheet-library-task .planned-sheet-representation,
+  .planned-sheet-team-lists { max-height: none; overflow: visible; }
+  .planned-sheet-team-line { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .planned-sheet-exercise { break-inside: avoid-page; page-break-inside: avoid; }
+  .planned-sheet-exercise-continuation { break-inside: auto; page-break-inside: auto; }
+}
