@@ -16,6 +16,58 @@ const positiveInteger = (value) => {
   return /^[1-9]\d*$/.test(valueText) ? Number(valueText) : null;
 };
 
+export const hasPlannedLibraryItems = (editor) => Boolean(editor?.slots?.some((slot) =>
+  slot.items.some((item) => item.kind === 'library_task')));
+
+export const canWritePlannedContext = (membership, context) =>
+  membership?.is_active === true && ['owner', 'admin'].includes(membership?.role) &&
+  context?.status === 'open';
+
+export const getPlannedLibrarySource = (item) => item?.snapshot?.source || item?.preview || {};
+export const getPlannedLibraryValue = (item, field) =>
+  Object.prototype.hasOwnProperty.call(item?.working || {}, field)
+    ? item.working[field] : getPlannedLibrarySource(item)[field];
+
+const stableJson = (value) => Array.isArray(value) ? value.map(stableJson)
+  : value && typeof value === 'object'
+    ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableJson(value[key])]))
+    : value;
+
+export const assertPlanned03cReload = (expected, actual, revision) => {
+  const expectedItems = expected.slots.flatMap((slot) => slot.items);
+  const actualItems = actual.slots.flatMap((slot) => slot.items);
+  const actualById = new Map(actualItems.map((item) => [item.id, item]));
+  const orderedExpected = PLANNED_PHASES.flatMap((phase) =>
+    expected.slots.filter((slot) => slot.phase === phase.key));
+  const sameSlots = orderedExpected.length === actual.slots.length &&
+    orderedExpected.every((slot, index) => {
+      const received = actual.slots[index];
+      return received?.id === slot.id && received.phase === slot.phase &&
+        Number(received.duration) === Number(slot.duration) &&
+        received.items.map((item) => item.id).join(',') === slot.items.map((item) => item.id).join(',');
+    });
+  if (actual.revision !== revision || !sameSlots ||
+      (expected.session_number != null && actual.session_number !== expected.session_number) ||
+      expectedItems.length !== actualItems.length ||
+      expectedItems.some((item) => {
+        const received = actualById.get(item.id);
+        return !received || received.kind !== item.kind ||
+          (item.kind === 'library_task' && (!received.snapshot ||
+            received.sourceTaskId !== item.sourceTaskId ||
+            JSON.stringify(stableJson(received.working)) !== JSON.stringify(stableJson(item.working))));
+      })) throw new Error('La lectura posterior no coincide con el guardado 03C; recarga antes de continuar.');
+};
+
+export const createPlannedLibraryItem = (id, task) => ({
+  id, kind: 'library_task', sourceTaskId: task.id, snapshot: null,
+  preview: Object.fromEntries([
+    'name', 'description', 'objective', 'material', 'technical_content',
+    'tactical_content', 'observations', 'editor_payload', 'duration_minutes',
+    'space_width_m', 'space_length_m',
+  ].map((field) => [field, task[field]])),
+  working: {}, minutes: '',
+});
+
 export const createEmptyPlannedEditor = () => ({
   id: null,
   revision: null,
@@ -29,10 +81,10 @@ export const createEmptyPlannedEditor = () => ({
 export const hydratePlannedEditor = (session, slots = [], items = []) => {
   const bySlot = new Map();
   for (const item of items) {
-    if (item.kind !== 'free') continue;
     const list = bySlot.get(item.slot_id) || [];
-    list.push({
+    if (item.kind === 'free') list.push({
       id: item.id,
+      kind: 'free',
       title: text(item.free_title),
       description: text(item.free_description),
       comments: text(item.free_comments),
@@ -40,6 +92,13 @@ export const hydratePlannedEditor = (session, slots = [], items = []) => {
       minutes: text(item.activity_minutes),
       sort_order: item.sort_order,
     });
+    else if (item.kind === 'library_task') list.push({
+      id: item.id, kind: 'library_task',
+      sourceTaskId: item.source_task_uuid_snapshot,
+      snapshot: item.task_snapshot, working: item.task_snapshot?.working || {},
+      minutes: text(item.activity_minutes), sort_order: item.sort_order,
+    });
+    else list.push({ id: item.id, kind: item.kind, sort_order: item.sort_order });
     bySlot.set(item.slot_id, list);
   }
   const header = Object.fromEntries(PLANNED_HEADER_FIELDS.map((field) => [
@@ -95,13 +154,26 @@ export const getPlannedEditorIssues = (editor, season) => {
       const task = `${exercise}, Tarea ${String.fromCharCode(65 + itemIndex)}`;
       if (!item.id || seenItems.has(item.id)) add(`${task}: identidad inválida o repetida.`, 'id', slot.id, item.id);
       seenItems.add(item.id);
-      if (!item.title.trim() || item.title.length > 160) {
-        add(`${task}: escribe un título de hasta 160 caracteres.`, 'title', slot.id, item.id);
-      }
-      if (item.description.length > 10000) add(`${task}: la descripción supera 10000 caracteres.`, 'description', slot.id, item.id);
-      if (item.comments.length > 5000) add(`${task}: los comentarios superan 5000 caracteres.`, 'comments', slot.id, item.id);
-      if (item.url && (item.url.length > 2048 || !/^https:\/\/[^\s<>]+$/.test(item.url))) {
-        add(`${task}: utiliza un enlace HTTPS de hasta 2048 caracteres.`, 'url', slot.id, item.id);
+      if (item.kind === 'library_task') {
+        if (!item.sourceTaskId || (!item.snapshot && !item.preview))
+          add(`${task}: falta el origen o la copia de Biblioteca.`, 'library', slot.id, item.id);
+        if (item.snapshot && (item.snapshot.source_task_id !== item.sourceTaskId ||
+            item.snapshot.snapshot_version !== 1 || !item.snapshot.source || !item.snapshot.working))
+          add(`${task}: snapshot de Biblioteca incompatible.`, 'library', slot.id, item.id);
+        const name = text(getPlannedLibraryValue(item, 'name'));
+        if (!name.trim() || name.length > 160)
+          add(`${task}: escribe un nombre de hasta 160 caracteres.`, 'name', slot.id, item.id);
+      } else if (item.kind !== 'free') {
+        add(`${task}: tipo de tarea no admitido.`, 'library', slot.id, item.id);
+      } else {
+        if (!item.title.trim() || item.title.length > 160) {
+          add(`${task}: escribe un título de hasta 160 caracteres.`, 'title', slot.id, item.id);
+        }
+        if (item.description.length > 10000) add(`${task}: la descripción supera 10000 caracteres.`, 'description', slot.id, item.id);
+        if (item.comments.length > 5000) add(`${task}: los comentarios superan 5000 caracteres.`, 'comments', slot.id, item.id);
+        if (item.url && (item.url.length > 2048 || !/^https:\/\/[^\s<>]+$/.test(item.url))) {
+          add(`${task}: utiliza un enlace HTTPS de hasta 2048 caracteres.`, 'url', slot.id, item.id);
+        }
       }
       if (item.minutes !== '') {
         const itemMinutes = positiveInteger(item.minutes);
@@ -145,7 +217,18 @@ export const buildPlannedSavePayload = (editor, original) => {
     sort_order: editor.slots.filter((other) => other.phase === slot.phase)
       .findIndex((other) => other.id === slot.id),
     duration_minutes: Number(slot.duration),
-    items: slot.items.map((item, index) => ({
+    items: slot.items.map((item, index) => item.kind === 'library_task' ? {
+      id: item.id,
+      sort_order: index,
+      kind: 'library_task',
+      activity_minutes: item.minutes === '' ? null : Number(item.minutes),
+      ...(!item.snapshot ? { source_task_id: item.sourceTaskId } : (() => {
+        const previous = original?.slots.flatMap((row) => row.items).find((row) => row.id === item.id);
+        const patch = Object.fromEntries(Object.entries(item.working || {})
+          .filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(previous?.working?.[key])));
+        return Object.keys(patch).length ? { working: patch } : {};
+      })()),
+    } : ({
       id: item.id,
       sort_order: index,
       kind: 'free',

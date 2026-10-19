@@ -74,17 +74,26 @@ export const loadPlannedSession = async (client, sessionId, clubTeamSeasonId) =>
   return { session, slots: unwrap(slotsResponse) || [], items: unwrap(itemsResponse) || [] };
 };
 
+// La consulta del cliente respeta RLS de training_tasks; el filtro de club
+// impide ofrecer tareas ajenas al contexto aunque sean legibles por otra vía.
+export const listPlannedLibraryTasks = async (client, clubId) => {
+  if (!clubId) return [];
+  return unwrap(await client.from('training_tasks')
+    .select('id,club_id,name,description,objective,material,technical_content,tactical_content,observations,editor_payload,duration_minutes,space_width_m,space_length_m,task_type,game_phase,game_moment')
+    .eq('club_id', clubId).order('name', { ascending: true }))?.filter((row) => row.club_id === clubId) || [];
+};
+
 export const createPlannedDraft = async (client, clubTeamSeasonId, sessionDate) =>
   unwrap(await client.rpc('create_planned_session_draft', {
     p_club_team_season_id: clubTeamSeasonId,
     p_session_date: sessionDate,
   }));
 
-export const savePlannedSession = async (client, payload) =>
-  unwrap(await client.rpc('save_planned_session', payload));
+export const savePlannedSession = async (client, payload, use03c = false) =>
+  unwrap(await client.rpc(use03c ? 'save_planned_session_03c' : 'save_planned_session', payload));
 
-export const confirmPlannedSession = async (client, sessionId, revision) =>
-  unwrap(await client.rpc('confirm_planned_session', {
+export const confirmPlannedSession = async (client, sessionId, revision, use03c = false) =>
+  unwrap(await client.rpc(use03c ? 'confirm_planned_session_03c' : 'confirm_planned_session', {
     p_session_id: sessionId,
     p_expected_revision: revision,
   }));

@@ -7,7 +7,7 @@ const css = readFileSync(new URL('../src/components/training/plannedSessionDocum
 
 assert.match(section, /<PlannedSessionDocument editor=\{editor\}/,
   'el editor activo usa la plantilla visual');
-assert.match(document, /slot\.items\.map\(\(task, index\) =>/,
+assert.match(document, /slot\.items\.map\(\(task, index\) => \{/,
   'ambas tareas se editan dentro del ejercicio');
 assert.match(css, /\.planned-sheet-task-columns-dual \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/,
   'dos tareas tienen columnas equivalentes');
@@ -27,10 +27,20 @@ assert.match(document, /<option value="fit">Ajustar a pantalla<\/option>/,
   'el zoom manual conserva una opción de ajuste a pantalla');
 assert.match(css, /\.planned-document-pages \{ zoom: 100% !important/,
   'el zoom de pantalla no cambia la escala de impresión');
-assert.match(css, /\.planned-sheet-reserved-hint \{ display: none !important/,
+assert.match(css, /@media print \{[^{}]*\.planned-sheet-reserved-hint[^{}]*\{ display: none !important/,
   'las indicaciones de zonas reservadas se ocultan al imprimir');
+assert.match(css, /@media print \{[^{}]*\.planned-sheet-library-picker[^{}]*\{ display: none !important/,
+  'el selector de Biblioteca no se imprime');
 assert.match(document, /\+ Añadir segunda tarea/);
 assert.match(document, /Retirar segunda tarea/);
+assert.match(document, /<LibraryTaskPicker task=\{task\}/,
+  'cada tarea del ejercicio permite elegir una actividad de Biblioteca');
+assert.match(document, /<TrainingTaskBoardPreview payload=\{getPlannedLibraryValue\(task, 'editor_payload'\)/,
+  'la copia usa el renderer ya existente de Biblioteca');
+assert.match(document, /\['empty', 'v1'\]\.includes\(boardKind\)/,
+  'la pizarra desconocida o inválida no se ofrece para edición');
+assert.match(document, /!task\.snapshot \? <p className="planned-sheet-copy-note">Vista previa/,
+  'la edición de la copia espera al snapshot generado por el servidor');
 assert.match(section, /window\.confirm\('¿Retirar la segunda tarea al guardar\?/,
   'retirar la segunda tarea exige confirmación');
 assert.match(document, /↑ Subir ejercicio/);

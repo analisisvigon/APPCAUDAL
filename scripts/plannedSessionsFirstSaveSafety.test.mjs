@@ -13,7 +13,9 @@ assert.match(source, /operationRef\.current \|\| creationUncertain\) return;/,
   'Guardar no vuelve a crear un borrador tras una respuesta incierta');
 assert.match(source, /disabled=\{busy \|\| !dirty \|\| conflict \|\| creationUncertain\}/,
   'el botón Guardar comunica el bloqueo');
-assert.match(source, /const revision = await savePlannedSession\([\s\S]*?setNotice\('Sesión guardada\.'\)/,
-  'el éxito solo se muestra después de la confirmación de guardado');
+assert.match(source, /const revision = await savePlannedSession\([\s\S]*?const data = await loadPlannedSession\([\s\S]*?setNotice\('Sesión guardada y recargada desde el servidor\.'\)/,
+  'el éxito completo solo se muestra después de confirmar y recargar el snapshot');
+assert.match(source, /if \(use03c\) setCreationUncertain\(true\);/,
+  'si 03C confirma pero falla la recarga se bloquean nuevos guardados hasta verificar el snapshot');
 
 console.log('planned sessions first-save safety audit passed');

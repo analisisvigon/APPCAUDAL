@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  assertPlanned03cReload,
   buildPlannedSavePayload,
+  canWritePlannedContext,
+  createPlannedLibraryItem,
   createEmptyPlannedEditor,
   getPlannedDuration,
   getPlannedEditorIssues,
   hydratePlannedEditor,
+  hasPlannedLibraryItems,
   PLANNED_PHASES,
 } from '../../utils/plannedSessions';
 import {
@@ -13,6 +17,7 @@ import {
   listPlannedSessions,
   loadPlannedContexts,
   loadPlannedSession,
+  listPlannedLibraryTasks,
   savePlannedSession,
 } from '../../data/plannedSessionsStore';
 import PlannedSessionDocument from './PlannedSessionDocument';
@@ -26,12 +31,19 @@ const formatDate = (value) => value
 const createId = () => globalThis.crypto?.randomUUID?.() || null;
 const readError = (error) => error?.message || 'No se pudo completar la operación.';
 
-const blankTask = (id) => ({ id, title: '', description: '', comments: '', url: '', minutes: '' });
+const blankTask = (id) => ({ id, kind: 'free', title: '', description: '', comments: '', url: '', minutes: '' });
 const errorKind = (error) => {
   if (error?.code === '42501' || error?.code === 'PGRST301' || error?.status === 401 || error?.status === 403) return 'Permisos';
-  if (error?.code === '23514' || error?.code === '22023') return 'Validación';
+  if (['23514', '22023', '0A000', '22001'].includes(error?.code)) return 'Validación';
   return 'Conexión o servidor';
 };
+const unsupportedSession = (data, next) => data.items.some((item) =>
+  !['free', 'library_task'].includes(item.kind) ||
+  (item.kind === 'library_task' && (!item.task_snapshot ||
+    item.task_snapshot.snapshot_version !== 1 ||
+    !item.task_snapshot.source || !item.task_snapshot.working ||
+    item.task_snapshot.source_task_id !== item.source_task_uuid_snapshot))) ||
+  next.slots.some((slot) => slot.items.length > 2);
 
 export default function PlannedSessionsSection({ client, membership, userId, onDirtyChange }) {
   const [contexts, setContexts] = useState([]);
@@ -40,6 +52,9 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsLoadError, setSessionsLoadError] = useState(false);
+  const [libraryTasks, setLibraryTasks] = useState([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryError, setLibraryError] = useState('');
   const [editor, setEditor] = useState(null);
   const [baseline, setBaseline] = useState(null);
   const [unsupportedItems, setUnsupportedItems] = useState(false);
@@ -53,7 +68,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [expandedSlotId, setExpandedSlotId] = useState(null);
   const selected = contexts.find((row) => row.id === contextId) || null;
   const isManager = membership?.is_active === true && ['owner', 'admin'].includes(membership?.role);
-  const canWriteContext = isManager && selected?.status === 'open';
+  const canWriteContext = canWritePlannedContext(membership, selected);
   const canEdit = canWriteContext && !unsupportedItems &&
     !(editor?.id && editor.planning_state === 'confirmed' && editor.session_number == null);
   const dirty = Boolean(editor && (!baseline || JSON.stringify(editor) !== JSON.stringify(baseline)));
@@ -120,6 +135,19 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     return () => { cancelled = true; };
   }, [client, contextId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setLibraryTasks([]); setLibraryError('');
+    if (!selected?.club_id || !editor) return undefined;
+    setLibraryLoading(true);
+    listPlannedLibraryTasks(client, selected.club_id).then((rows) => {
+      if (!cancelled) setLibraryTasks(rows.filter((row) => row.club_id === selected.club_id));
+    }).catch((cause) => {
+      if (!cancelled) setLibraryError(`${errorKind(cause)}: ${readError(cause)}`);
+    }).finally(() => { if (!cancelled) setLibraryLoading(false); });
+    return () => { cancelled = true; };
+  }, [client, selected?.club_id, Boolean(editor), userId]);
+
   const requestDiscard = () => !dirty || window.confirm('Hay cambios sin guardar. ¿Descartarlos?');
   const changeContext = (nextId) => {
     if (busy || !requestDiscard()) return;
@@ -134,7 +162,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     try {
       const data = await loadPlannedSession(client, sessionId, contextId);
       const next = hydratePlannedEditor(data.session, data.slots, data.items);
-      setUnsupportedItems(data.items.some((item) => item.kind !== 'free') || next.slots.some((slot) => slot.items.length > 2));
+      setUnsupportedItems(unsupportedSession(data, next));
       setEditor(next); setBaseline(next); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null);
     } catch (cause) {
       setError(`${errorKind(cause)}: no se pudo abrir la sesión. ${readError(cause)}`);
@@ -208,17 +236,20 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           session_date: working.session_date };
         setEditor(working); setBaseline(original);
       }
-      const revision = await savePlannedSession(client, buildPlannedSavePayload(working, original));
+      const use03c = hasPlannedLibraryItems(working) || hasPlannedLibraryItems(original);
+      const revision = await savePlannedSession(client, buildPlannedSavePayload(working, original), use03c);
       const saved = { ...working, revision };
-      setEditor(saved); setBaseline(saved);
-      setNotice('Sesión guardada.');
+      if (!use03c) { setEditor(saved); setBaseline(saved); }
       try {
         const data = await loadPlannedSession(client, working.id, selected.id);
         const fresh = hydratePlannedEditor(data.session, data.slots, data.items);
+        if (use03c) assertPlanned03cReload(working, fresh, revision);
         setEditor(fresh); setBaseline(fresh);
-        setUnsupportedItems(data.items.some((item) => item.kind !== 'free') || fresh.slots.some((slot) => slot.items.length > 2));
+        setUnsupportedItems(unsupportedSession(data, fresh));
+        setNotice('Sesión guardada y recargada desde el servidor.');
       } catch (reloadError) {
-        setNotice(`Guardado confirmado, pero no se pudo recargar: ${readError(reloadError)}`);
+        if (use03c) setCreationUncertain(true);
+        setNotice(`Guardado confirmado, pero no se pudo verificar la lectura posterior: ${readError(reloadError)}. Recarga la ficha antes de continuar.`);
       }
       await refreshList(selected.id);
     } catch (cause) {
@@ -231,13 +262,15 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         setConflict(true);
         setError('Otra edición cambió esta sesión. Tus cambios siguen aquí; recarga para ver la versión actual antes de volver a editar.');
       } else {
+        if (hasPlannedLibraryItems(working) && !['42501', '23514', '22023', '0A000', '22001'].includes(cause?.code))
+          setCreationUncertain(true);
         setError(`${errorKind(cause)}: no se pudo guardar. Los cambios siguen en el formulario. ${readError(cause)}`);
       }
     } finally { operationRef.current = false; setBusy(false); }
   };
 
   const confirm = async () => {
-    if (!editor?.id || !selected || !canEdit || busy || operationRef.current || dirty || conflict) return;
+    if (!editor?.id || !selected || !canEdit || busy || operationRef.current || dirty || conflict || creationUncertain) return;
     const issues = getPlannedEditorIssues(editor, selected);
     if (issues.length) {
       setValidationIssues(issues); setExpandedSlotId(issues.find((issue) => issue.slotId)?.slotId || null);
@@ -247,12 +280,15 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     operationRef.current = true;
     setBusy(true); setError(''); setNotice('');
     try {
-      const revision = await confirmPlannedSession(client, editor.id, editor.revision);
+      const revision = await confirmPlannedSession(client, editor.id, editor.revision,
+        hasPlannedLibraryItems(editor));
       setEditor((current) => ({ ...current, revision, planning_state: 'confirmed' }));
       setBaseline((current) => ({ ...current, revision, planning_state: 'confirmed' }));
       try {
         const data = await loadPlannedSession(client, editor.id, selected.id);
         const fresh = hydratePlannedEditor(data.session, data.slots, data.items);
+        if (fresh.revision !== revision || fresh.planning_state !== 'confirmed' || fresh.session_number == null)
+          throw new Error('La confirmación aún no se refleja en la lectura; recarga la ficha antes de continuar.');
         setEditor(fresh); setBaseline(fresh);
         setNotice(`Sesión confirmada con el número ${fresh.session_number}.`);
       } catch (reloadError) {
@@ -275,8 +311,34 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setExpandedSlotId(slotId);
   };
   const updateTask = (slotId, itemId, key, value) => updateSlot(slotId, (slot) => ({
-    ...slot, items: slot.items.map((item) => item.id === itemId ? { ...item, [key]: value } : item),
+    ...slot, items: slot.items.map((item) => item.id !== itemId ? item :
+      item.kind === 'library_task' && key !== 'minutes'
+        ? { ...item, working: { ...item.working, [key]: value } }
+        : { ...item, [key]: value }),
   }));
+  const selectLibraryTask = (slotId, itemId, taskId) => {
+    const task = libraryTasks.find((entry) => entry.id === taskId && entry.club_id === selected?.club_id);
+    if (!task) { setError('La tarea no está disponible en la Biblioteca autorizada de este club.'); return; }
+    const previous = editor?.slots.flatMap((slot) => slot.items).find((item) => item.id === itemId);
+    if (!previous) return;
+    if ((previous.kind === 'library_task' && previous.snapshot) ||
+        baseline?.slots.some((slot) => slot.items.some((item) => item.id === itemId))) {
+      if (!window.confirm('Se sustituirá esta tarea al guardar. La copia anterior dejará de pertenecer a la sesión. ¿Continuar?')) return;
+    }
+    const id = baseline?.slots.some((slot) => slot.items.some((item) => item.id === itemId)) ? createId() : itemId;
+    if (!id) { setError('Este navegador no puede crear UUID seguros.'); return; }
+    updateSlot(slotId, (slot) => ({ ...slot, items: slot.items.map((item) => item.id === itemId
+      ? createPlannedLibraryItem(id, task) : item) }));
+  };
+  const switchToFreeTask = (slotId, itemId) => {
+    const previous = editor?.slots.flatMap((slot) => slot.items).find((item) => item.id === itemId);
+    if (!previous || previous.kind === 'free') return;
+    if (!window.confirm('Se sustituirá la copia de Biblioteca por una actividad libre al guardar. ¿Continuar?')) return;
+    const id = previous.snapshot ? createId() : itemId;
+    if (!id) { setError('Este navegador no puede crear UUID seguros.'); return; }
+    updateSlot(slotId, (slot) => ({ ...slot, items: slot.items.map((item) => item.id === itemId
+      ? blankTask(id) : item) }));
+  };
   const addTask = (slotId) => {
     const id = createId();
     if (!id) { setError('Este navegador no puede crear UUID seguros.'); return; }
@@ -375,7 +437,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
               {busy ? 'Procesando…' : 'Guardar cambios'}</button> : null}
             {canEdit && editor.id && editor.planning_state === 'draft' ?
               <button type="button" className={`${button} border border-caudal-electric/50 text-caudal-electric`}
-                onClick={confirm} disabled={busy || dirty || conflict}>Confirmar y numerar</button> : null}
+                onClick={confirm} disabled={busy || dirty || conflict || creationUncertain}>Confirmar y numerar</button> : null}
             {editor.id ? <button type="button" className={`${button} border border-white/15 text-slate-200`}
               onClick={() => { if (requestDiscard()) openSession(editor.id, true); }} disabled={busy}>Recargar</button> : null}
             <button type="button" className={`${button} border border-white/15 text-slate-200`}
@@ -383,14 +445,16 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
               disabled={busy}>Cerrar plantilla</button>
           </div>
           {dirty ? <p className="w-full text-xs text-amber-200">Cambios sin guardar. Guarda antes de confirmar.</p> : null}
-          {creationUncertain ? <p className="w-full text-xs text-amber-200">Guardado bloqueado: revisa la lista antes de crear otra sesión.</p> : null}
-          {unsupportedItems ? <p className="w-full text-xs text-amber-200">Esta sesión contiene tareas de Biblioteca o más de dos tareas en un ejercicio. Se muestra sin edición para preservar sus datos.</p> : null}
+          {creationUncertain ? <p className="w-full text-xs text-amber-200">Guardado bloqueado: comprueba la sesión en la lista y recárgala antes de continuar.</p> : null}
+          {unsupportedItems ? <p className="w-full text-xs text-amber-200">Esta sesión contiene un tipo de tarea o snapshot incompatible, o más de dos tareas en un ejercicio. Se muestra sin edición para preservar sus datos.</p> : null}
         </div>
         <PlannedSessionDocument editor={editor} selected={selected} canEdit={canEdit} busy={busy}
           fieldIssue={fieldIssue} updateEditor={updateEditor} updateSlot={updateSlot} updateTask={updateTask}
           moveSlot={moveSlot} moveItem={moveItem} moveItemToSlot={moveItemToSlot}
           addExercise={addExercise} addTask={addTask} removeTask={removeTask} removeSlot={removeSlot}
-          changePhase={changePhase} />
+          changePhase={changePhase} libraryTasks={libraryTasks} libraryLoading={libraryLoading}
+          libraryError={libraryError} selectLibraryTask={selectLibraryTask}
+          switchToFreeTask={switchToFreeTask} />
       </section> : null}
     </main>
   );
