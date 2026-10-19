@@ -61,7 +61,9 @@ function PrintTask({ item, index }) {
 
 function PrintExercise({ slot, number }) {
   if (!slot) return <div className="planned-print-empty-activation">ACTIVACIÓN</div>;
-  return <section className={`planned-print-exercise ${slot.items.length > 1 ? 'planned-print-dual' : ''}`}
+  const longContent = slot.items.some((item) => value(item.kind === 'library_task'
+    ? getPlannedLibraryValue(item, 'description') : item.description).length > 900);
+  return <section className={`planned-print-exercise ${slot.items.length > 1 ? 'planned-print-dual' : ''} ${longContent ? 'planned-print-exercise-overflow' : ''}`}
     data-print-slot-id={slot.id}>
     <div className="planned-print-exercise-head"><strong>{phaseName(slot.phase).toLocaleUpperCase('es')} · Ejercicio {number}</strong>
       <span>{value(slot.duration)} min</span></div>
@@ -122,6 +124,7 @@ export function PlannedSessionPrintPages({ editor, selected, pages = planPlanned
 export default function PlannedSessionPrint({ editor, selected, pages, printRef }) {
   if (typeof document === 'undefined') return null;
   return createPortal(<div className="planned-print-portal" ref={printRef}>
+    <style media="print">{'@page { size: A4 landscape; margin: 0; }'}</style>
     <PlannedSessionPrintPages editor={editor} selected={selected} pages={pages} />
   </div>, document.body);
 }

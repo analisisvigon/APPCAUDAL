@@ -33,6 +33,7 @@
 .planned-print-page-title { display: block; margin: 0 0 2mm; padding: 1mm 2mm; background: #f5ee00; font-size: 11pt; }
 .planned-print-exercise-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-auto-rows: minmax(77mm,auto); align-content: start; gap: 1.5mm; }
 .planned-print-exercise { display: flex; flex-direction: column; min-width: 0; min-height: 77mm; border: 1px solid #111; break-inside: avoid; page-break-inside: avoid; }
+.planned-print-exercise-overflow { break-inside: auto; page-break-inside: auto; }
 .planned-print-exercise.planned-print-dual { grid-column: span 2; }
 .planned-print-exercise-head { display: flex; justify-content: space-between; gap: 2mm; padding: 1mm 1.5mm; border-bottom: 1px solid #111; }
 .planned-print-exercise-head strong { background: #f5ee00; padding: 0 .8mm; }
@@ -58,9 +59,7 @@
 .planned-print-exercise-foot { display: flex; justify-content: space-between; gap: 2mm; padding: 1mm 1.5mm; border-top: 1px solid #111; font-style: italic; }
 .planned-print-final-notes { min-height: 6mm; margin-top: 2mm; border-top: 1px solid #111; border-bottom: 1px dashed #bbb; padding: 1mm; font-size: 7pt; }
 
-/* Mientras Sesiones está montado, también Ctrl+P utiliza papel A4 horizontal.
-   Una selección manual distinta en el diálogo del navegador puede prevalecer. */
-@page { size: A4 landscape; margin: 0; }
+/* @page se monta solo junto al portal de Sesiones; no afecta a otros módulos. */
 @media print {
   html:has(body > .planned-print-portal), body:has(> .planned-print-portal) { width: 297mm !important; margin: 0 !important; padding: 0 !important; }
   body:has(> .planned-print-portal) > :not(.planned-print-portal):not(script):not(style) { display: none !important; }
