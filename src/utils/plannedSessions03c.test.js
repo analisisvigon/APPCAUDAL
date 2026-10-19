@@ -73,6 +73,36 @@ assert.deepEqual(buildPlannedSavePayload(successive, edited).p_slots[0].items[1]
   { editor_payload: board }, 'la segunda edición no reenvía ni revierte el PATCH anterior');
 assert.equal(getPlannedLibraryValue(successive.slots[0].items[1], 'description'), 'Copia editada');
 assert.equal(serverSnapshot.source.editor_payload.board.pitchType, 'full');
+const assignedBoard = { schemaVersion: 1, board: { pitchType: 'half', elements: [] },
+  assignments: { teamColors: { 'team-1': 'blue' }, players: [{
+    teamKey: 'team-1', colorKey: 'blue', role: 'player',
+    playerRef: { globalPlayerId: 'player-1', snapshot: { name: 'Pepe' } },
+  }] } };
+const assignedCopy = { ...edited, slots: [{ ...edited.slots[0], items: [
+  edited.slots[0].items[0], { ...edited.slots[0].items[1],
+    working: { description: 'Desarrollo manual', editor_payload: assignedBoard } },
+] }] };
+assert.deepEqual(buildPlannedSavePayload(assignedCopy, hydrated).p_slots[0].items[1].working,
+  { description: 'Desarrollo manual', editor_payload: assignedBoard },
+  'se envía la pizarra completa de la copia junto al PATCH de desarrollo');
+const savedCopySnapshot = { ...serverSnapshot,
+  working: { description: 'Desarrollo manual', editor_payload: assignedBoard } };
+const reloadedCopy = hydratePlannedEditor({ ...session, revision: 6 }, [slot], [
+  { id: 'free-1', slot_id: slot.id, sort_order: 0, kind: 'free', free_title: 'Actividad libre' },
+  { id: 'library-1', slot_id: slot.id, sort_order: 1, kind: 'library_task',
+    source_task_uuid_snapshot: 'source-1', task_snapshot: savedCopySnapshot },
+]);
+assert.doesNotThrow(() => assertPlanned03cReload(assignedCopy, reloadedCopy, 6));
+assert.deepEqual(getPlannedLibraryValue(reloadedCopy.slots[0].items[1], 'editor_payload').assignments,
+  assignedBoard.assignments, 'las asignaciones siguen en working tras recargar');
+assert.equal(serverSnapshot.source.description, 'Biblioteca original', 'el origen no se edita');
+const longDevelopment = 'Conservar la explicación íntegra. '.repeat(180);
+const longCopy = { ...edited, slots: [{ ...edited.slots[0], items: [
+  edited.slots[0].items[0],
+  { ...edited.slots[0].items[1], working: { description: longDevelopment } },
+] }] };
+assert.equal(buildPlannedSavePayload(longCopy, hydrated).p_slots[0].items[1].working.description,
+  longDevelopment, 'un desarrollo largo no se trunca en el PATCH local');
 const noName = { ...edited, slots: [{ ...edited.slots[0], items: [edited.slots[0].items[0],
   { ...edited.slots[0].items[1], working: { name: '' } }] }] };
 assert.ok(getPlannedEditorIssues(noName, season).some((issue) => issue.field === 'name'));

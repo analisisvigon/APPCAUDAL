@@ -35,8 +35,26 @@ assert.match(document, /\+ Añadir segunda tarea/);
 assert.match(document, /Retirar segunda tarea/);
 assert.match(document, /<LibraryTaskPicker task=\{task\}/,
   'cada tarea del ejercicio permite elegir una actividad de Biblioteca');
-assert.match(document, /<TrainingTaskBoardPreview payload=\{getPlannedLibraryValue\(task, 'editor_payload'\)/,
+assert.match(document, /<TrainingTaskBoardPreview payload=\{boardPayload\}/,
   'la copia usa el renderer ya existente de Biblioteca');
+assert.match(document, /getPlannedSessionBoardTeams\(boardPayload\)/,
+  'las listas proceden de las asignaciones de la pizarra guardada');
+assert.match(document, /<SheetField label="DESARROLLO" value=\{getPlannedLibraryValue\(task, 'description'\)\}/,
+  'DESARROLLO conserva el campo description de la copia');
+assert.match(document, /<details className="planned-sheet-task-details">/,
+  'los campos secundarios permanecen consultables sin ocupar la hoja');
+assert.match(css, /\.planned-sheet-board-visual \{[^}]*height: 36mm/,
+  'la pizarra gana tamaño dentro de su columna sin deformar la hoja');
+assert.match(css, /\.planned-sheet-team-line \{[^}]*border-left:/,
+  'los equipos muestran su color en la lista imprimible');
+assert.match(css, /@media print \{[^{}]*\.planned-sheet-task-details[^{}]*\{ display: none !important/,
+  'los detalles secundarios y controles no aparecen en impresión');
+assert.match(css, /\.planned-sheet-print-text \{ display: block; white-space: pre-wrap/,
+  'el desarrollo extenso tiene un espejo de texto para impresión');
+assert.match(document, /label="DESARROLLO" value=\{getPlannedLibraryValue\(task, 'description'\)\} multiline printMirror/,
+  'el campo principal imprime el texto completo en vez de recortar un textarea');
+assert.match(css, /\.planned-sheet-exercise \{ break-inside: avoid; page-break-inside: avoid; \}/,
+  'el ejercicio no se parte voluntariamente entre páginas');
 assert.match(document, /\['empty', 'v1'\]\.includes\(boardKind\)/,
   'la pizarra desconocida o inválida no se ofrece para edición');
 assert.match(document, /!task\.snapshot \? <p className="planned-sheet-copy-note">Vista previa/,

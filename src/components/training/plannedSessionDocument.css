@@ -21,6 +21,7 @@
 .planned-sheet-field input:focus, .planned-sheet-field textarea:focus { outline: 2px solid #1671c2; outline-offset: 0; }
 .planned-sheet-field [aria-invalid="true"] { border-color: #cc3838 !important; background: #fff5f5 !important; }
 .planned-sheet-field small, .planned-sheet-inline-error { color: #b12323; font-size: 7pt; font-weight: 700; }
+.planned-sheet-print-text { display: none; }
 .planned-sheet-cover-meta > .planned-sheet-pending { min-height: 13mm; border-right: 1px solid #222; border-bottom: 1px solid #222; }
 .planned-sheet-cover-objectives { display: grid; grid-template-columns: 19mm minmax(0, 1fr) 19mm; min-height: 24mm; }
 .planned-sheet-cover-notes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); border-left: 1px solid #222; }
@@ -81,10 +82,18 @@
 .planned-sheet-explanation textarea { min-height: 10mm; }
 .planned-sheet-representation .planned-sheet-pending { display: grid; flex: 1; place-items: center; border: 1px dashed #ccc; }
 .planned-sheet-representation .planned-sheet-pending b { font-size: 7pt; }
-.planned-sheet-library-task .planned-sheet-task-body { height: 31mm; min-height: 31mm; overflow: hidden; }
+.planned-sheet-library-task .planned-sheet-task-body { height: 60mm; min-height: 60mm; overflow: hidden; }
 .planned-sheet-library-task .planned-sheet-explanation { overflow: auto; }
 .planned-sheet-library-task .planned-sheet-representation { overflow: hidden; }
-.planned-sheet-library-task .planned-sheet-representation > div[aria-hidden="true"] { height: 22mm; min-height: 22mm; flex: 0 0 22mm; }
+.planned-sheet-board-visual { display: grid; place-items: center; width: 100%; height: 36mm; min-height: 36mm; overflow: hidden; background: #0b1e16; }
+.planned-sheet-board-visual > div[aria-hidden="true"] { width: 100%; height: 100%; min-height: 0; }
+.planned-sheet-board-visual svg { display: block; width: 100%; height: 100%; max-width: 100%; }
+.planned-sheet-team-lists { display: grid; gap: 1mm; max-height: 14mm; overflow: auto; padding-top: 1mm; color: #111; font-size: 7pt; line-height: 1.15; }
+.planned-sheet-team-line { min-width: 0; border-left: 3px solid #333; padding-left: 1mm; overflow-wrap: anywhere; }
+.planned-sheet-team-line strong { font-weight: 800; }
+.planned-sheet-team-name { color: #444; }
+.planned-sheet-task-details { margin-top: 1mm; border-top: 1px solid #bdd0df; font-size: 7pt; }
+.planned-sheet-task-details summary { cursor: pointer; padding: 1mm; color: #123b60; font-weight: 700; }
 .planned-sheet-library-task .planned-sheet-representation > small { font-size: 7pt; }
 .planned-sheet-task-foot { display: grid; grid-template-columns: 32% 68%; border-top: 1px solid #ddd; }
 .planned-sheet-task-foot .planned-sheet-field { border: 0; font-size: 7pt; }
@@ -115,4 +124,4 @@
 .planned-sheet-add { margin-top: 2mm; }
 .planned-document-note { margin: 8px 0 0; color: #b8c9dc; font-size: 12px; }
 @media (hover: none) { .planned-sheet-tools { position: static; opacity: 1; pointer-events: auto; } }
-@media print { .planned-document-toolbar, .planned-document-note, .planned-sheet-tools, .planned-sheet-task-tools, .planned-sheet-page-tools, .planned-sheet-add, .planned-sheet-reserved-hint, .planned-sheet-library-picker, .planned-sheet-board-edit, .planned-sheet-copy-note, .planned-board-dialog-backdrop { display: none !important; } .planned-document-viewport { overflow: visible; padding: 0; } .planned-document-pages { zoom: 100% !important; gap: 0; } .planned-session-sheet { box-shadow: none; break-after: page; } .planned-sheet-field input, .planned-sheet-field textarea { border-color: transparent !important; background: transparent !important; outline: 0 !important; } }
+@media print { .planned-document-toolbar, .planned-document-note, .planned-sheet-tools, .planned-sheet-task-tools, .planned-sheet-page-tools, .planned-sheet-add, .planned-sheet-reserved-hint, .planned-sheet-library-picker, .planned-sheet-board-edit, .planned-sheet-copy-note, .planned-sheet-task-details, .planned-board-dialog-backdrop { display: none !important; } .planned-document-viewport { overflow: visible; padding: 0; } .planned-document-pages { zoom: 100% !important; gap: 0; } .planned-session-sheet { box-shadow: none; break-after: page; } .planned-sheet-field input, .planned-sheet-field textarea { border-color: transparent !important; background: transparent !important; outline: 0 !important; } .planned-sheet-field-print-mirror textarea { display: none !important; } .planned-sheet-print-text { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 8pt Arial, Helvetica, sans-serif; } .planned-sheet-library-task .planned-sheet-task-body { height: auto; overflow: visible; } .planned-sheet-library-task .planned-sheet-explanation, .planned-sheet-library-task .planned-sheet-representation, .planned-sheet-team-lists { max-height: none; overflow: visible; } .planned-sheet-team-line { print-color-adjust: exact; -webkit-print-color-adjust: exact; } .planned-sheet-exercise { break-inside: avoid; page-break-inside: avoid; } }

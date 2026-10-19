@@ -3,6 +3,7 @@ import {
   getPlannedDuration, getPlannedLibrarySource, getPlannedLibraryValue, PLANNED_PHASES,
 } from '../../utils/plannedSessions';
 import { planPlannedSessionSheets } from '../../utils/plannedSessionSheetPages';
+import { getPlannedSessionBoardTeams } from '../../utils/plannedSessionBoardTeams';
 import { readTrainingTaskEditorPayload } from '../../utils/trainingTaskEditorPayload';
 import TrainingTaskBoardPreview from './TrainingTaskBoardPreview';
 import TrainingTaskBoardEditor from './TrainingTaskBoardEditor';
@@ -12,12 +13,14 @@ const PhaseName = ({ phase }) => PLANNED_PHASES.find((entry) => entry.key === ph
 const CAUDAL_TEAM_ID = '85a16f33-9fe5-44d4-b85d-37d73651ebf6';
 const A4_LANDSCAPE_WIDTH_PX = 297 * 96 / 25.4;
 
-function SheetField({ label, value, onChange, disabled, issue, type = 'text', multiline = false, className = '' }) {
-  return <label className={`planned-sheet-field ${className}`}>
+function SheetField({ label, value, onChange, disabled, issue, type = 'text', multiline = false,
+  printMirror = false, className = '' }) {
+  return <label className={`planned-sheet-field ${printMirror ? 'planned-sheet-field-print-mirror' : ''} ${className}`}>
     <span>{label}</span>
     {multiline ? <textarea value={value ?? ''} onChange={(event) => onChange(event.target.value)} disabled={disabled}
       aria-invalid={Boolean(issue)} /> : <input type={type} value={value ?? ''}
       onChange={(event) => onChange(event.target.value)} disabled={disabled} aria-invalid={Boolean(issue)} />}
+    {printMirror ? <span className="planned-sheet-print-text" aria-hidden="true">{value ?? ''}</span> : null}
     {issue ? <small role="alert">{issue}</small> : null}
   </label>;
 }
@@ -94,8 +97,15 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
     </div>
     <div className={`planned-sheet-task-columns ${dual ? 'planned-sheet-task-columns-dual' : ''}`}>
       {slot.items.map((task, index) => {
-        const boardKind = task.kind === 'library_task'
-          ? readTrainingTaskEditorPayload(getPlannedLibraryValue(task, 'editor_payload') || {}).kind : 'empty';
+        const boardPayload = task.kind === 'library_task'
+          ? getPlannedLibraryValue(task, 'editor_payload') || {} : {};
+        const boardKind = readTrainingTaskEditorPayload(boardPayload).kind;
+        const boardTeams = task.kind === 'library_task' ? getPlannedSessionBoardTeams(boardPayload) : [];
+        const secondary = [
+          ['objective', 'Objetivo'], ['technical_content', 'Contenido técnico'],
+          ['tactical_content', 'Contenido táctico'], ['observations', 'Observaciones de la tarea'],
+        ];
+        const hasSecondary = secondary.some(([field]) => String(getPlannedLibraryValue(task, field) ?? '').trim());
         return <div className={`planned-sheet-task ${task.kind === 'library_task' ? 'planned-sheet-library-task' : ''}`} key={task.id}>
         <div className="planned-sheet-task-head">Tarea {String.fromCharCode(65 + index)}{index === 0 ? ' · principal' : ' · simultánea'}</div>
         <LibraryTaskPicker task={task} slotId={slot.id} tasks={libraryTasks} loading={libraryLoading}
@@ -107,17 +117,32 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
             onChange={(value) => updateTask(slot.id, task.id, 'name', value)} />
           <div className="planned-sheet-task-body">
             <div className="planned-sheet-explanation"><b>EXPLICACIÓN</b>
-              {[
-                ['description', 'Desarrollo'], ['objective', 'Objetivo'],
-                ['technical_content', 'Contenido técnico'], ['tactical_content', 'Contenido táctico'],
-                ['material', 'Material'], ['observations', 'Observaciones'],
-              ].map(([field, label]) => <SheetField key={field} label={label}
-                value={getPlannedLibraryValue(task, field)} multiline
+              <SheetField label="DESARROLLO" value={getPlannedLibraryValue(task, 'description')} multiline printMirror
                 disabled={!canEdit || busy || !task.snapshot}
-                onChange={(value) => updateTask(slot.id, task.id, field, value)} />)}
+                onChange={(value) => updateTask(slot.id, task.id, 'description', value)} />
+              {(canEdit && task.snapshot) || String(getPlannedLibraryValue(task, 'material') ?? '').trim()
+                ? <SheetField label="Material" value={getPlannedLibraryValue(task, 'material')} multiline printMirror
+                  disabled={!canEdit || busy || !task.snapshot}
+                  onChange={(value) => updateTask(slot.id, task.id, 'material', value)} /> : null}
+              {(canEdit && task.snapshot) || hasSecondary ? <details className="planned-sheet-task-details">
+                <summary>Más detalles{hasSecondary ? ' · con contenido' : ''}</summary>
+                {secondary.map(([field, label]) => (canEdit && task.snapshot) ||
+                    String(getPlannedLibraryValue(task, field) ?? '').trim()
+                  ? <SheetField key={field} label={label} value={getPlannedLibraryValue(task, field)} multiline
+                    disabled={!canEdit || busy || !task.snapshot}
+                    onChange={(value) => updateTask(slot.id, task.id, field, value)} /> : null)}
+              </details> : null}
             </div>
             <div className="planned-sheet-representation"><b>REPRESENTACIÓN GRÁFICA</b>
-              <TrainingTaskBoardPreview payload={getPlannedLibraryValue(task, 'editor_payload') || {}} />
+              <div className="planned-sheet-board-visual"><TrainingTaskBoardPreview payload={boardPayload} /></div>
+              {boardTeams.length ? <div className="planned-sheet-team-lists" aria-label="Equipos y jugadores asignados en la pizarra">
+                {boardTeams.map((team) => <div className="planned-sheet-team-line" key={team.key}
+                  style={{ borderLeftColor: team.colorValue || '#333' }}>
+                  <strong>{team.colorName.toLocaleUpperCase('es')}</strong>
+                  <span className="planned-sheet-team-name"> · {team.teamName}:</span>
+                  <span> {team.players.join(', ')}</span>
+                </div>)}
+              </div> : null}
               {task.snapshot && canEdit && !busy && ['empty', 'v1'].includes(boardKind)
                 ? <button type="button" className="planned-sheet-board-edit" onClick={() => openBoard(task.id)}>Editar pizarra de la copia</button> : null}
               {['unsupported', 'invalid'].includes(boardKind)
@@ -136,7 +161,7 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
         <div className="planned-sheet-task-body">
           <div className="planned-sheet-explanation">
             <b>EXPLICACIÓN</b>
-            <SheetField label="Desarrollo" value={task.description} multiline disabled={!canEdit || busy}
+            <SheetField label="DESARROLLO" value={task.description} multiline disabled={!canEdit || busy}
               issue={fieldIssue('description', slot.id, task.id)} onChange={(value) => updateTask(slot.id, task.id, 'description', value)} />
             <SheetField label="Comentarios" value={task.comments} multiline disabled={!canEdit || busy}
               issue={fieldIssue('comments', slot.id, task.id)} onChange={(value) => updateTask(slot.id, task.id, 'comments', value)} />
