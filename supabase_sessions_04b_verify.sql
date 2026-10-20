@@ -5,6 +5,10 @@ with objects as (
     to_regclass('public.planned_training_sessions') as sessions,
     to_regclass('public.planned_session_player_roster') as roster,
     to_regclass('public.planned_session_player_availability') as availability
+), token_count as (
+  select case when token is not null then pg_catalog.query_to_xml(
+    'select count(*) as row_count from public.planned_session_date_change_authorizations',
+    true,false,'') end as count_xml from objects
 ), expected_functions(signature,client_callable) as (values
   ('planned_session_04b_lock(uuid,integer)',false),
   ('planned_session_04b_state(uuid)',false),
@@ -123,7 +127,9 @@ with objects as (
       (select token from objects),'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,MAINTAIN'),false),
     'Sin privilegios SQL efectivos para authenticated, anon ni service_role; incluido MAINTAIN'
   union all select 'token_empty',
-    not exists(select 1 from public.planned_session_date_change_authorizations),
+    coalesce(nullif((pg_catalog.xpath(
+      '/*[local-name()="table"]/*[local-name()="row"]/*[local-name()="row_count"]/text()',
+      (select count_xml from token_count)))[1]::text,'')::bigint=0,false),
     'La RPC de conciliación no deja tokens persistentes'
   union all select 'date_trigger',
     exists(select 1 from pg_trigger t
@@ -175,13 +181,14 @@ with objects as (
       and p.club_team_season_id='961970c8-0fcf-4c45-94d6-787647619c61'::uuid)=14,
     'Los 14 UUID históricos siguen vinculados al CTS aprobado'
 ), output as (
-  select check_name,case when ok then 'PASS' else 'FAIL' end as result,
+  select check_name,case
+      when (select token is null or roster is null or availability is null from objects)
+        then 'BLOCKED'
+      when ok then 'PASS' else 'FAIL' end as result,
     explanation as detail from checks
   union all select 'session_1_current_state','INFO',
     coalesce((select 'id='||s.id::text||'; date='||s.session_date::text||
-      '; revision='||s.revision::text||'; updated_at='||s.updated_at::text||
-      '; roster='||(select count(*) from public.planned_session_player_roster r
-        where r.session_id=s.id)::text
+      '; revision='||s.revision::text||'; updated_at='||s.updated_at::text
       from public.planned_training_sessions s
       where s.club_team_season_id='961970c8-0fcf-4c45-94d6-787647619c61'::uuid
         and s.session_number=1),'No existe o no es visible: revisar')
@@ -194,10 +201,12 @@ with objects as (
 ), final as (
   select check_name,result,detail from output
   union all
-  select 'GLOBAL',case when count(*) filter (where result='FAIL')=0
+  select 'GLOBAL',case when count(*) filter (where result='BLOCKED')>0
+    then 'BLOCKED' when count(*) filter (where result='FAIL')=0
     then 'PASS' else 'FAIL' end,
     count(*) filter (where result='PASS')::text||' comprobaciones estructurales PASS; '||
     count(*) filter (where result='FAIL')::text||' FAIL; '||
+    count(*) filter (where result='BLOCKED')::text||' BLOCKED; '||
     count(*) filter (where result='PENDING')::text||' pruebas PENDING'
   from output
 )
