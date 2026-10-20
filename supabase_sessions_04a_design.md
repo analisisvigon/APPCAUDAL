@@ -28,6 +28,10 @@ de `club_team_season_players`.
   escriben cabecera, franjas y actividades mediante RPC. Sus tablas de sesión
   solo tienen SELECT para clientes; la lectura hereda `can_read_club_team_season`.
   `planned_session_state` y los RPC actuales no incluyen plantilla.
+- El helper CTS da lectura implícita a owner/admin activos y al staff activo
+  con asignación explícita; no da lectura interna a player/viewer. Su variante
+  de escritura exige temporada abierta. La política de pertenencias de
+  Sesiones 01 oculta filas anuladas salvo al owner autorizado.
 - La primera hoja mantiene reservas visuales para Nº jugadores, Lesionados,
   cuatro grupos posicionales y distribución. No se ha cambiado ese frontend.
 
@@ -51,6 +55,8 @@ de `club_team_season_players`.
 
 La migración es **preparatoria, no funcional**: deja el esquema vacío. No
 inicializa automáticamente la sesión confirmada nº 1 ni altera su revisión.
+Es una única transacción e intenta ser reejecutable; si detecta un objeto de
+igual nombre con procedencia o guard incompatible, aborta sin aplicar cambios.
 Tras revisar el inventario habrá que autorizar **otro paso pequeño**: RPC nuevo
 que reciba UUID de pertenencias explícitamente confirmadas por el propietario
 para congelar la plantilla y RPC nuevo de disponibilidad. Sin esos RPC y su
@@ -82,8 +88,17 @@ interfaz, no se deben intentar escrituras directas para «probar» el modelo.
   y disponibilidad. Cualquier fallo debe revertir toda la transacción. No
   cambiar 03A/03C; esos RPC conservarán las nuevas tablas y detectarán CAS
   obsoleto cuando otro cliente haya guardado disponibilidad.
+- Para STAFF, bloquear también su fila de membership y la asignación CTS con
+  `FOR SHARE`, como 03C, antes de escribir. El guard de las tablas nuevas
+  comprueba permisos y temporada, pero **no sustituye** por sí solo el bloqueo
+  transaccional de revocación ni el aumento CAS/auditoría del RPC futuro.
 - Temporada cerrada: SELECT histórico según CTS, ninguna mutación. Sesión
   confirmada en temporada abierta: editable con la misma revisión CAS.
+- **Dependencia no resuelta:** 03A/03C permiten cambiar `session_date` y no
+  conocen las nuevas instantáneas. Antes de activar 04A hay que impedir que
+  una fecha editada coloque una pertenencia congelada fuera de su intervalo
+  acreditado, o exigir una conciliación explícita en la misma transacción.
+  La migración estructural no altera 03A/03C ni pretende resolver esto.
 
 ## Interfaz futura (no implementada)
 
@@ -106,7 +121,8 @@ mostrar aviso de desbordamiento, nunca recortar ni reducir excesivamente letra.
    `session_date`, `revision` y `updated_at` de esa sesión con el CSV previo.
 3. Identidades reales `authenticated`: owner y staff autorizado leen, staff
    no asignado y player no leen, anon no tiene SELECT/EXECUTE. Service role
-   **no** demuestra aislamiento RLS.
+   **no** demuestra aislamiento RLS. Admin/viewer solo si existe identidad
+   real acreditada; en caso contrario, PENDING, nunca PASS simulado.
 4. Paso RPC futuro: temporada abierta/cerrada, CTS ajeno, pertenencia anulada,
    jugador ajeno, UUID duplicado, dos pertenencias del mismo jugador, CAS
    obsoleto, cambio de plantilla posterior, sesión confirmada nº 1, hash y

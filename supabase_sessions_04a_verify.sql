@@ -78,7 +78,7 @@ with objects as (
   union all select 'guards_enabled',
     (select count(*) from pg_trigger t where t.tgrelid in
       ((select roster from objects),(select availability from objects))
-      and not t.tgisinternal and t.tgenabled='O'
+      and not t.tgisinternal and t.tgenabled='O' and t.tgtype=31
       and ((t.tgname='planned_session_player_roster_guard' and
         t.tgfoid=to_regprocedure('public.guard_planned_session_player_roster()'))
        or (t.tgname='planned_session_player_availability_guard' and
@@ -98,7 +98,9 @@ with objects as (
       and c.relrowsecurity)=2
     and (select count(*) from pg_policy p where p.polrelid in
       ((select roster from objects),(select availability from objects))
-      and p.polcmd='r' and p.polpermissive)=2
+      and p.polcmd='r' and p.polpermissive
+      and p.polroles=array['authenticated'::regrole::oid]
+      and p.polwithcheck is null)=2
     and (select count(*) from pg_policy p where p.polrelid in
       ((select roster from objects),(select availability from objects)))=2,
     'Solo dos políticas SELECT; RLS activa en ambas tablas'
@@ -106,8 +108,12 @@ with objects as (
     (select count(*) from pg_policy p where p.polrelid in
       ((select roster from objects),(select availability from objects))
       and position('can_read_club_team_season' in
-        lower(pg_get_expr(p.polqual,p.polrelid)))>0)=2,
-    'Expresión RLS referencia el helper CTS; revisión textual, no prueba dinámica'
+        lower(pg_get_expr(p.polqual,p.polrelid)))>0
+      and position('planned_training_sessions' in
+        lower(pg_get_expr(p.polqual,p.polrelid)))>0
+      and lower(pg_get_expr(p.polqual,p.polrelid)) !~
+        '(^|[^a-z_])or([^a-z_]|$)')=2,
+    'La expresión RLS usa sesión y helper CTS sin OR explícito; revisión textual, no prueba dinámica'
   union all select 'client_privileges',
     has_table_privilege('authenticated',(select roster from objects),'SELECT')
     and has_table_privilege('authenticated',(select availability from objects),'SELECT')

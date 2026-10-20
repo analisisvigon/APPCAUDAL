@@ -27,14 +27,34 @@ begin
            ((a.attname in ('id','club_team_season_id','player_id')
              and a.atttypid='uuid'::regtype and a.attnotnull)
             or (a.attname='voided_at'
-              and a.atttypid='timestamp with time zone'::regtype)))<>4
+              and a.atttypid='timestamp with time zone'::regtype)
+            or (a.attname in ('joined_on','left_on')
+              and a.atttypid='date'::regtype)))<>6
      or (select count(*) from pg_attribute a
          where a.attrelid=to_regclass('public.planned_training_sessions')
            and a.attnum>0 and not a.attisdropped and
            ((a.attname in ('id','club_team_season_id')
              and a.atttypid='uuid'::regtype and a.attnotnull)
             or (a.attname='revision' and a.atttypid='integer'::regtype
-              and a.attnotnull)))<>3 then
+              and a.attnotnull)
+            or (a.attname='session_date' and a.atttypid='date'::regtype
+              and a.attnotnull)))<>4
+     or (select count(*) from pg_attribute a
+         where a.attrelid=to_regclass('public.player_positions')
+           and a.attnum>0 and not a.attisdropped and
+           ((a.attname='player_id' and a.atttypid='uuid'::regtype)
+            or (a.attname in ('position_type','position_key')
+              and a.atttypid='text'::regtype)
+            or (a.attname='is_primary' and a.atttypid='boolean'::regtype)))<>4
+     or (select count(*) from pg_attribute a
+         where a.attrelid=to_regclass('public.players_database')
+           and a.attnum>0 and not a.attisdropped and
+           ((a.attname='id' and a.atttypid='uuid'::regtype)
+            or (a.attname='name' and a.atttypid='text'::regtype)))<>2
+     or not exists(select 1 from pg_attribute a
+         where a.attrelid=to_regclass('public.club_seasons')
+           and a.attname='status' and a.atttypid='text'::regtype
+           and a.attnotnull and not a.attisdropped) then
     raise exception 'Sesiones 04A: columnas o procedencia de tablas fuente incompatibles';
   end if;
   if to_regclass('public.planned_session_player_roster') is not null and
@@ -56,6 +76,18 @@ begin
      obj_description(to_regprocedure('public.guard_planned_session_player_availability()'),'pg_proc') is distinct from
        'APPCAUDAL Sesiones 04A: protect session availability mutations' then
     raise exception 'Sesiones 04A: nombre de guard de disponibilidad ocupado';
+  end if;
+  if exists(select 1 from pg_trigger t where
+       t.tgrelid=to_regclass('public.planned_session_player_roster')
+       and t.tgname='planned_session_player_roster_guard'
+       and t.tgfoid is distinct from
+         to_regprocedure('public.guard_planned_session_player_roster()'))
+     or exists(select 1 from pg_trigger t where
+       t.tgrelid=to_regclass('public.planned_session_player_availability')
+       and t.tgname='planned_session_player_availability_guard'
+       and t.tgfoid is distinct from
+         to_regprocedure('public.guard_planned_session_player_availability()')) then
+    raise exception 'Sesiones 04A: trigger preexistente incompatible';
   end if;
   if not exists (select 1 from public.club_team_seasons cts
       join public.club_seasons se on se.id=cts.season_id and se.club_id=cts.club_id
@@ -129,6 +161,7 @@ declare
   v_left_on date;
   v_name text;
   v_position text;
+  v_primary_count integer;
 begin
   if tg_op<>'INSERT' then
     raise exception 'La instantánea de plantilla es inmutable' using errcode='42501';
@@ -161,9 +194,12 @@ begin
     raise exception 'Nombre canónico de jugador vacío' using errcode='23514';
   end if;
   new.player_name_snapshot:=v_name;
-  select pos.position_key into v_position
+  select count(*),min(pos.position_key) into v_primary_count,v_position
   from public.player_positions pos
   where pos.player_id=new.player_id and pos.position_type='natural' and pos.is_primary;
+  if v_primary_count>1 then
+    raise exception 'Posición natural principal ambigua' using errcode='23514';
+  end if;
   new.position_key_snapshot:=v_position;
   new.created_at:=now();
   return new;
@@ -261,6 +297,12 @@ begin
      or (select count(*) from pg_policy where polrelid in
       ('public.planned_session_player_roster'::regclass,
        'public.planned_session_player_availability'::regclass))<>2
+     or (select count(*) from pg_policy where polrelid in
+      ('public.planned_session_player_roster'::regclass,
+       'public.planned_session_player_availability'::regclass)
+       and polcmd='r' and polpermissive
+       and polroles=array['authenticated'::regrole::oid]
+       and polwithcheck is null)<>2
      or has_table_privilege('authenticated','public.planned_session_player_roster','INSERT')
      or has_table_privilege('authenticated','public.planned_session_player_roster','UPDATE')
      or has_table_privilege('authenticated','public.planned_session_player_roster','DELETE')
@@ -284,7 +326,7 @@ begin
      or (select count(*) from pg_trigger where tgrelid in
       ('public.planned_session_player_roster'::regclass,
        'public.planned_session_player_availability'::regclass)
-      and not tgisinternal and tgenabled='O')<>2 then
+      and not tgisinternal and tgenabled='O' and tgtype=31)<>2 then
     raise exception 'Sesiones 04A: constraints o guards incompletos';
   end if;
 end $post$;

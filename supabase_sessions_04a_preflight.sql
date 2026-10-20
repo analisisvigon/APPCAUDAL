@@ -25,6 +25,8 @@ with context as (
        and to_regclass('public.club_team_season_players') is not null
        and to_regclass('public.players_database') is not null
        and to_regclass('public.player_positions') is not null
+       and to_regclass('public.jugadores') is not null
+       and to_regclass('public.player_team_memberships') is not null
        and to_regclass('public.planned_session_audit_events') is not null
       then 'PASS' else 'BLOCKED' end as result,
     jsonb_build_object('meaning','Tablas fuente requeridas') as detail
@@ -55,9 +57,28 @@ with context as (
           ((a.attname in ('id','club_team_season_id')
             and a.atttypid='uuid'::regtype and a.attnotnull)
            or (a.attname='revision' and a.atttypid='integer'::regtype
-             and a.attnotnull)))=3
+             and a.attnotnull)
+           or (a.attname='session_date' and a.atttypid='date'::regtype
+             and a.attnotnull)))=4
       then 'PASS' else 'BLOCKED' end,
     jsonb_build_object('meaning','Columnas y tipos esenciales de 01 y 03A')
+  union all select 'snapshot_source_columns',
+    case when (select count(*) from pg_attribute a
+        where a.attrelid=to_regclass('public.player_positions')
+          and a.attnum>0 and not a.attisdropped and
+          ((a.attname='player_id' and a.atttypid='uuid'::regtype)
+           or (a.attname in ('position_type','position_key')
+             and a.atttypid='text'::regtype)
+           or (a.attname='is_primary' and a.atttypid='boolean'::regtype)))=4
+      and exists(select 1 from pg_attribute a
+        where a.attrelid=to_regclass('public.players_database')
+          and a.attname='name' and a.atttypid='text'::regtype and not a.attisdropped)
+      and exists(select 1 from pg_attribute a
+        where a.attrelid=to_regclass('public.club_seasons')
+          and a.attname='status' and a.atttypid='text'::regtype
+          and a.attnotnull and not a.attisdropped)
+      then 'PASS' else 'BLOCKED' end,
+    jsonb_build_object('meaning','Nombre, posición canónica y cierre de temporada disponibles')
   union all select 'planned_rpcs',
     case when to_regprocedure('public.create_planned_session_draft(uuid,date)') is not null
        and to_regprocedure('public.save_planned_session(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])') is not null
@@ -77,6 +98,29 @@ with context as (
                              to_regclass('public.club_team_season_players'))
                  and relrowsecurity)=2 then 'PASS' else 'BLOCKED' end,
     jsonb_build_object('meaning','RLS habilitada en sesiones y pertenencias canónicas')
+  union all select 'source_foreign_keys',
+    case when exists(select 1 from pg_constraint c where
+        c.conrelid=to_regclass('public.club_team_season_players')
+        and c.confrelid=to_regclass('public.club_team_seasons')
+        and c.contype='f' and c.convalidated)
+      and exists(select 1 from pg_constraint c where
+        c.conrelid=to_regclass('public.club_team_season_players')
+        and c.confrelid=to_regclass('public.players_database')
+        and c.contype='f' and c.convalidated)
+      and exists(select 1 from pg_constraint c where
+        c.conrelid=to_regclass('public.planned_training_sessions')
+        and c.confrelid=to_regclass('public.club_team_seasons')
+        and c.contype='f' and c.convalidated)
+      then 'PASS' else 'BLOCKED' end,
+    jsonb_build_object('meaning','FK validadas de pertenencia y sesión hacia identidades canónicas')
+  union all select 'primary_position_index',
+    case when exists(select 1 from pg_index ix join pg_class idx on idx.oid=ix.indexrelid
+        where ix.indrelid=to_regclass('public.player_positions')
+          and idx.relname='player_positions_one_primary_per_type_uidx'
+          and ix.indisunique and ix.indisvalid
+          and position('is_primary' in pg_get_expr(ix.indpred,ix.indrelid))>0)
+      then 'PASS' else 'BLOCKED' end,
+    jsonb_build_object('meaning','Unicidad de posición principal por tipo; revisar definición exacta del índice')
   union all select 'target_names_free',
     case when to_regclass('public.planned_session_player_roster') is null
        and to_regclass('public.planned_session_player_availability') is null
@@ -92,8 +136,29 @@ with context as (
     'distinct_nonvoid_players',count(distinct player_id) filter (where voided_at is null),
     'unknown_arrival',count(*) filter (where voided_at is null and joined_on is null),
     'unknown_departure',count(*) filter (where voided_at is null and has_departed and left_on is null),
-    'without_primary_natural_position',count(*) filter (where voided_at is null and primary_count<>1))
+    'without_primary_natural_position',count(*) filter (where voided_at is null and primary_count<>1),
+    'unsupported_primary_position',count(*) filter (where voided_at is null
+      and primary_position is not null and primary_position not in
+        ('goalkeeper','defender','midfielder','forward')))
   from roster
+  union all
+  select 'summary','legacy_comparison_only','INFO',jsonb_build_object(
+    'current_sports_stages',(select count(*) from public.player_team_memberships m
+      where m.team_id='85a16f33-9fe5-44d4-b85d-37d73651ebf6'::uuid and m.is_current),
+    'active_legacy_fichas',(select count(distinct j.global_player_id)
+      from public.jugadores j
+      join public.player_team_memberships m on m.id=j.membership_id
+      where m.team_id='85a16f33-9fe5-44d4-b85d-37d73651ebf6'::uuid
+        and j.active_in_squad and j.global_player_id is not null),
+    'active_fichas_without_canonical_link',(select count(distinct j.global_player_id)
+      from public.jugadores j
+      join public.player_team_memberships m on m.id=j.membership_id
+      where m.team_id='85a16f33-9fe5-44d4-b85d-37d73651ebf6'::uuid
+        and j.active_in_squad and j.global_player_id is not null
+        and not exists(select 1 from public.club_team_season_players c
+          where c.club_team_season_id='961970c8-0fcf-4c45-94d6-787647619c61'::uuid
+            and c.player_id=j.global_player_id and c.voided_at is null)),
+    'warning','Solo comparación; NUNCA copiar por coincidencia legacy')
   union all
   select 'player',membership_id::text,
     case when voided_at is not null then 'VOIDED'
@@ -110,8 +175,12 @@ with context as (
   from public.planned_training_sessions s
   where s.club_team_season_id='961970c8-0fcf-4c45-94d6-787647619c61'::uuid
   union all
-  select 'global','04A','BLOCKED',jsonb_build_object(
-    'reason','No autorizar carga ni migración hasta conciliar jugadores, fechas y esquema real; este inventario no prueba permisos por identidad')
+  select 'global','04A',
+    case when exists(select 1 from checks where result='BLOCKED') then 'BLOCKED'
+         else 'REVIEW_REQUIRED' end,
+    jsonb_build_object('checks_passed',(select count(*) from checks where result='PASS'),
+      'checks_total',(select count(*) from checks),
+      'reason','Conciliar jugadores y fechas antes de autorizar; el inventario no prueba permisos por identidad')
 )
 select section,object_name,result,detail from report
 order by case section when 'check' then 0 when 'summary' then 1
