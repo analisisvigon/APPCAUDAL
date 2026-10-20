@@ -34,20 +34,23 @@ export function SessionPlayerDistribution({ distribution, roster, availability, 
   }
   return <div className="planned-distribution-board" aria-label="Distribución de jugadores de la sesión">
     <strong className="planned-distribution-heading">Distribución jugadores disponibles sesión</strong>
-    {canEdit ? <label className="planned-distribution-system">Sistema
+    <div className="planned-distribution-meta">{canEdit ? <label className="planned-distribution-system">Sistema
       <select value={distribution.formation_key || ''} onChange={(event) => onFormationChange(event.target.value || null)}>
         <option value="">Sin sistema</option>
         {SESSION_SYSTEMS.map((system) => <option key={system} value={system}>{system}</option>)}
       </select>
-    </label> : distribution.formation_key ? <span className="planned-distribution-system-read">{distribution.formation_key}</span> : null}
+    </label> : <span className="planned-distribution-system-read">{distribution.formation_key ? `Sistema ${distribution.formation_key}` : 'Sin sistema'}</span>}</div>
     <div className="planned-distribution-field planned-distribution-player-field">
       <FieldLines />
       {[...groups.values()].map((group) => {
         const keys = [...new Set(group.players.map((player) => positionById.get(player.player_id)).filter(Boolean))];
-        const halfHeight = Math.min(44, 4 + group.players.length * 1.7);
+        const halfHeight = Math.min(46, 4 + group.players.length * 2.1);
         const displayY = Math.max(halfHeight, Math.min(100 - halfHeight, group.y));
-        return <div key={`${group.x}:${group.y}`} className="planned-distribution-player-group"
-          style={{ left: `${group.x}%`, top: `${displayY}%` }}>
+        const displayX = Math.max(18, Math.min(82, group.x));
+        const density = group.players.length > 8 ? ' planned-distribution-player-group-crowded'
+          : group.players.length > 4 ? ' planned-distribution-player-group-dense' : '';
+        return <div key={`${group.x}:${group.y}`} className={`planned-distribution-player-group${density}`}
+          style={{ left: `${displayX}%`, top: `${displayY}%` }}>
           <b>{keys.map((key) => getSpecificPositionLabel(key) || key).join(' / ')}</b>
           {group.players.map((player) => <span key={player.player_id}
             className={statusClass(availability[player.player_id]?.status)} title={player.player_name_snapshot}>
@@ -75,8 +78,9 @@ export function SessionSpaceDistribution({ zones = [], slots = [], canEdit = fal
   const fieldRef = useRef(null);
   const dragRef = useRef(null);
   const ordered = PLANNED_PHASES.flatMap((phase) => slots.filter((slot) => slot.phase === phase.key));
-  const slotById = new Map(ordered.map((slot, index) => [slot.id,
-    `${phaseLabel(slot.phase)} · Ej. ${index + 1}`]));
+  const slotById = new Map(ordered.map((slot, index) => [slot.id, {
+    short: `E${index + 1}`, label: `${phaseLabel(slot.phase)} · Ej. ${index + 1}`,
+  }]));
   const visibleZones = zones.filter((zone) => slotById.has(zone.slot_id));
   const overlaps = overlappingZonePairs(visibleZones);
   const move = (event) => {
@@ -99,12 +103,15 @@ export function SessionSpaceDistribution({ zones = [], slots = [], canEdit = fal
   };
   return <div className="planned-distribution-board" aria-label="Distribución del espacio por ejercicio">
     <strong className="planned-distribution-heading">Distribución del espacio</strong>
+    <div className="planned-distribution-meta"><span className="planned-distribution-space-summary">
+      {visibleZones.length} {visibleZones.length === 1 ? 'ejercicio' : 'ejercicios'}
+    </span></div>
     <div className="planned-distribution-field planned-distribution-space-field" ref={fieldRef}>
       <FieldLines />
       {visibleZones.map((zone) => <div key={zone.slot_id}
         className={`planned-distribution-zone planned-distribution-zone-${zone.color} ${zone.provisional ? 'planned-distribution-zone-provisional' : ''} ${overlaps.some((pair) => pair.includes(zone.slot_id)) ? 'planned-distribution-zone-overlap' : ''}`}
         style={{ left: `${zone.x}%`, top: `${zone.y}%`, width: `${zone.w}%`, height: `${zone.h}%` }}
-        title={`${slotById.get(zone.slot_id)}${zone.provisional ? ' · zona provisional' : ''}`}
+        title={`${slotById.get(zone.slot_id).label}${zone.provisional ? ' · zona provisional' : ''}`}
         onPointerDown={canEdit ? (event) => {
           event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
           dragRef.current = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY,
@@ -118,18 +125,18 @@ export function SessionSpaceDistribution({ zones = [], slots = [], canEdit = fal
           }
         } : undefined}
         onPointerCancel={canEdit ? () => { dragRef.current = null; } : undefined}>
-        <span>{slotById.get(zone.slot_id)}</span>
-        {canEdit ? <i data-resize="true" aria-label={`Redimensionar ${slotById.get(zone.slot_id)}`} /> : null}
+        <span>{slotById.get(zone.slot_id).short}</span>
+        {canEdit ? <i data-resize="true" aria-label={`Redimensionar ${slotById.get(zone.slot_id).label}`} /> : null}
       </div>)}
     </div>
     <div className="planned-distribution-legend">
       {visibleZones.map((zone) => <span key={zone.slot_id}>
         <i className={`planned-distribution-swatch planned-distribution-zone-${zone.color}`} />
-        {slotById.get(zone.slot_id)}{zone.provisional ? ' · provisional' : ''}
+        {slotById.get(zone.slot_id).label}{zone.provisional ? ' · provisional' : ''}
       </span>)}
     </div>
     {overlaps.length ? <small>Zonas superpuestas: {overlaps.map(([left, right]) =>
-      `${slotById.get(left)} / ${slotById.get(right)}`).join('; ')}. No implica conflicto temporal.</small> : null}
+      `${slotById.get(left).short} / ${slotById.get(right).short}`).join('; ')}. No implica conflicto temporal.</small> : null}
     {canEdit && visibleZones.length ? <small>Arrastra las zonas; usa la esquina para cambiar su tamaño. Las nuevas son propuestas provisionales.</small> : null}
   </div>;
 }
