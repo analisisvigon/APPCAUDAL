@@ -134,19 +134,37 @@ with objects as (
       s.club_team_season_id='961970c8-0fcf-4c45-94d6-787647619c61'::uuid
       and s.session_number=1 and s.planning_state='confirmed')=1,
     'Sesión confirmada nº 1 presente; comparar fecha/revisión con preflight'
+), counts as (
+  select
+    case when roster is not null then pg_catalog.query_to_xml(
+      'select count(*) as row_count from public.planned_session_player_roster',
+      true,false,'') end as roster_xml,
+    case when availability is not null then pg_catalog.query_to_xml(
+      'select count(*) as row_count from public.planned_session_player_availability',
+      true,false,'') end as availability_xml
+  from objects
 ), report as (
-  select check_name,case when ok then 'PASS' else 'FAIL' end as result,
+  select check_name,case
+      when (select roster is null or availability is null from objects) then 'BLOCKED'
+      when ok then 'PASS' else 'FAIL' end as result,
     explanation from checks
 ), output as (
   select check_name,result,explanation from report
-  union all select 'GLOBAL',case when bool_and(result='PASS') then 'PASS'
-    else 'FAIL' end,
+  union all select 'GLOBAL',case
+      when bool_or(result='BLOCKED') then 'BLOCKED'
+      when bool_and(result='PASS') then 'PASS' else 'FAIL' end,
     format('%s/%s comprobaciones estructurales; identidad y CAS aún PENDING',
       count(*) filter(where result='PASS'),count(*)) from report
-  union all select 'ROSTER_ROWS','INFO',
-    (select count(*)::text from public.planned_session_player_roster)
-  union all select 'AVAILABILITY_OVERRIDE_ROWS','INFO',
-    (select count(*)::text from public.planned_session_player_availability)
+  union all select 'ROSTER_ROWS',
+    case when roster_xml is null then 'PENDING' else 'INFO' end,
+    coalesce(nullif((pg_catalog.xpath(
+      '/*[local-name()="table"]/*[local-name()="row"]/*[local-name()="row_count"]/text()',
+      roster_xml))[1]::text,'')::bigint::text,'Tabla 04A no instalada') from counts
+  union all select 'AVAILABILITY_OVERRIDE_ROWS',
+    case when availability_xml is null then 'PENDING' else 'INFO' end,
+    coalesce(nullif((pg_catalog.xpath(
+      '/*[local-name()="table"]/*[local-name()="row"]/*[local-name()="row_count"]/text()',
+      availability_xml))[1]::text,'')::bigint::text,'Tabla 04A no instalada') from counts
 )
 select check_name,result,explanation from output
 order by case when check_name='GLOBAL' then 1 else 0 end,check_name;
