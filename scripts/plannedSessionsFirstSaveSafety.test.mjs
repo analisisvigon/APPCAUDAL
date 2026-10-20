@@ -11,11 +11,15 @@ assert.match(source, /creating && \['42501', '23514', '22023'\]\.includes\(cause
   'un rechazo explícito de permisos o validación no se confunde con una respuesta incierta');
 assert.match(source, /operationRef\.current \|\| creationUncertain\) return;/,
   'Guardar no vuelve a crear un borrador tras una respuesta incierta');
-assert.match(source, /disabled=\{busy \|\| !dirty \|\| conflict \|\| creationUncertain\}/,
+assert.match(source, /disabled=\{busy \|\| !editorDirty \|\| conflict \|\| creationUncertain \|\| dateNeedsReconciliation\}/,
   'el botón Guardar comunica el bloqueo');
 assert.match(source, /const revision = await savePlannedSession\([\s\S]*?const data = await loadPlannedSession\([\s\S]*?setNotice\('Sesión guardada y recargada desde el servidor\.'\)/,
   'el éxito completo solo se muestra después de confirmar y recargar el snapshot');
 assert.match(source, /if \(use03c\) setCreationUncertain\(true\);/,
   'si 03C confirma pero falla la recarga se bloquean nuevos guardados hasta verificar el snapshot');
+assert.match(source, /if \(dateNeedsReconciliation\) \{[\s\S]*?return;[\s\S]*?const issues = getPlannedEditorIssues/,
+  'el guardado 03A/03C no envía una fecha de plantilla congelada');
+assert.match(source, /reconcilePlannedDate\(client, editor\.id, editor\.revision, editor\.session_date/,
+  'la conciliación de fecha utiliza la revisión CAS de 04B');
 
 console.log('planned sessions first-save safety audit passed');

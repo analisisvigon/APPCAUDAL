@@ -33,6 +33,23 @@
 .planned-sheet-side-metrics > span, .planned-sheet-side-metrics > .planned-sheet-pending { display: grid; align-content: center; border-bottom: 1px solid #222; }
 .planned-sheet-side-metrics b { font-size: 11pt; }
 .planned-sheet-roster { display: grid; grid-template-columns: 1fr 2fr 2fr 2fr; min-height: 43mm; border: 1px solid #111; }
+.planned-sheet-roster:has(> .planned-roster-group:nth-child(5)) { grid-template-columns: 1fr 2fr 2fr 2fr 1.4fr; }
+.planned-sheet-roster-metric { display: flex; align-items: center; justify-content: space-between; gap: 2mm; min-height: 13mm; border-right: 1px solid #222; border-bottom: 1px solid #222; padding: 2mm; font-size: 8pt; }
+.planned-roster-group { min-width: 0; border-right: 1px solid #111; }
+.planned-roster-group:last-of-type { border-right: 0; }
+.planned-sheet-roster .planned-roster-group > b { display: block; padding: 1mm; background: #111; color: #fff; text-align: center; font-size: 8pt; }
+.planned-roster-player { position: relative; display: flex; align-items: center; gap: .8mm; min-height: 3.5mm; padding: 0 .7mm; font-size: 7pt; line-height: 1.1; }
+.planned-roster-player-unselected { opacity: .45; }
+.planned-roster-player input[type="checkbox"] { flex: none; width: 3mm; height: 3mm; margin: 0; }
+.planned-roster-name { min-width: 0; overflow-wrap: anywhere; }
+.planned-roster-player select { min-width: 0; max-width: 22mm; margin-left: auto; border: 1px solid #bbb; background: #fff; font-size: 6pt; }
+.planned-roster-observation-editor { flex: none; font-size: 6pt; }
+.planned-roster-observation-editor summary { cursor: pointer; color: #1263a7; white-space: nowrap; }
+.planned-roster-observation-editor input { position: absolute; z-index: 5; right: 0; top: 100%; width: 55mm; max-width: none; border: 1px solid #1263a7; background: #fff; padding: 1mm; font-size: 8pt; box-shadow: 0 2mm 4mm #0003; }
+.planned-roster-status { margin-left: auto; font-size: 6pt; color: #444; }
+.planned-roster-observation-text { display: block; overflow-wrap: anywhere; font-size: 6pt; }
+.planned-roster-counts { grid-column: 1 / -1; border-top: 1px solid #111; padding: .6mm 1mm; font-size: 7pt; }
+.planned-roster-empty { grid-column: 1 / -1; margin: 2mm; font-size: 8pt; }
 .planned-sheet-roster .planned-sheet-pending { border-right: 1px solid #111; text-align: center; }
 .planned-sheet-roster .planned-sheet-pending:last-child { border-right: 0; }
 .planned-sheet-roster .planned-sheet-pending b { display: block; padding: 1.5mm; background: #111; color: #fff; font-size: 10pt; }

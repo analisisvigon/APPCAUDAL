@@ -8,6 +8,8 @@ import { readTrainingTaskEditorPayload } from '../../utils/trainingTaskEditorPay
 import TrainingTaskBoardPreview from './TrainingTaskBoardPreview';
 import TrainingTaskBoardEditor from './TrainingTaskBoardEditor';
 import PlannedSessionPrint from './PlannedSessionPrint';
+import PlannedSessionRoster from './PlannedSessionRoster';
+import { sessionPlayerCounts } from '../../utils/plannedSessionPlayers';
 import './plannedSessionDocument.css';
 
 const PhaseName = ({ phase }) => PLANNED_PHASES.find((entry) => entry.key === phase)?.label || phase;
@@ -221,7 +223,8 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
 export default function PlannedSessionDocument({ editor, selected, canEdit, busy, fieldIssue,
   updateEditor, updateSlot, updateTask, moveSlot, moveItem, moveItemToSlot,
   addExercise, addTask, removeTask, removeSlot, changePhase, libraryTasks, libraryLoading,
-  libraryError, selectLibraryTask, switchToFreeTask }) {
+  libraryError, selectLibraryTask, switchToFreeTask, roster, frozen,
+  selectedMembershipIds, availability, onSelectPlayer, onAvailability }) {
   const [zoom, setZoom] = useState(100);
   const [fitZoom, setFitZoom] = useState(100);
   const viewportRef = useRef(null);
@@ -261,13 +264,15 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
     }) : null;
     printRef.current?.querySelectorAll('.planned-print-sheet').forEach((sheet) => observer?.observe(sheet));
     return () => { window.cancelAnimationFrame(frame); observer?.disconnect(); };
-  }, [editor, selected, printSheets.length]);
+  }, [editor, selected, roster, availability, selectedMembershipIds, printSheets.length]);
   const printDocument = () => {
     if (printOverflow && !window.confirm('El contenido supera dos hojas A4. La impresión conservará todo el contenido y puede necesitar más páginas. ¿Continuar?')) return;
     window.print();
   };
   const ordered = PLANNED_PHASES.flatMap((phase) => editor.slots.filter((slot) => slot.phase === phase.key));
   const numberOf = (id) => ordered.findIndex((slot) => slot.id === id) + 1;
+  const visibleRoster = frozen ? roster : roster.filter((row) => selectedMembershipIds.includes(row.id));
+  const playerCounts = sessionPlayerCounts(visibleRoster, frozen ? availability : {});
   const field = (label, value, onChange, issue, options = {}) =>
     <SheetField label={label} value={value} onChange={onChange} issue={issue}
       disabled={!canEdit || busy} {...options} />;
@@ -312,11 +317,11 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
               {field('Día', editor.session_date, (value) => updateEditor((current) => ({ ...current, session_date: value })), fieldIssue('session_date'), { type: 'date' })}
               {field('Hora', editor.header.starts_at, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, starts_at: value } })), fieldIssue('starts_at'), { type: 'time' })}
               {field('Lugar', editor.header.location, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, location: value } })), fieldIssue('location'))}
-              <PendingArea label="Nº jugadores" />
+              <div className="planned-sheet-roster-metric"><b>Nº jugadores</b><span>{frozen ? playerCounts.participants : '—'}</span></div>
               {field('Periodo', editor.header.period_label, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, period_label: value } })), fieldIssue('period_label'))}
               {field('Morf. patrón', editor.header.morphology_pattern, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, morphology_pattern: value } })), fieldIssue('morphology_pattern'))}
               {field('Rival', editor.header.next_opponent_label, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, next_opponent_label: value } })), fieldIssue('next_opponent_label'))}
-              <PendingArea label="Lesionados" />
+              <div className="planned-sheet-roster-metric"><b>Lesionados</b><span>{frozen ? playerCounts.injured : '—'}</span></div>
             </div>
             <div className="planned-sheet-cover-objectives">
               <div className="planned-sheet-side-metrics">
@@ -333,10 +338,9 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
               </div>
               <div className="planned-sheet-side-metrics"><PendingArea label="Valor (0–10)" /><PendingArea label="UA Tom Scale" /></div>
             </div>
-            <div className="planned-sheet-roster">
-              {['Porteros', 'Defensas', 'Centrocampistas', 'Delanteros'].map((position) =>
-                <PendingArea key={position} label={position} />)}
-            </div>
+            <PlannedSessionRoster roster={roster} frozen={frozen} selectedIds={selectedMembershipIds}
+              availability={availability} onSelect={onSelectPlayer} onAvailability={onAvailability}
+              canEdit={canEdit && !busy && Boolean(editor.id)} />
             <div className="planned-sheet-cover-lower">
               <PendingArea label="Distribución jugadores disponibles sesión"><PitchOutline /></PendingArea>
               <PendingArea label="Distribución del espacio"><PitchOutline /></PendingArea>
@@ -374,7 +378,8 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
       </div>
     </div>
     <p className="planned-document-note">Vista editorial de 03B. La exportación PDF definitiva y las zonas marcadas como pendientes no están activadas.</p>
-    <PlannedSessionPrint editor={editor} selected={selected} pages={printSheets} printRef={printRef} />
+    <PlannedSessionPrint editor={editor} selected={selected} pages={printSheets} printRef={printRef}
+      roster={frozen ? roster : []} availability={availability} />
     {boardLocation?.item.kind === 'library_task' ? <div className="planned-board-dialog-backdrop">
       <div className="planned-board-dialog" role="dialog" aria-modal="true" aria-label="Editar pizarra de la copia">
         <div className="planned-board-dialog-head"><strong>Pizarra de la copia de Sesiones</strong>

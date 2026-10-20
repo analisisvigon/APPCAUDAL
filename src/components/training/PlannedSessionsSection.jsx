@@ -19,7 +19,13 @@ import {
   loadPlannedSession,
   listPlannedLibraryTasks,
   savePlannedSession,
+  loadPlannedRosterCandidates,
+  loadPlannedSessionPlayers,
+  freezePlannedRoster,
+  savePlannedAvailability,
+  reconcilePlannedDate,
 } from '../../data/plannedSessionsStore';
+import { availabilityChanges, eligibleRosterCandidates, hasUncertainRosterDate } from '../../utils/plannedSessionPlayers';
 import PlannedSessionDocument from './PlannedSessionDocument';
 
 const panel = 'rounded-2xl border border-white/10 bg-[#0b1a2d]/85 p-4 sm:p-5';
@@ -66,12 +72,28 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [creationUncertain, setCreationUncertain] = useState(false);
   const [validationIssues, setValidationIssues] = useState([]);
   const [expandedSlotId, setExpandedSlotId] = useState(null);
+  const [roster, setRoster] = useState([]);
+  const [candidates, setCandidates] = useState([]);
+  const [selectedMembershipIds, setSelectedMembershipIds] = useState([]);
+  const [initialSelectedMembershipIds, setInitialSelectedMembershipIds] = useState([]);
+  const [availability, setAvailability] = useState({});
+  const [availabilityBaseline, setAvailabilityBaseline] = useState({});
+  const [playersError, setPlayersError] = useState('');
   const selected = contexts.find((row) => row.id === contextId) || null;
   const isManager = membership?.is_active === true && ['owner', 'admin'].includes(membership?.role);
   const canWriteContext = canWritePlannedContext(membership, selected);
-  const canEdit = canWriteContext && !unsupportedItems &&
+  const canEdit = canWriteContext && !unsupportedItems && !playersError &&
     !(editor?.id && editor.planning_state === 'confirmed' && editor.session_number == null);
-  const dirty = Boolean(editor && (!baseline || JSON.stringify(editor) !== JSON.stringify(baseline)));
+  const editorDirty = Boolean(editor && (!baseline || JSON.stringify(editor) !== JSON.stringify(baseline)));
+  const availabilityDirty = Boolean(roster.length && availabilityChanges(availability, availabilityBaseline, roster).length);
+  const selectionDirty = Boolean(editor?.id && !roster.length &&
+    JSON.stringify([...selectedMembershipIds].sort()) !== JSON.stringify([...initialSelectedMembershipIds].sort()));
+  const dirty = editorDirty || availabilityDirty || selectionDirty;
+  const frozen = roster.length > 0;
+  const dateNeedsReconciliation = Boolean(frozen && editor?.session_date !== baseline?.session_date);
+  const onlyDateDirty = Boolean(dateNeedsReconciliation && baseline &&
+    JSON.stringify({ ...editor, session_date: baseline.session_date }) === JSON.stringify(baseline));
+  const proposed = eligibleRosterCandidates(candidates, editor?.session_date);
   const storageKey = membership?.club_id && userId
     ? `appcaudal-planned-cts:${membership.club_id}:${userId}` : '';
 
@@ -79,6 +101,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   useEffect(() => {
     setEditor(null); setBaseline(null); setSessions([]); setSessionsLoadError(false);
+    setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
+    setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
     setUnsupportedItems(false); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null); setContextId('');
   }, [membership?.club_id, userId]);
   useEffect(() => {
@@ -152,6 +176,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const changeContext = (nextId) => {
     if (busy || !requestDiscard()) return;
     setEditor(null); setBaseline(null); setUnsupportedItems(false); setValidationIssues([]); setExpandedSlotId(null);
+    setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
+    setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
     setContextId(nextId); setError(''); setNotice(''); setConflict(false); setCreationUncertain(false);
     try { if (storageKey) window.localStorage.setItem(storageKey, nextId); } catch { /* opcional */ }
   };
@@ -160,17 +186,29 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     operationRef.current = true;
     setBusy(true); setError(''); setNotice('');
     try {
-      const data = await loadPlannedSession(client, sessionId, contextId);
+      const [data, players] = await Promise.all([
+        loadPlannedSession(client, sessionId, contextId), loadPlannedSessionPlayers(client, sessionId),
+      ]);
       const next = hydratePlannedEditor(data.session, data.slots, data.items);
+      const nextCandidates = players.roster.length ? [] : await loadPlannedRosterCandidates(client, contextId);
+      const nextAvailability = Object.fromEntries(players.availability.map((row) => [row.player_id,
+        { status: row.status, observation: row.observation || '' }]));
       setUnsupportedItems(unsupportedSession(data, next));
       setEditor(next); setBaseline(next); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null);
+      setRoster(players.roster); setCandidates(nextCandidates);
+      const initialIds = eligibleRosterCandidates(nextCandidates, next.session_date).map((row) => row.id);
+      setSelectedMembershipIds(initialIds); setInitialSelectedMembershipIds(initialIds);
+      setAvailability(nextAvailability); setAvailabilityBaseline(nextAvailability); setPlayersError('');
     } catch (cause) {
+      setPlayersError(`${errorKind(cause)}: ${readError(cause)}`);
       setError(`${errorKind(cause)}: no se pudo abrir la sesión. ${readError(cause)}`);
     } finally { operationRef.current = false; setBusy(false); }
   };
   const startNew = () => {
     if (!canWriteContext || busy || !requestDiscard()) return;
     setEditor(createEmptyPlannedEditor()); setBaseline(null);
+    setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
+    setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
     setUnsupportedItems(false); setError(''); setNotice(''); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null);
     requestAnimationFrame(() => document.querySelector('[data-planned-session-document]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
@@ -215,6 +253,10 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
 
   const save = async () => {
     if (!editor || !selected || !canEdit || busy || operationRef.current || creationUncertain) return;
+    if (dateNeedsReconciliation) {
+      setError('La fecha de una sesión con plantilla congelada requiere conciliación expresa antes de guardar otros cambios.');
+      return;
+    }
     const issues = getPlannedEditorIssues(editor, selected);
     if (issues.length) {
       setValidationIssues(issues); setExpandedSlotId(issues.find((issue) => issue.slotId)?.slotId || null);
@@ -226,6 +268,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     let working = editor;
     let original = baseline;
     let creating = false;
+    const wasNew = !working.id;
     try {
       if (!working.id) {
         creating = true;
@@ -246,6 +289,12 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         if (use03c) assertPlanned03cReload(working, fresh, revision);
         setEditor(fresh); setBaseline(fresh);
         setUnsupportedItems(unsupportedSession(data, fresh));
+        if (wasNew) {
+          const nextCandidates = await loadPlannedRosterCandidates(client, selected.id);
+          setCandidates(nextCandidates);
+          const initialIds = eligibleRosterCandidates(nextCandidates, fresh.session_date).map((row) => row.id);
+          setSelectedMembershipIds(initialIds); setInitialSelectedMembershipIds(initialIds);
+        }
         setNotice('Sesión guardada y recargada desde el servidor.');
       } catch (reloadError) {
         if (use03c) setCreationUncertain(true);
@@ -300,6 +349,98 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       if (cause?.code === '40001') setConflict(true);
       setError(`${errorKind(cause)}: no se pudo confirmar. ${readError(cause)}`);
     } finally { operationRef.current = false; setBusy(false); }
+  };
+
+  const reloadPlayersAfter04b = async (expectedRevision, pendingDate = null) => {
+    const [data, players] = await Promise.all([
+      loadPlannedSession(client, editor.id, selected.id), loadPlannedSessionPlayers(client, editor.id),
+    ]);
+    if (data.session.revision !== expectedRevision) throw new Error('La revisión devuelta no coincide con la sesión recargada. Recarga la ficha.');
+    const fresh = hydratePlannedEditor(data.session, data.slots, data.items);
+    const nextAvailability = Object.fromEntries(players.availability.map((row) => [row.player_id,
+      { status: row.status, observation: row.observation || '' }]));
+    setEditor(pendingDate ? { ...fresh, session_date: pendingDate } : fresh);
+    setBaseline(fresh); setRoster(players.roster);
+    setAvailability(nextAvailability); setAvailabilityBaseline(nextAvailability);
+    setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]); setPlayersError('');
+    return players;
+  };
+
+  const handle04bError = (cause, action) => {
+    if (cause?.code === '40001') {
+      setConflict(true);
+      setError(`La revisión cambió mientras intentabas ${action}. No se sobrescribieron tus cambios; recarga la sesión para continuar.`);
+    } else {
+      if (!['42501', '23514', '23505', '22023'].includes(cause?.code)) setCreationUncertain(true);
+      setError(`${errorKind(cause)}: no se pudo ${action}. ${readError(cause)}`);
+    }
+  };
+
+  const freezeRoster = async () => {
+    if (!editor?.id || !canEdit || busy || operationRef.current || conflict || creationUncertain || playersError ||
+        frozen || editorDirty || availabilityDirty) return;
+    const chosen = proposed.filter((row) => selectedMembershipIds.includes(row.id));
+    if (!chosen.length || chosen.length > 100 || new Set(chosen.map((row) => row.player_id)).size !== chosen.length) {
+      setError('Selecciona entre 1 y 100 jugadores sin identidades duplicadas antes de confirmar.'); return;
+    }
+    if (!window.confirm(`¿Congelar ${chosen.length} jugadores en esta sesión? La selección se guardará como instantánea histórica y no se podrá retirar desde esta interfaz.`)) return;
+    const confirmedExisting = editor.planning_state === 'confirmed';
+    if (confirmedExisting && !window.confirm('Esta sesión ya está confirmada. ¿Confirmas expresamente incorporar su plantilla sin alterar número ni ejercicios?')) return;
+    const uncertain = chosen.some(hasUncertainRosterDate);
+    if (uncertain && !window.confirm('Hay jugadores con fecha de incorporación o salida desconocida. Su pertenencia de temporada no prueba presencia en este entrenamiento. ¿Confirmas expresamente su inclusión?')) return;
+    operationRef.current = true; setBusy(true); setError(''); setNotice('');
+    try {
+      const revision = await freezePlannedRoster(client, editor.id, editor.revision,
+        chosen.map((row) => row.id), uncertain, confirmedExisting);
+      const players = await reloadPlayersAfter04b(revision);
+      if (players.roster.length !== chosen.length) throw new Error('La plantilla recargada no coincide con la selección.');
+      setNotice(`Plantilla de ${chosen.length} jugadores confirmada por el servidor.`);
+    } catch (cause) { handle04bError(cause, 'congelar la plantilla'); }
+    finally { operationRef.current = false; setBusy(false); }
+  };
+
+  const saveAvailability = async () => {
+    if (!editor?.id || !canEdit || !frozen || busy || operationRef.current || conflict || creationUncertain ||
+        (editorDirty && !onlyDateDirty)) return;
+    const changes = availabilityChanges(availability, availabilityBaseline, roster);
+    if (!changes.length) return;
+    if (changes.some((row) => row.observation && row.observation.length > 1000)) {
+      setError('Las observaciones no pueden superar 1000 caracteres.'); return;
+    }
+    operationRef.current = true; setBusy(true); setError(''); setNotice('');
+    try {
+      const revision = await savePlannedAvailability(client, editor.id, editor.revision, changes);
+      await reloadPlayersAfter04b(revision, dateNeedsReconciliation ? editor.session_date : null);
+      setNotice('Disponibilidad guardada y recargada desde el servidor.');
+    } catch (cause) { handle04bError(cause, 'guardar la disponibilidad'); }
+    finally { operationRef.current = false; setBusy(false); }
+  };
+
+  const reconcileDate = async () => {
+    if (!editor?.id || !canEdit || !dateNeedsReconciliation || busy || operationRef.current || conflict ||
+        creationUncertain || availabilityDirty) return;
+    if (!onlyDateDirty) {
+      setError('Guarda o descarta los demás cambios antes de conciliar la fecha.'); return;
+    }
+    const issues = getPlannedEditorIssues(editor, selected).filter((issue) => issue.field === 'session_date');
+    if (issues.length) { setError(`Validación: ${issues[0].message}`); return; }
+    const names = roster.map((row) => row.player_name_snapshot).join(', ');
+    const cancelDate = () => setEditor((current) => ({ ...current, session_date: baseline.session_date }));
+    if (!window.confirm(`¿Cambiar la fecha a ${editor.session_date} manteniendo exactamente estos ${roster.length} jugadores congelados?\n${names}`)) {
+      cancelDate(); return;
+    }
+    if (!window.confirm('Si alguna fecha de incorporación o salida es incierta, ¿confirmas expresamente que has revisado la pertenencia de todos estos jugadores para la nueva fecha?')) {
+      cancelDate(); return;
+    }
+    operationRef.current = true; setBusy(true); setError(''); setNotice('');
+    try {
+      const revision = await reconcilePlannedDate(client, editor.id, editor.revision, editor.session_date,
+        roster.map((row) => row.source_membership_id), true);
+      await reloadPlayersAfter04b(revision);
+      setNotice('Fecha conciliada y recargada desde el servidor.');
+      await refreshList(selected.id);
+    } catch (cause) { handle04bError(cause, 'conciliar la fecha'); }
+    finally { operationRef.current = false; setBusy(false); }
   };
 
   const addExercise = (phase) => {
@@ -433,7 +574,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           </div>
           <div className="flex flex-wrap gap-2">
             {canEdit ? <button type="button" className={`${button} bg-caudal-electric text-slate-950`}
-              onClick={save} disabled={busy || !dirty || conflict || creationUncertain}>
+              onClick={save} disabled={busy || !editorDirty || conflict || creationUncertain || dateNeedsReconciliation}>
               {busy ? 'Procesando…' : 'Guardar cambios'}</button> : null}
             {canEdit && editor.id && editor.planning_state === 'draft' ?
               <button type="button" className={`${button} border border-caudal-electric/50 text-caudal-electric`}
@@ -445,10 +586,33 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
               disabled={busy}>Cerrar plantilla</button>
           </div>
           {dirty ? <p className="w-full text-xs text-amber-200">Cambios sin guardar. Guarda antes de confirmar.</p> : null}
+          {dateNeedsReconciliation && canEdit ? <button type="button" className={`${button} border border-amber-400/50 text-amber-200`}
+            onClick={reconcileDate} disabled={busy || conflict || creationUncertain}>Confirmar cambio de fecha y conciliar plantilla</button> : null}
           {creationUncertain ? <p className="w-full text-xs text-amber-200">Guardado bloqueado: comprueba la sesión en la lista y recárgala antes de continuar.</p> : null}
           {unsupportedItems ? <p className="w-full text-xs text-amber-200">Esta sesión contiene un tipo de tarea o snapshot incompatible, o más de dos tareas en un ejercicio. Se muestra sin edición para preservar sus datos.</p> : null}
         </div>
+        {playersError ? <p role="alert" className="rounded-xl border border-red-400/30 p-3 text-sm text-red-100">{playersError} Recarga la sesión; no se habilitarán operaciones de jugadores con datos incompletos.</p> : null}
+        {editor.id && !frozen && !playersError ? <div className={`${panel} space-y-2 text-sm`}>
+          <p className="font-bold">Plantilla propuesta · aún no guardada</p>
+          <p>Seleccionados {proposed.filter((row) => selectedMembershipIds.includes(row.id)).length} de {proposed.length} candidatos válidos para esta fecha. La apertura de la sesión no incorpora jugadores.</p>
+          {canEdit ? <button type="button" className={`${button} border border-caudal-electric/50 text-caudal-electric`}
+            onClick={freezeRoster} disabled={busy || editorDirty || conflict || creationUncertain || !proposed.length}>
+            Confirmar y congelar plantilla</button> : null}
+          {editorDirty ? <p>Guarda primero los cambios de sesión; la plantilla utilizará la fecha ya guardada.</p> : null}
+        </div> : null}
+        {editor.id && frozen ? <div className={`${panel} space-y-2 text-sm`}>
+          <p className="font-bold">Plantilla histórica congelada · {roster.length} jugadores</p>
+          {availabilityDirty && canEdit ? <button type="button" className={`${button} border border-caudal-electric/50 text-caudal-electric`}
+            onClick={saveAvailability} disabled={busy || (editorDirty && !onlyDateDirty) || conflict || creationUncertain}>
+            Guardar disponibilidad</button> : null}
+          {availabilityDirty ? <p>La disponibilidad visible aún no está guardada.</p> : null}
+        </div> : null}
         <PlannedSessionDocument editor={editor} selected={selected} canEdit={canEdit} busy={busy}
+          roster={frozen ? roster : proposed} frozen={frozen} selectedMembershipIds={selectedMembershipIds}
+          availability={availability} onSelectPlayer={(id, checked) => setSelectedMembershipIds((current) =>
+            checked ? [...new Set([...current, id])] : current.filter((entry) => entry !== id))}
+          onAvailability={(id, key, value) => setAvailability((current) => ({ ...current,
+            [id]: { status: current[id]?.status || 'available', observation: current[id]?.observation || '', [key]: value } }))}
           fieldIssue={fieldIssue} updateEditor={updateEditor} updateSlot={updateSlot} updateTask={updateTask}
           moveSlot={moveSlot} moveItem={moveItem} moveItemToSlot={moveItemToSlot}
           addExercise={addExercise} addTask={addTask} removeTask={removeTask} removeSlot={removeSlot}

@@ -97,3 +97,62 @@ export const confirmPlannedSession = async (client, sessionId, revision, use03c 
     p_session_id: sessionId,
     p_expected_revision: revision,
   }));
+
+export const loadPlannedRosterCandidates = async (client, clubTeamSeasonId) => {
+  const memberships = unwrap(await client.from('club_team_season_players')
+    .select('id,club_team_season_id,player_id,joined_on,left_on,has_departed')
+    .eq('club_team_season_id', clubTeamSeasonId).is('voided_at', null)) || [];
+  if (!memberships.length) return [];
+  const ids = [...new Set(memberships.map((row) => row.player_id))];
+  const [namesResponse, positionsResponse] = await Promise.all([
+    client.from('players_database').select('id,name').in('id', ids),
+    client.from('player_positions').select('player_id,position_key,position_type,is_primary')
+      .in('player_id', ids).eq('position_type', 'natural').eq('is_primary', true),
+  ]);
+  const names = new Map((unwrap(namesResponse) || []).map((row) => [row.id, row.name]));
+  const positions = unwrap(positionsResponse) || [];
+  const keys = new Map(ids.map((id) => [id, positions.filter((row) => row.player_id === id).map((row) => row.position_key)]));
+  if (memberships.some((row) => !names.get(row.player_id) || keys.get(row.player_id).length > 1)) {
+    throw new Error('Identidad o posición principal ambigua en la plantilla canónica. Revisa las pertenencias antes de congelar.');
+  }
+  return memberships.map((row) => ({ ...row, name: names.get(row.player_id),
+    position_key: keys.get(row.player_id)[0] || null }));
+};
+
+export const loadPlannedSessionPlayers = async (client, sessionId) => {
+  const [rosterResponse, availabilityResponse] = await Promise.all([
+    client.from('planned_session_player_roster')
+      .select('session_id,player_id,source_membership_id,player_name_snapshot,position_key_snapshot')
+      .eq('session_id', sessionId),
+    client.from('planned_session_player_availability')
+      .select('session_id,player_id,status,observation').eq('session_id', sessionId),
+  ]);
+  const roster = unwrap(rosterResponse) || [];
+  const availability = unwrap(availabilityResponse) || [];
+  if (availability.some((row) => !roster.some((player) => player.player_id === row.player_id)))
+    throw new Error('La disponibilidad no coincide con la plantilla histórica de la sesión.');
+  return { roster, availability };
+};
+
+export const freezePlannedRoster = async (client, sessionId, revision, membershipIds,
+  confirmUncertain, confirmExisting) => unwrap(await client.rpc('freeze_planned_session_roster_04b', {
+  p_session_id: sessionId,
+  p_expected_revision: revision,
+  p_source_membership_ids: membershipIds,
+  p_confirm_uncertain_dates: confirmUncertain,
+  p_confirm_existing_session: confirmExisting,
+}));
+
+export const savePlannedAvailability = async (client, sessionId, revision, changes) =>
+  unwrap(await client.rpc('save_planned_session_availability_04b', {
+    p_session_id: sessionId, p_expected_revision: revision, p_changes: changes,
+  }));
+
+export const reconcilePlannedDate = async (client, sessionId, revision, newDate, membershipIds,
+  confirmUncertain) => unwrap(await client.rpc('reconcile_planned_session_date_04b', {
+  p_session_id: sessionId,
+  p_expected_revision: revision,
+  p_new_date: newDate,
+  p_confirmed_source_membership_ids: membershipIds,
+  p_confirm_uncertain_dates: confirmUncertain,
+}));

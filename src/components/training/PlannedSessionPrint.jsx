@@ -3,6 +3,8 @@ import { getPlannedDuration, getPlannedLibrarySource, getPlannedLibraryValue, PL
 import { planPlannedSessionPrintSheets } from '../../utils/plannedSessionSheetPages';
 import { getPlannedSessionBoardTeams } from '../../utils/plannedSessionBoardTeams';
 import TrainingTaskBoardPreview from './TrainingTaskBoardPreview';
+import PlannedSessionRoster from './PlannedSessionRoster';
+import { sessionPlayerCounts } from '../../utils/plannedSessionPlayers';
 import './plannedSessionPrint.css';
 
 const CAUDAL_TEAM_ID = '85a16f33-9fe5-44d4-b85d-37d73651ebf6';
@@ -74,9 +76,11 @@ function PrintExercise({ slot, number }) {
   </section>;
 }
 
-export function PlannedSessionPrintPages({ editor, selected, pages = planPlannedSessionPrintSheets(editor.slots) }) {
+export function PlannedSessionPrintPages({ editor, selected, roster = [], availability = {},
+  pages = planPlannedSessionPrintSheets(editor.slots) }) {
   const ordered = ['activation', 'main', 'cooldown'].flatMap((phase) => editor.slots.filter((slot) => slot.phase === phase));
   const numberOf = (id) => ordered.findIndex((slot) => slot.id === id) + 1;
+  const counts = sessionPlayerCounts(roster, availability);
   const layoutOf = (slots) => {
     if (slots.length === 1) return 'one';
     if (slots.length === 2) return 'two';
@@ -91,11 +95,11 @@ export function PlannedSessionPrintPages({ editor, selected, pages = planPlanned
           <PrintField label="Día">{editor.session_date}</PrintField>
           <PrintField label="Hora">{editor.header.starts_at}</PrintField>
           <PrintField label="Lugar">{editor.header.location}</PrintField>
-          <PrintField label="Nº jugadores" />
+          <PrintField label="Nº jugadores">{roster.length ? counts.participants : '—'}</PrintField>
           <PrintField label="Periodo">{editor.header.period_label}</PrintField>
           <PrintField label="Morf. patrón">{editor.header.morphology_pattern}</PrintField>
           <PrintField label="Rival">{editor.header.next_opponent_label}</PrintField>
-          <PrintField label="Lesionados" />
+          <PrintField label="Lesionados">{roster.length ? counts.injured : '—'}</PrintField>
         </div>
         <div className="planned-print-cover-details">
           <div className="planned-print-session-numbers"><span>Nº sesión <b>{editor.session_number ?? '—'}</b></span>
@@ -108,8 +112,7 @@ export function PlannedSessionPrintPages({ editor, selected, pages = planPlanned
           </div>
           <div className="planned-print-session-numbers"><span>Valor (0–10)</span><span>UA Tom Scale</span></div>
         </div>
-        <div className="planned-print-roster">{['Porteros', 'Defensas', 'Centrocampistas', 'Delanteros'].map((label) =>
-          <div key={label}><b>{label}</b></div>)}</div>
+        <PlannedSessionRoster roster={roster} frozen availability={availability} print />
         <div className="planned-print-cover-lower">
           <PrintPitch label="Distribución jugadores disponibles sesión" />
           <PrintPitch label="Distribución del espacio" />
@@ -126,10 +129,11 @@ export function PlannedSessionPrintPages({ editor, selected, pages = planPlanned
   </div>;
 }
 
-export default function PlannedSessionPrint({ editor, selected, pages, printRef }) {
+export default function PlannedSessionPrint({ editor, selected, pages, printRef, roster, availability }) {
   if (typeof document === 'undefined') return null;
   return createPortal(<div className="planned-print-portal" ref={printRef}>
     <style media="print">{'@page { size: A4 landscape; margin: 0; }'}</style>
-    <PlannedSessionPrintPages editor={editor} selected={selected} pages={pages} />
+    <PlannedSessionPrintPages editor={editor} selected={selected} pages={pages}
+      roster={roster} availability={availability} />
   </div>, document.body);
 }

@@ -61,18 +61,28 @@ const fixtures = {
   activation_main_cooldown: [slot('a', 'activation'), slot('m1', 'main'), slot('m2', 'main'), slot('c', 'cooldown')],
   parallel: [slot('a', 'activation'), slot('m1', 'main', [free('m1a'), free('m1b')]), slot('m2', 'main'), slot('c', 'cooldown')],
   board_teams: [slot('a', 'activation', [library('a')]), slot('m1', 'main', [library('m1')]), slot('m2', 'main')],
+  roster_24: [slot('a', 'activation'), slot('m1', 'main'), slot('m2', 'main')],
   long_text: [slot('a', 'activation'), slot('m1', 'main', [libraryWithLongText()]), slot('m2', 'main')],
   overfull: [slot('a', 'activation'), slot('m1', 'main', [free('m1', 'Contenido excepcionalmente extenso. '.repeat(160))])],
 };
 for (const [name, slots] of Object.entries(fixtures)) {
   const editor = { ...base, slots };
+  const roster = name === 'roster_24' ? Array.from({ length: 24 }, (_, index) => ({
+    player_id: `fixture-player-${index}`, player_name_snapshot: `Jugador de prueba ${index + 1}`,
+    position_key_snapshot: index < 2 ? 'goalkeeper' : index < 10 ? 'defender' : index < 17 ? 'midfielder' : 'forward',
+  })) : [];
   const markup = renderToStaticMarkup(React.createElement(PlannedSessionPrintPages, { editor,
-    selected: { team_id: '85a16f33-9fe5-44d4-b85d-37d73651ebf6', team_name: 'C.D. Caudal', label: '2026/2027' } }));
+    selected: { team_id: '85a16f33-9fe5-44d4-b85d-37d73651ebf6', team_name: 'C.D. Caudal', label: '2026/2027' },
+    roster, availability: name === 'roster_24' ? { 'fixture-player-1': { status: 'injured' } } : {} }));
   assert.doesNotMatch(markup, /<button|<textarea|<input|Cambiar tarea de Biblioteca|Más detalles/);
   if (name === 'two_brief' || name === 'two_boards') assert.match(markup, /data-layout="two"/);
   if (name === 'three_normal') assert.match(markup, /data-layout="three"/);
   if (name === 'four_normal' || name === 'four_boards') assert.match(markup, /data-layout="grid"/);
   if (name === 'board_teams') assert.match(markup, /Pepe[\s\S]*Luis/);
+  if (name === 'roster_24') {
+    assert.equal((markup.match(/Jugador de prueba \d+/g) || []).length, 24);
+    assert.match(markup, /Nº jugadores[\s\S]*23/);
+  }
   if (name === 'parallel') {
     assert.match(markup, /Tarea A[\s\S]*Tarea B/);
     assert.equal((markup.match(/Tiempo total:/g) || []).length, slots.length,

@@ -23,11 +23,17 @@
 .planned-print-session-numbers b { display: block; font-size: 10pt; }
 .planned-print-cover-notes { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; border-left: 1px solid #111; }
 .planned-print-cover-notes .planned-print-field { min-height: 11mm; }
-.planned-print-roster { display: grid; grid-template-columns: 1fr 2fr 2fr 2fr; height: 33mm; border: 1px solid #111; border-top: 0; }
+.planned-print-roster { display: grid; grid-template-columns: 1fr 2fr 2fr 2fr; min-height: 37mm; border: 1px solid #111; border-top: 0; }
+.planned-print-roster:has(> .planned-roster-group:nth-child(5)) { grid-template-columns: 1fr 2fr 2fr 2fr 1.4fr; }
 .planned-print-roster > div { border-right: 1px solid #111; }
 .planned-print-roster > div:last-child { border-right: 0; }
-.planned-print-roster b { display: block; padding: 1mm; background: #111; color: white; text-align: center; font-size: 8pt; }
-.planned-print-cover-lower { display: grid; grid-template-columns: 23% 23% 54%; min-height: 96mm; }
+.planned-print-roster .planned-roster-group > b { display: block; padding: .8mm; background: #111; color: white; text-align: center; font-size: 7.5pt; }
+.planned-print-roster .planned-roster-player { display: flex; align-items: baseline; gap: .7mm; padding: .1mm .7mm; min-height: 3.2mm; font-size: 7pt; line-height: 1.1; break-inside: avoid; }
+.planned-print-roster .planned-roster-name { min-width: 0; overflow-wrap: anywhere; }
+.planned-print-roster .planned-roster-status { margin-left: auto; color: #333; font-size: 6pt; white-space: nowrap; }
+.planned-print-roster .planned-roster-observation-text { display: block; font-size: 6pt; overflow-wrap: anywhere; }
+.planned-print-roster .planned-roster-counts { grid-column: 1 / -1; border-top: 1px solid #111; padding: .5mm 1mm; font-size: 6.5pt; }
+.planned-print-cover-lower { display: grid; grid-template-columns: 23% 23% 54%; min-height: 89mm; }
 .planned-print-pitch { border-right: 2px dashed #555; padding: 2mm; text-align: center; }
 .planned-print-pitch strong { display: block; min-height: 8mm; font-size: 7pt; text-transform: uppercase; }
 .planned-print-pitch svg { display: block; width: 100%; height: 74mm; }
