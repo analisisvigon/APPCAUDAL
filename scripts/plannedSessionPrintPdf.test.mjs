@@ -65,23 +65,47 @@ const fixtures = {
   long_text: [slot('a', 'activation'), slot('m1', 'main', [libraryWithLongText()]), slot('m2', 'main')],
   overfull: [slot('a', 'activation'), slot('m1', 'main', [free('m1', 'Contenido excepcionalmente extenso. '.repeat(160))])],
 };
+// Nombres de los 24 jugadores aprobados por el propietario; fixture local, sin consultar producción.
+const approvedRosterNames = [
+  ['goalkeeper', 'Alex González'], ['goalkeeper', 'Samuel González'],
+  ['defender', 'Borja Rodríguez'], ['defender', 'Cristian Ebea'],
+  ['defender', 'Iago Delgado'], ['defender', 'José Martínez'],
+  ['defender', 'Julio Rodríguez'], ['defender', 'Marcos Barroso'],
+  ['defender', 'Marcos Trabanco'], ['defender', 'Omar Falah'],
+  ['defender', 'Roberto Albuquerque'],
+  ['midfielder', 'Agustín Porto'], ['midfielder', 'Julio Delgado'],
+  ['midfielder', 'Kike Fanjul'], ['midfielder', 'Lucas Suárez'],
+  ['midfielder', 'Vicente Antuña'],
+  ['forward', 'Cristian Acerete'], ['forward', 'Daniel Palalcio'],
+  ['forward', 'David Fernández García'], ['forward', 'Diego Boza'],
+  ['forward', 'Isaac Martín'], ['forward', 'Isma Cerro'],
+  ['forward', 'Jairo Cárcaba'], ['forward', 'Óscar Fernández'],
+];
 for (const [name, slots] of Object.entries(fixtures)) {
   const editor = { ...base, slots };
-  const roster = name === 'roster_24' ? Array.from({ length: 24 }, (_, index) => ({
-    player_id: `fixture-player-${index}`, player_name_snapshot: `Jugador de prueba ${index + 1}`,
-    position_key_snapshot: index < 2 ? 'goalkeeper' : index < 10 ? 'defender' : index < 17 ? 'midfielder' : 'forward',
+  const roster = name === 'roster_24' ? approvedRosterNames.map(([position, playerName], index) => ({
+    player_id: `fixture-player-${index}`, player_name_snapshot: playerName,
+    position_key_snapshot: position,
   })) : [];
   const markup = renderToStaticMarkup(React.createElement(PlannedSessionPrintPages, { editor,
     selected: { team_id: '85a16f33-9fe5-44d4-b85d-37d73651ebf6', team_name: 'C.D. Caudal', label: '2026/2027' },
-    roster, availability: name === 'roster_24' ? { 'fixture-player-1': { status: 'injured' } } : {} }));
+    roster, availability: name === 'roster_24' ? {
+      'fixture-player-1': { status: 'injured' },
+      'fixture-player-10': { status: 'absent' },
+      'fixture-player-16': { status: 'adapted' },
+    } : {} }));
   assert.doesNotMatch(markup, /<button|<textarea|<input|Cambiar tarea de Biblioteca|Más detalles/);
   if (name === 'two_brief' || name === 'two_boards') assert.match(markup, /data-layout="two"/);
   if (name === 'three_normal') assert.match(markup, /data-layout="three"/);
   if (name === 'four_normal' || name === 'four_boards') assert.match(markup, /data-layout="grid"/);
   if (name === 'board_teams') assert.match(markup, /Pepe[\s\S]*Luis/);
   if (name === 'roster_24') {
-    assert.equal((markup.match(/Jugador de prueba \d+/g) || []).length, 24);
-    assert.match(markup, /Nº jugadores[\s\S]*23/);
+    for (const [, playerName] of approvedRosterNames) assert.ok(markup.includes(playerName), playerName);
+    assert.match(markup, /Nº jugadores[\s\S]*22/);
+    assert.equal((markup.match(/planned-roster-group-two-columns/g) || []).length, 3,
+      'defensas, centrocampistas y delanteros usan dos columnas');
+    assert.equal((markup.match(/planned-roster-player-no-training/g) || []).length, 2);
+    assert.equal((markup.match(/planned-roster-player-adapted/g) || []).length, 1);
   }
   if (name === 'parallel') {
     assert.match(markup, /Tarea A[\s\S]*Tarea B/);
@@ -91,7 +115,8 @@ for (const [name, slots] of Object.entries(fixtures)) {
   const css = pathToFileURL(path.join(root, 'src/components/training/plannedSessionPrint.css')).href;
   const globalPrint = pathToFileURL(path.join(root, 'src/styles/print.css')).href;
   const crest = pathToFileURL(path.join(root, 'public/pwa-512x512.png')).href;
-  const html = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${globalPrint}"><link rel="stylesheet" href="${css}"></head><body><div class="planned-print-portal"><style media="print">@page { size: A4 landscape; margin: 0; }</style>${markup.replaceAll('/pwa-512x512.png', crest)}</div><script>window.addEventListener('load', () => { const limit = 210 * 96 / 25.4; const sheets = [...document.querySelectorAll('.planned-print-sheet')]; document.documentElement.dataset.printOverflow = String(sheets.length > 2 || sheets.some((sheet) => sheet.getBoundingClientRect().height > limit + 2 || sheet.scrollHeight > limit + 2)); });</script></body></html>`;
+  const previewCss = name === 'roster_24' ? '<style media="screen">body{margin:0}.planned-print-portal{position:static;left:auto;visibility:visible;pointer-events:auto}</style>' : '';
+  const html = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${globalPrint}"><link rel="stylesheet" href="${css}">${previewCss}</head><body><div class="planned-print-portal"><style media="print">@page { size: A4 landscape; margin: 0; }</style>${markup.replaceAll('/pwa-512x512.png', crest)}</div><script>window.addEventListener('load', () => { const limit = 210 * 96 / 25.4; const sheets = [...document.querySelectorAll('.planned-print-sheet')]; document.documentElement.dataset.printOverflow = String(sheets.length > 2 || sheets.some((sheet) => sheet.getBoundingClientRect().height > limit + 2 || sheet.scrollHeight > limit + 2)); const defender = [...document.querySelectorAll('.planned-roster-group')].find((group) => group.querySelector('b')?.textContent === 'Defensas'); document.documentElement.dataset.defenderColumns = defender ? getComputedStyle(defender.querySelector('.planned-roster-players')).gridTemplateColumns.split(' ').length : 0; document.documentElement.dataset.rosterOverflow = String([...document.querySelectorAll('.planned-roster-player')].some((player) => player.scrollWidth > player.clientWidth + 1)); });</script></body></html>`;
   const htmlPath = path.join(output, `${name}.html`);
   const pdfPath = path.join(output, `${name}.pdf`);
   writeFileSync(htmlPath, html, 'utf8');
@@ -112,6 +137,20 @@ for (const [name, slots] of Object.entries(fixtures)) {
     { timeout: 30000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
     assert.match(dom, new RegExp(`data-print-overflow="${name === 'overfull'}"`),
       `${name}: la medición real del DOM debe distinguir contenido normal y excesivo`);
+  }
+  if (name === 'roster_24') {
+    const dom = execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox',
+      '--disable-extensions', '--dump-dom', pathToFileURL(htmlPath).href],
+    { timeout: 30000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    assert.match(dom, /data-print-overflow="false"/);
+    assert.match(dom, /data-defender-columns="2"/);
+    assert.match(dom, /data-roster-overflow="false"/);
+    const previewPath = path.join(output, 'roster_24_preview.png');
+    execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox', '--disable-extensions',
+      '--window-size=1200,900', `--screenshot=${previewPath}`, pathToFileURL(htmlPath).href],
+    { timeout: 30000, stdio: 'pipe' });
+    assert.ok(existsSync(previewPath));
+    console.log(`Vista previa de los 24 jugadores: ${previewPath}`);
   }
   console.log(`${name}: ${pdfPath}`);
 }

@@ -23,20 +23,24 @@
 .planned-print-session-numbers b { display: block; font-size: 10pt; }
 .planned-print-cover-notes { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; border-left: 1px solid #111; }
 .planned-print-cover-notes .planned-print-field { min-height: 11mm; }
-.planned-print-roster { display: grid; grid-template-columns: 1fr 2fr 2fr 2fr; min-height: 37mm; border: 1px solid #111; border-top: 0; }
+.planned-print-roster { display: grid; grid-template-columns: 1fr 2fr 2fr 2fr; min-height: 31mm; border: 1px solid #111; border-top: 0; }
 .planned-print-roster:has(> .planned-roster-group:nth-child(5)) { grid-template-columns: 1fr 2fr 2fr 2fr 1.4fr; }
 .planned-print-roster > div { border-right: 1px solid #111; }
 .planned-print-roster > div:last-child { border-right: 0; }
 .planned-print-roster .planned-roster-group > b { display: block; padding: .8mm; background: #111; color: white; text-align: center; font-size: 7.5pt; }
-.planned-print-roster .planned-roster-player { display: flex; align-items: baseline; gap: .7mm; padding: .1mm .7mm; min-height: 3.2mm; font-size: 7pt; line-height: 1.1; break-inside: avoid; }
-.planned-print-roster .planned-roster-name { min-width: 0; overflow-wrap: anywhere; }
-.planned-print-roster .planned-roster-status { margin-left: auto; color: #333; font-size: 6pt; white-space: nowrap; }
-.planned-print-roster .planned-roster-observation-text { display: block; font-size: 6pt; overflow-wrap: anywhere; }
-.planned-print-roster .planned-roster-counts { grid-column: 1 / -1; border-top: 1px solid #111; padding: .5mm 1mm; font-size: 6.5pt; }
-.planned-print-cover-lower { display: grid; grid-template-columns: 23% 23% 54%; min-height: 89mm; }
+.planned-print-roster .planned-roster-players { display: grid; align-content: start; }
+.planned-print-roster .planned-roster-group-two-columns .planned-roster-players { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--roster-rows), auto); grid-auto-flow: column; column-gap: 1mm; }
+.planned-print-roster .planned-roster-player { display: flex; align-items: baseline; min-width: 0; padding: .2mm .7mm; min-height: 3.8mm; font-size: 7.4pt; line-height: 1.14; break-inside: avoid; }
+.planned-print-roster .planned-roster-name { min-width: 0; overflow-wrap: break-word; }
+.planned-print-roster .planned-roster-player-no-training .planned-roster-name { color: #ae1d32; font-weight: 700; }
+.planned-print-roster .planned-roster-player-adapted .planned-roster-name { color: #986500; font-weight: 700; }
+.planned-print-roster .planned-roster-observation-text { display: block; font-size: 6pt; overflow-wrap: break-word; }
+.planned-print-roster .planned-roster-counts { display: flex; flex-wrap: wrap; gap: .5mm 2.5mm; align-items: baseline; grid-column: 1 / -1; border-top: 1px solid #111; padding: .6mm 1mm; font-size: 6.8pt; }
+.planned-print-roster .planned-roster-counts strong { font-size: 7.5pt; }
+.planned-print-cover-lower { display: grid; grid-template-columns: 23% 23% 54%; min-height: 94mm; }
 .planned-print-pitch { border-right: 2px dashed #555; padding: 2mm; text-align: center; }
 .planned-print-pitch strong { display: block; min-height: 8mm; font-size: 7pt; text-transform: uppercase; }
-.planned-print-pitch svg { display: block; width: 100%; height: 74mm; }
+.planned-print-pitch svg { display: block; width: 100%; height: 79mm; }
 .planned-print-cover-activation { min-width: 0; padding: 2mm 0 0 2mm; }
 .planned-print-cover-activation .planned-print-exercise { min-height: 90mm; }
 .planned-print-empty-activation { display: grid; place-items: center; min-height: 89mm; border: 1px solid #111; color: #555; font-weight: 700; text-align: center; }
@@ -47,8 +51,8 @@
 .planned-print-exercise-grid[data-layout="three"] > .planned-print-exercise:last-child { grid-column: span 2; }
 .planned-print-exercise-grid[data-layout="one"] > .planned-print-exercise { min-height: 145mm; }
 .planned-print-exercise-grid[data-layout="two"] > .planned-print-exercise:not(.planned-print-dual) .planned-print-task-content,
-.planned-print-exercise-grid[data-layout="three"] > .planned-print-exercise:last-child .planned-print-task-content { grid-template-columns: 70% 30%; }
-.planned-print-exercise-grid[data-layout="one"] > .planned-print-exercise:not(.planned-print-dual) .planned-print-task-content { grid-template-columns: 58% 42%; }
+.planned-print-exercise-grid[data-layout="three"] > .planned-print-exercise:last-child .planned-print-task-content { grid-template-columns: 66% 34%; }
+.planned-print-exercise-grid[data-layout="one"] > .planned-print-exercise:not(.planned-print-dual) .planned-print-task-content { grid-template-columns: 56% 44%; }
 .planned-print-exercise { display: flex; flex-direction: column; min-width: 0; min-height: 77mm; border: 1px solid #111; break-inside: avoid; page-break-inside: avoid; }
 .planned-print-exercise-overflow { break-inside: auto; page-break-inside: auto; }
 .planned-print-exercise.planned-print-dual { grid-column: span 2; }
@@ -60,7 +64,7 @@
 .planned-print-task-name { display: flex; align-items: baseline; gap: 2mm; min-height: 5mm; padding: .5mm 1.5mm; border-bottom: 1px solid #111; overflow-wrap: anywhere; }
 .planned-print-task-name b { flex: none; background: #00e9df; padding: 0 .8mm; }
 .planned-print-task-name strong { font-size: 8pt; }
-.planned-print-task-content { display: grid; grid-template-columns: 46% 54%; flex: 1; min-width: 0; }
+.planned-print-task-content { display: grid; grid-template-columns: 43% 57%; flex: 1; min-width: 0; }
 .planned-print-development { min-width: 0; padding: 1mm 1.5mm; border-right: 1px dashed #555; overflow-wrap: anywhere; white-space: pre-wrap; }
 .planned-print-development > b, .planned-print-graphic > b { display: block; margin-bottom: .5mm; font-size: 7pt; font-weight: 500; text-align: center; }
 .planned-print-development p { margin: 0; }

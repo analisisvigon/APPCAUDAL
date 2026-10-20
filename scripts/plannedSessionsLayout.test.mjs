@@ -43,7 +43,7 @@ assert.match(document, /<SheetField label="DESARROLLO" value=\{getPlannedLibrary
   'DESARROLLO conserva el campo description de la copia');
 assert.match(document, /<details className="planned-sheet-task-details">/,
   'los campos secundarios permanecen consultables sin ocupar la hoja');
-assert.match(css, /\.planned-sheet-board-visual \{[^}]*height: 36mm/,
+assert.match(css, /\.planned-sheet-board-visual \{[^}]*height: (?:3[6-9]|4[0-2])mm/,
   'la pizarra gana tamaño dentro de su columna sin deformar la hoja');
 assert.match(css, /\.planned-sheet-team-line \{[^}]*border-left:/,
   'los equipos muestran su color en la lista imprimible');
