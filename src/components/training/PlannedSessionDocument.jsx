@@ -9,6 +9,7 @@ import TrainingTaskBoardPreview from './TrainingTaskBoardPreview';
 import TrainingTaskBoardEditor from './TrainingTaskBoardEditor';
 import PlannedSessionPrint from './PlannedSessionPrint';
 import PlannedSessionRoster from './PlannedSessionRoster';
+import { SessionPlayerDistribution, SessionSpaceDistribution } from './PlannedSessionDistributionBoards';
 import { sessionPlayerCounts } from '../../utils/plannedSessionPlayers';
 import './plannedSessionDocument.css';
 
@@ -36,14 +37,6 @@ function SheetField({ label, value, onChange, disabled, issue, type = 'text', mu
 function PendingArea({ label, children, className = '' }) {
   return <div className={`planned-sheet-pending ${className}`} aria-label={`${label}: área reservada`}>
     <b>{label}</b>{children}
-  </div>;
-}
-
-function PitchOutline() {
-  return <div className="planned-sheet-pitch" aria-hidden="true">
-    <i className="planned-sheet-pitch-midline" /><i className="planned-sheet-pitch-circle" />
-    <i className="planned-sheet-pitch-box planned-sheet-pitch-box-top" />
-    <i className="planned-sheet-pitch-box planned-sheet-pitch-box-bottom" />
   </div>;
 }
 
@@ -224,7 +217,8 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   updateEditor, updateSlot, updateTask, moveSlot, moveItem, moveItemToSlot,
   addExercise, addTask, removeTask, removeSlot, changePhase, libraryTasks, libraryLoading,
   libraryError, selectLibraryTask, switchToFreeTask, roster, frozen,
-  selectedMembershipIds, availability, onSelectPlayer, onAvailability }) {
+  selectedMembershipIds, availability, onSelectPlayer, onAvailability,
+  distribution, boardsError, positionById, onFormationChange, onZoneChange }) {
   const [zoom, setZoom] = useState(100);
   const [fitZoom, setFitZoom] = useState(100);
   const viewportRef = useRef(null);
@@ -264,8 +258,9 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
     }) : null;
     printRef.current?.querySelectorAll('.planned-print-sheet').forEach((sheet) => observer?.observe(sheet));
     return () => { window.cancelAnimationFrame(frame); observer?.disconnect(); };
-  }, [editor, selected, roster, availability, selectedMembershipIds, printSheets.length]);
+  }, [editor, selected, roster, availability, selectedMembershipIds, distribution, printSheets.length]);
   const printDocument = () => {
+    if (boardsError) return;
     if (printOverflow && !window.confirm('El contenido supera dos hojas A4. La impresión conservará todo el contenido y puede necesitar más páginas. ¿Continuar?')) return;
     window.print();
   };
@@ -299,7 +294,9 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   return <div className="planned-document" data-planned-session-document>
     <div className="planned-document-toolbar" aria-label="Vista de hojas">
       <span>Plantilla de sesión · A4 horizontal · {printSheets.length} hojas para imprimir</span>
-      <button type="button" onClick={printDocument}>Imprimir sesión · A4 horizontal</button>
+      <button type="button" onClick={printDocument} disabled={Boolean(boardsError)}
+        title={boardsError ? 'Recarga las pizarras antes de imprimir' : undefined}>
+        Imprimir sesión · A4 horizontal</button>
       <label>Vista <select value={zoom} onChange={(event) => setZoom(event.target.value === 'fit' ? 'fit' : Number(event.target.value))}>
         <option value="fit">Ajustar a pantalla</option>
         <option value={75}>75 %</option><option value={100}>100 %</option><option value={125}>125 %</option>
@@ -342,8 +339,13 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
               availability={availability} onSelect={onSelectPlayer} onAvailability={onAvailability}
               canEdit={canEdit && !busy && Boolean(editor.id)} />
             <div className="planned-sheet-cover-lower">
-              <PendingArea label="Distribución jugadores disponibles sesión"><PitchOutline /></PendingArea>
-              <PendingArea label="Distribución del espacio"><PitchOutline /></PendingArea>
+              <SessionPlayerDistribution distribution={distribution} roster={frozen ? roster : []}
+                availability={availability} positionById={positionById}
+                canEdit={canEdit && !busy && !boardsError && frozen}
+                onFormationChange={onFormationChange} />
+              <SessionSpaceDistribution zones={distribution.space_zones} slots={editor.slots}
+                canEdit={canEdit && !busy && !boardsError && Boolean(editor.id)}
+                onZoneChange={onZoneChange} />
               <div className="planned-sheet-cover-activation">
                 {sheet.coverOverflow
                   ? <div className="planned-sheet-activation-reference">ACTIVACIÓN · ejercicio en la hoja siguiente</div>
@@ -379,7 +381,8 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
     </div>
     <p className="planned-document-note">Vista editorial de 03B. La exportación PDF definitiva y las zonas marcadas como pendientes no están activadas.</p>
     <PlannedSessionPrint editor={editor} selected={selected} pages={printSheets} printRef={printRef}
-      roster={frozen ? roster : []} availability={availability} />
+      roster={frozen ? roster : []} availability={availability} distribution={distribution}
+      positionById={positionById} />
     {boardLocation?.item.kind === 'library_task' ? <div className="planned-board-dialog-backdrop">
       <div className="planned-board-dialog" role="dialog" aria-modal="true" aria-label="Editar pizarra de la copia">
         <div className="planned-board-dialog-head"><strong>Pizarra de la copia de Sesiones</strong>

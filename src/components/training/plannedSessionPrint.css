@@ -41,6 +41,12 @@
 .planned-print-pitch { border-right: 2px dashed #555; padding: 2mm; text-align: center; }
 .planned-print-pitch strong { display: block; min-height: 8mm; font-size: 7pt; text-transform: uppercase; }
 .planned-print-pitch svg { display: block; width: 100%; height: 79mm; }
+.planned-print-cover-lower > .planned-distribution-board { border-right: 2px dashed #555; }
+.planned-print-cover-lower .planned-distribution-field { height: 72mm; }
+.planned-print-cover-lower .planned-distribution-heading { min-height: 8mm; }
+.planned-print-cover-lower .planned-distribution-player-group { font-size: 5.4pt; }
+.planned-print-cover-lower .planned-distribution-legend { font-size: 5.6pt; }
+.planned-print-cover-lower .planned-distribution-zone { cursor: default; }
 .planned-print-cover-activation { min-width: 0; padding: 2mm 0 0 2mm; }
 .planned-print-cover-activation .planned-print-exercise { min-height: 90mm; }
 .planned-print-empty-activation { display: grid; place-items: center; min-height: 89mm; border: 1px solid #111; color: #555; font-weight: 700; text-align: center; }

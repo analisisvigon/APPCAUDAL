@@ -134,6 +134,28 @@ export const loadPlannedSessionPlayers = async (client, sessionId) => {
   return { roster, availability };
 };
 
+export const loadPlannedDistribution = async (client, sessionId) => unwrap(await client
+  .from('planned_session_distributions')
+  .select('session_id,formation_key,specific_positions_snapshot,player_layout,space_zones')
+  .eq('session_id', sessionId).maybeSingle());
+
+export const loadPlannedSpecificPositions = async (client, playerIds) => {
+  if (!playerIds.length) return [];
+  return unwrap(await client.from('player_positions')
+    .select('player_id,position_key,position_type,is_primary')
+    .in('player_id', [...new Set(playerIds)])
+    .eq('position_type', 'specific').eq('is_primary', true)) || [];
+};
+
+export const savePlannedDistribution = async (client, sessionId, revision, distribution) =>
+  unwrap(await client.rpc('save_planned_session_distributions_05', {
+    p_session_id: sessionId,
+    p_expected_revision: revision,
+    p_formation_key: distribution.formation_key,
+    p_player_layout: distribution.player_layout,
+    p_space_zones: distribution.space_zones,
+  }));
+
 export const freezePlannedRoster = async (client, sessionId, revision, membershipIds,
   confirmUncertain, confirmExisting) => unwrap(await client.rpc('freeze_planned_session_roster_04b', {
   p_session_id: sessionId,

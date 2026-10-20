@@ -24,8 +24,13 @@ import {
   freezePlannedRoster,
   savePlannedAvailability,
   reconcilePlannedDate,
+  loadPlannedDistribution,
+  loadPlannedSpecificPositions,
+  savePlannedDistribution,
 } from '../../data/plannedSessionsStore';
 import { availabilityChanges, eligibleRosterCandidates, hasUncertainRosterDate } from '../../utils/plannedSessionPlayers';
+import { autoPlayerLayout, distributionPayloadKey, emptyDistribution, normalizeDistribution,
+  reconcileSpaceZones, specificPositionMap, validateDistribution } from '../../utils/plannedSessionDistributions';
 import PlannedSessionDocument from './PlannedSessionDocument';
 
 const panel = 'rounded-2xl border border-white/10 bg-[#0b1a2d]/85 p-4 sm:p-5';
@@ -79,6 +84,10 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [availability, setAvailability] = useState({});
   const [availabilityBaseline, setAvailabilityBaseline] = useState({});
   const [playersError, setPlayersError] = useState('');
+  const [distribution, setDistribution] = useState(null);
+  const [distributionBaseline, setDistributionBaseline] = useState(null);
+  const [specificPositions, setSpecificPositions] = useState([]);
+  const [boardsError, setBoardsError] = useState('');
   const selected = contexts.find((row) => row.id === contextId) || null;
   const isManager = membership?.is_active === true && ['owner', 'admin'].includes(membership?.role);
   const canWriteContext = canWritePlannedContext(membership, selected);
@@ -88,7 +97,9 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const availabilityDirty = Boolean(roster.length && availabilityChanges(availability, availabilityBaseline, roster).length);
   const selectionDirty = Boolean(editor?.id && !roster.length &&
     JSON.stringify([...selectedMembershipIds].sort()) !== JSON.stringify([...initialSelectedMembershipIds].sort()));
-  const dirty = editorDirty || availabilityDirty || selectionDirty;
+  const distributionDirty = Boolean(distribution && distributionBaseline &&
+    distributionPayloadKey(distribution) !== distributionPayloadKey(distributionBaseline));
+  const dirty = editorDirty || availabilityDirty || selectionDirty || distributionDirty;
   const frozen = roster.length > 0;
   const dateNeedsReconciliation = Boolean(frozen && editor?.session_date !== baseline?.session_date);
   const onlyDateDirty = Boolean(dateNeedsReconciliation && baseline &&
@@ -103,6 +114,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setEditor(null); setBaseline(null); setSessions([]); setSessionsLoadError(false);
     setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
     setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
+    setDistribution(null); setDistributionBaseline(null); setSpecificPositions([]); setBoardsError('');
     setUnsupportedItems(false); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null); setContextId('');
   }, [membership?.club_id, userId]);
   useEffect(() => {
@@ -115,6 +127,15 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     if (!expandedSlotId) return;
     document.querySelector(`[data-planned-slot-id="${expandedSlotId}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [expandedSlotId]);
+  useEffect(() => {
+    if (!canWriteContext || !editor || boardsError) return;
+    setDistribution((current) => {
+      if (!current) return current;
+      const zones = reconcileSpaceZones(current.space_zones, editor.slots);
+      return JSON.stringify(zones) === JSON.stringify(current.space_zones)
+        ? current : { ...current, space_zones: zones };
+    });
+  }, [canWriteContext, editor?.slots, boardsError]);
 
   useEffect(() => {
     let cancelled = false;
@@ -178,6 +199,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setEditor(null); setBaseline(null); setUnsupportedItems(false); setValidationIssues([]); setExpandedSlotId(null);
     setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
     setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
+    setDistribution(null); setDistributionBaseline(null); setSpecificPositions([]); setBoardsError('');
     setContextId(nextId); setError(''); setNotice(''); setConflict(false); setCreationUncertain(false);
     try { if (storageKey) window.localStorage.setItem(storageKey, nextId); } catch { /* opcional */ }
   };
@@ -193,12 +215,29 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       const nextCandidates = players.roster.length ? [] : await loadPlannedRosterCandidates(client, contextId);
       const nextAvailability = Object.fromEntries(players.availability.map((row) => [row.player_id,
         { status: row.status, observation: row.observation || '' }]));
+      let nextDistribution = null;
+      let nextPositions = [];
+      let nextBoardsError = '';
+      try {
+        const savedDistribution = normalizeDistribution(await loadPlannedDistribution(client, sessionId));
+        nextDistribution = canWriteContext ? { ...savedDistribution,
+          space_zones: reconcileSpaceZones(savedDistribution.space_zones, next.slots) }
+          : savedDistribution;
+        nextPositions = savedDistribution.specific_positions_snapshot.length
+          ? savedDistribution.specific_positions_snapshot
+          : await loadPlannedSpecificPositions(client, players.roster.map((row) => row.player_id));
+        setDistributionBaseline(savedDistribution);
+      } catch (cause) {
+        nextBoardsError = `${errorKind(cause)}: no se pudieron cargar las pizarras o posiciones. ${readError(cause)}`;
+        setDistributionBaseline(null);
+      }
       setUnsupportedItems(unsupportedSession(data, next));
       setEditor(next); setBaseline(next); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null);
       setRoster(players.roster); setCandidates(nextCandidates);
       const initialIds = eligibleRosterCandidates(nextCandidates, next.session_date).map((row) => row.id);
       setSelectedMembershipIds(initialIds); setInitialSelectedMembershipIds(initialIds);
       setAvailability(nextAvailability); setAvailabilityBaseline(nextAvailability); setPlayersError('');
+      setDistribution(nextDistribution); setSpecificPositions(nextPositions); setBoardsError(nextBoardsError);
     } catch (cause) {
       setPlayersError(`${errorKind(cause)}: ${readError(cause)}`);
       setError(`${errorKind(cause)}: no se pudo abrir la sesión. ${readError(cause)}`);
@@ -209,6 +248,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setEditor(createEmptyPlannedEditor()); setBaseline(null);
     setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
     setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
+    setDistribution(emptyDistribution()); setDistributionBaseline(emptyDistribution());
+    setSpecificPositions([]); setBoardsError('');
     setUnsupportedItems(false); setError(''); setNotice(''); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null);
     requestAnimationFrame(() => document.querySelector('[data-planned-session-document]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
@@ -289,13 +330,17 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         if (use03c) assertPlanned03cReload(working, fresh, revision);
         setEditor(fresh); setBaseline(fresh);
         setUnsupportedItems(unsupportedSession(data, fresh));
+        setDistribution((current) => current ? { ...current,
+          space_zones: reconcileSpaceZones(current.space_zones, fresh.slots) } : current);
         if (wasNew) {
           const nextCandidates = await loadPlannedRosterCandidates(client, selected.id);
           setCandidates(nextCandidates);
           const initialIds = eligibleRosterCandidates(nextCandidates, fresh.session_date).map((row) => row.id);
           setSelectedMembershipIds(initialIds); setInitialSelectedMembershipIds(initialIds);
         }
-        setNotice('Sesión guardada y recargada desde el servidor.');
+        setNotice(distributionDirty
+          ? 'Ejercicios guardados y recargados. Las pizarras siguen pendientes: pulsa «Guardar pizarras».'
+          : 'Sesión guardada y recargada desde el servidor.');
       } catch (reloadError) {
         if (use03c) setCreationUncertain(true);
         setNotice(`Guardado confirmado, pero no se pudo verificar la lectura posterior: ${readError(reloadError)}. Recarga la ficha antes de continuar.`);
@@ -362,6 +407,14 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setEditor(pendingDate ? { ...fresh, session_date: pendingDate } : fresh);
     setBaseline(fresh); setRoster(players.roster);
     setAvailability(nextAvailability); setAvailabilityBaseline(nextAvailability);
+    if (!distribution?.specific_positions_snapshot?.length) {
+      try {
+        setSpecificPositions(await loadPlannedSpecificPositions(client,
+          players.roster.map((row) => row.player_id)));
+      } catch (cause) {
+        setBoardsError(`${errorKind(cause)}: no se pudieron cargar las posiciones específicas. ${readError(cause)}`);
+      }
+    }
     setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]); setPlayersError('');
     return players;
   };
@@ -449,6 +502,9 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     if (!slotId || !taskId) { setError('Este navegador no puede crear UUID seguros.'); return; }
     updateEditor((current) => ({ ...current, slots: [...current.slots,
       { id: slotId, phase, duration: '', items: [blankTask(taskId)] }] }));
+    setDistribution((current) => current ? { ...current,
+      space_zones: reconcileSpaceZones(current.space_zones, [...editor.slots,
+        { id: slotId, phase }]) } : current);
     setExpandedSlotId(slotId);
   };
   const updateTask = (slotId, itemId, key, value) => updateSlot(slotId, (slot) => ({
@@ -494,6 +550,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     const slot = editor?.slots.find((entry) => entry.id === slotId);
     if (!slot || !window.confirm(`¿Retirar el ejercicio ${number} y sus ${slot.items.length} tareas al guardar?`)) return;
     updateEditor((current) => ({ ...current, slots: current.slots.filter((entry) => entry.id !== slotId) }));
+    setDistribution((current) => current ? { ...current,
+      space_zones: current.space_zones.filter((zone) => zone.slot_id !== slotId) } : current);
   };
   const changePhase = (slotId, nextPhase) => updateEditor((current) => {
     const slot = current.slots.find((entry) => entry.id === slotId);
@@ -503,6 +561,51 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     without.splice(last + 1, 0, { ...slot, phase: nextPhase });
     return { ...current, slots: without };
   });
+
+  const changeFormation = (formationKey) => {
+    if (!roster.length || !distribution || boardsError) return;
+    if (distribution.player_layout.some((item) => item.placement === 'manual') &&
+        !window.confirm('Cambiar el sistema descartará los ajustes manuales de jugadores. ¿Continuar?')) return;
+    const positionById = specificPositionMap(
+      distribution.specific_positions_snapshot.length
+        ? distribution.specific_positions_snapshot : specificPositions);
+    setDistribution((current) => ({ ...current, formation_key: formationKey,
+      player_layout: formationKey ? autoPlayerLayout(roster, positionById, formationKey) : [] }));
+  };
+  const changeZone = (slotId, change) => setDistribution((current) => current ? ({ ...current,
+    space_zones: current.space_zones.map((zone) => zone.slot_id === slotId
+      ? { ...zone, ...change } : zone) }) : current);
+
+  const saveDistributions = async () => {
+    if (!editor?.id || !canEdit || !distribution || boardsError || !distributionDirty ||
+        editorDirty || dateNeedsReconciliation || busy || operationRef.current || conflict || creationUncertain) return;
+    const issue = validateDistribution(distribution, roster, editor.slots);
+    if (issue) { setError(`Validación de pizarras: ${issue}`); return; }
+    operationRef.current = true; setBusy(true); setError(''); setNotice('');
+    try {
+      const revision = await savePlannedDistribution(client, editor.id, editor.revision, distribution);
+      const [data, savedRow] = await Promise.all([
+        loadPlannedSession(client, editor.id, selected.id),
+        loadPlannedDistribution(client, editor.id),
+      ]);
+      const fresh = hydratePlannedEditor(data.session, data.slots, data.items);
+      const saved = normalizeDistribution(savedRow);
+      if (fresh.revision !== revision ||
+          distributionPayloadKey(saved) !== distributionPayloadKey(distribution))
+        throw new Error('La distribución recargada no coincide con el guardado. Recarga la ficha.');
+      setEditor(fresh); setBaseline(fresh); setDistribution(saved); setDistributionBaseline(saved);
+      if (saved.specific_positions_snapshot.length) setSpecificPositions(saved.specific_positions_snapshot);
+      setNotice('Pizarras guardadas y verificadas desde el servidor.');
+    } catch (cause) {
+      if (cause?.code === '40001') {
+        setConflict(true);
+        setError('Revisión obsoleta: tus pizarras siguen en pantalla. Recarga la sesión antes de volver a guardar.');
+      } else {
+        if (!['42501', '23514', '22023'].includes(cause?.code)) setCreationUncertain(true);
+        setError(`${errorKind(cause)}: no se pudo verificar el guardado de pizarras. ${readError(cause)}`);
+      }
+    } finally { operationRef.current = false; setBusy(false); }
+  };
 
   return (
     <main className="space-y-5 pb-24 xl:pb-8">
@@ -576,22 +679,29 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
             {canEdit ? <button type="button" className={`${button} bg-caudal-electric text-slate-950`}
               onClick={save} disabled={busy || !editorDirty || conflict || creationUncertain || dateNeedsReconciliation}>
               {busy ? 'Procesando…' : 'Guardar cambios'}</button> : null}
+            {canEdit && editor.id && !boardsError ? <button type="button"
+              className={`${button} border border-caudal-electric/50 text-caudal-electric`}
+              onClick={saveDistributions}
+              disabled={busy || !distributionDirty || editorDirty || dateNeedsReconciliation || conflict || creationUncertain}>
+              Guardar pizarras</button> : null}
             {canEdit && editor.id && editor.planning_state === 'draft' ?
               <button type="button" className={`${button} border border-caudal-electric/50 text-caudal-electric`}
                 onClick={confirm} disabled={busy || dirty || conflict || creationUncertain}>Confirmar y numerar</button> : null}
             {editor.id ? <button type="button" className={`${button} border border-white/15 text-slate-200`}
               onClick={() => { if (requestDiscard()) openSession(editor.id, true); }} disabled={busy}>Recargar</button> : null}
             <button type="button" className={`${button} border border-white/15 text-slate-200`}
-              onClick={() => { if (requestDiscard()) { setEditor(null); setBaseline(null); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null); } }}
+              onClick={() => { if (requestDiscard()) { setEditor(null); setBaseline(null); setDistribution(null); setDistributionBaseline(null); setSpecificPositions([]); setBoardsError(''); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null); } }}
               disabled={busy}>Cerrar plantilla</button>
           </div>
           {dirty ? <p className="w-full text-xs text-amber-200">Cambios sin guardar. Guarda antes de confirmar.</p> : null}
+          {distributionDirty && editorDirty ? <p className="w-full text-xs text-amber-200">Guarda primero los ejercicios y después las pizarras; cada operación actualiza la revisión de la sesión.</p> : null}
           {dateNeedsReconciliation && canEdit ? <button type="button" className={`${button} border border-amber-400/50 text-amber-200`}
             onClick={reconcileDate} disabled={busy || conflict || creationUncertain}>Confirmar cambio de fecha y conciliar plantilla</button> : null}
           {creationUncertain ? <p className="w-full text-xs text-amber-200">Guardado bloqueado: comprueba la sesión en la lista y recárgala antes de continuar.</p> : null}
           {unsupportedItems ? <p className="w-full text-xs text-amber-200">Esta sesión contiene un tipo de tarea o snapshot incompatible, o más de dos tareas en un ejercicio. Se muestra sin edición para preservar sus datos.</p> : null}
         </div>
         {playersError ? <p role="alert" className="rounded-xl border border-red-400/30 p-3 text-sm text-red-100">{playersError} Recarga la sesión; no se habilitarán operaciones de jugadores con datos incompletos.</p> : null}
+        {boardsError ? <p role="alert" className="rounded-xl border border-red-400/30 p-3 text-sm text-red-100">{boardsError} La edición de pizarras está deshabilitada; la sesión y sus ejercicios siguen disponibles.</p> : null}
         {editor.id && !frozen && !playersError ? <div className={`${panel} space-y-2 text-sm`}>
           <p className="font-bold">Plantilla propuesta · aún no guardada</p>
           <p>Seleccionados {proposed.filter((row) => selectedMembershipIds.includes(row.id)).length} de {proposed.length} candidatos válidos para esta fecha. La apertura de la sesión no incorpora jugadores.</p>
@@ -608,6 +718,10 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           {availabilityDirty ? <p>La disponibilidad visible aún no está guardada.</p> : null}
         </div> : null}
         <PlannedSessionDocument editor={editor} selected={selected} canEdit={canEdit} busy={busy}
+          distribution={distribution || emptyDistribution()} boardsError={boardsError}
+          positionById={specificPositionMap(distribution?.specific_positions_snapshot?.length
+            ? distribution.specific_positions_snapshot : specificPositions)}
+          onFormationChange={changeFormation} onZoneChange={changeZone}
           roster={frozen ? roster : proposed} frozen={frozen} selectedMembershipIds={selectedMembershipIds}
           availability={availability} onSelectPlayer={(id, checked) => setSelectedMembershipIds((current) =>
             checked ? [...new Set([...current, id])] : current.filter((entry) => entry !== id))}

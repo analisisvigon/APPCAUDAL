@@ -4,6 +4,7 @@ import { planPlannedSessionPrintSheets } from '../../utils/plannedSessionSheetPa
 import { getPlannedSessionBoardTeams } from '../../utils/plannedSessionBoardTeams';
 import TrainingTaskBoardPreview from './TrainingTaskBoardPreview';
 import PlannedSessionRoster from './PlannedSessionRoster';
+import { SessionPlayerDistribution, SessionSpaceDistribution } from './PlannedSessionDistributionBoards';
 import { sessionPlayerCounts } from '../../utils/plannedSessionPlayers';
 import './plannedSessionPrint.css';
 
@@ -22,14 +23,6 @@ function PrintIdentity({ selected, page }) {
     <div><strong>{selected?.team_name || ''}</strong><span>{selected?.label || ''} · Hoja {page}</span></div>
     <div className="planned-print-crest-space" aria-label="Espacio reservado para escudo de competición" />
   </header>;
-}
-
-function PrintPitch({ label }) {
-  return <div className="planned-print-pitch"><strong>{label}</strong>
-    <svg viewBox="0 0 100 72" aria-hidden="true"><rect x="1" y="1" width="98" height="70" fill="none" stroke="#ccc" />
-      <path d="M50 1v70M1 21h16v30H1M99 21H83v30h16" fill="none" stroke="#ccc" />
-      <circle cx="50" cy="36" r="9" fill="none" stroke="#ccc" /></svg>
-  </div>;
 }
 
 function PrintTask({ item, index }) {
@@ -77,6 +70,7 @@ function PrintExercise({ slot, number }) {
 }
 
 export function PlannedSessionPrintPages({ editor, selected, roster = [], availability = {},
+  distribution = { formation_key: null, player_layout: [], space_zones: [] }, positionById = new Map(),
   pages = planPlannedSessionPrintSheets(editor.slots) }) {
   const ordered = ['activation', 'main', 'cooldown'].flatMap((phase) => editor.slots.filter((slot) => slot.phase === phase));
   const numberOf = (id) => ordered.findIndex((slot) => slot.id === id) + 1;
@@ -114,8 +108,9 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], availa
         </div>
         <PlannedSessionRoster roster={roster} frozen availability={availability} print />
         <div className="planned-print-cover-lower">
-          <PrintPitch label="Distribución jugadores disponibles sesión" />
-          <PrintPitch label="Distribución del espacio" />
+          <SessionPlayerDistribution distribution={distribution} roster={roster}
+            availability={availability} positionById={positionById} />
+          <SessionSpaceDistribution zones={distribution.space_zones} slots={editor.slots} />
           <div className="planned-print-cover-activation">{page.activation
             ? <PrintExercise slot={page.activation} number={numberOf(page.activation.id)} />
             : <div className="planned-print-empty-activation">ACTIVACIÓN · ejercicio en la hoja siguiente o sin planificar</div>}</div>
@@ -129,11 +124,13 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], availa
   </div>;
 }
 
-export default function PlannedSessionPrint({ editor, selected, pages, printRef, roster, availability }) {
+export default function PlannedSessionPrint({ editor, selected, pages, printRef, roster, availability,
+  distribution, positionById }) {
   if (typeof document === 'undefined') return null;
   return createPortal(<div className="planned-print-portal" ref={printRef}>
     <style media="print">{'@page { size: A4 landscape; margin: 0; }'}</style>
     <PlannedSessionPrintPages editor={editor} selected={selected} pages={pages}
-      roster={roster} availability={availability} />
+      roster={roster} availability={availability} distribution={distribution}
+      positionById={positionById} />
   </div>, document.body);
 }
