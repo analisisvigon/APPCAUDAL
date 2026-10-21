@@ -27,8 +27,8 @@ try {
   assert.match(markup, /planned-distribution-player-adapted/);
   assert.equal((markup.match(/title="Jugador /g) || []).length, 24,
     'los 24 futbolistas permanecen representados');
-  assert.equal((markup.match(/class="planned-distribution-player-group(?:\s|\")/g) || []).length, 2,
-    'los laterales derechos comparten grupo');
+  assert.equal((markup.match(/class="planned-distribution-player-group(?:\s|\")/g) || []).length, 7,
+    'los dos laterales comparten tarjeta y el grupo masivo se reparte sin ocultar jugadores');
   assert.equal(markup.includes('<select'), false, 'la vista no editable no imprime controles');
   assert.match(markup, /planned-distribution-meta/, 'la fila de sistema reserva la misma altura que la otra pizarra');
   assert.equal((markup.match(/planned-distribution-player-out/g) || []).length, 1,
@@ -48,6 +48,21 @@ try {
   const printCss = readFileSync('src/components/training/plannedSessionPrint.css', 'utf8');
   assert.match(documentCss, /\.planned-sheet-cover-lower \{[^}]*grid-template-columns: 25% 25% 50%/);
   assert.match(printCss, /\.planned-print-cover-lower \{[^}]*grid-template-columns: 25% 25% 50%/);
+  const { PlannedSessionPrintPages } = await vite.ssrLoadModule(
+    '/src/components/training/PlannedSessionPrint.jsx');
+  const printed = renderToStaticMarkup(React.createElement(PlannedSessionPrintPages, {
+    editor: { session_date: '2026-10-25', session_number: 1, slots: [],
+      header: { staff_observations: 'Revisión posterior', material: 'Conos' } },
+    selected: { team_name: 'C.D. Caudal', label: '2026/2027' },
+    leagueLogoUrl: 'https://assets.example/liga.png', sessionValue: '7.5',
+    pages: [{ kind: 'cover', activation: null }],
+  }));
+  assert.match(printed, /Observaciones post/);
+  assert.match(printed, /Revisión posterior/);
+  assert.match(printed, /VALOR \(0–10\)/);
+  assert.match(printed, /7\.5/);
+  assert.match(printed, /assets\.example\/liga\.png/);
+  assert.doesNotMatch(printed, /UA Tom Scale/i);
   console.log('planned session distribution boards rendering tests passed');
 } finally {
   await vite.close();

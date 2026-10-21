@@ -1,6 +1,6 @@
-import { useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { getSpecificPositionLabel } from '../../constants/playerPositions';
-import { playerCompactLabels, overlappingZonePairs, SESSION_SYSTEMS } from '../../utils/plannedSessionDistributions';
+import { layoutPlayerBoardCards, playerCompactLabels, overlappingZonePairs, SESSION_SYSTEMS } from '../../utils/plannedSessionDistributions';
 import { PLANNED_PHASES } from '../../utils/plannedSessions';
 
 function FieldLines() {
@@ -16,22 +16,48 @@ const statusClass = (status) => ['absent', 'injured'].includes(status)
     ? 'planned-distribution-player-adapted' : '';
 
 export function SessionPlayerDistribution({ distribution, roster, availability, positionById,
-  canEdit = false, onFormationChange }) {
+  canEdit = false, onFormationChange, onPlayerMove }) {
+  const fieldRef = useRef(null);
+  const dragRef = useRef(null);
+  const [dragPoint, setDragPoint] = useState(null);
   const labels = playerCompactLabels(roster);
-  const rosterById = new Map(roster.map((row) => [row.player_id, row]));
-  const groups = new Map();
-  const unplaced = [];
-  for (const item of distribution.player_layout || []) {
-    const player = rosterById.get(item.player_id);
-    if (!player) continue;
-    if (item.placement === 'unplaced' || item.x == null || item.y == null) {
-      unplaced.push(player); continue;
-    }
-    const key = `${item.x}:${item.y}`;
-    const group = groups.get(key) || { x: item.x, y: item.y, players: [] };
-    group.players.push(player);
-    groups.set(key, group);
-  }
+  const { cards, unplaced } = useMemo(() => layoutPlayerBoardCards(
+    distribution.player_layout || [], roster), [distribution.player_layout, roster]);
+  const pointInField = (event) => {
+    const box = fieldRef.current?.getBoundingClientRect();
+    if (!box?.width || !box?.height) return null;
+    return { x: Math.round((event.clientX - box.left) / box.width * 1000) / 10,
+      y: Math.round((event.clientY - box.top) / box.height * 1000) / 10,
+      inside: event.clientX >= box.left && event.clientX <= box.right &&
+        event.clientY >= box.top && event.clientY <= box.bottom };
+  };
+  const startPlayerDrag = (event, player) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = { id: player.player_id, pointerId: event.pointerId,
+      startX: event.clientX, startY: event.clientY };
+  };
+  const movePlayerDrag = (event) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 4 && !drag.moved) return;
+    drag.moved = true;
+    const point = pointInField(event);
+    setDragPoint(point ? { ...point, id: drag.id } : null);
+  };
+  const endPlayerDrag = (event) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const point = pointInField(event);
+    dragRef.current = null;
+    setDragPoint(null);
+    if (drag.moved && point?.inside) onPlayerMove?.(drag.id, point.x, point.y);
+  };
+  const playerHandlers = (player) => canEdit ? {
+    onPointerDown: (event) => startPlayerDrag(event, player),
+    onPointerMove: movePlayerDrag, onPointerUp: endPlayerDrag,
+    onPointerCancel: () => { dragRef.current = null; setDragPoint(null); },
+  } : {};
   return <div className="planned-distribution-board" aria-label="Distribución de jugadores de la sesión">
     <strong className="planned-distribution-heading">Distribución jugadores disponibles sesión</strong>
     <div className="planned-distribution-meta">{canEdit ? <label className="planned-distribution-system">Sistema
@@ -40,34 +66,37 @@ export function SessionPlayerDistribution({ distribution, roster, availability, 
         {SESSION_SYSTEMS.map((system) => <option key={system} value={system}>{system}</option>)}
       </select>
     </label> : <span className="planned-distribution-system-read">{distribution.formation_key ? `Sistema ${distribution.formation_key}` : 'Sin sistema'}</span>}</div>
-    <div className="planned-distribution-field planned-distribution-player-field">
+    <div className="planned-distribution-field planned-distribution-player-field" ref={fieldRef}>
       <FieldLines />
-      {[...groups.values()].map((group) => {
-        const keys = [...new Set(group.players.map((player) => positionById.get(player.player_id)).filter(Boolean))];
-        const halfHeight = Math.min(46, 4 + group.players.length * 2.1);
-        const displayY = Math.max(halfHeight, Math.min(100 - halfHeight, group.y));
-        const displayX = Math.max(18, Math.min(82, group.x));
-        const density = group.players.length > 8 ? ' planned-distribution-player-group-crowded'
-          : group.players.length > 4 ? ' planned-distribution-player-group-dense' : '';
-        return <div key={`${group.x}:${group.y}`} className={`planned-distribution-player-group${density}`}
-          style={{ left: `${displayX}%`, top: `${displayY}%` }}>
-          <b>{keys.map((key) => getSpecificPositionLabel(key) || key).join(' / ')}</b>
-          {group.players.map((player) => <span key={player.player_id}
-            className={statusClass(availability[player.player_id]?.status)} title={player.player_name_snapshot}>
+      {cards.map((card) => {
+        const keys = [...new Set(card.players.map((player) => positionById.get(player.player_id)).filter(Boolean))];
+        return <div key={card.key} className={`planned-distribution-player-group${card.manual ? ' planned-distribution-player-manual' : ''}`}
+          style={{ left: `${card.left}%`, top: `${card.top}%`, width: `${card.width}%`, height: `${card.height}%` }}>
+          {!card.manual ? <b>{keys.map((key) => getSpecificPositionLabel(key) || key).join(' / ')}</b> : null}
+          {card.players.map((player) => <span key={player.player_id}
+            className={`${statusClass(availability[player.player_id]?.status)}${canEdit ? ' planned-distribution-player-draggable' : ''}`}
+            title={player.player_name_snapshot} {...playerHandlers(player)}>
             {labels.get(player.player_id)}
           </span>)}
         </div>;
       })}
+      {dragPoint?.inside ? <span className="planned-distribution-player-ghost"
+        style={{ left: `${dragPoint.x}%`, top: `${dragPoint.y}%` }}>
+        {labels.get(dragPoint.id)}
+      </span> : null}
       {!distribution.formation_key ? <span className="planned-distribution-empty">Selecciona un sistema para situar la plantilla.</span> : null}
     </div>
     {unplaced.length ? <div className="planned-distribution-unplaced"><b>Sin ubicación automática</b>
       <span>{unplaced.map((player) => <span key={player.player_id}
-        className={statusClass(availability[player.player_id]?.status)} title={player.player_name_snapshot}>
+        className={`${statusClass(availability[player.player_id]?.status)}${canEdit ? ' planned-distribution-player-draggable' : ''}`}
+        title={player.player_name_snapshot} {...playerHandlers(player)}>
         {labels.get(player.player_id)}
       </span>)}</span>
     </div> : null}
     {distribution.formation_key && distribution.player_layout.length !== roster.length ?
       <small role="alert">La distribución no contiene toda la plantilla congelada; recarga antes de guardar.</small> : null}
+    {canEdit && distribution.formation_key ?
+      <small>Arrastra cualquier nombre al campo y pulsa «Guardar pizarras».</small> : null}
     {!roster.length ? <small>Congela la plantilla de la sesión antes de seleccionar un sistema.</small> : null}
   </div>;
 }

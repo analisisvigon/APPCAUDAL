@@ -122,6 +122,63 @@ export const playerCompactLabels = (roster = []) => {
       ? row.player_name_snapshot : short(row.player_name_snapshot)]));
 };
 
+// Coloca tarjetas de tamaño fijo en el campo. Las coordenadas guardadas siguen
+// siendo las del entrenador; el ajuste cercano evita solapes en pantalla y PDF.
+export const layoutPlayerBoardCards = (layout = [], roster = []) => {
+  const rosterById = new Map(roster.map((player) => [player.player_id, player]));
+  const labels = playerCompactLabels(roster);
+  const grouped = new Map();
+  const unplaced = [];
+  const desired = [];
+  for (const item of layout) {
+    const player = rosterById.get(item.player_id);
+    if (!player) continue;
+    if (item.placement === 'unplaced' || item.x == null || item.y == null) {
+      unplaced.push(player); continue;
+    }
+    if (item.placement === 'manual') {
+      desired.push({ key: `manual:${item.player_id}`, players: [player], x: item.x, y: item.y,
+        manual: true });
+    } else {
+      const key = `${item.x}:${item.y}`;
+      const group = grouped.get(key) || { key, players: [], x: item.x, y: item.y, manual: false };
+      group.players.push(player);
+      grouped.set(key, group);
+    }
+  }
+  for (const group of grouped.values()) {
+    const chunks = Math.ceil(group.players.length / 4);
+    for (let index = 0; index < chunks; index += 1) desired.push({
+      ...group, key: `${group.key}:${index}`, players: group.players.slice(index * 4, index * 4 + 4),
+      y: group.y + (index - (chunks - 1) / 2) * 21,
+    });
+  }
+  desired.sort((a, b) => Number(b.manual) - Number(a.manual) || a.key.localeCompare(b.key));
+  const placed = [];
+  const collides = (candidate) => placed.some((other) =>
+    candidate.left < other.left + other.width + 1 &&
+    candidate.left + candidate.width + 1 > other.left &&
+    candidate.top < other.top + other.height + 1 &&
+    candidate.top + candidate.height + 1 > other.top);
+  for (const card of desired) {
+    const width = 30;
+    const longNames = card.players.filter((player) => (labels.get(player.player_id) || '').length > 14).length;
+    const height = (card.manual ? 8 : 6 + card.players.length * 5) + longNames * 3;
+    const targetLeft = Math.max(1, Math.min(99 - width, Number(card.x) - width / 2));
+    const targetTop = Math.max(1, Math.min(99 - height, Number(card.y) - height / 2));
+    let best = null;
+    for (let top = 1; top <= 99 - height; top += 2) for (let left = 1; left <= 99 - width; left += 2) {
+      const candidate = { ...card, left, top, width, height };
+      if (collides(candidate)) continue;
+      const distance = (left - targetLeft) ** 2 + (top - targetTop) ** 2;
+      if (!best || distance < best.distance) best = { ...candidate, distance };
+    }
+    if (best) placed.push(best);
+    else unplaced.push(...card.players);
+  }
+  return { cards: placed, unplaced };
+};
+
 export const validateDistribution = (distribution, roster, slots) => {
   if (!distribution) return 'No se ha cargado la distribución.';
   if (distribution.formation_key && !SESSION_SYSTEMS.includes(distribution.formation_key))

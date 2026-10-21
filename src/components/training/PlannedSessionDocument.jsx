@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  getPlannedDuration, getPlannedLibrarySource, getPlannedLibraryValue, PLANNED_PHASES,
+  deriveSessionMaterial, getPlannedDuration, getPlannedLibrarySource, getPlannedLibraryValue, PLANNED_PHASES,
 } from '../../utils/plannedSessions';
 import { needsPlannedTextFragmentation, needsPlannedWideSheet, planPlannedSessionPrintSheets, planPlannedSessionSheets } from '../../utils/plannedSessionSheetPages';
 import { getPlannedSessionBoardTeams } from '../../utils/plannedSessionBoardTeams';
@@ -40,13 +40,15 @@ function PendingArea({ label, children, className = '' }) {
   </div>;
 }
 
-function SheetIdentity({ selected, page }) {
+function SheetIdentity({ selected, page, leagueLogoUrl }) {
   return <header className="planned-sheet-identity">
     {selected.team_id === CAUDAL_TEAM_ID
       ? <img src="/pwa-512x512.png" alt="Escudo del C.D. Caudal" />
       : <div className="planned-sheet-team-crest-pending" aria-label="Espacio reservado para el escudo del equipo"><span className="planned-sheet-reserved-hint">Escudo pendiente</span></div>}
     <div><strong>{selected.team_name}</strong><span>{selected.label} · Hoja {page}</span></div>
-    <div className="planned-sheet-federation" aria-label="Espacio reservado para el escudo de competición"><span className="planned-sheet-reserved-hint">Escudo de competición</span></div>
+    <div className={`planned-sheet-federation${leagueLogoUrl ? ' planned-sheet-federation-logo' : ''}`} aria-label="Escudo de Liga">
+      {leagueLogoUrl ? <img src={leagueLogoUrl} alt="Escudo de Liga" referrerPolicy="no-referrer" /> : null}
+    </div>
   </header>;
 }
 
@@ -218,7 +220,8 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   addExercise, addTask, removeTask, removeSlot, changePhase, libraryTasks, libraryLoading,
   libraryError, selectLibraryTask, switchToFreeTask, roster, frozen,
   selectedMembershipIds, availability, onSelectPlayer, onAvailability,
-  distribution, boardsError, positionById, onFormationChange, onZoneChange }) {
+  distribution, boardsError, positionById, onFormationChange, onZoneChange, onPlayerMove,
+  leagueLogoUrl, sessionValue, valueSupported, onValueChange }) {
   const [zoom, setZoom] = useState(100);
   const [fitZoom, setFitZoom] = useState(100);
   const viewportRef = useRef(null);
@@ -268,6 +271,13 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   const numberOf = (id) => ordered.findIndex((slot) => slot.id === id) + 1;
   const visibleRoster = frozen ? roster : roster.filter((row) => selectedMembershipIds.includes(row.id));
   const playerCounts = sessionPlayerCounts(visibleRoster, frozen ? availability : {});
+  const derivedMaterial = deriveSessionMaterial(editor.slots);
+  const recalculateMaterial = () => {
+    if (!derivedMaterial || derivedMaterial === editor.header.material) return;
+    if (editor.header.material?.trim() &&
+        !window.confirm('Se sustituirá el Material escrito en la cabecera por el material de las tareas. ¿Continuar?')) return;
+    updateEditor((current) => ({ ...current, header: { ...current.header, material: derivedMaterial } }));
+  };
   const field = (label, value, onChange, issue, options = {}) =>
     <SheetField label={label} value={value} onChange={onChange} issue={issue}
       disabled={!canEdit || busy} {...options} />;
@@ -308,7 +318,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
       <div className="planned-document-pages" style={{ zoom: `${zoom === 'fit' ? fitZoom : zoom}%` }}>
         {sheets.map((sheet, index) => <article className="planned-session-sheet" key={`${sheet.kind}-${index}`}
           data-planned-sheet={sheet.kind}>
-          <SheetIdentity selected={selected} page={index + 1} />
+          <SheetIdentity selected={selected} page={index + 1} leagueLogoUrl={leagueLogoUrl} />
           {sheet.kind === 'cover' ? <>
             <div className="planned-sheet-cover-meta">
               {field('Día', editor.session_date, (value) => updateEditor((current) => ({ ...current, session_date: value })), fieldIssue('session_date'), { type: 'date' })}
@@ -328,12 +338,28 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
               <div className="planned-sheet-cover-notes">
                 {field('Observaciones', editor.header.notes, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, notes: value } })), fieldIssue('notes'), { multiline: true })}
                 {field('Objetivos', editor.header.objectives, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, objectives: value } })), fieldIssue('objectives'), { multiline: true })}
-                {field('Material', editor.header.material, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, material: value } })), fieldIssue('material'), { multiline: true })}
-                {field('Observaciones del cuerpo técnico', editor.header.staff_observations,
+                <div className="planned-sheet-material-field">
+                  {field('Material', editor.header.material, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, material: value } })), fieldIssue('material'), { multiline: true })}
+                  {canEdit && derivedMaterial && derivedMaterial !== editor.header.material ?
+                    <button type="button" disabled={busy} onClick={recalculateMaterial}>Actualizar desde tareas</button> : null}
+                  {canEdit && editor.slots.some((slot) => slot.items.some((item) => item.kind === 'free')) ?
+                    <small>Material de actividades libres: añádelo aquí.</small> : null}
+                </div>
+                {field('Observaciones post', editor.header.staff_observations,
                   (value) => updateEditor((current) => ({ ...current, header: { ...current.header, staff_observations: value } })),
                   fieldIssue('staff_observations'), { multiline: true })}
               </div>
-              <div className="planned-sheet-side-metrics"><PendingArea label="Valor (0–10)" /><PendingArea label="UA Tom Scale" /></div>
+              <div className="planned-sheet-side-metrics planned-sheet-value-metric">
+                <label>VALOR (0–10)
+                  <input type="number" min="0" max="10" step="any" inputMode="decimal"
+                    value={sessionValue ?? ''} disabled={!canEdit || busy || !valueSupported || !editor.id}
+                    onChange={(event) => {
+                      if (event.target.value === '' || /^(?:10(?:\.0{0,2})?|[0-9](?:\.\d{0,2})?)$/.test(event.target.value)) onValueChange(event.target.value);
+                    }} />
+                </label>
+                {!editor.id ? <small>Guarda primero el borrador.</small>
+                  : !valueSupported ? <small>Disponible tras instalar VALOR.</small> : null}
+              </div>
             </div>
             <PlannedSessionRoster roster={roster} frozen={frozen} selectedIds={selectedMembershipIds}
               availability={availability} onSelect={onSelectPlayer} onAvailability={onAvailability}
@@ -342,7 +368,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
               <SessionPlayerDistribution distribution={distribution} roster={frozen ? roster : []}
                 availability={availability} positionById={positionById}
                 canEdit={canEdit && !busy && !boardsError && frozen}
-                onFormationChange={onFormationChange} />
+                onFormationChange={onFormationChange} onPlayerMove={onPlayerMove} />
               <SessionSpaceDistribution zones={distribution.space_zones} slots={editor.slots}
                 canEdit={canEdit && !busy && !boardsError && Boolean(editor.id)}
                 onZoneChange={onZoneChange} />
@@ -381,6 +407,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
     </div>
     <p className="planned-document-note">Vista editorial de 03B. La exportación PDF definitiva y las zonas marcadas como pendientes no están activadas.</p>
     <PlannedSessionPrint editor={editor} selected={selected} pages={printSheets} printRef={printRef}
+      leagueLogoUrl={leagueLogoUrl} sessionValue={sessionValue}
       roster={frozen ? roster : []} availability={availability} distribution={distribution}
       positionById={positionById} />
     {boardLocation?.item.kind === 'library_task' ? <div className="planned-board-dialog-backdrop">

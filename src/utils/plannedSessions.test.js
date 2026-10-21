@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   buildPlannedSavePayload,
   createEmptyPlannedEditor,
+  deriveSessionMaterial,
   getPlannedDuration,
   hydratePlannedEditor,
   getPlannedEditorIssues,
@@ -27,6 +28,11 @@ const items = [
     kind: 'free', free_title: 'Actividad 3', activity_minutes: 10 },
 ];
 const original = hydratePlannedEditor(session, slots, items);
+assert.equal(deriveSessionMaterial([{ items: [
+  { kind: 'library_task', snapshot: { source: { material: 'Conos, Petos' } }, working: {} },
+  { kind: 'library_task', snapshot: { source: { material: 'balones' } }, working: { material: 'petos; Picas' } },
+  { kind: 'free', description: 'Material: no estructurado' },
+] }]), 'Conos, Petos, Picas', 'deduplica material explícito y respeta cambios de la copia');
 assert.equal(original.header.starts_at, '10:00');
 assert.equal(getPlannedDuration(original.slots), 45,
   'la duración suma ejercicios, no tareas paralelas');

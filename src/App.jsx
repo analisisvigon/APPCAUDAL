@@ -33217,7 +33217,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
         {activeTab === 'Sesiones' ? (
           <PlannedSessionsSection key={`${session?.user?.id || ''}:${identity?.membership?.club_id || ''}`}
             client={supabase} membership={identity?.membership}
-            userId={session?.user?.id || ''} onDirtyChange={setPlannedSessionsDirty} />
+            userId={session?.user?.id || ''} onDirtyChange={setPlannedSessionsDirty}
+            leagueLogoUrl={competitions.find((competition) => competition.key === 'league')?.logoUrl || ''} />
         ) : null}
 
         {activeTab === 'Rendimiento' ? (

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import {
-  autoPlayerLayout, distributionPayloadKey, emptyDistribution, normalizeDistribution,
+  autoPlayerLayout, distributionPayloadKey, emptyDistribution, layoutPlayerBoardCards, normalizeDistribution,
   overlappingZonePairs, playerCompactLabels, reconcileSpaceZones, SESSION_SYSTEMS,
   specificPositionMap, validateDistribution,
 } from './plannedSessionDistributions.js';
 import { loadPlannedDistribution, loadPlannedSpecificPositions,
-  savePlannedDistribution } from '../data/plannedSessionsStore.js';
+  savePlannedDistribution, savePlannedSessionValue } from '../data/plannedSessionsStore.js';
 
 const roster = Array.from({ length: 24 }, (_, index) => ({
   player_id: `player-${index}`, player_name_snapshot: index === 0 ? 'Pepe Pérez' :
@@ -27,6 +27,28 @@ for (const system of SESSION_SYSTEMS) {
   assert.equal(layout[2].x, null);
 }
 const first442 = autoPlayerLayout(roster, byId, '4-4-2');
+const board = layoutPlayerBoardCards(first442, roster);
+assert.equal(board.cards.flatMap((card) => card.players).length + board.unplaced.length, 24);
+assert.ok(board.cards.every((card) => card.players.length <= 4));
+for (const [index, left] of board.cards.entries()) for (const right of board.cards.slice(index + 1)) {
+  assert.ok(left.left + left.width + 1 <= right.left || right.left + right.width + 1 <= left.left ||
+    left.top + left.height + 1 <= right.top || right.top + right.height + 1 <= left.top,
+  'las tarjetas del campo no se solapan');
+}
+const movedBoard = layoutPlayerBoardCards(first442.map((item) => item.player_id === 'player-2'
+  ? { ...item, placement: 'manual', x: 50, y: 50 } : item), roster);
+assert.ok(movedBoard.cards.some((card) => card.manual && card.players[0].player_id === 'player-2'),
+  'un jugador sin posición automática puede situarse manualmente');
+const crowdedManual = layoutPlayerBoardCards(roster.map((player) => ({
+  player_id: player.player_id, placement: 'manual', x: 50, y: 50,
+})), roster);
+assert.equal(crowdedManual.cards.length, 24);
+assert.equal(crowdedManual.unplaced.length, 0,
+  'veinticuatro intentos de solapar una misma zona se resuelven dentro del campo');
+for (const [index, left] of crowdedManual.cards.entries()) for (const right of crowdedManual.cards.slice(index + 1)) {
+  assert.ok(left.left + left.width + 1 <= right.left || right.left + right.width + 1 <= left.left ||
+    left.top + left.height + 1 <= right.top || right.top + right.height + 1 <= left.top);
+}
 assert.notDeepEqual(first442.map(({ x, y }) => [x, y]),
   autoPlayerLayout(roster, byId, '4-2-3-1').map(({ x, y }) => [x, y]),
   'el cambio de sistema recalcula los sectores');
@@ -75,6 +97,10 @@ assert.equal(await savePlannedDistribution(client, 'session-1', 6, distribution)
 assert.deepEqual(calls.at(-1), ['rpc', 'save_planned_session_distributions_05', {
   p_session_id: 'session-1', p_expected_revision: 6, p_formation_key: '4-4-2',
   p_player_layout: first442, p_space_zones: zones,
+}]);
+assert.equal(await savePlannedSessionValue(client, 'session-1', 7, '0'), 7);
+assert.deepEqual(calls.at(-1), ['rpc', 'save_planned_session_value_06', {
+  p_session_id: 'session-1', p_expected_revision: 7, p_value: 0,
 }]);
 assert.equal(calls.some(([kind]) => ['insert', 'update', 'delete'].includes(kind)), false);
 console.log('planned session distributions tests passed');

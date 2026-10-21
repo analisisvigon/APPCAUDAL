@@ -16,12 +16,14 @@ function PrintField({ label, children }) {
   return <div className="planned-print-field"><strong>{label}</strong><span>{children || '\u00a0'}</span></div>;
 }
 
-function PrintIdentity({ selected, page }) {
+function PrintIdentity({ selected, page, leagueLogoUrl }) {
   return <header className="planned-print-identity">
     {selected?.team_id === CAUDAL_TEAM_ID ? <img src="/pwa-512x512.png" alt="Escudo del C.D. Caudal" />
       : <div className="planned-print-crest-space" />}
     <div><strong>{selected?.team_name || ''}</strong><span>{selected?.label || ''} · Hoja {page}</span></div>
-    <div className="planned-print-crest-space" aria-label="Espacio reservado para escudo de competición" />
+    <div className={`planned-print-crest-space${leagueLogoUrl ? ' planned-print-league-crest' : ''}`} aria-label="Escudo de Liga">
+      {leagueLogoUrl ? <img src={leagueLogoUrl} alt="Escudo de Liga" referrerPolicy="no-referrer" /> : null}
+    </div>
   </header>;
 }
 
@@ -71,6 +73,7 @@ function PrintExercise({ slot, number }) {
 
 export function PlannedSessionPrintPages({ editor, selected, roster = [], availability = {},
   distribution = { formation_key: null, player_layout: [], space_zones: [] }, positionById = new Map(),
+  leagueLogoUrl = '', sessionValue = '',
   pages = planPlannedSessionPrintSheets(editor.slots) }) {
   const ordered = ['activation', 'main', 'cooldown'].flatMap((phase) => editor.slots.filter((slot) => slot.phase === phase));
   const numberOf = (id) => ordered.findIndex((slot) => slot.id === id) + 1;
@@ -83,7 +86,7 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], availa
   };
   return <div className="planned-print-pages" data-planned-print-pages>
     {pages.map((page, index) => <article className={`planned-print-sheet ${page.kind === 'cover' ? '' : 'planned-print-sheet-exercises'}`} key={index} data-print-page={index + 1}>
-      <PrintIdentity selected={selected} page={index + 1} />
+      <PrintIdentity selected={selected} page={index + 1} leagueLogoUrl={leagueLogoUrl} />
       {page.kind === 'cover' ? <>
         <div className="planned-print-meta">
           <PrintField label="Día">{editor.session_date}</PrintField>
@@ -102,9 +105,9 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], availa
             <PrintField label="Objetivos">{editor.header.objectives}</PrintField>
             <PrintField label="Material">{editor.header.material}</PrintField>
             <PrintField label="Observaciones">{editor.header.notes}</PrintField>
-            <PrintField label="Observaciones del cuerpo técnico">{editor.header.staff_observations}</PrintField>
+            <PrintField label="Observaciones post">{editor.header.staff_observations}</PrintField>
           </div>
-          <div className="planned-print-session-numbers"><span>Valor (0–10)</span><span>UA Tom Scale</span></div>
+          <div className="planned-print-session-numbers planned-print-value-metric"><span>VALOR (0–10)<b>{sessionValue === '' || sessionValue == null ? '—' : sessionValue}</b></span></div>
         </div>
         <PlannedSessionRoster roster={roster} frozen availability={availability} print />
         <div className="planned-print-cover-lower">
@@ -125,12 +128,12 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], availa
 }
 
 export default function PlannedSessionPrint({ editor, selected, pages, printRef, roster, availability,
-  distribution, positionById }) {
+  distribution, positionById, leagueLogoUrl, sessionValue }) {
   if (typeof document === 'undefined') return null;
   return createPortal(<div className="planned-print-portal" ref={printRef}>
     <style media="print">{'@page { size: A4 landscape; margin: 0; }'}</style>
     <PlannedSessionPrintPages editor={editor} selected={selected} pages={pages}
       roster={roster} availability={availability} distribution={distribution}
-      positionById={positionById} />
+      positionById={positionById} leagueLogoUrl={leagueLogoUrl} sessionValue={sessionValue} />
   </div>, document.body);
 }

@@ -28,6 +28,20 @@ export const getPlannedLibraryValue = (item, field) =>
   Object.prototype.hasOwnProperty.call(item?.working || {}, field)
     ? item.working[field] : getPlannedLibrarySource(item)[field];
 
+export const deriveSessionMaterial = (slots = []) => {
+  const found = new Set();
+  const materials = [];
+  for (const slot of slots) for (const item of slot.items || []) {
+    const written = item.kind === 'library_task' ? getPlannedLibraryValue(item, 'material') : '';
+    for (const part of String(written || '').split(/[,;\n]+/)) {
+      const material = part.trim().replace(/\s+/g, ' ');
+      const key = material.toLocaleLowerCase('es');
+      if (material && !found.has(key)) { found.add(key); materials.push(material); }
+    }
+  }
+  return materials.join(', ');
+};
+
 const stableJson = (value) => Array.isArray(value) ? value.map(stableJson)
   : value && typeof value === 'object'
     ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableJson(value[key])]))

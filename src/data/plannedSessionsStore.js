@@ -156,6 +156,13 @@ export const savePlannedDistribution = async (client, sessionId, revision, distr
     p_space_zones: distribution.space_zones,
   }));
 
+export const savePlannedSessionValue = async (client, sessionId, revision, value) =>
+  unwrap(await client.rpc('save_planned_session_value_06', {
+    p_session_id: sessionId,
+    p_expected_revision: revision,
+    p_value: value === '' ? null : Number(value),
+  }));
+
 export const freezePlannedRoster = async (client, sessionId, revision, membershipIds,
   confirmUncertain, confirmExisting) => unwrap(await client.rpc('freeze_planned_session_roster_04b', {
   p_session_id: sessionId,

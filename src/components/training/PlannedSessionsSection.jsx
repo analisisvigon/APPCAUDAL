@@ -27,6 +27,7 @@ import {
   loadPlannedDistribution,
   loadPlannedSpecificPositions,
   savePlannedDistribution,
+  savePlannedSessionValue,
 } from '../../data/plannedSessionsStore';
 import { availabilityChanges, eligibleRosterCandidates, hasUncertainRosterDate } from '../../utils/plannedSessionPlayers';
 import { autoPlayerLayout, distributionPayloadKey, emptyDistribution, normalizeDistribution,
@@ -56,7 +57,7 @@ const unsupportedSession = (data, next) => data.items.some((item) =>
     item.task_snapshot.source_task_id !== item.source_task_uuid_snapshot))) ||
   next.slots.some((slot) => slot.items.length > 2);
 
-export default function PlannedSessionsSection({ client, membership, userId, onDirtyChange }) {
+export default function PlannedSessionsSection({ client, membership, userId, onDirtyChange, leagueLogoUrl = '' }) {
   const [contexts, setContexts] = useState([]);
   const [contextId, setContextId] = useState('');
   const [contextsLoading, setContextsLoading] = useState(true);
@@ -88,6 +89,9 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [distributionBaseline, setDistributionBaseline] = useState(null);
   const [specificPositions, setSpecificPositions] = useState([]);
   const [boardsError, setBoardsError] = useState('');
+  const [sessionValue, setSessionValue] = useState('');
+  const [baselineSessionValue, setBaselineSessionValue] = useState('');
+  const [valueSupported, setValueSupported] = useState(false);
   const selected = contexts.find((row) => row.id === contextId) || null;
   const isManager = membership?.is_active === true && ['owner', 'admin'].includes(membership?.role);
   const canWriteContext = canWritePlannedContext(membership, selected);
@@ -99,7 +103,14 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     JSON.stringify([...selectedMembershipIds].sort()) !== JSON.stringify([...initialSelectedMembershipIds].sort()));
   const distributionDirty = Boolean(distribution && distributionBaseline &&
     distributionPayloadKey(distribution) !== distributionPayloadKey(distributionBaseline));
-  const dirty = editorDirty || availabilityDirty || selectionDirty || distributionDirty;
+  const valueDirty = valueSupported && sessionValue !== baselineSessionValue;
+  const dirty = editorDirty || availabilityDirty || selectionDirty || distributionDirty || valueDirty;
+  const safeLeagueLogoUrl = (() => {
+    try {
+      const parsed = new URL(String(leagueLogoUrl).trim());
+      return parsed.protocol === 'https:' && !parsed.username && !parsed.password ? parsed.href : '';
+    } catch { return ''; }
+  })();
   const frozen = roster.length > 0;
   const dateNeedsReconciliation = Boolean(frozen && editor?.session_date !== baseline?.session_date);
   const onlyDateDirty = Boolean(dateNeedsReconciliation && baseline &&
@@ -115,6 +126,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
     setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
     setDistribution(null); setDistributionBaseline(null); setSpecificPositions([]); setBoardsError('');
+    setSessionValue(''); setBaselineSessionValue(''); setValueSupported(false);
     setUnsupportedItems(false); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null); setContextId('');
   }, [membership?.club_id, userId]);
   useEffect(() => {
@@ -200,6 +212,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
     setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
     setDistribution(null); setDistributionBaseline(null); setSpecificPositions([]); setBoardsError('');
+    setSessionValue(''); setBaselineSessionValue(''); setValueSupported(false);
     setContextId(nextId); setError(''); setNotice(''); setConflict(false); setCreationUncertain(false);
     try { if (storageKey) window.localStorage.setItem(storageKey, nextId); } catch { /* opcional */ }
   };
@@ -212,6 +225,9 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         loadPlannedSession(client, sessionId, contextId), loadPlannedSessionPlayers(client, sessionId),
       ]);
       const next = hydratePlannedEditor(data.session, data.slots, data.items);
+      const supportsValue = Object.prototype.hasOwnProperty.call(data.session, 'session_value');
+      const loadedValue = supportsValue && data.session.session_value != null
+        ? String(data.session.session_value) : '';
       const nextCandidates = players.roster.length ? [] : await loadPlannedRosterCandidates(client, contextId);
       const nextAvailability = Object.fromEntries(players.availability.map((row) => [row.player_id,
         { status: row.status, observation: row.observation || '' }]));
@@ -238,6 +254,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       setSelectedMembershipIds(initialIds); setInitialSelectedMembershipIds(initialIds);
       setAvailability(nextAvailability); setAvailabilityBaseline(nextAvailability); setPlayersError('');
       setDistribution(nextDistribution); setSpecificPositions(nextPositions); setBoardsError(nextBoardsError);
+      setValueSupported(supportsValue); setSessionValue(loadedValue); setBaselineSessionValue(loadedValue);
     } catch (cause) {
       setPlayersError(`${errorKind(cause)}: ${readError(cause)}`);
       setError(`${errorKind(cause)}: no se pudo abrir la sesión. ${readError(cause)}`);
@@ -249,6 +266,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
     setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
     setDistribution(emptyDistribution()); setDistributionBaseline(emptyDistribution());
+    setSessionValue(''); setBaselineSessionValue(''); setValueSupported(false);
     setSpecificPositions([]); setBoardsError('');
     setUnsupportedItems(false); setError(''); setNotice(''); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null);
     requestAnimationFrame(() => document.querySelector('[data-planned-session-document]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -327,6 +345,11 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       try {
         const data = await loadPlannedSession(client, working.id, selected.id);
         const fresh = hydratePlannedEditor(data.session, data.slots, data.items);
+        setValueSupported(Object.prototype.hasOwnProperty.call(data.session, 'session_value'));
+        if (wasNew) {
+          const initialValue = data.session.session_value == null ? '' : String(data.session.session_value);
+          setSessionValue(initialValue); setBaselineSessionValue(initialValue);
+        }
         if (use03c) assertPlanned03cReload(working, fresh, revision);
         setEditor(fresh); setBaseline(fresh);
         setUnsupportedItems(unsupportedSession(data, fresh));
@@ -575,6 +598,37 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const changeZone = (slotId, change) => setDistribution((current) => current ? ({ ...current,
     space_zones: current.space_zones.map((zone) => zone.slot_id === slotId
       ? { ...zone, ...change } : zone) }) : current);
+  const movePlayer = (playerId, x, y) => setDistribution((current) => current ? ({ ...current,
+    player_layout: current.player_layout.map((item) => item.player_id === playerId
+      ? { ...item, placement: 'manual', x, y } : item),
+  }) : current);
+
+  const saveValue = async () => {
+    if (!editor?.id || !valueSupported || !valueDirty || !canEdit || busy || operationRef.current ||
+        editorDirty || distributionDirty || availabilityDirty || dateNeedsReconciliation || conflict || creationUncertain) return;
+    if (sessionValue !== '' && (!Number.isFinite(Number(sessionValue)) ||
+        Number(sessionValue)<0 || Number(sessionValue)>10)) {
+      setError('VALOR debe estar entre 0 y 10.'); return;
+    }
+    operationRef.current = true; setBusy(true); setError(''); setNotice('');
+    try {
+      const expectedValue = sessionValue === '' ? '' : String(Number(sessionValue));
+      const revision = await savePlannedSessionValue(client, editor.id, editor.revision, sessionValue);
+      const data = await loadPlannedSession(client, editor.id, selected.id);
+      const received = data.session.session_value == null ? '' : String(data.session.session_value);
+      if (data.session.revision !== revision ||
+          (received === '' || expectedValue === ''
+            ? received !== expectedValue : Number(received) !== Number(expectedValue)))
+        throw new Error('VALOR no coincide con la lectura posterior. Recarga la sesión antes de continuar.');
+      const fresh = hydratePlannedEditor(data.session, data.slots, data.items);
+      setEditor(fresh); setBaseline(fresh); setSessionValue(received); setBaselineSessionValue(received);
+      setNotice('VALOR guardado y verificado desde el servidor.');
+    } catch (cause) {
+      if (cause?.code === '40001') setConflict(true);
+      else if (!['42501', '23514', '22023'].includes(cause?.code)) setCreationUncertain(true);
+      setError(`${errorKind(cause)}: no se pudo verificar el guardado de VALOR. ${readError(cause)}`);
+    } finally { operationRef.current = false; setBusy(false); }
+  };
 
   const saveDistributions = async () => {
     if (!editor?.id || !canEdit || !distribution || boardsError || !distributionDirty ||
@@ -684,17 +738,25 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
               onClick={saveDistributions}
               disabled={busy || !distributionDirty || editorDirty || dateNeedsReconciliation || conflict || creationUncertain}>
               Guardar pizarras</button> : null}
+            {canEdit && editor.id && valueSupported ? <button type="button"
+              className={`${button} border border-caudal-electric/50 text-caudal-electric`}
+              onClick={saveValue}
+              disabled={busy || !valueDirty || editorDirty || distributionDirty || availabilityDirty ||
+                dateNeedsReconciliation || conflict || creationUncertain}>
+              Guardar VALOR</button> : null}
             {canEdit && editor.id && editor.planning_state === 'draft' ?
               <button type="button" className={`${button} border border-caudal-electric/50 text-caudal-electric`}
                 onClick={confirm} disabled={busy || dirty || conflict || creationUncertain}>Confirmar y numerar</button> : null}
             {editor.id ? <button type="button" className={`${button} border border-white/15 text-slate-200`}
               onClick={() => { if (requestDiscard()) openSession(editor.id, true); }} disabled={busy}>Recargar</button> : null}
             <button type="button" className={`${button} border border-white/15 text-slate-200`}
-              onClick={() => { if (requestDiscard()) { setEditor(null); setBaseline(null); setDistribution(null); setDistributionBaseline(null); setSpecificPositions([]); setBoardsError(''); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null); } }}
+              onClick={() => { if (requestDiscard()) { setEditor(null); setBaseline(null); setDistribution(null); setDistributionBaseline(null); setSpecificPositions([]); setBoardsError(''); setSessionValue(''); setBaselineSessionValue(''); setValueSupported(false); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null); } }}
               disabled={busy}>Cerrar plantilla</button>
           </div>
           {dirty ? <p className="w-full text-xs text-amber-200">Cambios sin guardar. Guarda antes de confirmar.</p> : null}
           {distributionDirty && editorDirty ? <p className="w-full text-xs text-amber-200">Guarda primero los ejercicios y después las pizarras; cada operación actualiza la revisión de la sesión.</p> : null}
+          {valueDirty && (editorDirty || distributionDirty || availabilityDirty) ?
+            <p className="w-full text-xs text-amber-200">Guarda primero los otros cambios; después podrás guardar VALOR con la revisión actualizada.</p> : null}
           {dateNeedsReconciliation && canEdit ? <button type="button" className={`${button} border border-amber-400/50 text-amber-200`}
             onClick={reconcileDate} disabled={busy || conflict || creationUncertain}>Confirmar cambio de fecha y conciliar plantilla</button> : null}
           {creationUncertain ? <p className="w-full text-xs text-amber-200">Guardado bloqueado: comprueba la sesión en la lista y recárgala antes de continuar.</p> : null}
@@ -722,6 +784,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           positionById={specificPositionMap(distribution?.specific_positions_snapshot?.length
             ? distribution.specific_positions_snapshot : specificPositions)}
           onFormationChange={changeFormation} onZoneChange={changeZone}
+          onPlayerMove={movePlayer} leagueLogoUrl={safeLeagueLogoUrl}
+          sessionValue={sessionValue} valueSupported={valueSupported} onValueChange={setSessionValue}
           roster={frozen ? roster : proposed} frozen={frozen} selectedMembershipIds={selectedMembershipIds}
           availability={availability} onSelectPlayer={(id, checked) => setSelectedMembershipIds((current) =>
             checked ? [...new Set([...current, id])] : current.filter((entry) => entry !== id))}
