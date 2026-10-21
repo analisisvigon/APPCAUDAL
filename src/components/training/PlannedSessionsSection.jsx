@@ -32,6 +32,7 @@ import {
 import { availabilityChanges, eligibleRosterCandidates, hasUncertainRosterDate } from '../../utils/plannedSessionPlayers';
 import { autoPlayerLayout, distributionPayloadKey, emptyDistribution, normalizeDistribution,
   reconcileSpaceZones, specificPositionMap, validateDistribution } from '../../utils/plannedSessionDistributions';
+import { parsePlannedSessionValue, readPlannedSessionValue } from '../../utils/plannedSessionValue';
 import PlannedSessionDocument from './PlannedSessionDocument';
 
 const panel = 'rounded-2xl border border-white/10 bg-[#0b1a2d]/85 p-4 sm:p-5';
@@ -225,9 +226,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         loadPlannedSession(client, sessionId, contextId), loadPlannedSessionPlayers(client, sessionId),
       ]);
       const next = hydratePlannedEditor(data.session, data.slots, data.items);
-      const supportsValue = Object.prototype.hasOwnProperty.call(data.session, 'session_value');
-      const loadedValue = supportsValue && data.session.session_value != null
-        ? String(data.session.session_value) : '';
+      const { supported: supportsValue, value: loadedValue } = readPlannedSessionValue(data.session);
       const nextCandidates = players.roster.length ? [] : await loadPlannedRosterCandidates(client, contextId);
       const nextAvailability = Object.fromEntries(players.availability.map((row) => [row.player_id,
         { status: row.status, observation: row.observation || '' }]));
@@ -345,9 +344,9 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       try {
         const data = await loadPlannedSession(client, working.id, selected.id);
         const fresh = hydratePlannedEditor(data.session, data.slots, data.items);
-        setValueSupported(Object.prototype.hasOwnProperty.call(data.session, 'session_value'));
+        setValueSupported(readPlannedSessionValue(data.session).supported);
         if (wasNew) {
-          const initialValue = data.session.session_value == null ? '' : String(data.session.session_value);
+          const initialValue = readPlannedSessionValue(data.session).value;
           setSessionValue(initialValue); setBaselineSessionValue(initialValue);
         }
         if (use03c) assertPlanned03cReload(working, fresh, revision);
@@ -606,16 +605,15 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const saveValue = async () => {
     if (!editor?.id || !valueSupported || !valueDirty || !canEdit || busy || operationRef.current ||
         editorDirty || distributionDirty || availabilityDirty || dateNeedsReconciliation || conflict || creationUncertain) return;
-    if (sessionValue !== '' && (!Number.isFinite(Number(sessionValue)) ||
-        Number(sessionValue)<0 || Number(sessionValue)>10)) {
-      setError('VALOR debe estar entre 0 y 10.'); return;
-    }
+    let parsedValue;
+    try { parsedValue = parsePlannedSessionValue(sessionValue); }
+    catch (cause) { setError(`Validación: ${readError(cause)}`); return; }
     operationRef.current = true; setBusy(true); setError(''); setNotice('');
     try {
-      const expectedValue = sessionValue === '' ? '' : String(Number(sessionValue));
+      const expectedValue = parsedValue == null ? '' : String(parsedValue);
       const revision = await savePlannedSessionValue(client, editor.id, editor.revision, sessionValue);
       const data = await loadPlannedSession(client, editor.id, selected.id);
-      const received = data.session.session_value == null ? '' : String(data.session.session_value);
+      const received = readPlannedSessionValue(data.session).value;
       if (data.session.revision !== revision ||
           (received === '' || expectedValue === ''
             ? received !== expectedValue : Number(received) !== Number(expectedValue)))
@@ -624,9 +622,13 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       setEditor(fresh); setBaseline(fresh); setSessionValue(received); setBaselineSessionValue(received);
       setNotice('VALOR guardado y verificado desde el servidor.');
     } catch (cause) {
-      if (cause?.code === '40001') setConflict(true);
-      else if (!['42501', '23514', '22023'].includes(cause?.code)) setCreationUncertain(true);
-      setError(`${errorKind(cause)}: no se pudo verificar el guardado de VALOR. ${readError(cause)}`);
+      if (cause?.code === '40001') {
+        setConflict(true);
+        setError('Revisión obsoleta: VALOR sigue en pantalla. Recarga la sesión antes de volver a guardar.');
+      } else {
+        if (!['42501', '23514', '22023'].includes(cause?.code)) setCreationUncertain(true);
+        setError(`${errorKind(cause)}: no se pudo verificar el guardado de VALOR. ${readError(cause)}`);
+      }
     } finally { operationRef.current = false; setBusy(false); }
   };
 
@@ -785,7 +787,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
             ? distribution.specific_positions_snapshot : specificPositions)}
           onFormationChange={changeFormation} onZoneChange={changeZone}
           onPlayerMove={movePlayer} leagueLogoUrl={safeLeagueLogoUrl}
-          sessionValue={sessionValue} valueSupported={valueSupported} onValueChange={setSessionValue}
+          sessionValue={sessionValue} printedSessionValue={baselineSessionValue}
+          valueSupported={valueSupported} onValueChange={setSessionValue}
           roster={frozen ? roster : proposed} frozen={frozen} selectedMembershipIds={selectedMembershipIds}
           availability={availability} onSelectPlayer={(id, checked) => setSelectedMembershipIds((current) =>
             checked ? [...new Set([...current, id])] : current.filter((entry) => entry !== id))}

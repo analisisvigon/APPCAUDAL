@@ -221,7 +221,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   libraryError, selectLibraryTask, switchToFreeTask, roster, frozen,
   selectedMembershipIds, availability, onSelectPlayer, onAvailability,
   distribution, boardsError, positionById, onFormationChange, onZoneChange, onPlayerMove,
-  leagueLogoUrl, sessionValue, valueSupported, onValueChange }) {
+  leagueLogoUrl, sessionValue, printedSessionValue, valueSupported, onValueChange }) {
   const [zoom, setZoom] = useState(100);
   const [fitZoom, setFitZoom] = useState(100);
   const viewportRef = useRef(null);
@@ -351,11 +351,9 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
               </div>
               <div className="planned-sheet-side-metrics planned-sheet-value-metric">
                 <label>VALOR (0–10)
-                  <input type="number" min="0" max="10" step="any" inputMode="decimal"
+                  <input type="text" inputMode="decimal" autoComplete="off"
                     value={sessionValue ?? ''} disabled={!canEdit || busy || !valueSupported || !editor.id}
-                    onChange={(event) => {
-                      if (event.target.value === '' || /^(?:10(?:\.0{0,2})?|[0-9](?:\.\d{0,2})?)$/.test(event.target.value)) onValueChange(event.target.value);
-                    }} />
+                    onChange={(event) => onValueChange(event.target.value)} />
                 </label>
                 {!editor.id ? <small>Guarda primero el borrador.</small>
                   : !valueSupported ? <small>Disponible tras instalar VALOR.</small> : null}
@@ -407,7 +405,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
     </div>
     <p className="planned-document-note">Vista editorial de 03B. La exportación PDF definitiva y las zonas marcadas como pendientes no están activadas.</p>
     <PlannedSessionPrint editor={editor} selected={selected} pages={printSheets} printRef={printRef}
-      leagueLogoUrl={leagueLogoUrl} sessionValue={sessionValue}
+      leagueLogoUrl={leagueLogoUrl} sessionValue={printedSessionValue}
       roster={frozen ? roster : []} availability={availability} distribution={distribution}
       positionById={positionById} />
     {boardLocation?.item.kind === 'library_task' ? <div className="planned-board-dialog-backdrop">

@@ -54,15 +54,30 @@ try {
     editor: { session_date: '2026-10-25', session_number: 1, slots: [],
       header: { staff_observations: 'Revisión posterior', material: 'Conos' } },
     selected: { team_name: 'C.D. Caudal', label: '2026/2027' },
-    leagueLogoUrl: 'https://assets.example/liga.png', sessionValue: '7.5',
+    leagueLogoUrl: 'https://assets.example/liga.png', sessionValue: '8.5',
     pages: [{ kind: 'cover', activation: null }],
   }));
   assert.match(printed, /Observaciones post/);
   assert.match(printed, /Revisión posterior/);
   assert.match(printed, /VALOR \(0–10\)/);
-  assert.match(printed, /7\.5/);
+  assert.match(printed, /8\.5/);
   assert.match(printed, /assets\.example\/liga\.png/);
   assert.doesNotMatch(printed, /UA Tom Scale/i);
+  const { default: PlannedSessionDocument } = await vite.ssrLoadModule(
+    '/src/components/training/PlannedSessionDocument.jsx');
+  const documentProps = {
+    editor: { id: 'session-1', revision: 4, session_date: '2026-10-25',
+      session_number: 1, header: {}, slots: [] },
+    selected: { team_name: 'C.D. Caudal', label: '2026/2027' },
+    canEdit: false, busy: false, fieldIssue: () => null,
+    roster: [], frozen: true, selectedMembershipIds: [], availability: {},
+    distribution: { formation_key: null, player_layout: [], space_zones: [] },
+    positionById: new Map(), libraryTasks: [], boardsError: '',
+    sessionValue: '9', printedSessionValue: '7', valueSupported: true,
+  };
+  const closedMarkup = renderToStaticMarkup(React.createElement(PlannedSessionDocument, documentProps));
+  assert.match(closedMarkup, /<label>VALOR \(0–10\)<input[^>]*disabled=""[^>]*value="9"/,
+    'la temporada cerrada conserva el dato visible sin permitir editarlo');
   console.log('planned session distribution boards rendering tests passed');
 } finally {
   await vite.close();

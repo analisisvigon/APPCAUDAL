@@ -1,3 +1,5 @@
+import { parsePlannedSessionValue } from '../utils/plannedSessionValue.js';
+
 const unwrap = (response) => {
   if (response?.error) throw response.error;
   return response?.data;
@@ -160,7 +162,7 @@ export const savePlannedSessionValue = async (client, sessionId, revision, value
   unwrap(await client.rpc('save_planned_session_value_06', {
     p_session_id: sessionId,
     p_expected_revision: revision,
-    p_value: value === '' ? null : Number(value),
+    p_value: parsePlannedSessionValue(value),
   }));
 
 export const freezePlannedRoster = async (client, sessionId, revision, membershipIds,
