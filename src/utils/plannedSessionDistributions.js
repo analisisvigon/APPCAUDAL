@@ -162,8 +162,9 @@ export const layoutPlayerBoardCards = (layout = [], roster = []) => {
     candidate.top + candidate.height + 1 > other.top);
   for (const card of desired) {
     const width = 30;
-    const longNames = card.players.filter((player) => (labels.get(player.player_id) || '').length > 14).length;
-    const height = (card.manual ? 8 : 6 + card.players.length * 5) + longNames * 3;
+    const wrappedLines = card.players.reduce((sum, player) =>
+      sum + Math.max(0, Math.ceil((labels.get(player.player_id) || '').length / 14) - 1), 0);
+    const height = (card.manual ? 8 : 6 + card.players.length * 5) + wrappedLines * 3;
     const targetLeft = Math.max(1, Math.min(99 - width, Number(card.x) - width / 2));
     const targetTop = Math.max(1, Math.min(99 - height, Number(card.y) - height / 2));
     let best = null;
