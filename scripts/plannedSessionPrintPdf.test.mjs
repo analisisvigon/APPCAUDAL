@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { autoPlayerLayout } from '../src/utils/plannedSessionDistributions.js';
 
 const root = path.resolve(import.meta.dirname || path.dirname(new URL(import.meta.url).pathname), '..');
 const cache = path.join(root, 'node_modules', '.cache');
@@ -62,6 +63,7 @@ const fixtures = {
   parallel: [slot('a', 'activation'), slot('m1', 'main', [free('m1a'), free('m1b')]), slot('m2', 'main'), slot('c', 'cooldown')],
   board_teams: [slot('a', 'activation', [library('a')]), slot('m1', 'main', [library('m1')]), slot('m2', 'main')],
   roster_24: [slot('a', 'activation'), slot('m1', 'main'), slot('m2', 'main')],
+  player_board_24: [slot('a', 'activation'), slot('m1', 'main'), slot('m2', 'main')],
   long_text: [slot('a', 'activation'), slot('m1', 'main', [libraryWithLongText()]), slot('m2', 'main')],
   overfull: [slot('a', 'activation'), slot('m1', 'main', [free('m1', 'Contenido excepcionalmente extenso. '.repeat(160))])],
 };
@@ -83,13 +85,27 @@ const approvedRosterNames = [
 ];
 for (const [name, slots] of Object.entries(fixtures)) {
   const editor = { ...base, slots };
-  const roster = name === 'roster_24' ? approvedRosterNames.map(([position, playerName], index) => ({
+  const roster = ['roster_24', 'player_board_24'].includes(name) ? approvedRosterNames.map(([position, playerName], index) => ({
     player_id: `fixture-player-${index}`, player_name_snapshot: playerName,
     position_key_snapshot: position,
   })) : [];
+  const positionKeys = ['goalkeeper', 'goalkeeper', 'right_back', 'right_back',
+    'centre_back', null, 'centre_back', 'centre_back', 'left_back', 'centre_back', 'left_back',
+    'holding_midfield', 'central_midfield', 'central_midfield', 'attacking_midfield', 'left_midfield',
+    'right_winger', 'centre_forward', 'centre_forward', 'centre_forward', 'second_striker',
+    'left_winger', 'centre_forward', 'centre_forward'];
+  const positionById = new Map(roster.map((player, index) => [player.player_id, positionKeys[index]]));
+  const boardLayout = name === 'player_board_24'
+    ? autoPlayerLayout(roster, positionById, '4-2-3-1') : [];
+  const centralAnchor = boardLayout.find((item) => item.player_id === 'fixture-player-4');
+  const savedPlayerDistribution = { formation_key: name === 'player_board_24' ? '4-2-3-1' : null,
+    player_layout: boardLayout.map((item) => item.player_id === 'fixture-player-5'
+      ? { player_id: item.player_id, placement: 'manual', x: centralAnchor.x, y: centralAnchor.y } : item),
+    space_zones: [] };
   const markup = renderToStaticMarkup(React.createElement(PlannedSessionPrintPages, { editor,
     selected: { team_id: '85a16f33-9fe5-44d4-b85d-37d73651ebf6', team_name: 'C.D. Caudal', label: '2026/2027' },
-    roster, availability: name === 'roster_24' ? {
+    roster, positionById, playerDistribution: savedPlayerDistribution,
+    availability: ['roster_24', 'player_board_24'].includes(name) ? {
       'fixture-player-1': { status: 'injured' },
       'fixture-player-10': { status: 'absent' },
       'fixture-player-16': { status: 'adapted' },
@@ -112,11 +128,27 @@ for (const [name, slots] of Object.entries(fixtures)) {
     assert.equal((markup.match(/Tiempo total:/g) || []).length, slots.length,
       'la duración se cuenta una sola vez por ejercicio, también con tareas A y B');
   }
+  if (name === 'player_board_24') {
+    assert.equal((markup.match(/title="(?:Alex|Samuel|Borja|Cristian|Iago|José|Julio|Marcos|Omar|Roberto|Agustín|Kike|Lucas|Vicente|Daniel|David|Diego|Isaac|Isma|Jairo|Óscar)/g) || []).length, 24);
+    assert.doesNotMatch(markup, /Restablecer distribución automática|<select/);
+  }
   const css = pathToFileURL(path.join(root, 'src/components/training/plannedSessionPrint.css')).href;
+  const documentCss = pathToFileURL(path.join(root, 'src/components/training/plannedSessionDocument.css')).href;
   const globalPrint = pathToFileURL(path.join(root, 'src/styles/print.css')).href;
   const crest = pathToFileURL(path.join(root, 'public/pwa-512x512.png')).href;
-  const previewCss = name === 'roster_24' ? '<style media="screen">body{margin:0}.planned-print-portal{position:static;left:auto;visibility:visible;pointer-events:auto}</style>' : '';
-  const html = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${globalPrint}"><link rel="stylesheet" href="${css}">${previewCss}</head><body><div class="planned-print-portal"><style media="print">@page { size: A4 landscape; margin: 0; }</style>${markup.replaceAll('/pwa-512x512.png', crest)}</div><script>window.addEventListener('load', () => { const limit = 210 * 96 / 25.4; const sheets = [...document.querySelectorAll('.planned-print-sheet')]; document.documentElement.dataset.printOverflow = String(sheets.length > 2 || sheets.some((sheet) => sheet.getBoundingClientRect().height > limit + 2 || sheet.scrollHeight > limit + 2)); const defender = [...document.querySelectorAll('.planned-roster-group')].find((group) => group.querySelector('b')?.textContent === 'Defensas'); document.documentElement.dataset.defenderColumns = defender ? getComputedStyle(defender.querySelector('.planned-roster-players')).gridTemplateColumns.split(' ').length : 0; document.documentElement.dataset.rosterOverflow = String([...document.querySelectorAll('.planned-roster-player')].some((player) => player.scrollWidth > player.clientWidth + 1)); });</script></body></html>`;
+  const previewCss = ['roster_24', 'player_board_24'].includes(name) ? '<style media="screen">body{margin:0}.planned-print-portal{position:static;left:auto;visibility:visible;pointer-events:auto}</style>' : '';
+  const boardCheck = name === 'player_board_24' ? `<script>window.addEventListener('load', () => {
+    const field = document.querySelector('.planned-distribution-player-field');
+    const bounds = field.getBoundingClientRect();
+    const cards = [...field.querySelectorAll('.planned-distribution-player-group')];
+    const outside = cards.some((card) => { const box = card.getBoundingClientRect(); return box.left < bounds.left - 1 || box.right > bounds.right + 1 || box.top < bounds.top - 1 || box.bottom > bounds.bottom + 1; });
+    const overlap = cards.some((left, index) => cards.slice(index + 1).some((right) => { const a = left.getBoundingClientRect(), b = right.getBoundingClientRect(); return a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1; }));
+    const textOverflow = cards.some((card) => { const box = card.getBoundingClientRect(); return [...card.querySelectorAll('span,b')].some((part) => { const text = part.getBoundingClientRect(); return text.left < box.left - 1 || text.right > box.right + 1 || text.top < box.top - 1 || text.bottom > box.bottom + 1; }); });
+    document.documentElement.dataset.playerBoardOutside = String(outside);
+    document.documentElement.dataset.playerBoardOverlap = String(overlap);
+    document.documentElement.dataset.playerBoardTextOverflow = String(textOverflow);
+  });</script>` : '';
+  const html = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${globalPrint}"><link rel="stylesheet" href="${documentCss}"><link rel="stylesheet" href="${css}">${previewCss}</head><body><div class="planned-print-portal"><style media="print">@page { size: A4 landscape; margin: 0; }</style>${markup.replaceAll('/pwa-512x512.png', crest)}</div><script>window.addEventListener('load', () => { const limit = 210 * 96 / 25.4; const sheets = [...document.querySelectorAll('.planned-print-sheet')]; document.documentElement.dataset.printOverflow = String(sheets.length > 2 || sheets.some((sheet) => sheet.getBoundingClientRect().height > limit + 2 || sheet.scrollHeight > limit + 2)); const defender = [...document.querySelectorAll('.planned-roster-group')].find((group) => group.querySelector('b')?.textContent === 'Defensas'); document.documentElement.dataset.defenderColumns = defender ? getComputedStyle(defender.querySelector('.planned-roster-players')).gridTemplateColumns.split(' ').length : 0; document.documentElement.dataset.rosterOverflow = String([...document.querySelectorAll('.planned-roster-player')].some((player) => player.scrollWidth > player.clientWidth + 1)); });</script>${boardCheck}</body></html>`;
   const htmlPath = path.join(output, `${name}.html`);
   const pdfPath = path.join(output, `${name}.pdf`);
   writeFileSync(htmlPath, html, 'utf8');
@@ -151,6 +183,19 @@ for (const [name, slots] of Object.entries(fixtures)) {
     { timeout: 30000, stdio: 'pipe' });
     assert.ok(existsSync(previewPath));
     console.log(`Vista previa de los 24 jugadores: ${previewPath}`);
+  }
+  if (name === 'player_board_24') {
+    const dom = execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox',
+      '--disable-extensions', '--dump-dom', pathToFileURL(htmlPath).href],
+    { timeout: 30000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    assert.match(dom, /data-player-board-outside="false"/);
+    assert.match(dom, /data-player-board-overlap="false"/);
+    assert.match(dom, /data-player-board-text-overflow="false"/);
+    const previewPath = path.join(output, 'player_board_24_preview.png');
+    execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox', '--disable-extensions',
+      '--window-size=1200,900', `--screenshot=${previewPath}`, pathToFileURL(htmlPath).href],
+    { timeout: 30000, stdio: 'pipe' });
+    console.log(`Vista previa de pizarra con 24 jugadores: ${previewPath}`);
   }
   console.log(`${name}: ${pdfPath}`);
 }

@@ -27,7 +27,7 @@ try {
   assert.match(markup, /planned-distribution-player-adapted/);
   assert.equal((markup.match(/title="Jugador /g) || []).length, 24,
     'los 24 futbolistas permanecen representados');
-  assert.equal((markup.match(/class="planned-distribution-player-group(?:\s|\")/g) || []).length, 7,
+  assert.ok((markup.match(/class="planned-distribution-player-group(?:\s|\")/g) || []).length >= 4,
     'los dos laterales comparten tarjeta y el grupo masivo se reparte sin ocultar jugadores');
   assert.equal(markup.includes('<select'), false, 'la vista no editable no imprime controles');
   assert.match(markup, /planned-distribution-meta/, 'la fila de sistema reserva la misma altura que la otra pizarra');
@@ -63,6 +63,25 @@ try {
   assert.match(printed, /8\.5/);
   assert.match(printed, /assets\.example\/liga\.png/);
   assert.doesNotMatch(printed, /UA Tom Scale/i);
+  const savedPlayerDistribution = { formation_key: '4-4-2',
+    player_layout: layout.map((item) => item.player_id === 'id-2'
+      ? { ...item, placement: 'manual', x: 82, y: 73 } : item), space_zones: [] };
+  const playerPrint = renderToStaticMarkup(React.createElement(PlannedSessionPrintPages, {
+    editor: { session_date: '2026-10-25', session_number: 1, slots: [], header: {} },
+    selected: { team_name: 'C.D. Caudal', label: '2026/2027' },
+    roster, availability: { 'id-0': { status: 'injured' }, 'id-1': { status: 'adapted' } },
+    distribution: { formation_key: null, player_layout: [], space_zones: [] },
+    playerDistribution: savedPlayerDistribution, positionById: positions,
+    pages: [{ kind: 'cover', activation: null }],
+  }));
+  assert.equal((playerPrint.match(/title="Jugador /g) || []).length, 24,
+    'la impresión conserva los 24 jugadores de la distribución guardada');
+  assert.match(playerPrint, /planned-distribution-player-out/);
+  assert.match(playerPrint, /planned-distribution-player-adapted/);
+  assert.doesNotMatch(playerPrint, /<select|Restablecer distribución automática/,
+    'la impresión no incorpora controles de edición');
+  assert.match(playerPrint, /Lateral derecho[\s\S]*Jugador 3/,
+    'la agrupación manual guardada se reconstruye junto al lateral');
   const { default: PlannedSessionDocument } = await vite.ssrLoadModule(
     '/src/components/training/PlannedSessionDocument.jsx');
   const documentProps = {

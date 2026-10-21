@@ -220,7 +220,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   addExercise, addTask, removeTask, removeSlot, changePhase, libraryTasks, libraryLoading,
   libraryError, selectLibraryTask, switchToFreeTask, roster, frozen,
   selectedMembershipIds, availability, onSelectPlayer, onAvailability,
-  distribution, boardsError, positionById, onFormationChange, onZoneChange, onPlayerMove,
+  distribution, printedPlayerDistribution, boardsError, positionById, onFormationChange, onZoneChange, onPlayerMove,
   leagueLogoUrl, sessionValue, printedSessionValue, valueSupported, onValueChange }) {
   const [zoom, setZoom] = useState(100);
   const [fitZoom, setFitZoom] = useState(100);
@@ -407,6 +407,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
     <PlannedSessionPrint editor={editor} selected={selected} pages={printSheets} printRef={printRef}
       leagueLogoUrl={leagueLogoUrl} sessionValue={printedSessionValue}
       roster={frozen ? roster : []} availability={availability} distribution={distribution}
+      playerDistribution={printedPlayerDistribution}
       positionById={positionById} />
     {boardLocation?.item.kind === 'library_task' ? <div className="planned-board-dialog-backdrop">
       <div className="planned-board-dialog" role="dialog" aria-modal="true" aria-label="Editar pizarra de la copia">

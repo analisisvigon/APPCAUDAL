@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import {
-  autoPlayerLayout, distributionPayloadKey, emptyDistribution, layoutPlayerBoardCards, normalizeDistribution,
+  autoPlayerLayout, distributionPayloadKey, emptyDistribution, layoutPlayerBoardCards, movePlayerBoardLayout, normalizeDistribution,
   overlappingZonePairs, playerCompactLabels, reconcileSpaceZones, SESSION_SYSTEMS,
-  specificPositionMap, validateDistribution,
+  resolvePlayerBoardDrop, specificPositionMap, validateDistribution,
 } from './plannedSessionDistributions.js';
 import { loadPlannedDistribution, loadPlannedSpecificPositions,
   savePlannedDistribution, savePlannedSessionValue } from '../data/plannedSessionsStore.js';
 
 const roster = Array.from({ length: 24 }, (_, index) => ({
   player_id: `player-${index}`, player_name_snapshot: index === 0 ? 'Pepe Pérez' :
-    index === 1 ? 'Pepe Prieto' : `Jugador ${index}`,
+    index === 1 ? 'Pepe Prieto' : index === 2 ? 'José Martínez' : `Jugador ${index}`,
 }));
 const rows = roster.map((row, index) => ({ player_id: row.player_id,
   position_key: index < 2 ? 'right_back' : index === 2 ? null :
@@ -27,18 +27,39 @@ for (const system of SESSION_SYSTEMS) {
   assert.equal(layout[2].x, null);
 }
 const first442 = autoPlayerLayout(roster, byId, '4-4-2');
-const board = layoutPlayerBoardCards(first442, roster);
+const board = layoutPlayerBoardCards(first442, roster, byId, '4-4-2');
 assert.equal(board.cards.flatMap((card) => card.players).length + board.unplaced.length, 24);
-assert.ok(board.cards.every((card) => card.players.length <= 4));
+assert.ok(board.cards.some((card) => card.players.length > 4),
+  'los jugadores de una demarcación numerosa permanecen en el mismo grupo');
 for (const [index, left] of board.cards.entries()) for (const right of board.cards.slice(index + 1)) {
   assert.ok(left.left + left.width + 1 <= right.left || right.left + right.width + 1 <= left.left ||
     left.top + left.height + 1 <= right.top || right.top + right.height + 1 <= left.top,
   'las tarjetas del campo no se solapan');
 }
-const movedBoard = layoutPlayerBoardCards(first442.map((item) => item.player_id === 'player-2'
-  ? { ...item, placement: 'manual', x: 50, y: 50 } : item), roster);
+const movedBoard = layoutPlayerBoardCards(movePlayerBoardLayout(first442, 'player-2',
+  { x: 50, y: 50 }), roster, byId, '4-4-2');
 assert.ok(movedBoard.cards.some((card) => card.manual && card.players[0].player_id === 'player-2'),
   'un jugador sin posición automática puede situarse manualmente');
+const centres = board.cards.find((card) => card.title.includes('Defensa central'));
+assert.ok(centres, 'existe el grupo de centrales acreditado');
+const centralDrop = resolvePlayerBoardDrop(board.cards, { x: centres.left + 1, y: centres.top + 1 });
+assert.equal(centralDrop.groupKey, centres.key);
+const joinedLayout = movePlayerBoardLayout(first442, 'player-2', centralDrop);
+const joinedBoard = layoutPlayerBoardCards(joinedLayout, roster, byId, '4-4-2');
+assert.ok(joinedBoard.cards.find((card) => card.key === centres.key)?.players
+  .some((player) => player.player_id === 'player-2'),
+'el jugador sin posición se incorpora y permanece en centrales');
+assert.equal(joinedBoard.unplaced.some((player) => player.player_id === 'player-2'), false);
+assert.deepEqual(layoutPlayerBoardCards(JSON.parse(JSON.stringify(joinedLayout)), roster, byId, '4-4-2')
+  .cards.map((card) => [card.key, card.players.map((player) => player.player_id)]),
+joinedBoard.cards.map((card) => [card.key, card.players.map((player) => player.player_id)]),
+'la agrupación manual se reconstruye de forma determinista tras reabrir');
+const freePoint = { x: 6, y: 6 };
+const freeLayout = movePlayerBoardLayout(joinedLayout, 'player-3', freePoint);
+const freeBoard = layoutPlayerBoardCards(freeLayout, roster, byId, '4-4-2');
+assert.ok(freeBoard.cards.some((card) => card.manual && card.players[0].player_id === 'player-3'));
+assert.deepEqual(autoPlayerLayout(roster, byId, '4-4-2'), first442,
+  'restablecer el sistema elimina los ajustes manuales sin cambiar posiciones canónicas');
 const crowdedManual = layoutPlayerBoardCards(roster.map((player) => ({
   player_id: player.player_id, placement: 'manual', x: 50, y: 50,
 })), roster);
@@ -52,6 +73,25 @@ for (const [index, left] of crowdedManual.cards.entries()) for (const right of c
 assert.notDeepEqual(first442.map(({ x, y }) => [x, y]),
   autoPlayerLayout(roster, byId, '4-2-3-1').map(({ x, y }) => [x, y]),
   'el cambio de sistema recalcula los sectores');
+for (const system of ['4-2-3-1', '4-3-3']) {
+  const systemBoard = layoutPlayerBoardCards(autoPlayerLayout(roster, byId, system), roster, byId, system);
+  assert.equal(systemBoard.cards.flatMap((card) => card.players).length + systemBoard.unplaced.length, 24);
+  assert.ok(systemBoard.cards.some((card) => card.players.length > 1), `${system}: hay grupos posicionales`);
+}
+const attackingRoster = [
+  { player_id: 'winger', player_name_snapshot: 'Extremo Derecho' },
+  { player_id: 'striker', player_name_snapshot: 'Delantero Centro' },
+];
+const attackingPositions = new Map([['winger', 'right_winger'], ['striker', 'centre_forward']]);
+const attackingAuto = autoPlayerLayout(attackingRoster, attackingPositions, '4-3-3');
+const attackingBoard = layoutPlayerBoardCards(attackingAuto, attackingRoster, attackingPositions, '4-3-3');
+const forwardCard = attackingBoard.cards.find((card) => card.title.includes('Delantero centro'));
+const attackingDrop = resolvePlayerBoardDrop(attackingBoard.cards,
+  { x: forwardCard.left + 1, y: forwardCard.top + 1 });
+const attackingMoved = layoutPlayerBoardCards(movePlayerBoardLayout(attackingAuto, 'winger', attackingDrop),
+  attackingRoster, attackingPositions, '4-3-3');
+assert.deepEqual(attackingMoved.cards.find((card) => card.key === forwardCard.key)?.players
+  .map((player) => player.player_id).sort(), ['striker', 'winger']);
 const slots = [{ id: 'a', phase: 'activation' }, { id: 'b', phase: 'main' }];
 const zones = reconcileSpaceZones([], slots);
 assert.equal(zones.length, 2);

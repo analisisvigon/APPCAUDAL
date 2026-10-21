@@ -30,7 +30,7 @@ import {
   savePlannedSessionValue,
 } from '../../data/plannedSessionsStore';
 import { availabilityChanges, eligibleRosterCandidates, hasUncertainRosterDate } from '../../utils/plannedSessionPlayers';
-import { autoPlayerLayout, distributionPayloadKey, emptyDistribution, normalizeDistribution,
+import { autoPlayerLayout, distributionPayloadKey, emptyDistribution, movePlayerBoardLayout, normalizeDistribution,
   reconcileSpaceZones, specificPositionMap, validateDistribution } from '../../utils/plannedSessionDistributions';
 import { parsePlannedSessionValue, readPlannedSessionValue } from '../../utils/plannedSessionValue';
 import PlannedSessionDocument from './PlannedSessionDocument';
@@ -598,8 +598,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     space_zones: current.space_zones.map((zone) => zone.slot_id === slotId
       ? { ...zone, ...change } : zone) }) : current);
   const movePlayer = (playerId, x, y) => setDistribution((current) => current ? ({ ...current,
-    player_layout: current.player_layout.map((item) => item.player_id === playerId
-      ? { ...item, placement: 'manual', x, y } : item),
+    player_layout: movePlayerBoardLayout(current.player_layout, playerId, { x, y }),
   }) : current);
 
   const saveValue = async () => {
@@ -786,7 +785,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           positionById={specificPositionMap(distribution?.specific_positions_snapshot?.length
             ? distribution.specific_positions_snapshot : specificPositions)}
           onFormationChange={changeFormation} onZoneChange={changeZone}
-          onPlayerMove={movePlayer} leagueLogoUrl={safeLeagueLogoUrl}
+          onPlayerMove={movePlayer} printedPlayerDistribution={distributionBaseline || emptyDistribution()}
+          leagueLogoUrl={safeLeagueLogoUrl}
           sessionValue={sessionValue} printedSessionValue={baselineSessionValue}
           valueSupported={valueSupported} onValueChange={setSessionValue}
           roster={frozen ? roster : proposed} frozen={frozen} selectedMembershipIds={selectedMembershipIds}

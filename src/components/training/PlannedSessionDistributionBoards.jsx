@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
-import { getSpecificPositionLabel } from '../../constants/playerPositions';
-import { layoutPlayerBoardCards, playerCompactLabels, overlappingZonePairs, SESSION_SYSTEMS } from '../../utils/plannedSessionDistributions';
+import { layoutPlayerBoardCards, playerCompactLabels, overlappingZonePairs,
+  resolvePlayerBoardDrop, SESSION_SYSTEMS } from '../../utils/plannedSessionDistributions';
 import { PLANNED_PHASES } from '../../utils/plannedSessions';
 
 function FieldLines() {
@@ -22,7 +22,9 @@ export function SessionPlayerDistribution({ distribution, roster, availability, 
   const [dragPoint, setDragPoint] = useState(null);
   const labels = playerCompactLabels(roster);
   const { cards, unplaced } = useMemo(() => layoutPlayerBoardCards(
-    distribution.player_layout || [], roster), [distribution.player_layout, roster]);
+    distribution.player_layout || [], roster, positionById, distribution.formation_key),
+  [distribution.player_layout, roster, positionById, distribution.formation_key]);
+  const dropTarget = dragPoint?.inside ? resolvePlayerBoardDrop(cards, dragPoint) : null;
   const pointInField = (event) => {
     const box = fieldRef.current?.getBoundingClientRect();
     if (!box?.width || !box?.height) return null;
@@ -51,7 +53,10 @@ export function SessionPlayerDistribution({ distribution, roster, availability, 
     const point = pointInField(event);
     dragRef.current = null;
     setDragPoint(null);
-    if (drag.moved && point?.inside) onPlayerMove?.(drag.id, point.x, point.y);
+    if (drag.moved && point?.inside) {
+      const target = resolvePlayerBoardDrop(cards, point);
+      onPlayerMove?.(drag.id, target.x, target.y);
+    }
   };
   const playerHandlers = (player) => canEdit ? {
     onPointerDown: (event) => startPlayerDrag(event, player),
@@ -69,10 +74,9 @@ export function SessionPlayerDistribution({ distribution, roster, availability, 
     <div className="planned-distribution-field planned-distribution-player-field" ref={fieldRef}>
       <FieldLines />
       {cards.map((card) => {
-        const keys = [...new Set(card.players.map((player) => positionById.get(player.player_id)).filter(Boolean))];
-        return <div key={card.key} className={`planned-distribution-player-group${card.manual ? ' planned-distribution-player-manual' : ''}`}
+        return <div key={card.key} className={`planned-distribution-player-group${card.manual ? ' planned-distribution-player-manual' : ''}${dropTarget?.groupKey === card.key ? ' planned-distribution-player-drop-target' : ''}`}
           style={{ left: `${card.left}%`, top: `${card.top}%`, width: `${card.width}%`, height: `${card.height}%` }}>
-          {!card.manual ? <b>{keys.map((key) => getSpecificPositionLabel(key) || key).join(' / ')}</b> : null}
+          {card.group ? <b>{card.title}</b> : null}
           {card.players.map((player) => <span key={player.player_id}
             className={`${statusClass(availability[player.player_id]?.status)}${canEdit ? ' planned-distribution-player-draggable' : ''}`}
             title={player.player_name_snapshot} {...playerHandlers(player)}>
@@ -86,6 +90,9 @@ export function SessionPlayerDistribution({ distribution, roster, availability, 
       </span> : null}
       {!distribution.formation_key ? <span className="planned-distribution-empty">Selecciona un sistema para situar la plantilla.</span> : null}
     </div>
+    {canEdit && distribution.formation_key ? <button type="button"
+      className="planned-distribution-reset" onClick={() => onFormationChange?.(distribution.formation_key)}>
+      Restablecer distribución automática</button> : null}
     {unplaced.length ? <div className="planned-distribution-unplaced"><b>Sin ubicación automática</b>
       <span>{unplaced.map((player) => <span key={player.player_id}
         className={`${statusClass(availability[player.player_id]?.status)}${canEdit ? ' planned-distribution-player-draggable' : ''}`}

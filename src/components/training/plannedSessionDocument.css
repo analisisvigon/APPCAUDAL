@@ -95,8 +95,10 @@
 .planned-distribution-player-group b { margin-bottom: .25mm; font-size: 5.7pt; color: #40564b; line-height: 1.05; }
 .planned-distribution-player-group span { white-space: normal; overflow-wrap: break-word; }
 .planned-distribution-player-manual { border-left-color: #2c69a4; }
+.planned-distribution-player-drop-target { outline: 2px solid #1675ca; outline-offset: 1px; background: #e7f3ff; }
 .planned-distribution-player-draggable { cursor: grab; touch-action: none; user-select: none; }
 .planned-distribution-player-draggable:active { cursor: grabbing; }
+.planned-distribution-reset { margin-top: 1mm; padding: .5mm 1mm; border: 1px solid #b8c6d1; border-radius: 1mm; background: #f5f8fa; color: #214d70; font-size: 6pt; cursor: pointer; }
 .planned-distribution-player-ghost { position: absolute; z-index: 4; transform: translate(-50%, -50%); padding: .5mm 1mm; border: 1px dashed #1657a1; border-radius: 2px; background: #fff; color: #163e65; font-size: 6.5pt; font-weight: 700; pointer-events: none; }
 .planned-distribution-player-out { color: #a21220; font-weight: 700; }
 .planned-distribution-player-adapted { color: #795900; font-weight: 700; }
