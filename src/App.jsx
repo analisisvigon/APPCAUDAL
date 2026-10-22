@@ -29895,9 +29895,9 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
         <main className="mx-auto flex min-h-screen max-w-xl flex-col items-center justify-center px-4 py-7 text-center sm:px-6 sm:py-10">
           <section className="w-full rounded-[1.65rem] border border-white/10 bg-[#081326]/88 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.38)] backdrop-blur-md sm:p-8">
             <img src="/branding/nexo-lockup-dark.png" alt="Logotipo de NEXO CLUB" className="mx-auto h-auto w-64 max-w-full object-contain" />
-            <p className="mt-5 text-[11px] font-black uppercase tracking-[0.26em] text-caudal-electric/90">Acceso al cuerpo técnico</p>
+            <p className="mt-5 text-[11px] font-black uppercase tracking-[0.26em] text-caudal-electric/90">Acceso privado</p>
             <h1 className="sr-only">NEXO CLUB</h1>
-            <p className="mt-2 text-sm font-medium text-slate-500">Espacio de C.D. Caudal de Mieres · Mieres, Asturias</p>
+            <p className="mt-2 text-sm font-medium text-slate-500">Tu espacio de análisis, planificación y gestión de fútbol</p>
             {authError ? <p className="mx-auto mt-5 max-w-sm rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">{authError}</p> : null}
             <form onSubmit={handleAuthSubmit} className="mobile-form-controls mx-auto mt-7 grid max-w-sm gap-4 text-left sm:mt-8">
               <label className="space-y-2 text-sm font-semibold text-slate-300">
@@ -29935,7 +29935,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
               </button>
             </form>
             <p className="mx-auto mt-5 max-w-sm text-sm leading-6 text-slate-500">
-              Acceso privado para usuarios autorizados del cuerpo técnico.
+              Acceso exclusivo para usuarios autorizados de NEXO CLUB
             </p>
           </section>
         </main>
