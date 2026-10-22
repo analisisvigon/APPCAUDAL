@@ -2980,19 +2980,11 @@
   gap: 1.8mm !important;
 }
 
-.player-pdf-brand i {
-  display: inline-flex;
+.player-pdf-brand img {
+  display: block;
   width: 5.5mm;
   height: 5.5mm;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: var(--player-pdf-blue);
-  color: #fff;
-  font-size: 4.8pt;
-  font-style: normal;
-  font-weight: 950;
-  letter-spacing: -0.04em;
+  object-fit: contain;
 }
 
 .player-pdf-brand p {

@@ -29869,7 +29869,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
         isSplashVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
       }`}
     >
-      <img src="/pwa-192x192.png" alt="Escudo del C.D. Caudal" className="h-28 w-28 object-contain" />
+      <img src="/branding/nexo-symbol-dark.png" alt="Símbolo de NEXO CLUB" className="h-28 w-28 object-contain" />
       <p className="mt-5 text-lg font-semibold tracking-wide">NEXO CLUB</p>
     </div>
   ) : null;
@@ -29894,9 +29894,9 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
         {splashScreen}
         <main className="mx-auto flex min-h-screen max-w-xl flex-col items-center justify-center px-4 py-7 text-center sm:px-6 sm:py-10">
           <section className="w-full rounded-[1.65rem] border border-white/10 bg-[#081326]/88 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.38)] backdrop-blur-md sm:p-8">
-            <TeamLogo className="mx-auto sm:h-32 sm:w-32" src={clubCrest} alt="Escudo del C.D. Caudal" teamName="C.D. Caudal" size="2xl" />
+            <img src="/branding/nexo-lockup-dark.png" alt="Logotipo de NEXO CLUB" className="mx-auto h-auto w-64 max-w-full object-contain" />
             <p className="mt-5 text-[11px] font-black uppercase tracking-[0.26em] text-caudal-electric/90">Acceso al cuerpo técnico</p>
-            <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">NEXO CLUB</h1>
+            <h1 className="sr-only">NEXO CLUB</h1>
             <p className="mt-2 text-sm font-medium text-slate-500">Espacio de C.D. Caudal de Mieres · Mieres, Asturias</p>
             {authError ? <p className="mx-auto mt-5 max-w-sm rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">{authError}</p> : null}
             <form onSubmit={handleAuthSubmit} className="mobile-form-controls mx-auto mt-7 grid max-w-sm gap-4 text-left sm:mt-8">
@@ -29949,7 +29949,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
       <div className="app-shell-content mx-auto flex min-h-screen max-w-6xl flex-col px-4 pt-6 sm:px-6 lg:px-8">
         <header className="mb-6 flex flex-col gap-4 rounded-3xl border border-white/5 bg-white/5 p-5 shadow-glow backdrop-blur-md xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.34em] text-slate-400">NEXO CLUB</p>
+            <div className="flex items-center gap-2">
+              <img src="/branding/nexo-symbol-dark.png" alt="" className="h-11 w-11 object-contain sm:hidden" />
+              <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-300 sm:hidden">NEXO CLUB</span>
+              <img src="/branding/nexo-horizontal-dark.png" alt="NEXO CLUB" className="hidden h-14 w-auto max-w-full object-contain sm:block" />
+            </div>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">C.D. Caudal de Mieres</h1>
             <p className="mt-1 text-sm text-slate-400">Mieres, Asturias · Cuerpo técnico</p>
           </div>
@@ -29981,12 +29985,13 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
                 <button
                   key={tab}
                   onClick={() => goToTab(tab)}
-                  className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                  className={`inline-flex items-center gap-1.5 rounded-2xl px-4 py-2 text-sm font-semibold transition ${
                     activeTab === tab
                       ? 'bg-caudal-electric text-slate-950 shadow-[0_15px_35px_rgba(79,140,255,0.22)]'
                       : 'bg-white/10 text-slate-200 hover:bg-white/15'
                   }`}
                 >
+                  {tab === 'Inicio' ? <img src="/branding/nexo-symbol-dark.png" alt="" className="h-4 w-4 object-contain" /> : null}
                   {tab}
                 </button>
               ))}
@@ -30030,8 +30035,9 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
                 key={tab}
                 type="button"
                 onClick={() => goToTab(tab)}
-                className={`min-h-[48px] rounded-2xl px-1.5 py-2 text-[10px] font-black uppercase tracking-[0.02em] ${activeTab === tab ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200'}`}
+                className={`inline-flex min-h-[48px] items-center justify-center gap-1 rounded-2xl px-1.5 py-2 text-[10px] font-black uppercase tracking-[0.02em] ${activeTab === tab ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200'}`}
               >
+                {tab === 'Inicio' ? <img src="/branding/nexo-symbol-dark.png" alt="" className="h-4 w-4 object-contain" /> : null}
                 {label}
               </button>
             ))}
@@ -30054,7 +30060,10 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
               <div className="relative grid gap-4 p-3.5 sm:p-4 lg:grid-cols-[auto_1fr_auto] lg:items-center">
                 <TeamLogo className="mx-auto sm:mx-0" src={clubCrest} alt="Escudo del C.D. Caudal" teamName="C.D. Caudal" size="lg" />
                 <div className="text-center sm:text-left">
-                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-red-200/80">NEXO CLUB · Cuerpo técnico</p>
+                  <div className="flex items-center justify-center gap-1.5 sm:justify-start">
+                    <img src="/branding/nexo-symbol-dark.png" alt="" className="h-6 w-6 object-contain" />
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-red-200/80">NEXO CLUB · Cuerpo técnico</p>
+                  </div>
                   <h2 className="mt-1 text-xl font-black text-white sm:text-3xl">C.D. Caudal de Mieres</h2>
                   <div className="mt-2 max-w-3xl">
                     {isEditingHomePhrase ? (

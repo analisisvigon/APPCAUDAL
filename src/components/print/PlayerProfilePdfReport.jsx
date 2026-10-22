@@ -7,7 +7,7 @@ const displayValue = (value, fallback = 'Sin datos') => value === 0 || value ? v
 function ReportHeader({ report, section }) {
   return (
     <header className="player-pdf-running-header">
-      <div className="player-pdf-brand"><i>AC</i><p>NEXO CLUB <span>· Dossier de rendimiento</span></p></div>
+      <div className="player-pdf-brand"><img src="/branding/nexo-symbol-light.png" alt="" /><p>NEXO CLUB <span>· Dossier de rendimiento</span></p></div>
       <strong>{report.identity.name}</strong>
       <span>{section}</span>
     </header>

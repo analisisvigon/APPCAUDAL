@@ -77,14 +77,14 @@ function PlayerApp({ client, identity, onRefreshIdentity, onSignOut, signingOut 
       <main className="mx-auto w-full max-w-6xl space-y-3 sm:space-y-4">
         {profileState.status === 'loading' ? (
           <section role="status" className="rounded-[1.35rem] border border-white/10 bg-[#0b1220] px-5 py-12 text-center shadow-[0_16px_48px_rgba(0,0,0,0.24)]">
-            <img src="/pwa-192x192.png" alt="Escudo del C.D. Caudal" className="mx-auto h-20 w-20 object-contain" />
+            <img src="/branding/nexo-symbol-dark.png" alt="NEXO CLUB" className="mx-auto h-20 w-20 object-contain" />
             <p className="mt-5 text-xs font-black uppercase tracking-[0.18em] text-caudal-electric">Cargando mi espacio…</p>
           </section>
         ) : null}
 
         {profileState.status === 'error' ? (
           <section className="mx-auto max-w-xl rounded-[1.35rem] border border-white/10 bg-[#0b1220] px-5 py-8 text-center shadow-[0_16px_48px_rgba(0,0,0,0.24)]">
-            <img src="/pwa-192x192.png" alt="Escudo del C.D. Caudal" className="mx-auto h-20 w-20 object-contain" />
+            <img src="/branding/nexo-symbol-dark.png" alt="NEXO CLUB" className="mx-auto h-20 w-20 object-contain" />
             <h1 className="mt-5 text-xl font-black text-white">No se pudo cargar tu perfil</h1>
             <p role="alert" className="mt-2 text-sm leading-6 text-slate-400">
               {profileState.errorKind === 'invalid_session'

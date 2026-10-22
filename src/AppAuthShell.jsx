@@ -21,7 +21,7 @@ function LoadingScreen({ message }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#02070f] px-6 text-center text-slate-100">
       <div>
-        <img src="/pwa-192x192.png" alt="Escudo del C.D. Caudal" className="mx-auto h-28 w-28 object-contain" />
+        <img src="/branding/nexo-symbol-dark.png" alt="NEXO CLUB" className="mx-auto h-28 w-28 object-contain" />
         <p className="mt-5 text-sm font-black uppercase tracking-[0.18em] text-caudal-electric">{message}</p>
       </div>
     </div>
@@ -33,9 +33,9 @@ function LoginScreen({ form, submitting, error, onChange, onSubmit }) {
     <div className="min-h-screen bg-[radial-gradient(circle_at_50%_0%,rgba(61,217,255,0.10),transparent_34%),linear-gradient(180deg,#02070f_0%,#071225_48%,#030812_100%)] text-slate-100">
       <main className="mx-auto flex min-h-screen max-w-xl flex-col items-center justify-center px-4 py-7 text-center sm:px-6 sm:py-10">
         <section className="w-full rounded-[1.65rem] border border-white/10 bg-[#081326]/88 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.38)] backdrop-blur-md sm:p-8">
-          <img src="/pwa-192x192.png" alt="Escudo del C.D. Caudal" className="mx-auto h-32 w-32 object-contain" />
+          <img src="/branding/nexo-lockup-dark.png" alt="Logotipo de NEXO CLUB" className="mx-auto h-auto w-64 max-w-full object-contain" />
           <p className="mt-5 text-[11px] font-black uppercase tracking-[0.26em] text-caudal-electric/90">Acceso privado</p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">NEXO CLUB</h1>
+          <h1 className="sr-only">NEXO CLUB</h1>
           <p className="mt-2 text-sm font-medium text-slate-500">Espacio de C.D. Caudal de Mieres · Mieres, Asturias</p>
           {error ? (
             <p role="alert" className="mx-auto mt-5 max-w-sm rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
@@ -90,7 +90,7 @@ function AccessMessage({ title, message, onRetry, onSignOut, signingOut }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#02070f] px-4 py-8 text-slate-100">
       <main className="w-full max-w-lg rounded-[1.65rem] border border-white/10 bg-[#081326]/90 p-7 text-center shadow-[0_24px_80px_rgba(0,0,0,0.38)] sm:p-9">
-        <img src="/pwa-192x192.png" alt="Escudo del C.D. Caudal" className="mx-auto h-24 w-24 object-contain" />
+        <img src="/branding/nexo-symbol-dark.png" alt="NEXO CLUB" className="mx-auto h-24 w-24 object-contain" />
         <h1 className="mt-6 text-2xl font-black text-white">{title}</h1>
         <p className="mt-3 text-sm leading-6 text-slate-400">{message}</p>
         <div className="mt-7 grid gap-3 sm:grid-cols-2">
