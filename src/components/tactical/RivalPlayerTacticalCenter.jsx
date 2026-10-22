@@ -214,7 +214,7 @@ function PlayerAssistant({ model }) {
   return (
     <section className="rounded-[1.8rem] bg-gradient-to-br from-[#10223a] via-[#0b192c] to-[#081321] p-5 sm:p-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <SectionHeader eyebrow="APPCAUDAL" title="Asistente del jugador" detail="Prepara el duelo separando evidencia registrada y criterio general del entrenador." />
+        <SectionHeader eyebrow="NEXO CLUB" title="Asistente del jugador" detail="Prepara el duelo separando evidencia registrada y criterio general del entrenador." />
         <div className="inline-flex w-full rounded-xl bg-black/20 p-1 sm:w-auto" role="radiogroup" aria-label="Modo de respuesta">
           {[
             ['evidence', 'Basado en evidencias'],

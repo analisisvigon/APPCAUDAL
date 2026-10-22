@@ -20,7 +20,7 @@ export default function PlayerHeader({ profile }) {
         />
         <div className="min-w-0 flex-1">
           <p className="text-[9px] font-black uppercase tracking-[0.18em] text-caudal-electric/85 sm:text-[10px] sm:tracking-[0.22em]">
-            Jugador · C.D. Caudal de Mieres
+            NEXO CLUB · Jugador · C.D. Caudal de Mieres
           </p>
           <h1 className="mt-1 truncate text-2xl font-black tracking-tight text-white sm:text-4xl" title={displayName}>
             {displayName}

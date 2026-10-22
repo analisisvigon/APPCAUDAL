@@ -35,8 +35,8 @@ function LoginScreen({ form, submitting, error, onChange, onSubmit }) {
         <section className="w-full rounded-[1.65rem] border border-white/10 bg-[#081326]/88 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.38)] backdrop-blur-md sm:p-8">
           <img src="/pwa-192x192.png" alt="Escudo del C.D. Caudal" className="mx-auto h-32 w-32 object-contain" />
           <p className="mt-5 text-[11px] font-black uppercase tracking-[0.26em] text-caudal-electric/90">Acceso privado</p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">C.D. Caudal de Mieres</h1>
-          <p className="mt-2 text-sm font-medium text-slate-500">Mieres, Asturias</p>
+          <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">NEXO CLUB</h1>
+          <p className="mt-2 text-sm font-medium text-slate-500">Espacio de C.D. Caudal de Mieres · Mieres, Asturias</p>
           {error ? (
             <p role="alert" className="mx-auto mt-5 max-w-sm rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
               {error}
@@ -78,7 +78,7 @@ function LoginScreen({ form, submitting, error, onChange, onSubmit }) {
             </button>
           </form>
           <p className="mx-auto mt-5 max-w-sm text-sm leading-6 text-slate-500">
-            Acceso para usuarios autorizados del C.D. Caudal.
+            Análisis y gestión de fútbol para usuarios autorizados del C.D. Caudal.
           </p>
         </section>
       </main>
@@ -305,7 +305,7 @@ function AppAuthShell() {
     return (
       <AccessMessage
         title="Acceso no habilitado"
-        message="Esta cuenta no tiene actualmente un acceso activo a APPCAUDAL."
+        message="Esta cuenta no tiene actualmente un acceso activo a NEXO CLUB."
         onSignOut={handleSignOut}
         signingOut={signingOut}
       />
@@ -316,7 +316,7 @@ function AppAuthShell() {
   }
   if (authState.status === 'staff') {
     return (
-      <Suspense fallback={<LoadingScreen message="Cargando APPCAUDAL…" />}>
+      <Suspense fallback={<LoadingScreen message="Cargando NEXO CLUB…" />}>
         <StaffApp controlledSession={authState.session} identity={authState.identity} onControlledSignOut={handleSignOut} />
       </Suspense>
     );

@@ -1,6 +1,6 @@
-# App Caudal
+# NEXO CLUB
 
-Interfaz local para gestionar la plantilla de fútbol de C.D. Caudal de Mieres.
+Plataforma de análisis y gestión de fútbol. El espacio actual utiliza la identidad deportiva del C.D. Caudal de Mieres.
 
 ## Comandos
 
@@ -11,6 +11,5 @@ Interfaz local para gestionar la plantilla de fútbol de C.D. Caudal de Mieres.
 ## Características
 
 - Diseño oscuro, moderno y responsive
-- Navegación entre Inicio y Plantilla
-- Gestión local de jugadores
-- Añadir, editar y eliminar jugadores sin backend
+- Acceso a los módulos de plantilla, partidos, sesiones y análisis
+- Datos y autenticación mediante Supabase

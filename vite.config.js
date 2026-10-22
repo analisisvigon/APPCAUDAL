@@ -21,8 +21,10 @@ export default defineConfig({
       manifestFilename: 'manifest.json',
       includeAssets: ['pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
-        name: 'App Caudal',
-        short_name: 'Caudal',
+        name: 'NEXO CLUB',
+        short_name: 'NEXO CLUB',
+        description: 'NEXO CLUB: análisis y gestión de fútbol para clubes.',
+        lang: 'es',
         display: 'standalone',
         theme_color: '#d40000',
         background_color: '#111111',

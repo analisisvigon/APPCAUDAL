@@ -14,11 +14,11 @@ export const registerAppServiceWorker = async ({
     });
     await registration.update();
     setIntervalImpl?.(() => registration.update().catch((error) => {
-      console.error('No se pudo comprobar la actualización periódica de APPCAUDAL.', error);
+      console.error('No se pudo comprobar la actualización periódica de NEXO CLUB.', error);
     }), UPDATE_INTERVAL_MS);
     return registration;
   } catch (error) {
-    console.error('No se pudo registrar el service worker de APPCAUDAL.', error);
+    console.error('No se pudo registrar el service worker de NEXO CLUB.', error);
     return null;
   }
 };

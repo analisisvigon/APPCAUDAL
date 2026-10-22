@@ -41,7 +41,7 @@ export default function RivalTacticalAssistant({ model, missingInformation }) {
     <section className="rounded-[1.8rem] bg-gradient-to-br from-[#10223a] via-[#0b192c] to-[#081321] p-5 shadow-[0_24px_80px_rgba(15,76,129,0.10)] sm:p-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-caudal-electric">APPCAUDAL</p>
+          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-caudal-electric">NEXO CLUB</p>
           <h3 className="mt-1 text-xl font-black text-white sm:text-2xl">Asistente táctico</h3>
           <p className="mt-1 text-sm font-semibold text-slate-400">Pregunta cualquier aspecto del comportamiento colectivo del rival.</p>
         </div>

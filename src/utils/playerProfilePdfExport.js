@@ -274,7 +274,7 @@ export const auditPlayerPdfLinkAnnotations = (arrayBuffer, expectedUrls = []) =>
 const drawHeader = (pdf, report, section) => {
   pdf.setFillColor(...COLORS.navy);
   pdf.rect(0, 0, A4_WIDTH_MM, 13, 'F');
-  text(pdf, 'APPCAUDAL · DOSSIER DE RENDIMIENTO', PAGE_MARGIN, 7.7, { size: 6.5, style: 'bold', color: COLORS.paper });
+  text(pdf, 'NEXO CLUB · DOSSIER DE RENDIMIENTO', PAGE_MARGIN, 7.7, { size: 6.5, style: 'bold', color: COLORS.paper });
   text(pdf, report.identity?.name || 'Jugador', A4_WIDTH_MM - PAGE_MARGIN, 5.8, { size: 7, style: 'bold', color: COLORS.paper, align: 'right' });
   text(pdf, section, A4_WIDTH_MM - PAGE_MARGIN, 9.4, { size: 5.2, style: 'normal', color: [196, 214, 231], align: 'right' });
 };

@@ -371,7 +371,7 @@ export default function PlayerDatabaseForm({
                 ) : null}
 
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => onUseExtractedPhoto?.(sourceAnalysis, 'storage')} disabled={sourcePhotoSaving || (Boolean(currentPhotoUrl) && !replaceExistingPhoto)} className="rounded-xl bg-emerald-300 px-4 py-2 text-xs font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">{sourcePhotoSaving ? 'Guardando copia…' : 'Guardar copia en APPCAUDAL'}</button>
+                  <button type="button" onClick={() => onUseExtractedPhoto?.(sourceAnalysis, 'storage')} disabled={sourcePhotoSaving || (Boolean(currentPhotoUrl) && !replaceExistingPhoto)} className="rounded-xl bg-emerald-300 px-4 py-2 text-xs font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">{sourcePhotoSaving ? 'Guardando copia…' : 'Guardar copia en NEXO CLUB'}</button>
                   <button type="button" onClick={() => onUseExtractedPhoto?.(sourceAnalysis, 'external')} disabled={sourcePhotoSaving || (Boolean(currentPhotoUrl) && !replaceExistingPhoto)} className="rounded-xl border border-white/15 bg-white/[0.05] px-4 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-40">Usar enlace externo</button>
                   <button type="button" onClick={onCloseSourceAnalysis} disabled={sourcePhotoSaving} className="rounded-xl border border-red-300/15 px-4 py-2 text-xs font-black text-red-200 disabled:opacity-50">Descartar</button>
                 </div>
