@@ -19,8 +19,19 @@ await build({ entryPoints: [path.join(root, 'src/components/training/PlannedSess
   external: ['react', 'react-dom', 'react/jsx-runtime'], loader: { '.css': 'empty' }, logLevel: 'silent' });
 const { PlannedSessionPrintPages } = await import(pathToFileURL(bundle).href);
 const output = mkdtempSync(path.join(tmpdir(), 'appcaudal-session-print-'));
-const chrome = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-assert.ok(existsSync(chrome), 'Chrome local necesario para generar los PDFs de prueba');
+const browserCandidates = [
+  process.env.CHROME_PATH,
+  process.platform === 'win32' ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' : '',
+  process.platform === 'win32' ? 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe' : '',
+  process.platform === 'win32' && process.env.LOCALAPPDATA
+    ? path.join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe') : '',
+  process.platform === 'win32' ? 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe' : '',
+  process.platform === 'darwin' ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : '',
+  process.platform === 'linux' ? '/usr/bin/google-chrome' : '',
+  process.platform === 'linux' ? '/usr/bin/chromium' : '',
+].filter(Boolean);
+const chrome = browserCandidates.find(existsSync);
+assert.ok(chrome, 'Se necesita Chrome o Edge para generar los PDF de prueba. Define CHROME_PATH.');
 const board = {
   schemaVersion: 1,
   board: { pitchType: 'full', elements: [

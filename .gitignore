@@ -2,10 +2,12 @@ node_modules
 dist
 .DS_Store
 .env
+.env.local
 vite-dev*.log
 
 # Perfiles locales de navegador
 /.chrome-debug-profile/
+/.chrome-debug-profile-check/
 /.chrome-debug-profile-runtime/
 
 # Artefactos temporales del QA visual de multas
