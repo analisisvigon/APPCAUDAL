@@ -11,7 +11,7 @@ const INITIAL_AUTH_STATE = {
   identity: null,
 };
 
-const RESOLVED_STATUSES = new Set(['staff', 'player', 'denied']);
+const RESOLVED_STATUSES = new Set(['staff', 'player', 'denied', 'multiple_memberships']);
 
 const logTechnicalAuthError = (context, error) => {
   if (import.meta.env.DEV) console.error(`[APP_AUTH:${context}]`, error);
@@ -306,6 +306,16 @@ function AppAuthShell() {
       <AccessMessage
         title="Acceso no habilitado"
         message="Esta cuenta no tiene actualmente un acceso activo a NEXO CLUB."
+        onSignOut={handleSignOut}
+        signingOut={signingOut}
+      />
+    );
+  }
+  if (authState.status === 'multiple_memberships') {
+    return (
+      <AccessMessage
+        title="Varios accesos autorizados"
+        message="Tu cuenta tiene acceso a varios clubes. La selección de equipo estará disponible cuando se complete el aislamiento de datos. Por seguridad, todavía no se abre ningún espacio deportivo."
         onSignOut={handleSignOut}
         signingOut={signingOut}
       />
