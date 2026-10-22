@@ -64,6 +64,8 @@ const fixtures = {
   board_teams: [slot('a', 'activation', [library('a')]), slot('m1', 'main', [library('m1')]), slot('m2', 'main')],
   roster_24: [slot('a', 'activation'), slot('m1', 'main'), slot('m2', 'main')],
   player_board_24: [slot('a', 'activation'), slot('m1', 'main'), slot('m2', 'main')],
+  player_board_433: [slot('a', 'activation'), slot('m1', 'main'), slot('m2', 'main')],
+  player_board_532: [slot('a', 'activation'), slot('m1', 'main'), slot('m2', 'main')],
   long_text: [slot('a', 'activation'), slot('m1', 'main', [libraryWithLongText()]), slot('m2', 'main')],
   overfull: [slot('a', 'activation'), slot('m1', 'main', [free('m1', 'Contenido excepcionalmente extenso. '.repeat(160))])],
 };
@@ -85,7 +87,10 @@ const approvedRosterNames = [
 ];
 for (const [name, slots] of Object.entries(fixtures)) {
   const editor = { ...base, slots };
-  const roster = ['roster_24', 'player_board_24'].includes(name) ? approvedRosterNames.map(([position, playerName], index) => ({
+  const playerBoard = name.startsWith('player_board_');
+  const boardFormation = name === 'player_board_433' ? '4-3-3'
+    : name === 'player_board_532' ? '5-3-2' : '4-2-3-1';
+  const roster = (name === 'roster_24' || playerBoard) ? approvedRosterNames.map(([position, playerName], index) => ({
     player_id: `fixture-player-${index}`, player_name_snapshot: playerName,
     position_key_snapshot: position,
   })) : [];
@@ -95,17 +100,16 @@ for (const [name, slots] of Object.entries(fixtures)) {
     'right_winger', 'centre_forward', 'centre_forward', 'centre_forward', 'second_striker',
     'left_winger', 'centre_forward', 'centre_forward'];
   const positionById = new Map(roster.map((player, index) => [player.player_id, positionKeys[index]]));
-  const boardLayout = name === 'player_board_24'
-    ? autoPlayerLayout(roster, positionById, '4-2-3-1') : [];
+  const boardLayout = playerBoard ? autoPlayerLayout(roster, positionById, boardFormation) : [];
   const centralAnchor = boardLayout.find((item) => item.player_id === 'fixture-player-4');
-  const savedPlayerDistribution = { formation_key: name === 'player_board_24' ? '4-2-3-1' : null,
+  const savedPlayerDistribution = { formation_key: playerBoard ? boardFormation : null,
     player_layout: boardLayout.map((item) => item.player_id === 'fixture-player-5'
       ? { player_id: item.player_id, placement: 'manual', x: centralAnchor.x, y: centralAnchor.y } : item),
     space_zones: [] };
   const markup = renderToStaticMarkup(React.createElement(PlannedSessionPrintPages, { editor,
     selected: { team_id: '85a16f33-9fe5-44d4-b85d-37d73651ebf6', team_name: 'C.D. Caudal', label: '2026/2027' },
     roster, positionById, playerDistribution: savedPlayerDistribution,
-    availability: ['roster_24', 'player_board_24'].includes(name) ? {
+    availability: (name === 'roster_24' || playerBoard) ? {
       'fixture-player-1': { status: 'injured' },
       'fixture-player-10': { status: 'absent' },
       'fixture-player-16': { status: 'adapted' },
@@ -128,7 +132,7 @@ for (const [name, slots] of Object.entries(fixtures)) {
     assert.equal((markup.match(/Tiempo total:/g) || []).length, slots.length,
       'la duración se cuenta una sola vez por ejercicio, también con tareas A y B');
   }
-  if (name === 'player_board_24') {
+  if (playerBoard) {
     assert.equal((markup.match(/title="(?:Alex|Samuel|Borja|Cristian|Iago|José|Julio|Marcos|Omar|Roberto|Agustín|Kike|Lucas|Vicente|Daniel|David|Diego|Isaac|Isma|Jairo|Óscar)/g) || []).length, 24);
     assert.doesNotMatch(markup, /Restablecer distribución automática|<select/);
   }
@@ -136,17 +140,28 @@ for (const [name, slots] of Object.entries(fixtures)) {
   const documentCss = pathToFileURL(path.join(root, 'src/components/training/plannedSessionDocument.css')).href;
   const globalPrint = pathToFileURL(path.join(root, 'src/styles/print.css')).href;
   const crest = pathToFileURL(path.join(root, 'public/pwa-512x512.png')).href;
-  const previewCss = ['roster_24', 'player_board_24'].includes(name) ? '<style media="screen">body{margin:0}.planned-print-portal{position:static;left:auto;visibility:visible;pointer-events:auto}</style>' : '';
-  const boardCheck = name === 'player_board_24' ? `<script>window.addEventListener('load', () => {
+  const previewCss = (name === 'roster_24' || playerBoard) ? '<style media="screen">body{margin:0}.planned-print-portal{position:static;left:auto;visibility:visible;pointer-events:auto}</style>' : '';
+  const boardCheck = playerBoard ? `<script>window.addEventListener('load', () => {
     const field = document.querySelector('.planned-distribution-player-field');
     const bounds = field.getBoundingClientRect();
     const cards = [...field.querySelectorAll('.planned-distribution-player-group')];
     const outside = cards.some((card) => { const box = card.getBoundingClientRect(); return box.left < bounds.left - 1 || box.right > bounds.right + 1 || box.top < bounds.top - 1 || box.bottom > bounds.bottom + 1; });
     const overlap = cards.some((left, index) => cards.slice(index + 1).some((right) => { const a = left.getBoundingClientRect(), b = right.getBoundingClientRect(); return a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1; }));
-    const textOverflow = cards.some((card) => { const box = card.getBoundingClientRect(); return [...card.querySelectorAll('span,b')].some((part) => { const text = part.getBoundingClientRect(); return text.left < box.left - 1 || text.right > box.right + 1 || text.top < box.top - 1 || text.bottom > box.bottom + 1; }); });
+    const textOverflow = cards.some((card) => { const box = card.getBoundingClientRect(); return card.scrollHeight > card.clientHeight + 1 || card.scrollWidth > card.clientWidth + 1 || [...card.querySelectorAll('span,b')].some((part) => { const text = part.getBoundingClientRect(); return text.left < box.left - 1 || text.right > box.right + 1 || text.top < box.top - 1 || text.bottom > box.bottom + 1 || part.scrollWidth > part.clientWidth + 1 || part.scrollHeight > part.clientHeight + 1; }); });
     document.documentElement.dataset.playerBoardOutside = String(outside);
     document.documentElement.dataset.playerBoardOverlap = String(overlap);
     document.documentElement.dataset.playerBoardTextOverflow = String(textOverflow);
+    field.style.height = '63mm';
+    const screenBounds = field.getBoundingClientRect();
+    const screenOutside = cards.some((card) => { const box = card.getBoundingClientRect(); return box.left < screenBounds.left - 1 || box.right > screenBounds.right + 1 || box.top < screenBounds.top - 1 || box.bottom > screenBounds.bottom + 1; });
+    const screenPairs = cards.flatMap((left, index) => cards.slice(index + 1).filter((right) => { const a = left.getBoundingClientRect(), b = right.getBoundingClientRect(); return a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1; }).map((right) => left.querySelector('b').textContent + '/' + right.querySelector('b').textContent));
+    const screenOverlap = screenPairs.length > 0;
+    const screenTextOverflow = cards.some((card) => { const box = card.getBoundingClientRect(); return card.scrollHeight > card.clientHeight + 1 || [...card.querySelectorAll('span,b')].some((part) => { const text = part.getBoundingClientRect(); return text.top < box.top - 1 || text.bottom > box.bottom + 1 || part.scrollWidth > part.clientWidth + 1 || part.scrollHeight > part.clientHeight + 1; }); });
+    document.documentElement.dataset.playerBoardScreenOutside = String(screenOutside);
+    document.documentElement.dataset.playerBoardScreenOverlap = String(screenOverlap);
+    document.documentElement.dataset.playerBoardScreenPairs = screenPairs.join(',');
+    document.documentElement.dataset.playerBoardScreenTextOverflow = String(screenTextOverflow);
+    field.style.height = '';
   });</script>` : '';
   const html = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${globalPrint}"><link rel="stylesheet" href="${documentCss}"><link rel="stylesheet" href="${css}">${previewCss}</head><body><div class="planned-print-portal"><style media="print">@page { size: A4 landscape; margin: 0; }</style>${markup.replaceAll('/pwa-512x512.png', crest)}</div><script>window.addEventListener('load', () => { const limit = 210 * 96 / 25.4; const sheets = [...document.querySelectorAll('.planned-print-sheet')]; document.documentElement.dataset.printOverflow = String(sheets.length > 2 || sheets.some((sheet) => sheet.getBoundingClientRect().height > limit + 2 || sheet.scrollHeight > limit + 2)); const defender = [...document.querySelectorAll('.planned-roster-group')].find((group) => group.querySelector('b')?.textContent === 'Defensas'); document.documentElement.dataset.defenderColumns = defender ? getComputedStyle(defender.querySelector('.planned-roster-players')).gridTemplateColumns.split(' ').length : 0; document.documentElement.dataset.rosterOverflow = String([...document.querySelectorAll('.planned-roster-player')].some((player) => player.scrollWidth > player.clientWidth + 1)); });</script>${boardCheck}</body></html>`;
   const htmlPath = path.join(output, `${name}.html`);
@@ -184,14 +199,18 @@ for (const [name, slots] of Object.entries(fixtures)) {
     assert.ok(existsSync(previewPath));
     console.log(`Vista previa de los 24 jugadores: ${previewPath}`);
   }
-  if (name === 'player_board_24') {
+  if (playerBoard) {
     const dom = execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox',
       '--disable-extensions', '--dump-dom', pathToFileURL(htmlPath).href],
     { timeout: 30000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
     assert.match(dom, /data-player-board-outside="false"/);
     assert.match(dom, /data-player-board-overlap="false"/);
     assert.match(dom, /data-player-board-text-overflow="false"/);
-    const previewPath = path.join(output, 'player_board_24_preview.png');
+    assert.match(dom, /data-player-board-screen-outside="false"/);
+    assert.equal(/data-player-board-screen-overlap="true"/.test(dom), false,
+      `${name}: solapamientos en edición: ${dom.match(/data-player-board-screen-pairs="([^"]*)"/)?.[1]}`);
+    assert.match(dom, /data-player-board-screen-text-overflow="false"/);
+    const previewPath = path.join(output, `${name}_preview.png`);
     execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox', '--disable-extensions',
       '--window-size=1200,900', `--screenshot=${previewPath}`, pathToFileURL(htmlPath).href],
     { timeout: 30000, stdio: 'pipe' });

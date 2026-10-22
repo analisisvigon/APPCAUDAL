@@ -194,7 +194,29 @@ export const layoutPlayerBoardCards = (layout = [], roster = [], _positionById =
   if (slots.length) for (const player of roster) if (!seen.has(player.player_id)) unplaced.push(player);
   for (const card of cards) {
     card.players.sort((a, b) => (labels.get(a.player_id) || '').localeCompare(labels.get(b.player_id) || '', 'es'));
-    card.height = 4 + card.players.length * 2.4;
+    // Ensanchar solo dentro del corredor de su demarcación: el ancla no cambia.
+    const nearest = Math.min(...slots.filter((slot) => slot.id !== card.key &&
+      Math.abs(slot.y - card.y) <= 12 && Math.abs(slot.x - card.x) > 0)
+      .map((slot) => Math.abs(slot.x - card.x)), 24);
+    card.width = Math.max(14, Math.min(22, nearest - 2));
+    card.left = card.x - card.width / 2;
+    const charsPerLine = Math.max(9, Math.floor(card.width * 0.75));
+    card.nameLines = card.players.reduce((total, player) => total + Math.max(1,
+      Math.ceil((labels.get(player.player_id) || '').length / charsPerLine)), 0);
+    card.height = 4 + card.nameLines * 2.65;
+    card.top = Math.max(0, Math.min(100 - card.height, card.y - card.height / 2));
+  }
+  // En filas apretadas (por ejemplo, central/portero en 5-3-2), mantener
+  // el tamaño previo en ambos grupos antes que desplazar sus anclas.
+  for (const [index, left] of cards.entries()) for (const right of cards.slice(index + 1)) {
+    if (!left.players.length || !right.players.length) continue;
+    const nearHorizontally = left.left < right.left + right.width && left.left + left.width > right.left;
+    const nearVertically = left.top < right.top + right.height + 2 &&
+      left.top + left.height + 2 > right.top;
+    if (nearHorizontally && nearVertically) { left.compact = true; right.compact = true; }
+  }
+  for (const card of cards) if (card.compact) {
+    card.height = 3.5 + card.nameLines * 2.3;
     card.top = Math.max(0, Math.min(100 - card.height, card.y - card.height / 2));
   }
   return { cards, unplaced, legacy };

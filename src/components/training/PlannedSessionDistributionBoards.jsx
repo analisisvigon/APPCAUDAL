@@ -82,7 +82,7 @@ export function SessionPlayerDistribution({ distribution, roster, availability, 
     <div className="planned-distribution-field planned-distribution-player-field" ref={fieldRef}>
       <FieldLines />
       {cards.map((card) => {
-        return <div key={card.key} className={`planned-distribution-player-group${card.manual ? ' planned-distribution-player-manual' : ''}${dropTarget?.groupKey === card.key ? ' planned-distribution-player-drop-target' : ''}`}
+        return <div key={card.key} className={`planned-distribution-player-group${card.compact ? ' planned-distribution-player-group-compact' : ''}${card.manual ? ' planned-distribution-player-manual' : ''}${dropTarget?.groupKey === card.key ? ' planned-distribution-player-drop-target' : ''}`}
           style={{ left: `${card.left}%`, top: `${card.top}%`, width: `${card.width}%`, minHeight: `${card.height}%` }}
           title={`${card.title} · ${card.players.length} jugadores`}>
           <b>{card.shortTitle}</b>

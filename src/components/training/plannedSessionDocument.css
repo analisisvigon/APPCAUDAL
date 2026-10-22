@@ -91,9 +91,11 @@
 .planned-distribution-field { box-sizing: border-box; position: relative; width: 100%; height: 63mm; border: 1px solid #aebdb8; background: #f8fbf8; overflow: hidden; }
 .planned-distribution-lines { position: absolute; inset: 0; width: 100%; height: 100%; color: #c2d2ca; pointer-events: none; }
 .planned-distribution-empty { position: absolute; top: 45%; left: 5%; right: 5%; font-size: 7pt; color: #666; }
-.planned-distribution-player-group { box-sizing: border-box; position: absolute; z-index: 1; display: flex; flex-direction: column; justify-content: center; padding: .15mm .2mm; background: #fffffff2; border-left: 1px solid #768f83; border-radius: .5mm; font-size: 4.6pt; line-height: 1.05; text-align: center; }
-.planned-distribution-player-group b { font-size: 4.2pt; color: #40564b; line-height: 1.05; white-space: nowrap; }
-.planned-distribution-player-group span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.planned-distribution-player-group { box-sizing: border-box; position: absolute; z-index: 1; display: flex; flex-direction: column; justify-content: center; padding: .15mm .2mm; background: #fffffff2; border-left: 1px solid #768f83; border-radius: .5mm; font-size: 5.3pt; line-height: 1.05; text-align: center; }
+.planned-distribution-player-group b { font-size: 4.85pt; color: #40564b; line-height: 1.05; white-space: nowrap; }
+.planned-distribution-player-group span { display: block; white-space: normal; overflow-wrap: anywhere; }
+.planned-distribution-player-group-compact { padding: .1mm .2mm; font-size: 4.6pt; line-height: 1.02; }
+.planned-distribution-player-group-compact b { font-size: 4.2pt; }
 .planned-distribution-player-group:empty { min-height: 3mm; }
 .planned-distribution-player-manual { border-left-color: #2c69a4; }
 .planned-distribution-player-drop-target { outline: 2px solid #1675ca; outline-offset: 1px; background: #e7f3ff; }
