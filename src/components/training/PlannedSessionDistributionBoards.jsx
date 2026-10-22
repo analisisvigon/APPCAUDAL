@@ -18,13 +18,19 @@ const statusClass = (status) => ['absent', 'injured'].includes(status)
 export function SessionPlayerDistribution({ distribution, roster, availability, positionById,
   canEdit = false, onFormationChange, onPlayerMove }) {
   const fieldRef = useRef(null);
+  const unplacedRef = useRef(null);
   const dragRef = useRef(null);
   const [dragPoint, setDragPoint] = useState(null);
   const labels = playerCompactLabels(roster);
-  const { cards, unplaced } = useMemo(() => layoutPlayerBoardCards(
+  const { cards, unplaced, legacy } = useMemo(() => layoutPlayerBoardCards(
     distribution.player_layout || [], roster, positionById, distribution.formation_key),
   [distribution.player_layout, roster, positionById, distribution.formation_key]);
   const dropTarget = dragPoint?.inside ? resolvePlayerBoardDrop(cards, dragPoint) : null;
+  const overUnplaced = (event) => {
+    const box = unplacedRef.current?.getBoundingClientRect();
+    return box && event.clientX >= box.left && event.clientX <= box.right &&
+      event.clientY >= box.top && event.clientY <= box.bottom;
+  };
   const pointInField = (event) => {
     const box = fieldRef.current?.getBoundingClientRect();
     if (!box?.width || !box?.height) return null;
@@ -45,7 +51,7 @@ export function SessionPlayerDistribution({ distribution, roster, availability, 
     if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 4 && !drag.moved) return;
     drag.moved = true;
     const point = pointInField(event);
-    setDragPoint(point ? { ...point, id: drag.id } : null);
+    setDragPoint(point ? { ...point, id: drag.id, unplaced: overUnplaced(event) } : null);
   };
   const endPlayerDrag = (event) => {
     const drag = dragRef.current;
@@ -53,9 +59,11 @@ export function SessionPlayerDistribution({ distribution, roster, availability, 
     const point = pointInField(event);
     dragRef.current = null;
     setDragPoint(null);
-    if (drag.moved && point?.inside) {
+    if (!drag.moved) return;
+    if (overUnplaced(event)) onPlayerMove?.(drag.id, null);
+    else if (point?.inside) {
       const target = resolvePlayerBoardDrop(cards, point);
-      onPlayerMove?.(drag.id, target.x, target.y);
+      if (target) onPlayerMove?.(drag.id, target);
     }
   };
   const playerHandlers = (player) => canEdit ? {
@@ -75,8 +83,9 @@ export function SessionPlayerDistribution({ distribution, roster, availability, 
       <FieldLines />
       {cards.map((card) => {
         return <div key={card.key} className={`planned-distribution-player-group${card.manual ? ' planned-distribution-player-manual' : ''}${dropTarget?.groupKey === card.key ? ' planned-distribution-player-drop-target' : ''}`}
-          style={{ left: `${card.left}%`, top: `${card.top}%`, width: `${card.width}%`, height: `${card.height}%` }}>
-          {card.group ? <b>{card.title}</b> : null}
+          style={{ left: `${card.left}%`, top: `${card.top}%`, width: `${card.width}%`, minHeight: `${card.height}%` }}
+          title={`${card.title} · ${card.players.length} jugadores`}>
+          <b>{card.shortTitle}</b>
           {card.players.map((player) => <span key={player.player_id}
             className={`${statusClass(availability[player.player_id]?.status)}${canEdit ? ' planned-distribution-player-draggable' : ''}`}
             title={player.player_name_snapshot} {...playerHandlers(player)}>
@@ -93,17 +102,20 @@ export function SessionPlayerDistribution({ distribution, roster, availability, 
     {canEdit && distribution.formation_key ? <button type="button"
       className="planned-distribution-reset" onClick={() => onFormationChange?.(distribution.formation_key)}>
       Restablecer distribución automática</button> : null}
-    {unplaced.length ? <div className="planned-distribution-unplaced"><b>Sin ubicación automática</b>
+    {unplaced.length || (canEdit && distribution.formation_key) ? <div ref={unplacedRef}
+      className={`planned-distribution-unplaced${dragPoint?.unplaced ? ' planned-distribution-unplaced-target' : ''}`}>
+      <b>Sin ubicación automática</b>
       <span>{unplaced.map((player) => <span key={player.player_id}
         className={`${statusClass(availability[player.player_id]?.status)}${canEdit ? ' planned-distribution-player-draggable' : ''}`}
         title={player.player_name_snapshot} {...playerHandlers(player)}>
         {labels.get(player.player_id)}
       </span>)}</span>
     </div> : null}
+    {legacy.length ? <small role="alert">{legacy.length} jugadores tienen coordenadas anteriores sin demarcación. Asígnalos a un puesto o restablece la distribución; no se han cambiado sus datos guardados.</small> : null}
     {distribution.formation_key && distribution.player_layout.length !== roster.length ?
       <small role="alert">La distribución no contiene toda la plantilla congelada; recarga antes de guardar.</small> : null}
     {canEdit && distribution.formation_key ?
-      <small>Arrastra cualquier nombre al campo y pulsa «Guardar pizarras».</small> : null}
+      <small>Arrastra cada nombre a una demarcación o a «Sin ubicación automática» y pulsa «Guardar pizarras». Fuera de esas zonas se cancela el movimiento.</small> : null}
     {!roster.length ? <small>Congela la plantilla de la sesión antes de seleccionar un sistema.</small> : null}
   </div>;
 }

@@ -3,6 +3,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 import { readFileSync } from 'node:fs';
+import { autoPlayerLayout } from '../../utils/plannedSessionDistributions.js';
 
 const vite = await createServer({ configFile: false, esbuild: { jsx: 'automatic' },
   server: { middlewareMode: true }, appType: 'custom' });
@@ -13,10 +14,7 @@ try {
     player_name_snapshot: `Jugador ${index + 1}` }));
   const positions = new Map(roster.map((row, index) => [row.player_id,
     index < 2 ? 'right_back' : index === 2 ? null : 'central_midfield']));
-  const layout = roster.map((row, index) => ({ player_id: row.player_id,
-    placement: index === 2 ? 'unplaced' : 'auto',
-    x: index < 2 ? 82 : index === 2 ? null : 50,
-    y: index < 2 ? 73 : index === 2 ? null : 45 }));
+  const layout = autoPlayerLayout(roster, positions, '4-4-2');
   const markup = renderToStaticMarkup(React.createElement(SessionPlayerDistribution, {
     distribution: { formation_key: '4-4-2', player_layout: layout }, roster,
     positionById: positions,
@@ -27,8 +25,8 @@ try {
   assert.match(markup, /planned-distribution-player-adapted/);
   assert.equal((markup.match(/title="Jugador /g) || []).length, 24,
     'los 24 futbolistas permanecen representados');
-  assert.ok((markup.match(/class="planned-distribution-player-group(?:\s|\")/g) || []).length >= 4,
-    'los dos laterales comparten tarjeta y el grupo masivo se reparte sin ocultar jugadores');
+  assert.equal((markup.match(/class="planned-distribution-player-group(?:\s|\")/g) || []).length, 11,
+    'las once demarcaciones son contenedores fijos, incluidas las vacías');
   assert.equal(markup.includes('<select'), false, 'la vista no editable no imprime controles');
   assert.match(markup, /planned-distribution-meta/, 'la fila de sistema reserva la misma altura que la otra pizarra');
   assert.equal((markup.match(/planned-distribution-player-out/g) || []).length, 1,
@@ -80,7 +78,7 @@ try {
   assert.match(playerPrint, /planned-distribution-player-adapted/);
   assert.doesNotMatch(playerPrint, /<select|Restablecer distribución automática/,
     'la impresión no incorpora controles de edición');
-  assert.match(playerPrint, /Lateral derecho[\s\S]*Jugador 3/,
+  assert.match(playerPrint, /title="LD · 3 jugadores"[\s\S]*Jugador 3/,
     'la agrupación manual guardada se reconstruye junto al lateral');
   const { default: PlannedSessionDocument } = await vite.ssrLoadModule(
     '/src/components/training/PlannedSessionDocument.jsx');

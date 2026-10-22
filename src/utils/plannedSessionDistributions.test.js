@@ -28,55 +28,75 @@ for (const system of SESSION_SYSTEMS) {
 }
 const first442 = autoPlayerLayout(roster, byId, '4-4-2');
 const board = layoutPlayerBoardCards(first442, roster, byId, '4-4-2');
+assert.equal(board.cards.length, 11, 'siempre hay once demarcaciones, incluso vacías');
 assert.equal(board.cards.flatMap((card) => card.players).length + board.unplaced.length, 24);
-assert.ok(board.cards.some((card) => card.players.length > 4),
-  'los jugadores de una demarcación numerosa permanecen en el mismo grupo');
-for (const [index, left] of board.cards.entries()) for (const right of board.cards.slice(index + 1)) {
-  assert.ok(left.left + left.width + 1 <= right.left || right.left + right.width + 1 <= left.left ||
-    left.top + left.height + 1 <= right.top || right.top + right.height + 1 <= left.top,
-  'las tarjetas del campo no se solapan');
-}
-const movedBoard = layoutPlayerBoardCards(movePlayerBoardLayout(first442, 'player-2',
-  { x: 50, y: 50 }), roster, byId, '4-4-2');
-assert.ok(movedBoard.cards.some((card) => card.manual && card.players[0].player_id === 'player-2'),
-  'un jugador sin posición automática puede situarse manualmente');
-const centres = board.cards.find((card) => card.title.includes('Defensa central'));
-assert.ok(centres, 'existe el grupo de centrales acreditado');
-const centralDrop = resolvePlayerBoardDrop(board.cards, { x: centres.left + 1, y: centres.top + 1 });
-assert.equal(centralDrop.groupKey, centres.key);
-const joinedLayout = movePlayerBoardLayout(first442, 'player-2', centralDrop);
+assert.equal(new Set(board.cards.flatMap((card) => card.players).concat(board.unplaced)
+  .map((player) => player.player_id)).size, 24, 'ningún jugador se duplica');
+assert.equal(board.unplaced[0].player_id, 'player-2');
+const central = board.cards.find((card) => card.key === 'DFC_D');
+assert.ok(central && central.players.length, 'central derecho ocupa el ancla táctica');
+const centralDrop = resolvePlayerBoardDrop(board.cards, { x: central.x, y: central.y });
+assert.deepEqual(centralDrop, { x: central.x, y: central.y, groupKey: central.key });
+assert.equal(resolvePlayerBoardDrop(board.cards, { x: 5, y: 5 }), null,
+  'no existe caída libre fuera de una demarcación');
+const joinedLayout = movePlayerBoardLayout(first442, 'player-2', centralDrop, '4-4-2');
+assert.deepEqual(joinedLayout[2], { player_id: 'player-2', placement: 'manual',
+  x: central.x, y: central.y }, 'la RPC recibe solo su ancla canónica');
 const joinedBoard = layoutPlayerBoardCards(joinedLayout, roster, byId, '4-4-2');
-assert.ok(joinedBoard.cards.find((card) => card.key === centres.key)?.players
-  .some((player) => player.player_id === 'player-2'),
-'el jugador sin posición se incorpora y permanece en centrales');
+assert.ok(joinedBoard.cards.find((card) => card.key === 'DFC_D').players
+  .some((player) => player.player_id === 'player-2'));
 assert.equal(joinedBoard.unplaced.some((player) => player.player_id === 'player-2'), false);
+const secondUnplacedPositions = new Map(byId);
+secondUnplacedPositions.set('player-11', null);
+const secondUnplacedLayout = autoPlayerLayout(roster, secondUnplacedPositions, '4-4-2');
+const secondUnplacedBoard = layoutPlayerBoardCards(secondUnplacedLayout, roster, secondUnplacedPositions, '4-4-2');
+assert.ok(secondUnplacedBoard.unplaced.some((player) => player.player_id === 'player-11'));
+const secondMid = secondUnplacedBoard.cards.find((card) => card.key === 'MC_D');
+assert.ok(layoutPlayerBoardCards(movePlayerBoardLayout(secondUnplacedLayout, 'player-11',
+  { x: secondMid.x, y: secondMid.y }, '4-4-2'), roster, secondUnplacedPositions, '4-4-2')
+  .cards.find((card) => card.key === 'MC_D').players.some((player) => player.player_id === 'player-11'),
+'otro jugador sin posición puede pasar a mediocentro');
 assert.deepEqual(layoutPlayerBoardCards(JSON.parse(JSON.stringify(joinedLayout)), roster, byId, '4-4-2')
   .cards.map((card) => [card.key, card.players.map((player) => player.player_id)]),
 joinedBoard.cards.map((card) => [card.key, card.players.map((player) => player.player_id)]),
-'la agrupación manual se reconstruye de forma determinista tras reabrir');
-const freePoint = { x: 6, y: 6 };
-const freeLayout = movePlayerBoardLayout(joinedLayout, 'player-3', freePoint);
-const freeBoard = layoutPlayerBoardCards(freeLayout, roster, byId, '4-4-2');
-assert.ok(freeBoard.cards.some((card) => card.manual && card.players[0].player_id === 'player-3'));
+'los grupos manuales se reconstruyen igual al recargar');
+const mid = board.cards.find((card) => card.key === 'MC_D');
+const movedMid = movePlayerBoardLayout(joinedLayout, 'player-2',
+  resolvePlayerBoardDrop(board.cards, { x: mid.x, y: mid.y }), '4-4-2');
+assert.ok(layoutPlayerBoardCards(movedMid, roster, byId, '4-4-2').cards
+  .find((card) => card.key === 'MC_D').players.some((player) => player.player_id === 'player-2'),
+'se puede mover desde una demarcación a otra');
+const lateralToCentral = movePlayerBoardLayout(first442, 'player-0', centralDrop, '4-4-2');
+assert.ok(layoutPlayerBoardCards(lateralToCentral, roster, byId, '4-4-2').cards
+  .find((card) => card.key === 'DFC_D').players.some((player) => player.player_id === 'player-0'),
+'un lateral puede reasignarse sin cambiar su posición canónica');
+assert.equal(byId.get('player-0'), 'right_back');
+const removed = movePlayerBoardLayout(movedMid, 'player-2', null, '4-4-2');
+assert.deepEqual(removed[2], { player_id: 'player-2', placement: 'unplaced', x: null, y: null });
+assert.ok(layoutPlayerBoardCards(removed, roster, byId, '4-4-2').unplaced
+  .some((player) => player.player_id === 'player-2'));
+assert.equal(movePlayerBoardLayout(joinedLayout, 'player-2', { x: 5, y: 5 }, '4-4-2'),
+  joinedLayout, 'un punto libre no cambia el estado');
+const legacyLayout = joinedLayout.map((item) => item.player_id === 'player-3'
+  ? { ...item, placement: 'manual', x: 50, y: 50 } : item);
+const legacyBoard = layoutPlayerBoardCards(legacyLayout, roster, byId, '4-4-2');
+assert.equal(legacyBoard.legacy.length, 1, 'las coordenadas libres anteriores requieren revisión');
+assert.equal(legacyBoard.cards.flatMap((card) => card.players).length + legacyBoard.unplaced.length, 24);
 assert.deepEqual(autoPlayerLayout(roster, byId, '4-4-2'), first442,
-  'restablecer el sistema elimina los ajustes manuales sin cambiar posiciones canónicas');
-const crowdedManual = layoutPlayerBoardCards(roster.map((player) => ({
-  player_id: player.player_id, placement: 'manual', x: 50, y: 50,
-})), roster);
-assert.equal(crowdedManual.cards.length, 24);
-assert.equal(crowdedManual.unplaced.length, 0,
-  'veinticuatro intentos de solapar una misma zona se resuelven dentro del campo');
-for (const [index, left] of crowdedManual.cards.entries()) for (const right of crowdedManual.cards.slice(index + 1)) {
-  assert.ok(left.left + left.width + 1 <= right.left || right.left + right.width + 1 <= left.left ||
-    left.top + left.height + 1 <= right.top || right.top + right.height + 1 <= left.top);
-}
+  'restablecer el sistema elimina los ajustes manuales sin cambiar Plantilla');
 assert.notDeepEqual(first442.map(({ x, y }) => [x, y]),
   autoPlayerLayout(roster, byId, '4-2-3-1').map(({ x, y }) => [x, y]),
-  'el cambio de sistema recalcula los sectores');
-for (const system of ['4-2-3-1', '4-3-3']) {
-  const systemBoard = layoutPlayerBoardCards(autoPlayerLayout(roster, byId, system), roster, byId, system);
-  assert.equal(systemBoard.cards.flatMap((card) => card.players).length + systemBoard.unplaced.length, 24);
-  assert.ok(systemBoard.cards.some((card) => card.players.length > 1), `${system}: hay grupos posicionales`);
+  'cambiar sistema recalcula las demarcaciones');
+for (const system of SESSION_SYSTEMS) {
+  const generated = autoPlayerLayout(roster, byId, system);
+  const rendered = layoutPlayerBoardCards(generated, roster, byId, system);
+  assert.equal(rendered.cards.length, 11, `${system}: once demarcaciones`);
+  assert.equal(rendered.cards.flatMap((card) => card.players).length + rendered.unplaced.length, 24,
+    `${system}: todos los futbolistas aparecen`);
+  const anchors = new Set(rendered.cards.map((card) => `${card.x}:${card.y}`));
+  assert.equal(anchors.size, 11, `${system}: cada demarcación tiene ancla propia`);
+  assert.ok(generated.every((item) => item.placement === 'unplaced' ||
+    anchors.has(`${item.x}:${item.y}`)), `${system}: ningún jugador flota`);
 }
 const attackingRoster = [
   { player_id: 'winger', player_name_snapshot: 'Extremo Derecho' },
@@ -85,12 +105,11 @@ const attackingRoster = [
 const attackingPositions = new Map([['winger', 'right_winger'], ['striker', 'centre_forward']]);
 const attackingAuto = autoPlayerLayout(attackingRoster, attackingPositions, '4-3-3');
 const attackingBoard = layoutPlayerBoardCards(attackingAuto, attackingRoster, attackingPositions, '4-3-3');
-const forwardCard = attackingBoard.cards.find((card) => card.title.includes('Delantero centro'));
-const attackingDrop = resolvePlayerBoardDrop(attackingBoard.cards,
-  { x: forwardCard.left + 1, y: forwardCard.top + 1 });
-const attackingMoved = layoutPlayerBoardCards(movePlayerBoardLayout(attackingAuto, 'winger', attackingDrop),
+const forwardCard = attackingBoard.cards.find((card) => card.key === 'DC');
+const attackingDrop = resolvePlayerBoardDrop(attackingBoard.cards, { x: forwardCard.x, y: forwardCard.y });
+const attackingMoved = layoutPlayerBoardCards(movePlayerBoardLayout(attackingAuto, 'winger', attackingDrop, '4-3-3'),
   attackingRoster, attackingPositions, '4-3-3');
-assert.deepEqual(attackingMoved.cards.find((card) => card.key === forwardCard.key)?.players
+assert.deepEqual(attackingMoved.cards.find((card) => card.key === 'DC').players
   .map((player) => player.player_id).sort(), ['striker', 'winger']);
 const slots = [{ id: 'a', phase: 'activation' }, { id: 'b', phase: 'main' }];
 const zones = reconcileSpaceZones([], slots);
@@ -138,6 +157,11 @@ assert.deepEqual(calls.at(-1), ['rpc', 'save_planned_session_distributions_05', 
   p_session_id: 'session-1', p_expected_revision: 6, p_formation_key: '4-4-2',
   p_player_layout: first442, p_space_zones: zones,
 }]);
+assert.equal(await savePlannedDistribution(client, 'session-1', 7,
+  { ...distribution, player_layout: joinedLayout }), 7);
+assert.deepEqual(calls.at(-1)[2].p_player_layout[2], {
+  player_id: 'player-2', placement: 'manual', x: central.x, y: central.y,
+}, 'el guardado manual usa solo las cuatro propiedades aceptadas por RPC 05');
 assert.equal(await savePlannedSessionValue(client, 'session-1', 7, '0'), 7);
 assert.deepEqual(calls.at(-1), ['rpc', 'save_planned_session_value_06', {
   p_session_id: 'session-1', p_expected_revision: 7, p_value: 0,

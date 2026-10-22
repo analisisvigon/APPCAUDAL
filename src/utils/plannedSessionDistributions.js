@@ -1,11 +1,10 @@
 import { getFormationSlotsForSavedLineup } from './formationSlotCoordinates.js';
-import { getSpecificPositionLabel } from '../constants/playerPositions.js';
 
 export const SESSION_SYSTEMS = ['4-4-2', '4-2-3-1', '4-3-3', '4-1-4-1', '3-5-2', '5-3-2', '3-4-3'];
 export const ZONE_COLORS = ['blue', 'red', 'green', 'yellow', 'purple', 'orange', 'teal'];
 
-// Índices de las demarcaciones existentes en formationSlotCoordinates. Un grupo
-// se sitúa en el centro de sus puestos, nunca se reparte entre titulares.
+// Índices de los once puestos tácticos existentes en formationSlotCoordinates.
+// Cada futbolista se asigna a un puesto real, nunca a un punto intermedio.
 const COMMON = {
   goalkeeper: [0], sweeper_keeper: [0],
   right_back: [1], right_centre_back: [2], centre_back: [2, 3],
@@ -82,16 +81,27 @@ export const specificPositionMap = (rows = []) => {
 export const autoPlayerLayout = (roster, positionById, formationKey) => {
   if (!SESSION_SYSTEMS.includes(formationKey)) return [];
   const slots = getFormationSlotsForSavedLineup(formationKey);
-  return roster.map((player) => {
+  const occupancy = new Map();
+  const assigned = new Map();
+  const ordered = [...roster].sort((a, b) => {
+    const aCount = systems[formationKey][positionById.get(a.player_id)]?.length ?? Infinity;
+    const bCount = systems[formationKey][positionById.get(b.player_id)]?.length ?? Infinity;
+    return aCount - bCount || String(a.player_id).localeCompare(String(b.player_id));
+  });
+  for (const player of ordered) {
     const key = positionById.get(player.player_id);
     const indexes = systems[formationKey][key];
-    const points = indexes?.map((index) => slots[index]).filter(Boolean) || [];
-    if (!points.length || points.length !== indexes.length)
-      return { player_id: player.player_id, placement: 'unplaced', x: null, y: null };
-    return { player_id: player.player_id, placement: 'auto',
-      x: Math.round(points.reduce((sum, point) => sum + point.x, 0) / points.length),
-      y: Math.round(points.reduce((sum, point) => sum + point.y, 0) / points.length) };
-  });
+    const valid = indexes?.filter((index) => slots[index]) || [];
+    if (!valid.length || valid.length !== indexes.length) {
+      assigned.set(player.player_id, { player_id: player.player_id, placement: 'unplaced', x: null, y: null });
+      continue;
+    }
+    const index = [...valid].sort((a, b) => (occupancy.get(a) || 0) - (occupancy.get(b) || 0) || a - b)[0];
+    occupancy.set(index, (occupancy.get(index) || 0) + 1);
+    assigned.set(player.player_id, { player_id: player.player_id, placement: 'auto',
+      x: slots[index].x, y: slots[index].y });
+  }
+  return roster.map((player) => assigned.get(player.player_id));
 };
 
 export const reconcileSpaceZones = (zones = [], slots = []) => {
@@ -131,120 +141,63 @@ export const playerCompactLabels = (roster = []) => {
 };
 
 const pointKey = (x, y) => `${x}:${y}`;
-const withinField = (value) => Math.max(0, Math.min(100, Number(value)));
+const shortSlotLabel = (slot) => slot.id.startsWith('SLOT_')
+  ? ({ Portero: 'POR', 'Central izquierdo': 'DFC I', Central: 'DFC C',
+    'Central derecho': 'DFC D', 'Carrilero izquierdo': 'CAI',
+    'Carrilero derecho': 'CAD', Mediocentro: slot.x < 50 ? 'MC I' : 'MC D',
+    'Extremo izquierdo': 'EI', 'Extremo derecho': 'ED', Delantero: 'DC' }[slot.label] || slot.label)
+  : slot.id.replaceAll('_', ' ');
 
-// La RPC 05 no guarda demarcaciones. Un manual situado exactamente sobre un
-// ancla táctica se incorpora a ese grupo; un manual libre conserva tarjeta propia.
-export const movePlayerBoardLayout = (layout, playerId, point) => layout.map((item) =>
-  item.player_id === playerId ? { player_id: item.player_id, placement: 'manual',
-    x: withinField(point.x), y: withinField(point.y) } : item);
-
-export const resolvePlayerBoardDrop = (cards, point) => {
-  const target = cards.find((card) => card.group &&
-    point.x >= card.left && point.x <= card.left + card.width &&
-    point.y >= card.top && point.y <= card.top + card.height);
-  return target ? { x: target.x, y: target.y, groupKey: target.key }
-    : { x: withinField(point.x), y: withinField(point.y), groupKey: null };
+export const movePlayerBoardLayout = (layout, playerId, target, formationKey) => {
+  const valid = target == null || (SESSION_SYSTEMS.includes(formationKey) &&
+    getFormationSlotsForSavedLineup(formationKey).some((slot) => slot.x === target.x && slot.y === target.y));
+  if (!valid) return layout;
+  return layout.map((item) => item.player_id === playerId
+    ? { player_id: item.player_id, placement: target ? 'manual' : 'unplaced',
+      x: target?.x ?? null, y: target?.y ?? null } : item);
 };
 
-// La misma geometría sirve para editar e imprimir; nunca se alteran las
-// coordenadas guardadas para resolver colisiones visuales.
-export const layoutPlayerBoardCards = (layout = [], roster = [], positionById = new Map(), formationKey = null) => {
-  const rosterById = new Map(roster.map((player) => [player.player_id, player]));
+export const resolvePlayerBoardDrop = (cards, point) => {
+  const target = cards.find((card) => point.x >= card.left && point.x <= card.left + card.width &&
+    point.y >= card.top && point.y <= card.top + card.height);
+  return target ? { x: target.x, y: target.y, groupKey: target.key } : null;
+};
+
+// La RPC solo persiste coordenadas. Los once puestos son los únicos destinos.
+// Coordenadas antiguas no canónicas quedan visibles para revisión, nunca flotan.
+export const layoutPlayerBoardCards = (layout = [], roster = [], _positionById = new Map(), formationKey = null) => {
+  const slots = SESSION_SYSTEMS.includes(formationKey) ? getFormationSlotsForSavedLineup(formationKey) : [];
   const labels = playerCompactLabels(roster);
-  const anchors = new Map();
-  const rememberAnchor = (item) => {
-    if (item.placement === 'unplaced' || item.x == null || item.y == null) return;
-    const key = pointKey(item.x, item.y);
-    if (!anchors.has(key)) anchors.set(key, { key, x: item.x, y: item.y, positionKeys: new Set() });
-    const positionKey = positionById.get(item.player_id);
-    if (positionKey) anchors.get(key).positionKeys.add(positionKey);
-  };
-  for (const item of autoPlayerLayout(roster, positionById, formationKey)) rememberAnchor(item);
-  for (const item of layout) if (item.placement === 'auto') rememberAnchor(item);
-  const grouped = new Map();
+  const byAnchor = new Map(slots.map((slot) => [pointKey(slot.x, slot.y), slot]));
+  const cards = slots.map((slot) => ({ key: slot.id, x: slot.x, y: slot.y,
+    title: slot.label, shortTitle: shortSlotLabel(slot), players: [], group: true, manual: false,
+    width: 14, height: 5, left: slot.x - 7, top: slot.y - 2.5 }));
+  const byKey = new Map(cards.map((card) => [card.key, card]));
+  const rosterById = new Map(roster.map((player) => [player.player_id, player]));
   const unplaced = [];
-  const desired = [];
+  const legacy = [];
+  const seen = new Set();
   for (const item of layout) {
     const player = rosterById.get(item.player_id);
-    if (!player) continue;
-    if (item.placement === 'unplaced' || item.x == null || item.y == null) {
-      unplaced.push(player); continue;
-    }
-    const key = pointKey(item.x, item.y);
-    if (!anchors.has(key)) {
-      desired.push({ key: `manual:${item.player_id}`, players: [player], x: item.x, y: item.y,
-        manual: true, group: false, title: '' });
+    if (!player || seen.has(item.player_id)) continue;
+    seen.add(item.player_id);
+    const slot = item.placement !== 'unplaced' && byAnchor.get(pointKey(item.x, item.y));
+    if (slot) {
+      const card = byKey.get(slot.id);
+      card.players.push(player);
+      if (item.placement === 'manual') card.manual = true;
     } else {
-      const anchor = anchors.get(key);
-      const group = grouped.get(key) || { ...anchor, players: [], manual: false, group: true };
-      group.players.push(player);
-      grouped.set(key, group);
+      unplaced.push(player);
+      if (item.placement !== 'unplaced') legacy.push(player);
     }
   }
-  for (const group of grouped.values()) {
-    group.players.sort((a, b) => (labels.get(a.player_id) || '').localeCompare(labels.get(b.player_id) || '', 'es'));
-    const keys = [...group.positionKeys];
-    const title = keys.map((key) => getSpecificPositionLabel(key) || key).join(' / ') || 'Grupo táctico';
-    const parts = Math.ceil(group.players.length / 8);
-    for (let index = 0; index < parts; index += 1) desired.push({ ...group,
-      key: parts === 1 ? group.key : `${group.key}:part${index + 1}`,
-      title: parts === 1 ? title : `${title} · ${index + 1}/${parts}`,
-      players: group.players.slice(index * 8, index * 8 + 8),
-    });
+  if (slots.length) for (const player of roster) if (!seen.has(player.player_id)) unplaced.push(player);
+  for (const card of cards) {
+    card.players.sort((a, b) => (labels.get(a.player_id) || '').localeCompare(labels.get(b.player_id) || '', 'es'));
+    card.height = 4 + card.players.length * 2.4;
+    card.top = Math.max(0, Math.min(100 - card.height, card.y - card.height / 2));
   }
-  for (const card of desired) {
-    card.width = 30;
-    const charsPerColumn = 14;
-    let nameLines = 0;
-    for (const player of card.players) {
-      nameLines += Math.max(1, Math.ceil((labels.get(player.player_id) || '').length / charsPerColumn));
-    }
-    const headingLines = card.group ? Math.max(1, Math.ceil(card.title.length / 18)) : 0;
-    card.height = 3 + headingLines * 4 + nameLines * 5;
-  }
-  desired.sort((a, b) => Number(b.group) - Number(a.group) || a.width - b.width || b.height - a.height || a.key.localeCompare(b.key));
-  const placed = [];
-  const initiallyUnplaced = [...unplaced];
-  const collides = (candidate) => placed.some((other) =>
-    candidate.left < other.left + other.width + 1 &&
-    candidate.left + candidate.width + 1 > other.left &&
-    candidate.top < other.top + other.height + 1 &&
-    candidate.top + candidate.height + 1 > other.top);
-  for (const card of desired) {
-    const { width, height } = card;
-    if (height > 98) { unplaced.push(...card.players); continue; }
-    const targetLeft = Math.max(1, Math.min(99 - width, Number(card.x) - width / 2));
-    const targetTop = Math.max(1, Math.min(99 - height, Number(card.y) - height / 2));
-    let best = null;
-    for (let top = 1; top <= 99 - height; top += 2) for (let left = 1; left <= 99 - width; left += 2) {
-      const candidate = { ...card, left, top, width, height };
-      if (collides(candidate)) continue;
-      const distance = (left - targetLeft) ** 2 + (top - targetTop) ** 2;
-      if (!best || distance < best.distance) best = { ...candidate, distance };
-    }
-    if (best) placed.push(best);
-    else unplaced.push(...card.players);
-  }
-  if (placed.length !== desired.length && desired.every((card) => card.width <= 30 && card.height <= 98)) {
-    const lanes = [{ left: 1, bottom: 1 }, { left: 35, bottom: 1 }, { left: 69, bottom: 1 }];
-    const packed = [];
-    for (const card of [...desired].sort((a, b) => a.y - b.y || b.height - a.height || a.key.localeCompare(b.key))) {
-      const options = lanes.flatMap((lane, index) => {
-        const top = Math.max(lane.bottom, Math.round(card.y - card.height / 2), 1);
-        if (top + card.height > 99) return [];
-        return [{ index, left: lane.left, top,
-          cost: Math.abs(lane.left + card.width / 2 - card.x) +
-            Math.abs(top + card.height / 2 - card.y) + lane.bottom / 10 }];
-      }).sort((a, b) => a.cost - b.cost || a.index - b.index);
-      if (!options.length) break;
-      const chosen = options[0];
-      packed.push({ ...card, left: chosen.left, top: chosen.top });
-      lanes[chosen.index].bottom = chosen.top + card.height + 1;
-    }
-    if (packed.length === desired.length) return { cards: packed, unplaced: initiallyUnplaced };
-  }
-  return { cards: placed, unplaced };
+  return { cards, unplaced, legacy };
 };
 
 export const validateDistribution = (distribution, roster, slots) => {

@@ -91,9 +91,10 @@
 .planned-distribution-field { box-sizing: border-box; position: relative; width: 100%; height: 63mm; border: 1px solid #aebdb8; background: #f8fbf8; overflow: hidden; }
 .planned-distribution-lines { position: absolute; inset: 0; width: 100%; height: 100%; color: #c2d2ca; pointer-events: none; }
 .planned-distribution-empty { position: absolute; top: 45%; left: 5%; right: 5%; font-size: 7pt; color: #666; }
-.planned-distribution-player-group { box-sizing: border-box; position: absolute; z-index: 1; display: grid; align-content: center; padding: .4mm .5mm; background: #fffffff2; border-left: 2px solid #768f83; border-radius: 1mm; box-shadow: 0 0 1mm #48645428; font-size: 6.5pt; line-height: 1.1; text-align: left; }
-.planned-distribution-player-group b { margin-bottom: .25mm; font-size: 5.7pt; color: #40564b; line-height: 1.05; }
-.planned-distribution-player-group span { white-space: normal; overflow-wrap: break-word; }
+.planned-distribution-player-group { box-sizing: border-box; position: absolute; z-index: 1; display: flex; flex-direction: column; justify-content: center; padding: .15mm .2mm; background: #fffffff2; border-left: 1px solid #768f83; border-radius: .5mm; font-size: 4.6pt; line-height: 1.05; text-align: center; }
+.planned-distribution-player-group b { font-size: 4.2pt; color: #40564b; line-height: 1.05; white-space: nowrap; }
+.planned-distribution-player-group span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.planned-distribution-player-group:empty { min-height: 3mm; }
 .planned-distribution-player-manual { border-left-color: #2c69a4; }
 .planned-distribution-player-drop-target { outline: 2px solid #1675ca; outline-offset: 1px; background: #e7f3ff; }
 .planned-distribution-player-draggable { cursor: grab; touch-action: none; user-select: none; }
@@ -102,7 +103,8 @@
 .planned-distribution-player-ghost { position: absolute; z-index: 4; transform: translate(-50%, -50%); padding: .5mm 1mm; border: 1px dashed #1657a1; border-radius: 2px; background: #fff; color: #163e65; font-size: 6.5pt; font-weight: 700; pointer-events: none; }
 .planned-distribution-player-out { color: #a21220; font-weight: 700; }
 .planned-distribution-player-adapted { color: #795900; font-weight: 700; }
-.planned-distribution-unplaced { display: grid; gap: .5mm; margin-top: 1mm; font-size: 6pt; text-align: left; }
+.planned-distribution-unplaced { display: grid; gap: .5mm; min-height: 6mm; margin-top: 1mm; padding: .5mm; border: 1px dashed #a8b6c2; font-size: 6pt; text-align: left; }
+.planned-distribution-unplaced-target { outline: 2px solid #1675ca; background: #e7f3ff; }
 .planned-distribution-unplaced > span { display: flex; flex-wrap: wrap; column-gap: 1.5mm; }
 .planned-distribution-unplaced b { font-size: 6pt; }
 .planned-distribution-board small { display: block; margin-top: 1mm; font-size: 6pt; text-align: left; }

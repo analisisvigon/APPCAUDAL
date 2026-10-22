@@ -597,8 +597,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const changeZone = (slotId, change) => setDistribution((current) => current ? ({ ...current,
     space_zones: current.space_zones.map((zone) => zone.slot_id === slotId
       ? { ...zone, ...change } : zone) }) : current);
-  const movePlayer = (playerId, x, y) => setDistribution((current) => current ? ({ ...current,
-    player_layout: movePlayerBoardLayout(current.player_layout, playerId, { x, y }),
+  const movePlayer = (playerId, target) => setDistribution((current) => current ? ({ ...current,
+    player_layout: movePlayerBoardLayout(current.player_layout, playerId, target, current.formation_key),
   }) : current);
 
   const saveValue = async () => {
