@@ -207,7 +207,9 @@ assert.ok(openFormSource.includes('No se abrirá el editor legacy ni se creará 
 assert.ok(openFormSource.includes("console.error('[OWN_PLAYER_EDITOR_RESOLUTION_FAILED]'"), 'un fallo total deja diagnóstico visible en desarrollo');
 assert.ok(openFormSource.includes('El alta y la edición legacy están deshabilitadas'), 'Plantilla no reabre el alta parcial si falta la base global');
 assert.ok(!legacySubmitSource.includes('.insert(') && !legacySubmitSource.includes('.update('), 'el submit legacy ya no puede escribir jugadores parciales');
-assert.ok(appSource.includes('createOwnPlayerProfileAtomic(supabase, draft)'), 'el alta propia usa la RPC atómica dedicada');
+assert.ok(appSource.includes('createOwnPlayerProfileAtomic(supabase, {')
+  && appSource.includes('clubTeamSeasonId: sportsSnapshot?.context.id || null'),
+  'el alta propia envía el CTS a la RPC atómica cuando está seleccionado');
 assert.doesNotMatch(appSource, /from\(["']jugadores["']\)\s*\.insert\(/, 'ningún flujo React puede insertar directamente una fila propia parcial');
 assert.ok(linkSource.includes(".from('jugadores')") && linkSource.includes('.update({ global_player_id: globalPlayerId })'), 'guardar repara el enlace de la fila existente');
 assert.ok(!linkSource.includes('.insert('), 'la reparación de identidad no crea jugadores ni membresías');

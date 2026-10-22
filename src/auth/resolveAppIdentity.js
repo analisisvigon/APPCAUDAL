@@ -114,7 +114,8 @@ export const resolveAppIdentity = async (client, session) => {
     return denied('membership_inactive', normalizedMembership);
   }
   if (STAFF_ROLES.has(role)) {
-    return { kind: 'staff', membership: normalizedMembership };
+    return { kind: 'staff', membership: normalizedMembership,
+      contexts: accessRows?.[0]?.contexts || [] };
   }
   if (role === 'player') {
     if (!String(membership.jugador_id || '').trim()) {

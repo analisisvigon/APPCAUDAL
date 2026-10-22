@@ -1,0 +1,28 @@
+-- Multiclub 03: GUION DE PRUEBA MANUAL; SOLO LECTURA en estas consultas.
+-- Ejecutar desde clientes autenticados reales, nunca con service_role/postgres.
+-- Usar dos clubes ficticios de un entorno de ensayo aislado. NO crear un
+-- segundo club ni membresia en produccion antes del corte y su postflight.
+-- 1) Staff A, CTS A autorizado: my_cts_jugadores_v1(A) y
+--    my_cts_matches_v1(A) devuelven solo filas A.
+-- 2) Staff A, CTS B sin permiso: las mismas RPC con B devuelven 0 filas;
+--    can_read_club_team_season(B) y can_write_club_team_season(B) = false.
+-- 3) Staff A: SELECT directo a jugadores, partidos, las diez tablas hijas y
+--    match_set_piece_takers/notes/diagrams
+--    no revela IDs ni datos B. get_match_substitution_events(partido_B)
+--    debe devolver 42501, no eventos.
+-- 4) Staff A: INSERT partido con CTS B; UPDATE/DELETE partido B; INSERT/UPDATE
+--    hijos de partido B; mutate_match_substitution_atomic con partido B:
+--    todos denegados. Un UPDATE que cambie el CTS del partido A debe fallar.
+-- 5) Staff A: jugador_id de B en convocatoria/estadistica/slot/gol/lanzador del
+--    partido A debe rechazarse, incluso si puede escribir el partido A.
+-- 6) Temporada cerrada A: lectura autorizada, INSERT/UPDATE/DELETE denegados;
+--    alta create_own_player_atomic_v2 debe devolver CTS_WRITE_DENIED.
+-- 7) Revocar permiso CTS a un usuario de prueba: reintentar todas las RPC,
+--    consultas directas y guardados con contexto viejo; deben fallar.
+-- 8) PLAYER: repetir inicio, perfil, partidos publicados y accesos denegados
+--    previos. La rama PLAYER no usa selector ni estas RPC de staff.
+-- 9) Caudal real: abrir Plantilla, crear/editar jugador de prueba, partido,
+--    PRE/POST, gol, convocatoria, estadisticas, cambios y snapshots. Verificar
+--    datos antes/despues y ausencia de filas historicas alteradas.
+-- Registrar para cada caso: usuario/rol, CTS, operacion, resultado esperado,
+-- resultado obtenido y fecha. No usar service_role para pruebas negativas.

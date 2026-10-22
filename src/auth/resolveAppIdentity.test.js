@@ -128,7 +128,10 @@ const multiclubClient = (rows, legacyRows = [membership({ role: 'owner' })]) => 
 };
 
 const single = multiclubClient([accessRow()]);
-assert.equal((await resolveAppIdentity(single, session)).kind, 'staff');
+const singleIdentity = await resolveAppIdentity(single, session);
+assert.equal(singleIdentity.kind, 'staff');
+assert.equal(singleIdentity.contexts[0].club_team_season_id,
+  '00000000-0000-4000-8000-000000000005');
 assert.deepEqual(single.calls, ['my_access_contexts_v1', 'current_membership'],
   'Con una membresía se conserva la verificación legacy.');
 

@@ -3,6 +3,8 @@ import React from 'react';
 import { createPortal, flushSync } from 'react-dom';
 
 import { supabase } from './lib/supabase';
+import { SportsContextCoordinator, verifySportsContext } from './sports/authorizedContext';
+import { assertCtsCreate, assertCtsMatchWrite, loadCtsMatches, loadCtsRoster } from './sports/ctsSportsData';
 import {
   createAuthenticatedDataLoadCoordinator,
   runIndependentAuthenticatedLoaders,
@@ -1752,8 +1754,10 @@ const normalizeSupabaseJugador = (player) => ({
   suspensionStartedAt: player.suspension_started_at ?? player.suspensionStartedAt ?? null,
 });
 
-async function getJugadores() {
-  const { data, error } = await supabase.from("jugadores").select("*")
+async function getJugadores({ coordinator = null, snapshot = null } = {}) {
+  const { data, error } = snapshot
+    ? { data: await loadCtsRoster(supabase, coordinator, snapshot), error: null }
+    : await supabase.from("jugadores").select("*")
   if (error) throw error
   return (data || []).map(normalizeSupabaseJugador).filter((player) => player.activeInSquad !== false)
 }
@@ -2031,14 +2035,16 @@ const normalizeSupabasePartido = (match) =>
     equipoRivalId: match.equipo_rival_id || null,
   });
 
-const createPartidoPayload = (matchFormState, teams = [], competitions = []) => {
+const createPartidoPayload = (matchFormState, teams = [], competitions = [], sportsContext = null) => {
   const selectedTeam = findTeamByDisplayName(teams, matchFormState.opponent);
   const equipoRivalId = isUuid(selectedTeam?.id) ? selectedTeam.id : null;
   const roundValue = String(matchFormState.round || '').trim();
   const competitionKey = normalizeCompetitionKey(matchFormState.competitionKey);
   const competitionMeta = getCompetitionMeta(competitionKey);
   const selectedCompetition = safeArray(competitions).find((competition) => competition.key === competitionKey);
+  const ownTeamName = sportsContext?.teamName || 'C.D. Caudal';
   const basePayload = {
+    ...(sportsContext ? { club_team_season_id: sportsContext.id } : {}),
     date: matchFormState.date || null,
     time: matchFormState.time || '',
     type: competitionKey === 'other' ? '' : competitionMeta.label,
@@ -2050,8 +2056,8 @@ const createPartidoPayload = (matchFormState, teams = [], competitions = []) => 
     opponent_crest: selectedTeam?.crest || matchFormState.opponentCrest || '',
     is_home: Boolean(matchFormState.isHome),
     status: matchFormState.status || 'Previa',
-    home_team: matchFormState.isHome ? 'C.D. Caudal' : (selectedTeam ? cleanTeamDisplayName(selectedTeam.name) : matchFormState.opponent),
-    away_team: matchFormState.isHome ? (selectedTeam ? cleanTeamDisplayName(selectedTeam.name) : matchFormState.opponent) : 'C.D. Caudal',
+    home_team: matchFormState.isHome ? ownTeamName : (selectedTeam ? cleanTeamDisplayName(selectedTeam.name) : matchFormState.opponent),
+    away_team: matchFormState.isHome ? (selectedTeam ? cleanTeamDisplayName(selectedTeam.name) : matchFormState.opponent) : ownTeamName,
     home_score: normalizeMatchScoreForStorage(matchFormState.homeScore),
     away_score: normalizeMatchScoreForStorage(matchFormState.awayScore),
     goals_for: matchFormState.goalsFor ?? '',
@@ -5260,11 +5266,17 @@ const renderTacticalBlock = (block) => (
   </div>
 );
 
-function App({ controlledSession = undefined, onControlledSignOut = null, identity = null }) {
+function App({ controlledSession = undefined, onControlledSignOut = null, identity = null, selectedCtsId = null }) {
   const hasControlledAuth = controlledSession !== undefined;
   const [activeTab, setActiveTab] = useState('Inicio');
   const [plannedSessionsDirty, setPlannedSessionsDirty] = useState(false);
   const [players, setPlayers] = useState([]);
+  const sportsContextCoordinatorRef = useRef(new SportsContextCoordinator());
+  const sportsSnapshotRef = useRef(null);
+  const getScopedJugadores = () => getJugadores({
+    coordinator: sportsContextCoordinatorRef.current,
+    snapshot: sportsSnapshotRef.current,
+  });
   const [captainPriorities, setCaptainPriorities] = useState([]);
   const [captainPrioritiesLoading, setCaptainPrioritiesLoading] = useState(false);
   const [captainPrioritiesSaving, setCaptainPrioritiesSaving] = useState(false);
@@ -5300,6 +5312,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [sportsContextError, setSportsContextError] = useState('');
   const [session, setSession] = useState(controlledSession ?? null);
   const [authLoading, setAuthLoading] = useState(!hasControlledAuth);
   const [dataLoading, setDataLoading] = useState(true);
@@ -6393,16 +6406,24 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
   };
 
   const loadPartidos = async ({ shouldApply = () => true } = {}) => {
-    const [{ data, error: partidosError }, goalsResponse, quickEventsResponse, systemEventsResponse, postEventsResponse] = await Promise.all([
-      supabase
-        .from("partidos")
-        .select("*")
-        .order("date", { ascending: false, nullsFirst: false }),
-      supabase.from("partido_eventos_gol").select("*"),
-      supabase.from("match_quick_events").select("*"),
-      supabase.from("partido_eventos_sistema").select("*"),
-      supabase.from("partido_eventos_post").select("*"),
+    const snapshot = sportsSnapshotRef.current;
+    const matchResponse = snapshot
+      ? { data: await loadCtsMatches(supabase, sportsContextCoordinatorRef.current, snapshot), error: null }
+      : await supabase.from("partidos").select("*").order("date", { ascending: false, nullsFirst: false });
+    const matchIds = (matchResponse.data || []).map((match) => match.id);
+    const readMatchChildren = (table) => snapshot
+      ? (matchIds.length
+        ? supabase.from(table).select("*").in("partido_id", matchIds)
+        : Promise.resolve({ data: [], error: null }))
+      : supabase.from(table).select("*");
+    const [goalsResponse, quickEventsResponse, systemEventsResponse, postEventsResponse] = await Promise.all([
+      readMatchChildren("partido_eventos_gol"),
+      readMatchChildren("match_quick_events"),
+      readMatchChildren("partido_eventos_sistema"),
+      readMatchChildren("partido_eventos_post"),
     ]);
+    if (snapshot && !sportsContextCoordinatorRef.current.isCurrent(snapshot)) return [];
+    const { data, error: partidosError } = matchResponse;
     if (!shouldApply()) return [];
     if (partidosError) throw partidosError;
     if (goalsResponse.error) throw goalsResponse.error;
@@ -6446,10 +6467,30 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
   };
 
   const loadCompetitivePanelEvidence = async () => {
+    const snapshot = sportsSnapshotRef.current;
+    const scopedMatchIds = snapshot
+      ? (await loadCtsMatches(supabase, sportsContextCoordinatorRef.current, snapshot))
+        .map((match) => match.id)
+      : null;
+    const readEvidence = (table) => {
+      if (scopedMatchIds && scopedMatchIds.length === 0) {
+        return Promise.resolve({ data: [], error: null });
+      }
+      const query = supabase.from(table).select('*');
+      return scopedMatchIds ? query.in('partido_id', scopedMatchIds) : query;
+    };
     const [statsResponse, slotsResponse] = await Promise.all([
-      supabase.from("partido_estadisticas_jugador").select("*"),
-      supabase.from("partido_alineacion_slots").select("*").eq("scope", "stats").order("slot", { ascending: true }),
+      readEvidence('partido_estadisticas_jugador'),
+      scopedMatchIds?.length === 0
+        ? Promise.resolve({ data: [], error: null })
+        : (scopedMatchIds
+          ? supabase.from('partido_alineacion_slots').select('*').in('partido_id', scopedMatchIds)
+          : supabase.from('partido_alineacion_slots').select('*'))
+          .eq('scope', 'stats').order('slot', { ascending: true }),
     ]);
+    if (snapshot && !sportsContextCoordinatorRef.current.isCurrent(snapshot)) {
+      throw new Error('El equipo o temporada ha cambiado.');
+    }
     const failed = [statsResponse, slotsResponse].find((response) => response.error);
     if (failed) throw failed.error;
 
@@ -7375,6 +7416,8 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
   };
 
   const clearAuthenticatedData = () => {
+    sportsSnapshotRef.current = null;
+    sportsContextCoordinatorRef.current.change(null);
     setPlayers([]);
     setCaptainPriorities([]);
     setCaptainPriorityError('');
@@ -7397,6 +7440,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
     setPlayerProfileData(null);
     setEmpty(false);
     setError(null);
+    setSportsContextError('');
     setTeamsError('');
     setGlobalPlayersError('');
     setCompetitionCatalogError('');
@@ -7500,7 +7544,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
 
   const authenticatedUserId = session?.user?.id || '';
   const authenticatedDataLoadKey = authenticatedUserId
-    ? `${authenticatedUserId}:${authDataRefreshVersion}`
+    ? `${authenticatedUserId}:${authDataRefreshVersion}:${selectedCtsId || 'legacy'}`
     : '';
 
   useEffect(() => {
@@ -7543,13 +7587,40 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
       authenticatedDataLoadKey,
       async ({ isCurrent }) => {
         if (!isCurrent()) return null;
+        if (sportsSnapshotRef.current?.context.id
+          && sportsSnapshotRef.current.context.id !== selectedCtsId) {
+          homeDataCoordinatorRef.current.invalidate();
+          performancePeriodCacheRef.current.clear();
+          performanceMonthLoadsCacheRef.current.clear();
+          clearAuthenticatedData();
+        }
         setDataLoading(true);
         setLoading(true);
         setError(null);
+        setSportsContextError('');
+
+        sportsSnapshotRef.current = null;
+        sportsContextCoordinatorRef.current.change(null);
+        if (selectedCtsId) {
+          try {
+            const verified = await verifySportsContext(supabase, selectedCtsId);
+            if (!isCurrent()) return null;
+            sportsSnapshotRef.current = sportsContextCoordinatorRef.current.change(verified);
+          } catch (contextError) {
+            if (!isCurrent()) return null;
+            setPlayers([]);
+            setMatches([]);
+            setError(contextError.message || 'No se pudo verificar el equipo y temporada.');
+            setSportsContextError(contextError.message || 'No se pudo verificar el equipo y temporada.');
+            setLoading(false);
+            setDataLoading(false);
+            return null;
+          }
+        }
 
         const result = await runIndependentAuthenticatedLoaders({
           jugadores: async () => {
-            const jugadores = await getJugadores();
+            const jugadores = await getScopedJugadores();
             if (!isCurrent()) return;
             setPlayers(jugadores);
             setEmpty(jugadores.length === 0);
@@ -7602,7 +7673,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
     consumeSuspensionsForEligibleMatches({ supabase, matches, competitionCatalog: competitions })
       .then(async (consumptions) => {
         if (!consumptions.length) return;
-        const jugadores = await getJugadores();
+        const jugadores = await getScopedJugadores();
         setPlayers(jugadores);
         setEmpty(jugadores.length === 0);
       })
@@ -8469,15 +8540,45 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
   };
 
   const loadLitoContext = async () => {
+    const snapshot = sportsSnapshotRef.current;
+    const scopedMatches = snapshot
+      ? await loadCtsMatches(supabase, sportsContextCoordinatorRef.current, snapshot)
+      : null;
+    const scopedPlayers = snapshot
+      ? await loadCtsRoster(supabase, sportsContextCoordinatorRef.current, snapshot)
+      : null;
+    const matchIds = scopedMatches?.map((match) => match.id) || [];
+    const teamIds = scopedMatches
+      ? [...new Set([snapshot.context.teamId,
+        ...scopedMatches.map((match) => match.equipo_rival_id)].filter(Boolean))]
+      : [];
+    const readChild = (table, limit) => {
+      if (scopedMatches && matchIds.length === 0) {
+        return Promise.resolve({ data: [], error: null });
+      }
+      const query = supabase.from(table).select('*');
+      return (scopedMatches ? query.in('partido_id', matchIds) : query).limit(limit);
+    };
     const [matchesResponse, goalsResponse, statsResponse, teamsResponse, playersResponse, quickEventsResponse, postEventsResponse] = await Promise.all([
-      supabase.from('partidos').select('*').order('date', { ascending: false, nullsFirst: false }).limit(80),
-      supabase.from('partido_eventos_gol').select('*').limit(500),
-      supabase.from('partido_estadisticas_jugador').select('*').limit(900),
-      supabase.from('equipos_rivales').select('*').limit(250),
-      supabase.from('jugadores').select('*').order('name', { ascending: true }).limit(250),
-      supabase.from('match_quick_events').select('*').limit(1200),
-      supabase.from('partido_eventos_post').select('*').limit(500),
+      scopedMatches
+        ? { data: scopedMatches.slice(0, 80), error: null }
+        : supabase.from('partidos').select('*').order('date', { ascending: false, nullsFirst: false }).limit(80),
+      readChild('partido_eventos_gol', 500),
+      readChild('partido_estadisticas_jugador', 900),
+      scopedMatches
+        ? (teamIds.length
+          ? supabase.from('equipos_rivales').select('*').in('id', teamIds)
+          : { data: [], error: null })
+        : supabase.from('equipos_rivales').select('*').limit(250),
+      scopedPlayers
+        ? { data: scopedPlayers.slice(0, 250), error: null }
+        : supabase.from('jugadores').select('*').order('name', { ascending: true }).limit(250),
+      readChild('match_quick_events', 1200),
+      readChild('partido_eventos_post', 500),
     ]);
+    if (snapshot && !sportsContextCoordinatorRef.current.isCurrent(snapshot)) {
+      throw new Error('El equipo o temporada ha cambiado.');
+    }
 
     const failed = [matchesResponse, goalsResponse, statsResponse, teamsResponse, playersResponse].find((response) => response.error);
     if (failed) throw failed.error;
@@ -16130,7 +16231,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
     setSelectedStatsCallups([]);
     setStatsCallupFilter('TODOS');
     try {
-      const jugadores = await getJugadores();
+      const jugadores = await getScopedJugadores();
       setPlayers(jugadores);
       setEmpty(jugadores.length === 0);
     } catch (loadPlayersError) {
@@ -23629,7 +23730,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
           .update({ image: publicUrl })
           .eq("id", editingId);
         if (updateError) throw updateError;
-        const jugadores = await getJugadores();
+        const jugadores = await getScopedJugadores();
         setPlayers(jugadores);
         setEmpty(jugadores.length === 0);
       }
@@ -24246,6 +24347,17 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
     try {
       const draftTeam = teams.find((team) => String(team.id) === String(draft.teamId));
       const isOwnTeamDraft = Boolean(draftTeam?.isOwnClub || draftTeam?.teamKind === 'own');
+      const sportsSnapshot = sportsSnapshotRef.current;
+      if (sportsSnapshot) {
+        if (rivalPlayerModal.mode !== 'create' || !isOwnTeamDraft) {
+          throw new Error('Esta edición global todavía no está disponible en el modo por equipo y temporada.');
+        }
+        if (String(draft.teamId) !== String(sportsSnapshot.context.teamId)) {
+          throw new Error('El jugador no pertenece al equipo y temporada seleccionados.');
+        }
+        await assertCtsCreate(supabase, sportsContextCoordinatorRef.current, sportsSnapshot);
+        sportsContextCoordinatorRef.current.assertWritable(sportsSnapshot);
+      }
       if (rivalPlayerModal.mode === 'edit' && isOwnTeamDraft && draft.ownRosterPlayerId) {
         const resolvedGlobalId = currentGlobalPlayer.globalPlayerId || currentGlobalPlayer.id;
         if (!isUuid(resolvedGlobalId)) throw new Error('El editor no dispone de un UUID global estable para este jugador.');
@@ -24267,7 +24379,11 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
       let globalId;
       let membershipId;
       if (rivalPlayerModal.mode === 'create' && isOwnTeamDraft) {
-        const atomicIdentity = await createOwnPlayerProfileAtomic(supabase, draft);
+        if (sportsSnapshot) sportsContextCoordinatorRef.current.assertWritable(sportsSnapshot);
+        const atomicIdentity = await createOwnPlayerProfileAtomic(supabase, {
+          ...draft,
+          clubTeamSeasonId: sportsSnapshot?.context.id || null,
+        });
         globalId = atomicIdentity.globalPlayerId;
         membershipId = atomicIdentity.membershipId;
       } else {
@@ -24283,10 +24399,12 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
           : null;
       }
       if (isOwnTeamDraft) {
+        if (sportsSnapshot) sportsContextCoordinatorRef.current.assertWritable(sportsSnapshot);
+        if (!isUuid(draft.ownRosterPlayerId)) throw new Error('Falta el UUID de la ficha propia.');
         const { error: googleFormsNameError } = await supabase
           .from('jugadores')
           .update({ google_forms_name: String(draft.googleFormsName || '').trim() || null })
-          .eq('global_player_id', globalId);
+          .eq('id', draft.ownRosterPlayerId);
         if (googleFormsNameError) {
           const missingColumn = /google_forms_name|schema cache|column .* does not exist/i.test(googleFormsNameError.message || '');
           if (missingColumn) {
@@ -24303,7 +24421,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
         if (legacyLinkError) throw legacyLinkError;
       }
       await loadTeams();
-      const ownPlayers = await getJugadores();
+      const ownPlayers = await getScopedJugadores();
       setPlayers(ownPlayers);
       setEmpty(ownPlayers.length === 0);
       const genericSourceSaved = safeArray(draft.sources).some((source) => !['transfermarkt', 'besoccer'].includes(normalizePlayerIdentityName(source.sourceName)));
@@ -24332,9 +24450,12 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
     setRivalPlayerSaving(true);
     setRivalPlayerSaveError('');
     try {
+      if (sportsSnapshotRef.current) {
+        throw new Error('La vinculación de perfiles globales necesita una autorización por equipo y temporada.');
+      }
       await assignGlobalPlayerToTeam(supabase, { playerId, teamId, mode });
       await loadTeams();
-      const ownPlayers = await getJugadores();
+      const ownPlayers = await getScopedJugadores();
       setPlayers(ownPlayers);
       setEmpty(ownPlayers.length === 0);
       setGlobalPlayerStatus(mode === 'replace' ? 'Jugador global vinculado sin crear duplicados.' : 'Relación de equipo actualizada.');
@@ -24371,6 +24492,9 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
     }
     setPlayerTeamManager((current) => ({ ...current, saving: true, error: '' }));
     try {
+      if (sportsSnapshotRef.current) {
+        throw new Error('El cambio global de equipo todavía no está disponible en el modo por temporada.');
+      }
       await assignGlobalPlayerToTeam(supabase, {
         playerId: playerTeamManager.playerId,
         teamId: playerTeamManager.newTeamId,
@@ -24378,7 +24502,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
         startDate: playerTeamManager.changeDate,
       });
       await loadTeams();
-      const ownPlayers = await getJugadores();
+      const ownPlayers = await getScopedJugadores();
       setPlayers(ownPlayers);
       setEmpty(ownPlayers.length === 0);
       setGlobalPlayerStatus('Equipo actualizado. La etapa anterior se conserva en el historial.');
@@ -24393,12 +24517,15 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
     if (!playerTeamManager.playerId) return;
     setPlayerTeamManager((current) => ({ ...current, saving: true, error: '' }));
     try {
+      if (sportsSnapshotRef.current) {
+        throw new Error('La baja global de equipo todavía no está disponible en el modo por temporada.');
+      }
       await removeGlobalPlayerFromCurrentTeam(supabase, {
         playerId: playerTeamManager.playerId,
         endDate: playerTeamManager.changeDate,
       });
       await loadTeams();
-      const ownPlayers = await getJugadores();
+      const ownPlayers = await getScopedJugadores();
       setPlayers(ownPlayers);
       setEmpty(ownPlayers.length === 0);
       setGlobalPlayerStatus('El jugador queda sin equipo. Su perfil y su historial se conservan.');
@@ -24417,6 +24544,9 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
     setRivalPlayerSaving(true);
     setRivalPlayerSaveError('');
     try {
+      if (sportsSnapshotRef.current) {
+        throw new Error('La fusión global de perfiles todavía no está disponible en el modo por temporada.');
+      }
       await mergeGlobalPlayerProfiles(supabase, { keepPlayerId, mergePlayerId });
       await loadTeams();
       setGlobalPlayerStatus('Perfiles fusionados. Se conserva un único jugador global y todo su historial.');
@@ -24447,9 +24577,12 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
     setLoading(true);
     setError(null);
     try {
+      if (sportsSnapshotRef.current) {
+        throw new Error('La eliminación de fichas requiere un flujo específico por equipo y temporada.');
+      }
       const { error: deleteError } = await supabase.from("jugadores").delete().eq("id", player.id);
       if (deleteError) throw deleteError;
-      const jugadores = await getJugadores();
+      const jugadores = await getScopedJugadores();
       setPlayers(jugadores);
       setEmpty(jugadores.length === 0);
       if (selectedPlayerProfileId === player.id) setSelectedPlayerProfileId(null);
@@ -25061,7 +25194,16 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
 
     try {
       setIsSavingMatch(true);
-      const payload = createPartidoPayload(matchFormState, teams, competitions);
+      const snapshot = sportsSnapshotRef.current;
+      if (snapshot) {
+        if (editingMatchId) {
+          await assertCtsMatchWrite(supabase, sportsContextCoordinatorRef.current, snapshot, editingMatchId);
+        } else {
+          await assertCtsCreate(supabase, sportsContextCoordinatorRef.current, snapshot);
+        }
+      }
+      const payload = createPartidoPayload(matchFormState, teams, competitions, snapshot?.context);
+      if (snapshot) sportsContextCoordinatorRef.current.assertWritable(snapshot);
       const request = editingMatchId
         ? supabase.from("partidos").update(payload).eq("id", editingMatchId).select("id").single()
         : supabase.from("partidos").insert(payload).select("id").single();
@@ -25128,6 +25270,17 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
   const handleMatchDelete = async (match) => {
     const confirmed = window.confirm(`¿Eliminar el partido contra ${match.opponent}?`);
     if (!confirmed) return;
+    if (sportsSnapshotRef.current) {
+      try {
+        const snapshot = sportsSnapshotRef.current;
+        await assertCtsMatchWrite(supabase, sportsContextCoordinatorRef.current,
+          snapshot, match.id);
+        sportsContextCoordinatorRef.current.assertWritable(snapshot);
+      } catch (scopeError) {
+        setSaveStatus(scopeError.message || 'No se puede modificar este partido.');
+        return;
+      }
+    }
     const { error: deleteError } = await supabase.from("partidos").delete().eq("id", match.id);
     if (deleteError) {
       console.error('Error eliminando partido en Supabase:', deleteError);
@@ -29874,7 +30027,14 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
     </div>
   ) : null;
 
-  if (authLoading || (authUser && dataLoading)) {
+  if (selectedCtsId && sportsContextError) {
+    return <div role="alert" className="flex min-h-screen items-center justify-center bg-[#02070f] px-6 text-center text-slate-100">
+      <p>{sportsContextError}</p>
+    </div>;
+  }
+
+  if (authLoading || (authUser && (dataLoading
+    || (selectedCtsId && sportsSnapshotRef.current?.context.id !== selectedCtsId)))) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#02070f] px-6 text-center text-slate-100">
         {splashScreen}

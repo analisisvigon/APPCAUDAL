@@ -1,0 +1,65 @@
+import { verifySportsContext } from './authorizedContext.js';
+
+// El identificador del navegador solo solicita un contexto: la RPC de identidad
+// vuelve a autorizarlo en cada operación. RLS es la barrera definitiva.
+export async function authorizedSnapshot(client, coordinator, snapshot, { write = false } = {}) {
+  if (!coordinator.isCurrent(snapshot)) throw new Error('El equipo o temporada ha cambiado.');
+  const fresh = await verifySportsContext(client, snapshot.context.id);
+  if (!coordinator.isCurrent(snapshot) || fresh.clubId !== snapshot.context.clubId
+    || fresh.teamId !== snapshot.context.teamId || fresh.seasonId !== snapshot.context.seasonId) {
+    throw new Error('El contexto deportivo ha cambiado o se ha revocado.');
+  }
+  if (write && fresh.seasonStatus !== 'open') throw new Error('Temporada cerrada: solo consulta.');
+  return fresh;
+}
+
+export async function loadCtsRoster(client, coordinator, snapshot) {
+  const context = await authorizedSnapshot(client, coordinator, snapshot);
+  const { data, error } = await client.rpc('my_cts_jugadores_v1', {
+    p_club_team_season_id: context.id,
+  });
+  if (error) throw error;
+  if (!coordinator.isCurrent(snapshot)) throw new Error('El equipo o temporada ha cambiado.');
+  return data || [];
+}
+
+export async function loadCtsMatches(client, coordinator, snapshot) {
+  const context = await authorizedSnapshot(client, coordinator, snapshot);
+  const { data, error } = await client.rpc('my_cts_matches_v1', {
+    p_club_team_season_id: context.id,
+  });
+  if (error) throw error;
+  if (!coordinator.isCurrent(snapshot)) throw new Error('El equipo o temporada ha cambiado.');
+  if ((data || []).some((row) => row.club_team_season_id !== context.id)) {
+    throw new Error('La respuesta de partidos contiene otro equipo o temporada.');
+  }
+  return data || [];
+}
+
+export async function assertCtsMatchWrite(client, coordinator, snapshot, matchId) {
+  const context = await authorizedSnapshot(client, coordinator, snapshot, { write: true });
+  const { data: allowed, error: permissionError } = await client.rpc('can_write_match', {
+    target_partido_id: matchId,
+  });
+  if (permissionError) throw permissionError;
+  if (allowed !== true) throw new Error('No hay permiso de escritura sobre este partido.');
+  const { data: match, error } = await client.from('partidos')
+    .select('id,club_team_season_id').eq('id', matchId).maybeSingle();
+  if (error) throw error;
+  if (!coordinator.isCurrent(snapshot) || match?.club_team_season_id !== context.id) {
+    throw new Error('El partido no pertenece al equipo y temporada seleccionados.');
+  }
+  return context;
+}
+
+export async function assertCtsCreate(client, coordinator, snapshot) {
+  const context = await authorizedSnapshot(client, coordinator, snapshot, { write: true });
+  const { data: allowed, error } = await client.rpc('can_write_club_team_season', {
+    target_club_team_season_id: context.id,
+  });
+  if (error) throw error;
+  if (!coordinator.isCurrent(snapshot) || allowed !== true) {
+    throw new Error('No hay permiso de escritura sobre este equipo y temporada.');
+  }
+  return context;
+}

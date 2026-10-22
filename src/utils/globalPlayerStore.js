@@ -631,8 +631,12 @@ export const saveGlobalPlayerProfile = async (client, draft) => {
 export const createOwnPlayerProfileAtomic = async (client, draft) => {
   const ownPlayerId = draft.ownRosterPlayerId;
   if (!isUuid(ownPlayerId)) throw new Error('Falta el UUID idempotente del nuevo jugador propio.');
+  const ctsId = draft.clubTeamSeasonId || null;
+  if (ctsId && !isUuid(ctsId)) throw new Error('El equipo y temporada no tienen un UUID válido.');
   const payload = buildGlobalPlayerRpcPayload({ ...draft, id: null, globalPlayerId: null, membershipId: null });
-  const { data, error } = await client.rpc('create_own_player_atomic', {
+  const { data, error } = await client.rpc(
+    ctsId ? 'create_own_player_atomic_v2' : 'create_own_player_atomic', {
+    ...(ctsId ? { p_club_team_season_id: ctsId } : {}),
     p_own_player_id: ownPlayerId,
     p_player: {
       ...payload.p_player,

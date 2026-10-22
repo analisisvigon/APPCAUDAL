@@ -4,6 +4,7 @@ import { resolveAppIdentity } from './auth/resolveAppIdentity';
 import { supabase } from './lib/supabase';
 
 const StaffApp = lazy(() => import('./App'));
+const ENABLE_CTS_FRONTEND = import.meta.env.VITE_MULTICLUB_03_CTS_ENABLED === 'true';
 
 const INITIAL_AUTH_STATE = {
   status: 'loading_session',
@@ -325,9 +326,17 @@ function AppAuthShell() {
     return <PlayerApp client={supabase} identity={authState.identity} onRefreshIdentity={retryIdentity} onSignOut={handleSignOut} signingOut={signingOut} />;
   }
   if (authState.status === 'staff') {
+    if (ENABLE_CTS_FRONTEND && authState.identity.contexts?.length !== 1) {
+      return <AccessMessage title="Seleccion de equipo pendiente"
+        message="Tu cuenta necesita una seleccion explicita de equipo y temporada antes de abrir el espacio deportivo."
+        onSignOut={handleSignOut} signingOut={signingOut} />;
+    }
     return (
       <Suspense fallback={<LoadingScreen message="Cargando NEXO CLUB…" />}>
-        <StaffApp controlledSession={authState.session} identity={authState.identity} onControlledSignOut={handleSignOut} />
+        <StaffApp controlledSession={authState.session} identity={authState.identity}
+          selectedCtsId={ENABLE_CTS_FRONTEND && authState.identity.contexts?.length === 1
+            ? authState.identity.contexts[0].club_team_season_id : null}
+          onControlledSignOut={handleSignOut} />
       </Suspense>
     );
   }
