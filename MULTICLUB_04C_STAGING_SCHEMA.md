@@ -1,7 +1,7 @@
 # Multiclub 04C: base limpia para el ensayo 04B
 
-**Estado: pendiente de metadatos. No ejecutar todavía el seed 04B ni crear el
-segundo club.** El repositorio contiene migraciones incrementales, pero no un
+**Estado: bloqueado hasta recibir los contratos estructurales exactos. No ejecutar
+todavía el seed 04B ni crear el segundo club.** El repositorio contiene migraciones incrementales, pero no un
 esquema inicial completo y acreditado que permita reconstruir desde cero las
 tablas legacy. Crear una versión aproximada daría un ensayo engañoso.
 
@@ -34,23 +34,39 @@ queda condicionado por el marcador 04C y por una base deportiva vacía.
    Antes de compartirlas, revisar y ocultar cualquier literal sensible que
    aparezca en defaults o en el código de una función. No enviar datos de
    tablas, correos de usuarios, claves ni archivos `.env`.
-4. Con ese resultado se podrá preparar un **nuevo** SQL base de ensayo que
+4. Adjuntar los resultados estructurales de las ocho tablas de esa consulta y
+   los de `partido_estadisticas_jugador` de
+   `supabase_multiclub_04c_missing_metadata_readonly.sql`. El resumen de
+   12/13 columnas, PK, FK y RLS no indica el nombre, tipo, default y resto de
+   restricciones de cada columna. Para `competitions`, contrastar el resultado
+   con `supabase_match_competition_key.sql`: este archivo local define sus
+   doce columnas, pero también actualiza partidos y Storage, así que no debe
+   ejecutarse entero como esquema base.
+5. Con ese resultado se podrá preparar un **nuevo** SQL base de ensayo que
    reproduzca solo los contratos necesarios, sin filas del Caudal, y variantes
    de arranque para los cambios 08/33/34 que actualmente presuponen esas filas.
    Ese SQL deberá revisarse antes de instalarlo. No editar ni ejecutar los
    scripts históricos para forzar su paso.
 
-Los resultados estructurales de las ocho tablas legacy todavía no están en
-este repositorio. Se necesitan en un único paquete, con FK, índices, triggers,
-políticas y permisos efectivos. Además, `supabase_club_core_31_canonical_substitutions.sql`
-exige `partido_estadisticas_jugador`, cuyo CREATE TABLE inicial tampoco aparece
-en el repositorio. Si su contrato o el de `competitions` no está en el paquete,
-ejecutar manualmente solo la consulta adicional
-`supabase_multiclub_04c_missing_metadata_readonly.sql`. La definición local de
-`competitions` está en `supabase_match_competition_key.sql`, pero debe
-contrastarse con la FK real `partidos.competition_id` antes de reutilizarla.
-El verificador del esquema no puede acreditar equivalencia con producción
-mientras no se conozcan esos contratos.
+**Paquete concreto pendiente en este repositorio:** para `equipos_rivales`,
+`jugadores`, `partidos`, `jugadores_rivales`, `equipo_rival_alineacion`,
+`equipo_rival_banquillo`, `partido_alineacion_slots` y
+`partido_eventos_sustitucion`, entregar los resultados de columnas/defaults,
+restricciones, índices, RLS/políticas, grants y triggers de
+`supabase_multiclub_04c_metadata_readonly.sql`. Para
+`partido_estadisticas_jugador`, entregar los mismos apartados de
+`supabase_multiclub_04c_missing_metadata_readonly.sql`; para `competitions`,
+entregar solo las diferencias con la definición de
+`supabase_match_competition_key.sql` y la FK exacta desde `partidos`. También
+se necesitan las dos definiciones de RPC de sustituciones si no coinciden con
+`supabase_club_core_31_canonical_substitutions.sql`. No hacen falta filas de
+ninguna tabla. El verificador 04C ya enumera las diez tablas y las RPC, pero
+no puede acreditar equivalencia de columnas hasta recibir este paquete.
+
+Los triggers `project_global_player_shirt_name_on_legacy_insert()` y
+`set_club_core_updated_at()` sí tienen definición local reutilizable en
+`supabase_players_database_shirt_name.sql` y
+`supabase_club_core_01_tables.sql`, respectivamente.
 
 ## 3. Orden previsto en el proyecto nuevo de ENSAYO
 
@@ -62,6 +78,9 @@ mientras no se conozcan esos contratos.
    derivadas de los metadatos. Este paso debe dejar el deporte vacío y los
    objetos de Club Core, global players, CTS, autorizaciones, CTSP y RPC
    legacy con los contratos requeridos. Cada pieza tendrá preflight propio.
+   Separar los DDL reutilizables de las comprobaciones/INSERT que exigen
+   UUID históricos del Caudal en 08, 33, 34, Sesiones 01 y 37. Nunca usar
+   las 24 correspondencias de 02B en esta base ficticia.
 3. Instalar manualmente y por orden las migraciones reutilizables: Multiclub
    01 (`supabase_club_core_40_multiclub_identity.sql`), 02 lecturas
    (`supabase_multiclub_02_scoped_reads.sql`), 02 enlaces
@@ -70,7 +89,10 @@ mientras no se conozcan esos contratos.
    (`supabase_multiclub_03_player_create.sql`). Ejecutar sus preflight y
    postflight. Detenerse si cualquiera falla.
 4. Ejecutar `supabase_multiclub_04c_staging_schema_verify.sql`. Confirmar los
-   objetos y las políticas legacy. **No instalar 03C**.
+   diez objetos base, las RPC CTS y de sustituciones, las FK y las políticas
+   legacy. Aplicar S1/S2 en ensayo si el contrato base reproduce los grants
+   anónimos antiguos, y volver a verificar los cuatro permisos efectivos.
+   **No instalar 03C**.
 5. Crear manualmente las cinco cuentas ficticias de 04B en Authentication.
    Ejecutar `supabase_multiclub_04c_staging_guard.sql`: solo crea un marcador
    cuando hay exactamente esas cinco cuentas y todas las tablas deportivas
@@ -82,6 +104,13 @@ El guard es defensa adicional, no una identificación criptográfica del
 proyecto remoto. SQL Editor no aporta una garantía fiable del project ref al
 script; la comprobación visual y el bloqueo de entorno de `dev:staging` siguen
 siendo obligatorios.
+
+`competitions.key` conserva su `UNIQUE` global acreditado. Para 04B utilizar
+el catálogo compartido o dejar `partidos.competition_id` nulo: el seed actual
+usa esta segunda opción. No crear dos filas `league` con el mismo `key` ni
+cambiar esa restricción por club en producción. El único índice específico
+que se retira en ensayo es `equipos_rivales_one_own_club_uidx`, dentro de la
+transacción y guardas de `supabase_multiclub_04b_staging_seed.sql`.
 
 ## Límite de seguridad del ensayo
 
