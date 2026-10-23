@@ -8,6 +8,7 @@ const row = (id, status = 'open') => ({
 });
 let authorized = [row('cts-a')];
 let delayedRoster;
+let delayedMatches;
 let crossedMatchResponse = false;
 const calls = [];
 const client = {
@@ -18,7 +19,7 @@ const client = {
       contexts: authorized,
     }], error: null };
     if (name === 'my_cts_jugadores_v1') return delayedRoster || { data: [{ id: 'j-a' }], error: null };
-    if (name === 'my_cts_matches_v1') return { data: [
+    if (name === 'my_cts_matches_v1') return delayedMatches || { data: [
       { id: 'p-a', club_team_season_id: 'cts-a' },
       ...(crossedMatchResponse ? [{ id: 'p-b', club_team_season_id: 'cts-b' }] : []),
     ], error: null };
@@ -53,6 +54,16 @@ await new Promise((resolve) => setTimeout(resolve, 0));
 coordinator.change(null);
 release({ data: [{ id: 'j-a' }], error: null });
 await assert.rejects(pending, /ha cambiado/);
+
+let releaseMatches;
+delayedMatches = new Promise((resolve) => { releaseMatches = resolve; });
+const renewed = coordinator.change(context);
+const pendingMatches = loadCtsMatches(client, coordinator, renewed);
+await new Promise((resolve) => setTimeout(resolve, 0));
+coordinator.change(null);
+releaseMatches({ data: [{ id: 'p-a', club_team_season_id: 'cts-a' }], error: null });
+await assert.rejects(pendingMatches, /ha cambiado/);
+delayedMatches = null;
 
 const [closed] = await loadAuthorizedSportsContexts({ rpc: async () => ({
   data: [{ membership_id: 'm-a', club_id: 'club-a', role: 'staff', is_active: true,

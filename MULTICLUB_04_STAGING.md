@@ -3,8 +3,12 @@
 El selector se puede probar localmente con `VITE_MULTICLUB_03_CTS_ENABLED=true`
 contra un proyecto de Supabase **separado de producción** que tenga las fases
 01, 02, 02B, 03A y 03B. No instalar 03C ni reutilizar credenciales o datos de
-producción para crear el segundo club. Esta bandera muestra la selección,
-pero mantiene cerrado `StaffApp` hasta completar el aislamiento restante.
+producción para crear el segundo club. Esta bandera abre `CtsCoreApp`, una
+ruta independiente de `App.jsx` que solo consulta Inicio, Plantilla y Partidos
+mediante RPC CTS. Inicio calcula sus cifras de esas mismas respuestas.
+Todas las escrituras, documentos, estadísticas hijas y demás módulos siguen
+cerrados. El modo no constituye todavía seguridad completa de la API porque
+las políticas legacy directas continúan vigentes hasta 03C.
 Usar una copia local separada y `.env.staging.example` como plantilla para
 `.env.staging` (ignorado por Git). Vite también carga `.env.local` en modo
 staging: comprobar antes de iniciar que no prevalezca una URL de producción.

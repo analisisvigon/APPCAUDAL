@@ -5,6 +5,7 @@ import { loadAuthorizedSportsContexts, verifySportsContext } from './sports/auth
 import { supabase } from './lib/supabase';
 
 const StaffApp = lazy(() => import('./App'));
+const CtsCoreApp = lazy(() => import('./sports/CtsCoreApp'));
 const ENABLE_CTS_FRONTEND = import.meta.env.VITE_MULTICLUB_03_CTS_ENABLED === 'true';
 
 const INITIAL_AUTH_STATE = {
@@ -386,10 +387,10 @@ function AppAuthShell() {
   }
   if (authState.status === 'multiple_memberships') {
     if (ENABLE_CTS_FRONTEND && authState.identity.memberships.every((row) => row.role === 'owner')) {
-      if (selectedSportsContext) return <AccessMessage
-        title={`${selectedSportsContext.clubName} · ${selectedSportsContext.teamName}`}
-        message="Selección verificada. La apertura del espacio deportivo espera el aislamiento de las vistas derivadas y el corte RLS."
-        onRetry={returnToSelector} retryLabel="Cambiar equipo" onSignOut={handleSignOut} signingOut={signingOut} />;
+      if (selectedSportsContext) return <Suspense fallback={<LoadingScreen message="Cargando equipo…" />}>
+        <CtsCoreApp key={selectedSportsContext.id} client={supabase} contextId={selectedSportsContext.id}
+          onChangeTeam={returnToSelector} onSignOut={handleSignOut} />
+      </Suspense>;
       return <TeamSelector contexts={selectorContexts || []} onSelect={chooseSportsContext}
         onSignOut={handleSignOut} busy={selectorBusy || !selectorContexts} error={selectorError} />;
     }
@@ -407,10 +408,10 @@ function AppAuthShell() {
   }
   if (authState.status === 'staff') {
     if (ENABLE_CTS_FRONTEND && authState.identity.membership?.role === 'owner') {
-      if (selectedSportsContext) return <AccessMessage
-        title={`${selectedSportsContext.clubName} · ${selectedSportsContext.teamName}`}
-        message="Selección verificada. La apertura del espacio deportivo espera el aislamiento de las vistas derivadas y el corte RLS."
-        onRetry={returnToSelector} retryLabel="Cambiar equipo" onSignOut={handleSignOut} signingOut={signingOut} />;
+      if (selectedSportsContext) return <Suspense fallback={<LoadingScreen message="Cargando equipo…" />}>
+        <CtsCoreApp key={selectedSportsContext.id} client={supabase} contextId={selectedSportsContext.id}
+          onChangeTeam={returnToSelector} onSignOut={handleSignOut} />
+      </Suspense>;
       return <TeamSelector contexts={selectorContexts || []} onSelect={chooseSportsContext}
         onSignOut={handleSignOut} busy={selectorBusy || !selectorContexts} error={selectorError} />;
     }
@@ -419,9 +420,10 @@ function AppAuthShell() {
         message="Tu cuenta necesita una seleccion explicita de equipo y temporada antes de abrir el espacio deportivo."
         onSignOut={handleSignOut} signingOut={signingOut} />;
     }
-    if (ENABLE_CTS_FRONTEND) return <AccessMessage title="Espacio deportivo en preparación"
-      message="Tu único equipo está autorizado. La apertura espera el aislamiento completo de las vistas deportivas."
-      onSignOut={handleSignOut} signingOut={signingOut} />;
+    if (ENABLE_CTS_FRONTEND) return <Suspense fallback={<LoadingScreen message="Cargando equipo…" />}>
+      <CtsCoreApp key={authState.identity.contexts[0].club_team_season_id} client={supabase}
+        contextId={authState.identity.contexts[0].club_team_season_id} onSignOut={handleSignOut} />
+    </Suspense>;
     return (
       <Suspense fallback={<LoadingScreen message="Cargando NEXO CLUB…" />}>
         <StaffApp controlledSession={authState.session} identity={authState.identity}
