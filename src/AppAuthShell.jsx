@@ -2,11 +2,13 @@ import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 
 import PlayerApp from './PlayerApp';
 import { resolveAppIdentity } from './auth/resolveAppIdentity';
 import { loadAuthorizedSportsContexts, verifySportsContext } from './sports/authorizedContext';
+import { findPreferredActiveContext } from './sports/primaryContext';
 import { supabase } from './lib/supabase';
 
 const StaffApp = lazy(() => import('./App'));
 const CtsCoreApp = lazy(() => import('./sports/CtsCoreApp'));
 const ENABLE_CTS_FRONTEND = import.meta.env.VITE_MULTICLUB_03_CTS_ENABLED === 'true';
+const PREFERRED_ACTIVE_CTS_ID = import.meta.env.VITE_MULTICLUB_PRIMARY_CTS_ID || '';
 
 const INITIAL_AUTH_STATE = {
   status: 'loading_session',
@@ -116,7 +118,9 @@ function AccessMessage({ title, message, onRetry, retryLabel = 'Reintentar', onS
   );
 }
 
-function TeamSelector({ contexts, onSelect, onSignOut, busy, error }) {
+function TeamSelector({ contexts, preferredId, onSelect, onSignOut, busy, error }) {
+  const orderedContexts = [...contexts].sort((a, b) =>
+    Number(b.id === preferredId) - Number(a.id === preferredId));
   return <main className="min-h-screen bg-[#02070f] px-4 py-10 text-slate-100">
     <div className="mx-auto max-w-4xl">
       <img src="/branding/nexo-lockup-dark.png" alt="NEXO CLUB" className="h-24 w-auto" />
@@ -124,15 +128,15 @@ function TeamSelector({ contexts, onSelect, onSignOut, busy, error }) {
       <p className="mt-2 text-sm text-slate-400">Solo aparecen espacios autorizados para tu cuenta.</p>
       {error && <p role="alert" className="mt-5 rounded-xl bg-red-500/10 p-4 text-red-100">{error}</p>}
       <div className="mt-7 grid gap-3 sm:grid-cols-2">
-        {contexts.map((context) => <button type="button" key={context.id}
+        {orderedContexts.map((context) => <button type="button" key={context.id}
           disabled={busy} onClick={() => onSelect(context.id)}
           className="flex min-h-28 items-center gap-4 rounded-2xl border border-white/10 bg-[#081326] p-4 text-left hover:border-caudal-electric/60 disabled:opacity-50">
           {context.teamCrest ? <img src={context.teamCrest} alt="" className="h-14 w-14 object-contain" />
             : <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-xl bg-white/10">⚽</span>}
           <span className="min-w-0">
-            <span className="block text-xs font-bold text-caudal-electric">{context.clubName}</span>
+            <span className="block text-xs font-bold text-caudal-electric">{context.id === preferredId ? 'Espacio preferido · ' : ''}{context.clubName}</span>
             <span className="block truncate text-base font-black">{context.teamName}</span>
-            <span className="block text-xs text-slate-400">{context.seasonLabel} · {context.seasonStatus === 'open' ? 'Activa' : 'Histórica'}</span>
+            <span className="block text-xs text-slate-400">{context.seasonLabel} · {context.seasonStatus === 'open' ? 'Temporada abierta' : 'Temporada cerrada'}</span>
           </span>
         </button>)}
       </div>
@@ -152,11 +156,14 @@ function AppAuthShell() {
   const [selectorContexts, setSelectorContexts] = useState(null);
   const [selectorBusy, setSelectorBusy] = useState(false);
   const [selectorError, setSelectorError] = useState('');
+  const [showSelector, setShowSelector] = useState(false);
   const mountedRef = useRef(false);
   const stateRef = useRef(INITIAL_AUTH_STATE);
   const resolutionGenerationRef = useRef(0);
   const resolvingUserIdRef = useRef('');
   const sessionRequestRef = useRef(0);
+  const contextRequestRef = useRef(0);
+  const autoAttemptedRef = useRef('');
 
   const commitAuthState = useCallback((nextState) => {
     if (!mountedRef.current) return;
@@ -170,6 +177,9 @@ function AppAuthShell() {
     const generation = ++resolutionGenerationRef.current;
     resolvingUserIdRef.current = userId;
     commitAuthState({ status: 'resolving_identity', session: nextSession, identity: null });
+    contextRequestRef.current += 1;
+    autoAttemptedRef.current = '';
+    setShowSelector(false);
     setSelectedSportsContext(null);
     setSelectorContexts(null);
 
@@ -205,6 +215,9 @@ function AppAuthShell() {
       resolutionGenerationRef.current += 1;
       resolvingUserIdRef.current = '';
       commitAuthState({ status: 'unauthenticated', session: null, identity: null });
+      contextRequestRef.current += 1;
+      autoAttemptedRef.current = '';
+      setShowSelector(false);
       setSelectedSportsContext(null);
       setSelectorContexts(null);
       return;
@@ -291,6 +304,7 @@ function AppAuthShell() {
     setAuthError('');
     resolutionGenerationRef.current += 1;
     resolvingUserIdRef.current = '';
+    contextRequestRef.current += 1;
     const previousSession = stateRef.current.session;
     commitAuthState({ status: 'loading_session', session: null, identity: null });
     const { error } = await supabase.auth.signOut();
@@ -327,13 +341,18 @@ function AppAuthShell() {
   }, [authState.identity, authState.status, selectorContexts]);
 
   const chooseSportsContext = async (requestedId) => {
+    const request = ++contextRequestRef.current;
+    const userId = String(stateRef.current.session?.user?.id || '');
     setSelectorBusy(true);
     setSelectorError('');
     try {
       const verified = await verifySportsContext(supabase, requestedId);
+      if (request !== contextRequestRef.current
+        || userId !== String(stateRef.current.session?.user?.id || '')) return;
       if (verified.role !== 'owner') throw new Error('Contexto no autorizado.');
       setSelectedSportsContext(verified);
     } catch (error) {
+      if (request !== contextRequestRef.current) return;
       logTechnicalAuthError('CONTEXT_SELECTION', error);
       setSelectorError('El equipo ya no está autorizado. Vuelve a verificar tu acceso.');
       setSelectorContexts(null);
@@ -342,10 +361,23 @@ function AppAuthShell() {
     }
   };
   const returnToSelector = () => {
+    contextRequestRef.current += 1;
+    setShowSelector(true);
     setSelectedSportsContext(null);
     setSelectorContexts(null);
     setSelectorError('');
   };
+
+  const preferredContext = findPreferredActiveContext(selectorContexts, PREFERRED_ACTIVE_CTS_ID);
+  useEffect(() => {
+    const userId = String(authState.session?.user?.id || '');
+    const key = `${userId}:${preferredContext?.id || ''}`;
+    if (!ENABLE_CTS_FRONTEND || !userId || !preferredContext || showSelector
+      || selectedSportsContext || selectorBusy || autoAttemptedRef.current === key) return;
+    autoAttemptedRef.current = key;
+    void chooseSportsContext(preferredContext.id);
+  }, [authState.session?.user?.id, preferredContext?.id, showSelector,
+    selectedSportsContext, selectorBusy]);
 
   if (authState.status === 'loading_session') {
     return <LoadingScreen message={signingOut ? 'Cerrando sesión…' : 'Comprobando sesión…'} />;
@@ -391,7 +423,7 @@ function AppAuthShell() {
         <CtsCoreApp key={selectedSportsContext.id} client={supabase} contextId={selectedSportsContext.id}
           onChangeTeam={returnToSelector} onSignOut={handleSignOut} />
       </Suspense>;
-      return <TeamSelector contexts={selectorContexts || []} onSelect={chooseSportsContext}
+      return <TeamSelector contexts={selectorContexts || []} preferredId={preferredContext?.id} onSelect={chooseSportsContext}
         onSignOut={handleSignOut} busy={selectorBusy || !selectorContexts} error={selectorError} />;
     }
     return (
@@ -412,7 +444,7 @@ function AppAuthShell() {
         <CtsCoreApp key={selectedSportsContext.id} client={supabase} contextId={selectedSportsContext.id}
           onChangeTeam={returnToSelector} onSignOut={handleSignOut} />
       </Suspense>;
-      return <TeamSelector contexts={selectorContexts || []} onSelect={chooseSportsContext}
+      return <TeamSelector contexts={selectorContexts || []} preferredId={preferredContext?.id} onSelect={chooseSportsContext}
         onSignOut={handleSignOut} busy={selectorBusy || !selectorContexts} error={selectorError} />;
     }
     if (ENABLE_CTS_FRONTEND && authState.identity.contexts?.length !== 1) {

@@ -44,7 +44,7 @@ export default function CtsCoreApp({ client, contextId, onChangeTeam, onSignOut 
           </div>
         </div>
         <div className="flex gap-2">
-          {onChangeTeam && <button type="button" onClick={onChangeTeam} className="rounded-xl border border-white/20 px-3 py-2 text-sm">Cambiar equipo</button>}
+          {onChangeTeam && <button type="button" onClick={onChangeTeam} className="rounded-xl border border-white/20 px-3 py-2 text-sm">Espacios</button>}
           <button type="button" onClick={onSignOut} className="rounded-xl border border-white/20 px-3 py-2 text-sm">Cerrar sesión</button>
         </div>
       </header>
@@ -52,7 +52,7 @@ export default function CtsCoreApp({ client, contextId, onChangeTeam, onSignOut 
       {result.status === 'error' && <div className="mt-8" role="alert"><p>No se pudo verificar este equipo o cargar sus datos.</p>
         <button type="button" onClick={() => setRevision((value) => value + 1)} className="mt-4 rounded-xl border border-white/20 px-3 py-2">Reintentar</button></div>}
       {result.status === 'ready' && <>
-        <p className="mt-5 text-sm text-slate-400">{context.seasonStatus === 'open' ? 'Temporada activa' : 'Temporada histórica'} · Consulta CTS</p>
+        <p className="mt-5 text-sm text-slate-400">{context.seasonStatus === 'open' ? 'Temporada abierta' : 'Temporada cerrada'} · Consulta CTS</p>
         <nav aria-label="Secciones deportivas" className="mt-6 flex flex-wrap gap-2">
           {['Inicio', 'Plantilla', 'Partidos'].map((name) => <button type="button" key={name}
             aria-current={tab === name ? 'page' : undefined} onClick={() => setTab(name)}
