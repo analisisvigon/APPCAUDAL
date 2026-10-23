@@ -20,6 +20,29 @@ declare
   ma uuid; mb uuid; stage_a uuid; stage_b uuid; roster_a uuid; roster_b uuid;
 begin
   if auth.uid() is not null then raise exception 'SQL Editor sin JWT de usuario requerido'; end if;
+  if to_regclass('public.nexoclub_04c_staging_guard') is null then
+    raise exception 'Falta marcador 04C de proyecto de ensayo vacio';
+  end if;
+  if not exists (select 1 from public.nexoclub_04c_staging_guard
+                 where marker = 'EMPTY_FIXTURE_04B_ONLY') then
+    raise exception 'Marcador 04C invalido';
+  end if;
+  if (select count(*) from auth.users) <> 5
+    or (select count(*) from auth.users where email in (
+      'owner-04b@example.invalid', 'staff-a-04b@example.invalid',
+      'staff-b-04b@example.invalid', 'outsider-04b@example.invalid',
+      'player-04b@example.invalid')) <> 5 then
+    raise exception 'Solo se permiten cinco cuentas ficticias 04B';
+  end if;
+  if exists (select 1 from public.clubs)
+    or exists (select 1 from public.club_memberships)
+    or exists (select 1 from public.club_team_seasons)
+    or exists (select 1 from public.players_database)
+    or exists (select 1 from public.equipos_rivales)
+    or exists (select 1 from public.jugadores)
+    or exists (select 1 from public.partidos) then
+    raise exception 'El seed 04B requiere base deportiva vacia';
+  end if;
   if to_regprocedure('public.my_cts_jugadores_v1(uuid)') is null
     or to_regprocedure('public.my_cts_matches_v1(uuid)') is null
     or to_regclass('public.legacy_jugador_cts_links_v1') is null then

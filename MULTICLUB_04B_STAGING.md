@@ -7,27 +7,14 @@ inseguro hasta 03C.
 
 ## 1. Preparar la base de ensayo
 
-1. Crear un proyecto nuevo en Supabase con `ENSAYO` en el nombre. Anotar su
-   *project ref* y clave pública. Comprobar siempre el nombre en el panel.
-2. Instalar una estructura base **sin datos deportivos personales** desde un
-   entorno de desarrollo propio. Este repositorio contiene migraciones
-   incrementales, pero no el SQL inicial completo de `jugadores`, `partidos`
-   y `equipos_rivales`. Sin esa base no se puede iniciar el ensayo desde cero.
-3. Aplicar en orden las dependencias del núcleo: clubes y membresías,
-   jugadores globales, temporadas, equipos, CTS y CTSP. A continuación:
-   Multiclub 01 (`supabase_club_core_40_multiclub_identity.sql`), 02 de
-   lecturas (`supabase_multiclub_02_scoped_reads.sql`), 02 de vínculos
-   (`supabase_multiclub_02_row_scope_prepare.sql`), 03A
-   (`supabase_multiclub_03_prepare.sql`) y 03B
-   (`supabase_multiclub_03_player_create.sql`). Ejecutar sus preflight y
-   postflight antes de avanzar. **No instalar 02B con los 24 UUID reales ni
-   03C**. Si falla un preflight, detenerse.
-
-**Dependencia pendiente:** varios SQL iniciales validan filas históricas del
-Caudal y no sirven para construir una base vacía desde cero. El repositorio
-no incluye ese esquema base independiente. Usar una base de desarrollo ya
-inicializada con datos ficticios o aportar primero un esquema base vacío
-revisado; no ejecutar migraciones que exijan datos reales para sortearlo.
+1. Seguir primero `MULTICLUB_04C_STAGING_SCHEMA.md`. El esquema base aún no
+   está acreditado: **el seed 04B permanece bloqueado** hasta recibir los
+   metadatos estructurales y preparar el SQL base revisado.
+2. En el proyecto nuevo de ensayo, completar el orden 04C y ejecutar
+   `supabase_multiclub_04c_staging_schema_verify.sql`.
+3. Crear las cinco cuentas ficticias y ejecutar
+   `supabase_multiclub_04c_staging_guard.sql` después de comprobar el project
+   ref. Este guard exige que las tablas deportivas sigan vacías.
 
 ## 2. Crear cinco usuarios ficticios
 
@@ -43,15 +30,15 @@ las cuentas de abajo. Usar contraseñas nuevas y no guardarlas en el repo.
 | `player-04b@example.invalid` | PLAYER ficticio de A |
 
 Si el panel rechaza `.invalid`, usar correos de prueba bajo control propio y
-cambiarlos también en los dos SQL 04B antes de ejecutarlos. No enviar
+cambiarlos en los SQL 04B y en el guard 04C antes de ejecutarlos. No enviar
 invitaciones a terceros.
 
 ## 3. Instalar los datos ficticios
 
 1. Verificar que el panel abierto es el proyecto ENSAYO.
 2. Ejecutar en SQL Editor `supabase_multiclub_04b_staging_preflight.sql`.
-   Todos los objetos deben existir, debe haber cinco usuarios y cero clubes
-   `ENSAYO 04B`.
+   Todos los objetos deben existir, el marcador 04C debe ser válido, debe
+   haber exactamente cinco usuarios ficticios y la base deportiva estar vacía.
 3. Revisar y ejecutar una sola vez `supabase_multiclub_04b_staging_seed.sql`.
    Crea dos clubes, equipos y temporadas 2099/2100, dos jugadores y dos
    partidos ficticios. Retira **solo en ensayo** el índice legacy que limita
