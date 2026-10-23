@@ -9,6 +9,20 @@ select (select count(*) from public.clubs where name in ('ENSAYO 04B A','ENSAYO 
   ('040b0000-0000-4000-8000-000000000061'::uuid,'040b0000-0000-4000-8000-000000000062'::uuid))=2 as two_fixture_matches,
  (select count(*) from public.club_memberships m join auth.users u on u.id=m.user_id
   where u.email='owner-04b@example.invalid' and m.role='owner')=2 as owner_has_two_clubs,
+ (select count(*) from public.club_team_season_permissions p
+   join public.club_memberships m on m.id=p.membership_id and m.club_id=p.club_id
+   join auth.users u on u.id=m.user_id
+   where (u.email='staff-a-04b@example.invalid'
+     and p.club_team_season_id='040b0000-0000-4000-8000-000000000031'::uuid)
+      or (u.email='staff-b-04b@example.invalid'
+     and p.club_team_season_id='040b0000-0000-4000-8000-000000000032'::uuid))=2
+   and (select count(*) from public.club_team_season_permissions)=2
+   as each_staff_has_only_own_cts,
+ (select count(*) from public.partidos
+   where (id='040b0000-0000-4000-8000-000000000061'::uuid
+     and home_team='Equipo ficticio Ámbar')
+      or (id='040b0000-0000-4000-8000-000000000062'::uuid
+     and home_team='Equipo ficticio Azul'))=2 as fictional_home_teams,
  (select count(*) from public.club_memberships m join auth.users u on u.id=m.user_id
   where u.email='outsider-04b@example.invalid')=0 as outsider_has_no_membership;
 

@@ -7,9 +7,9 @@ inseguro hasta 03C.
 
 ## 1. Preparar la base de ensayo
 
-1. Seguir primero `MULTICLUB_04C_STAGING_SCHEMA.md`. El esquema base aún no
-   está acreditado: **el seed 04B permanece bloqueado** hasta recibir los
-   metadatos estructurales y preparar el SQL base revisado.
+1. Seguir primero `MULTICLUB_04C_STAGING_INSTALL.md`. El esquema base está
+   preparado desde los metadatos compartidos y debe instalarse y verificarse
+   manualmente en un proyecto nuevo de ensayo antes de ejecutar el seed.
 2. En el proyecto nuevo de ensayo, completar el orden 04C y ejecutar
    `supabase_multiclub_04c_staging_schema_verify.sql`.
 3. Crear las cinco cuentas ficticias y ejecutar
@@ -41,8 +41,8 @@ invitaciones a terceros.
    haber exactamente cinco usuarios ficticios y la base deportiva estar vacía.
 3. Revisar y ejecutar una sola vez `supabase_multiclub_04b_staging_seed.sql`.
    Crea dos clubes, equipos y temporadas 2099/2100, dos jugadores y dos
-   partidos ficticios. Retira **solo en ensayo** el índice legacy que limita
-   a un equipo `own`; la transacción se revierte entera si falla.
+   partidos ficticios. El índice legacy que limita a un equipo `own` ya se
+   omitió en el esquema de ensayo; la transacción se revierte entera si falla.
 4. Ejecutar `supabase_multiclub_04b_staging_postflight.sql`: todos los
    booleanos deben ser `true`; cada club debe tener un CTS, un jugador y un
    partido. No usar el SQL Editor como prueba de RLS: opera como `postgres`.
@@ -65,7 +65,8 @@ En A, Inicio/Plantilla/Partidos solo deben mostrar `FICCIÓN Ámbar 04B` y
 su partido; en B, solo `FICCIÓN Azul 04B` y el suyo. Cambiar A → B → A y
 comprobar que no persiste ninguna fila ni estado anterior. Staff A y B deben
 entrar directamente a su único CTS. Outsider no debe entrar. PLAYER debe
-acceder sin selector y conservar sus reglas de privacidad.
+acceder sin selector y resolver solo su perfil mínimo; las secciones deportivas
+del portal PLAYER requieren migraciones adicionales fuera de este ensayo.
 
 Con sesiones `authenticated` reales, llamar a `my_cts_jugadores_v1` y
 `my_cts_matches_v1` con el CTS propio y ajeno: el ajeno debe devolver cero

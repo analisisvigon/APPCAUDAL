@@ -1,0 +1,66 @@
+table_name	constraint_name	type	definition
+equipo_rival_alineacion	equipo_rival_alineacion_equipo_rival_id_fkey	f	FOREIGN KEY (equipo_rival_id) REFERENCES equipos_rivales(id) ON DELETE CASCADE
+equipo_rival_alineacion	equipo_rival_alineacion_global_player_id_fkey	f	FOREIGN KEY (global_player_id) REFERENCES players_database(id) ON DELETE SET NULL
+equipo_rival_alineacion	equipo_rival_alineacion_jugador_rival_id_fkey	f	FOREIGN KEY (jugador_rival_id) REFERENCES jugadores_rivales(id) ON DELETE SET NULL
+equipo_rival_alineacion	equipo_rival_alineacion_membership_id_fkey	f	FOREIGN KEY (membership_id) REFERENCES player_team_memberships(id) ON DELETE SET NULL
+equipo_rival_alineacion	equipo_rival_alineacion_pkey	p	PRIMARY KEY (id)
+equipo_rival_banquillo	equipo_rival_banquillo_equipo_rival_id_fkey	f	FOREIGN KEY (equipo_rival_id) REFERENCES equipos_rivales(id) ON DELETE CASCADE
+equipo_rival_banquillo	equipo_rival_banquillo_global_player_id_fkey	f	FOREIGN KEY (global_player_id) REFERENCES players_database(id) ON DELETE SET NULL
+equipo_rival_banquillo	equipo_rival_banquillo_jugador_rival_id_fkey	f	FOREIGN KEY (jugador_rival_id) REFERENCES jugadores_rivales(id) ON DELETE SET NULL
+equipo_rival_banquillo	equipo_rival_banquillo_membership_id_fkey	f	FOREIGN KEY (membership_id) REFERENCES player_team_memberships(id) ON DELETE SET NULL
+equipo_rival_banquillo	equipo_rival_banquillo_pkey	p	PRIMARY KEY (id)
+equipos_rivales	equipos_rivales_legacy_id_key	u	UNIQUE (legacy_id)
+equipos_rivales	equipos_rivales_pkey	p	PRIMARY KEY (id)
+equipos_rivales	equipos_rivales_team_kind_check	c	CHECK (team_kind = ANY (ARRAY['own'::text, 'rival'::text]))
+jugadores	jugadores_availability_status_check	c	CHECK (availability_status = ANY (ARRAY['available'::text, 'injured'::text, 'suspended'::text, 'unavailable'::text]))
+jugadores	jugadores_global_player_id_fkey	f	FOREIGN KEY (global_player_id) REFERENCES players_database(id) ON DELETE SET NULL
+jugadores	jugadores_legacy_id_key	u	UNIQUE (legacy_id)
+jugadores	jugadores_membership_id_fkey	f	FOREIGN KEY (membership_id) REFERENCES player_team_memberships(id) ON DELETE SET NULL
+jugadores	jugadores_pkey	p	PRIMARY KEY (id)
+jugadores	jugadores_suspension_matches_remaining_check	c	CHECK (suspension_matches_remaining >= 0)
+jugadores	jugadores_suspension_state_check	c	CHECK (availability_status = 'suspended'::text AND suspension_matches_remaining > 0 AND suspension_cycle_id IS NOT NULL AND suspension_started_at IS NOT NULL OR availability_status <> 'suspended'::text AND suspension_matches_remaining = 0 AND suspension_cycle_id IS NULL AND suspension_started_at IS NULL)
+jugadores_rivales	jugadores_rivales_equipo_rival_id_fkey	f	FOREIGN KEY (equipo_rival_id) REFERENCES equipos_rivales(id) ON DELETE CASCADE
+jugadores_rivales	jugadores_rivales_global_player_id_fkey	f	FOREIGN KEY (global_player_id) REFERENCES players_database(id) ON DELETE SET NULL
+jugadores_rivales	jugadores_rivales_membership_id_fkey	f	FOREIGN KEY (membership_id) REFERENCES player_team_memberships(id) ON DELETE SET NULL
+jugadores_rivales	jugadores_rivales_pkey	p	PRIMARY KEY (id)
+jugadores_rivales	jugadores_rivales_tactical_placement_check	c	CHECK (tactical_role IS NULL AND tactical_slot IS NULL AND tactical_reserve_slot IS NULL OR tactical_role = 'Titular'::text AND tactical_slot IS NOT NULL AND tactical_reserve_slot IS NULL OR tactical_role = 'Reserva'::text AND tactical_slot IS NOT NULL AND tactical_reserve_slot IS NOT NULL)
+jugadores_rivales	jugadores_rivales_tactical_reserve_slot_check	c	CHECK (tactical_reserve_slot IS NULL OR tactical_reserve_slot >= 0 AND tactical_reserve_slot <= 1)
+jugadores_rivales	jugadores_rivales_tactical_role_check	c	CHECK (tactical_role IS NULL OR (tactical_role = ANY (ARRAY['Titular'::text, 'Reserva'::text])))
+jugadores_rivales	jugadores_rivales_tactical_slot_check	c	CHECK (tactical_slot IS NULL OR tactical_slot >= 0 AND tactical_slot <= 10)
+partido_alineacion_slots	partido_alineacion_slots_global_player_id_fkey	f	FOREIGN KEY (global_player_id) REFERENCES players_database(id) ON DELETE SET NULL
+partido_alineacion_slots	partido_alineacion_slots_jugador_id_fkey	f	FOREIGN KEY (jugador_id) REFERENCES jugadores(id) ON DELETE SET NULL
+partido_alineacion_slots	partido_alineacion_slots_jugador_rival_id_fkey	f	FOREIGN KEY (jugador_rival_id) REFERENCES jugadores_rivales(id) ON DELETE SET NULL
+partido_alineacion_slots	partido_alineacion_slots_membership_id_fkey	f	FOREIGN KEY (membership_id) REFERENCES player_team_memberships(id) ON DELETE SET NULL
+partido_alineacion_slots	partido_alineacion_slots_partido_id_fkey	f	FOREIGN KEY (partido_id) REFERENCES partidos(id) ON DELETE CASCADE
+partido_alineacion_slots	partido_alineacion_slots_partido_id_scope_slot_key	u	UNIQUE (partido_id, scope, slot)
+partido_alineacion_slots	partido_alineacion_slots_pkey	p	PRIMARY KEY (id)
+partido_alineacion_slots	partido_alineacion_slots_scope_check	c	CHECK (scope = ANY (ARRAY['pre_caudal'::text, 'pre_rival'::text, 'stats'::text]))
+partido_eventos_sustitucion	partido_eventos_sustitucion_event_order_check	c	CHECK (event_order >= 0)
+partido_eventos_sustitucion	partido_eventos_sustitucion_incoming_jugador_id_fkey	f	FOREIGN KEY (incoming_jugador_id) REFERENCES jugadores(id) ON DELETE RESTRICT
+partido_eventos_sustitucion	partido_eventos_sustitucion_incoming_name_check	c	CHECK (NULLIF(btrim(incoming_name_snapshot), ''::text) IS NOT NULL)
+partido_eventos_sustitucion	partido_eventos_sustitucion_match_order_key	u	UNIQUE (partido_id, minute, event_order)
+partido_eventos_sustitucion	partido_eventos_sustitucion_minute_check	c	CHECK (minute >= 0)
+partido_eventos_sustitucion	partido_eventos_sustitucion_outgoing_jugador_id_fkey	f	FOREIGN KEY (outgoing_jugador_id) REFERENCES jugadores(id) ON DELETE RESTRICT
+partido_eventos_sustitucion	partido_eventos_sustitucion_outgoing_name_check	c	CHECK (NULLIF(btrim(outgoing_name_snapshot), ''::text) IS NOT NULL)
+partido_eventos_sustitucion	partido_eventos_sustitucion_partido_id_fkey	f	FOREIGN KEY (partido_id) REFERENCES partidos(id) ON DELETE CASCADE
+partido_eventos_sustitucion	partido_eventos_sustitucion_pkey	p	PRIMARY KEY (id)
+partido_eventos_sustitucion	partido_eventos_sustitucion_players_check	c	CHECK (outgoing_jugador_id <> incoming_jugador_id)
+partido_eventos_sustitucion	partido_eventos_sustitucion_reason_check	c	CHECK (reason IS NULL OR (reason = ANY (ARRAY['tactical'::text, 'injury'::text, 'discomfort'::text, 'other'::text])))
+partidos	partidos_captain_player_id_fkey	f	FOREIGN KEY (captain_player_id) REFERENCES jugadores(id) ON DELETE SET NULL
+partidos	partidos_club_team_season_id_fkey	f	FOREIGN KEY (club_team_season_id) REFERENCES club_team_seasons(id) ON DELETE RESTRICT
+partidos	partidos_competition_id_fkey	f	FOREIGN KEY (competition_id) REFERENCES competitions(id)
+partidos	partidos_competition_key_check	c	CHECK (competition_key IS NULL OR (competition_key = ANY (ARRAY['league'::text, 'copa_rfef'::text, 'playoff'::text, 'friendly'::text])))
+partidos	partidos_delegated_data_status_check	c	CHECK (delegated_data_status = ANY (ARRAY['Sin revisar'::text, 'Revisado'::text, 'Validado'::text, 'Descartado'::text]))
+partidos	partidos_equipo_rival_id_fkey	f	FOREIGN KEY (equipo_rival_id) REFERENCES equipos_rivales(id) ON DELETE SET NULL
+partidos	partidos_goalkeeper_protocol_distinct_players_check	c	CHECK (goalkeeper_protocol_primary_player_id IS NULL OR goalkeeper_protocol_secondary_player_id IS NULL OR goalkeeper_protocol_primary_player_id <> goalkeeper_protocol_secondary_player_id)
+partidos	partidos_goalkeeper_protocol_primary_player_fk	f	FOREIGN KEY (goalkeeper_protocol_primary_player_id) REFERENCES jugadores(id) ON DELETE SET NULL
+partidos	partidos_goalkeeper_protocol_secondary_player_fk	f	FOREIGN KEY (goalkeeper_protocol_secondary_player_id) REFERENCES jugadores(id) ON DELETE SET NULL
+partidos	partidos_legacy_id_key	u	UNIQUE (legacy_id)
+partidos	partidos_pkey	p	PRIMARY KEY (id)
+competitions	competitions_key_check	c	CHECK (key = ANY (ARRAY['league'::text, 'copa_rfef'::text, 'playoff'::text, 'friendly'::text]))
+competitions	competitions_key_key	u	UNIQUE (key)
+competitions	competitions_pkey	p	PRIMARY KEY (id)
+partido_estadisticas_jugador	partido_estadisticas_jugador_jugador_id_fkey	f	FOREIGN KEY (jugador_id) REFERENCES jugadores(id) ON DELETE SET NULL
+partido_estadisticas_jugador	partido_estadisticas_jugador_partido_id_fkey	f	FOREIGN KEY (partido_id) REFERENCES partidos(id) ON DELETE CASCADE
+partido_estadisticas_jugador	partido_estadisticas_jugador_partido_id_player_name_key	u	UNIQUE (partido_id, player_name)
+partido_estadisticas_jugador	partido_estadisticas_jugador_pkey	p	PRIMARY KEY (id)

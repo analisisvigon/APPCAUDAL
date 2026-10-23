@@ -1,0 +1,32 @@
+table_name	policy_name	roles	command	using_expression	with_check_expression
+equipo_rival_alineacion	allow anon all equipo_rival_alineacion	anon	ALL	true	true
+equipo_rival_alineacion	allow authenticated all equipo_rival_alineacion	authenticated	ALL	true	true
+equipo_rival_banquillo	allow anon all equipo_rival_banquillo	anon	ALL	true	true
+equipo_rival_banquillo	allow authenticated all equipo_rival_banquillo	authenticated	ALL	true	true
+equipos_rivales	equipos_rivales_staff_delete	authenticated	DELETE	is_app_staff()	
+equipos_rivales	equipos_rivales_staff_insert	authenticated	INSERT		is_app_staff()
+equipos_rivales	equipos_rivales_staff_select	authenticated	SELECT	is_app_staff()	
+equipos_rivales	equipos_rivales_staff_update	authenticated	UPDATE	is_app_staff()	is_app_staff()
+jugadores	player_perimeter_staff_delete	authenticated	DELETE	is_app_staff()	
+jugadores	player_perimeter_staff_insert	authenticated	INSERT		is_app_staff()
+jugadores	player_perimeter_staff_select	authenticated	SELECT	is_app_staff()	
+jugadores	player_perimeter_staff_update	authenticated	UPDATE	is_app_staff()	is_app_staff()
+jugadores_rivales	allow anon all jugadores_rivales	anon	ALL	true	true
+jugadores_rivales	allow authenticated all jugadores_rivales	authenticated	ALL	true	true
+partido_alineacion_slots	player_sports_staff_delete	authenticated	DELETE	is_app_staff()	
+partido_alineacion_slots	player_sports_staff_insert	authenticated	INSERT		is_app_staff()
+partido_alineacion_slots	player_sports_staff_select	authenticated	SELECT	is_app_staff()	
+partido_alineacion_slots	player_sports_staff_update	authenticated	UPDATE	is_app_staff()	is_app_staff()
+partido_eventos_sustitucion	substitution_staff_select	authenticated	SELECT	is_app_staff()	
+partidos	player_sports_staff_delete	authenticated	DELETE	is_app_staff()	
+partidos	player_sports_staff_insert	authenticated	INSERT		is_app_staff()
+partidos	player_sports_staff_select	authenticated	SELECT	is_app_staff()	
+partidos	player_sports_staff_update	authenticated	UPDATE	is_app_staff()	is_app_staff()
+competitions	player_sports_staff_delete	authenticated	DELETE	is_app_staff()	
+competitions	player_sports_staff_insert	authenticated	INSERT		is_app_staff()
+competitions	player_sports_staff_select	authenticated	SELECT	is_app_staff()	
+competitions	player_sports_staff_update	authenticated	UPDATE	is_app_staff()	is_app_staff()
+partido_estadisticas_jugador	player_sports_staff_delete	authenticated	DELETE	is_app_staff()	
+partido_estadisticas_jugador	player_sports_staff_insert	authenticated	INSERT		is_app_staff()
+partido_estadisticas_jugador	player_sports_staff_select	authenticated	SELECT	is_app_staff()	
+partido_estadisticas_jugador	player_sports_staff_update	authenticated	UPDATE	is_app_staff()	is_app_staff()

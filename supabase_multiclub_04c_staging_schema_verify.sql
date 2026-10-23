@@ -35,8 +35,73 @@ select object_name, present from (values
  ('create_own_player_atomic_v2',
    to_regprocedure('public.create_own_player_atomic_v2(uuid,uuid,jsonb,jsonb,jsonb,jsonb)') is not null),
  ('link_existing_global_player_to_cts_v1',
-   to_regprocedure('public.link_existing_global_player_to_cts_v1(uuid,uuid)') is not null)
+   to_regprocedure('public.link_existing_global_player_to_cts_v1(uuid,uuid)') is not null),
+ ('get_my_player_profile',
+   to_regprocedure('public.get_my_player_profile()') is not null)
 ) checks(object_name, present) order by object_name;
+
+-- Inventario de columnas y restricciones del paquete 04C corregido.
+-- Las diez tablas deben conservar exactamente estos recuentos estructurales.
+with expected(table_name, columns_expected, constraints_expected) as (values
+ ('equipos_rivales',13,3), ('jugadores',22,7),
+ ('jugadores_rivales',42,8), ('competitions',12,3),
+ ('partidos',123,11), ('partido_estadisticas_jugador',13,4),
+ ('partido_alineacion_slots',9,8), ('equipo_rival_alineacion',11,5),
+ ('equipo_rival_banquillo',9,5), ('partido_eventos_sustitucion',11,11)
+)
+select e.table_name, e.columns_expected, e.constraints_expected,
+       (select count(*) from pg_attribute a
+        where a.attrelid=to_regclass(format('public.%I',e.table_name))
+          and a.attnum>0 and not a.attisdropped) as columns_actual,
+       (select count(*) from pg_constraint k
+        where k.conrelid=to_regclass(format('public.%I',e.table_name))
+          and k.convalidated) as constraints_actual
+from expected e order by e.table_name;
+
+select
+ (select a.atttypid = 'pg_catalog.bool'::regtype and not a.attnotnull
+  from pg_attribute a
+  where a.attrelid=to_regclass('public.partidos')
+    and a.attname='clean_sheet' and not a.attisdropped)
+   as corrected_clean_sheet_type_and_nullability,
+ (select pg_get_expr(d.adbin,d.adrelid)
+  from pg_attrdef d join pg_attribute a on a.attrelid=d.adrelid and a.attnum=d.adnum
+  where d.adrelid=to_regclass('public.partidos') and a.attname='clean_sheet')='false'
+   as corrected_clean_sheet_default,
+ to_regclass('public.equipos_rivales_one_own_club_uidx') is null
+   as staging_allows_two_own_teams,
+ exists (select 1 from pg_constraint k
+         where k.conrelid=to_regclass('public.competitions')
+           and k.conname='competitions_key_key' and k.contype='u' and k.convalidated)
+   as competition_key_remains_globally_unique;
+
+-- La variante 04C de 03A excluye solo snapshots; los tres helpers que
+-- requieren esa tabla deben seguir ausentes en este primer ensayo.
+select to_regclass('public.partido_snapshots_tacticos') is null
+         as snapshots_out_of_scope,
+       to_regprocedure('public.can_read_match_snapshot_v1(uuid)') is null
+         as snapshot_read_helper_not_installed,
+       to_regprocedure('public.can_write_match_snapshot_v1(uuid)') is null
+         as snapshot_write_helper_not_installed,
+       to_regprocedure('public.legacy_jugador_in_snapshot_cts_v1(uuid,uuid)') is null
+         as snapshot_player_helper_not_installed,
+       to_regprocedure('public.legacy_jugador_in_match_cts_v1(uuid,uuid)') is not null
+         as match_player_helper_present,
+       to_regprocedure('public.legacy_jugador_in_cts_v1(uuid,uuid)') is not null
+         as cts_player_helper_present;
+
+select c.relname as table_name, t.tgname as trigger_name,
+       t.tgenabled = 'O' as enabled,
+       t.tgfoid::regprocedure as function_signature
+from pg_trigger t join pg_class c on c.oid=t.tgrelid
+where c.oid in (to_regclass('public.jugadores'),
+                to_regclass('public.partido_eventos_sustitucion'),
+                to_regclass('public.players_database'))
+  and not t.tgisinternal and t.tgname in (
+    'jugadores_project_global_shirt_name',
+    'partido_eventos_sustitucion_updated_at',
+    'players_database_sync_shirt_name')
+order by c.relname, t.tgname;
 
 select c.relname as table_name, c.relrowsecurity as rls_enabled,
        count(p.policyname) as policy_count

@@ -1,0 +1,11 @@
+table_name	rls_enabled	force_rls	anon_select	anon_insert	anon_update	anon_delete	auth_select	auth_insert	auth_update	auth_delete	note
+equipo_rival_alineacion	true	false	false	false	false	false	true	true	true	true	Comprobado despues S1; S2 retira tambien TRUNCATE REFERENCES TRIGGER MAINTAIN de anon
+equipo_rival_banquillo	true	false	false	false	false	false	true	true	true	true	Comprobado despues S1; S2 retira tambien TRUNCATE REFERENCES TRIGGER MAINTAIN de anon
+jugadores	true	false	false	false	false	false	true	true	true	true	Comprobado despues S1; S2 retira tambien TRUNCATE REFERENCES TRIGGER MAINTAIN de anon
+jugadores_rivales	true	false	false	false	false	false	true	true	true	true	Comprobado despues S1; S2 retira tambien TRUNCATE REFERENCES TRIGGER MAINTAIN de anon
+equipos_rivales	true	false	false	false	false	false	true	true	true	true	Comprobado antes S1
+partido_alineacion_slots	true	false	false	false	false	false	true	true	true	true	Comprobado antes S1
+partido_eventos_sustitucion	true	false	false	false	false	false	true	false	false	false	Comprobado antes S1
+partidos	true	false	false	false	false	false	true	true	true	true	Comprobado antes S1
+competitions	true	false	false	UNKNOWN	UNKNOWN	UNKNOWN	true	true	true	true	Anon SELECT comprobado; otros anon no consultados
+partido_estadisticas_jugador	true	false	false	UNKNOWN	UNKNOWN	UNKNOWN	true	true	true	true	Anon SELECT comprobado; otros anon no consultados

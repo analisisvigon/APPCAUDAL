@@ -17,7 +17,8 @@ declare
   ja constant uuid := '040b0000-0000-4000-8000-000000000051';
   jb constant uuid := '040b0000-0000-4000-8000-000000000052';
   owner_id uuid; staff_a_id uuid; staff_b_id uuid; outsider_id uuid; player_id uuid;
-  ma uuid; mb uuid; stage_a uuid; stage_b uuid; roster_a uuid; roster_b uuid;
+  ma uuid; mb uuid; msa uuid; msb uuid;
+  stage_a uuid; stage_b uuid; roster_a uuid; roster_b uuid;
 begin
   if auth.uid() is not null then raise exception 'SQL Editor sin JWT de usuario requerido'; end if;
   if to_regclass('public.nexoclub_04c_staging_guard') is null then
@@ -61,8 +62,10 @@ begin
     or exists(select 1 from public.equipos_rivales where id in (ta,tb)) then
     raise exception 'Fixture ya presente: no duplicar ni sobrescribir';
   end if;
-  -- Este indice legacy impide un segundo equipo propio. Cambio SOLO en ensayo.
-  drop index if exists public.equipos_rivales_one_own_club_uidx;
+  -- La variante 04C omite este indice solo en ensayo. El seed no altera DDL.
+  if to_regclass('public.equipos_rivales_one_own_club_uidx') is not null then
+    raise exception 'El esquema de ensayo aun limita a un equipo propio';
+  end if;
   insert into public.clubs(id,name) values (a,'ENSAYO 04B A'),(b,'ENSAYO 04B B');
   insert into public.equipos_rivales(id,name,system,team_kind) values
     (ta,'Equipo ficticio Ámbar','4-4-2','own'),
@@ -77,6 +80,13 @@ begin
   insert into public.club_memberships(club_id,user_id,role,is_active) values
     (a,owner_id,'owner',true),(b,owner_id,'owner',true),
     (a,staff_a_id,'staff',true),(b,staff_b_id,'staff',true);
+  -- El guard de Change 35 exige un owner autenticado del club destino.
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
+  select id into msa from public.club_memberships where club_id=a and user_id=staff_a_id;
+  select id into msb from public.club_memberships where club_id=b and user_id=staff_b_id;
+  insert into public.club_team_season_permissions
+    (club_id,club_team_season_id,membership_id)
+  values (a,ca,msa),(b,cb,msb);
   -- El usuario externo no recibe membresia. PLAYER recibe solo su ficha A.
   insert into public.players_database(id,name) values
     (pa,'FICCIÓN Ámbar 04B'),(pb,'FICCIÓN Azul 04B');
@@ -96,9 +106,14 @@ begin
     values(cb,pb,mb) returning id into roster_b;
   insert into public.legacy_jugador_cts_links_v1(jugador_id,club_team_season_player_id)
     values(ja,roster_a),(jb,roster_b);
-  insert into public.partidos(id,date,opponent,opponent_crest,is_home,status,club_team_season_id)
-    values('040b0000-0000-4000-8000-000000000061',date '2099-09-01','Rival ficticio Ámbar','',true,'Previa',ca),
-          ('040b0000-0000-4000-8000-000000000062',date '2099-09-02','Rival ficticio Azul','',true,'Previa',cb);
+  -- El default legacy home_team menciona al Caudal: fijar el equipo ficticio
+  -- expresamente en cada partido, sin alterar el contrato original de tabla.
+  insert into public.partidos(id,date,opponent,opponent_crest,home_team,away_team,
+    is_home,status,club_team_season_id)
+    values('040b0000-0000-4000-8000-000000000061',date '2099-09-01',
+      'Rival ficticio Ámbar','','Equipo ficticio Ámbar','Rival ficticio Ámbar',true,'Previa',ca),
+          ('040b0000-0000-4000-8000-000000000062',date '2099-09-02',
+      'Rival ficticio Azul','','Equipo ficticio Azul','Rival ficticio Azul',true,'Previa',cb);
   insert into public.club_memberships(club_id,user_id,role,jugador_id,is_active)
     values(a,player_id,'player',ja,true);
   perform set_config('request.jwt.claim.sub','',true);
