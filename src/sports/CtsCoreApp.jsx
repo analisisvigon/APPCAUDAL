@@ -3,7 +3,8 @@ import { SportsContextCoordinator, verifySportsContext } from './authorizedConte
 import { loadCtsMatches, loadCtsRoster } from './ctsSportsData';
 
 // Solo importa lecturas CTS. No monta App.jsx ni sus efectos globales.
-export default function CtsCoreApp({ client, contextId, onChangeTeam, onSignOut }) {
+export default function CtsCoreApp({ client, contextId, onChangeTeam, onSignOut,
+  embedded = false, activeTab = null, onTabChange = null }) {
   const coordinatorRef = useRef(new SportsContextCoordinator());
   const [tab, setTab] = useState('Inicio');
   const [result, setResult] = useState({ status: 'loading', context: null, players: [], matches: [] });
@@ -34,9 +35,10 @@ export default function CtsCoreApp({ client, contextId, onChangeTeam, onSignOut 
   }, [client, contextId, revision]);
 
   const { context, players, matches } = result;
-  return <div className="min-h-screen bg-[#02070f] p-4 text-slate-100 sm:p-8">
+  const displayedTab = activeTab || tab;
+  return <div className={embedded ? 'text-slate-100' : 'min-h-screen bg-[#02070f] p-4 text-slate-100 sm:p-8'}>
     <div className="mx-auto max-w-5xl">
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-5">
+      {!embedded && <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-5">
         <div className="flex items-center gap-3">
           <img src="/branding/nexo-symbol-dark.png" alt="NEXO CLUB" className="h-12 w-12 object-contain" />
           <div><strong className="block">NEXO CLUB</strong>
@@ -47,26 +49,26 @@ export default function CtsCoreApp({ client, contextId, onChangeTeam, onSignOut 
           {onChangeTeam && <button type="button" onClick={onChangeTeam} className="rounded-xl border border-white/20 px-3 py-2 text-sm">Espacios</button>}
           <button type="button" onClick={onSignOut} className="rounded-xl border border-white/20 px-3 py-2 text-sm">Cerrar sesión</button>
         </div>
-      </header>
+      </header>}
       {result.status === 'loading' && <p className="mt-8" role="status">Verificando acceso y cargando datos…</p>}
       {result.status === 'error' && <div className="mt-8" role="alert"><p>No se pudo verificar este equipo o cargar sus datos.</p>
         <button type="button" onClick={() => setRevision((value) => value + 1)} className="mt-4 rounded-xl border border-white/20 px-3 py-2">Reintentar</button></div>}
       {result.status === 'ready' && <>
         <p className="mt-5 text-sm text-slate-400">{context.seasonStatus === 'open' ? 'Temporada abierta' : 'Temporada cerrada'} · Consulta CTS</p>
-        <nav aria-label="Secciones deportivas" className="mt-6 flex flex-wrap gap-2">
+        {!embedded && <nav aria-label="Secciones deportivas" className="mt-6 flex flex-wrap gap-2">
           {['Inicio', 'Plantilla', 'Partidos'].map((name) => <button type="button" key={name}
-            aria-current={tab === name ? 'page' : undefined} onClick={() => setTab(name)}
-            className={`rounded-xl px-4 py-2 text-sm ${tab === name ? 'bg-caudal-electric text-slate-950' : 'bg-white/10'}`}>{name}</button>)}
-        </nav>
-        {tab === 'Inicio' && <main className="mt-7 grid gap-4 sm:grid-cols-2">
+            aria-current={displayedTab === name ? 'page' : undefined} onClick={() => (onTabChange || setTab)(name)}
+            className={`rounded-xl px-4 py-2 text-sm ${displayedTab === name ? 'bg-caudal-electric text-slate-950' : 'bg-white/10'}`}>{name}</button>)}
+        </nav>}
+        {displayedTab === 'Inicio' && <main className="mt-7 grid gap-4 sm:grid-cols-2">
           <section className="rounded-2xl bg-white/5 p-6"><h1 className="text-xl font-bold">{context.teamName}</h1><p className="mt-2 text-slate-400">{context.clubName} · {context.seasonLabel}</p></section>
           <section className="rounded-2xl bg-white/5 p-6"><h2 className="font-bold">Resumen del equipo</h2><p className="mt-3">{players.length} fichas · {matches.length} partidos</p></section>
         </main>}
-        {tab === 'Plantilla' && <main className="mt-7"><h1 className="text-xl font-bold">Plantilla</h1>
+        {displayedTab === 'Plantilla' && <main className="mt-7"><h1 className="text-xl font-bold">Plantilla</h1>
           <ul className="mt-4 grid gap-2 sm:grid-cols-2">{players.map((player) => <li key={player.id} className="rounded-xl bg-white/5 p-4">{player.name || 'Jugador'}{player.position ? ` · ${player.position}` : ''}</li>)}</ul>
           {!players.length && <p className="mt-4 text-slate-400">Sin fichas vinculadas a este equipo y temporada.</p>}
         </main>}
-        {tab === 'Partidos' && <main className="mt-7"><h1 className="text-xl font-bold">Partidos</h1>
+        {displayedTab === 'Partidos' && <main className="mt-7"><h1 className="text-xl font-bold">Partidos</h1>
           <ul className="mt-4 grid gap-2">{matches.map((match) => <li key={match.id} className="rounded-xl bg-white/5 p-4">{match.date || 'Fecha pendiente'} · {match.opponent || 'Partido'}</li>)}</ul>
           {!matches.length && <p className="mt-4 text-slate-400">Sin partidos en este equipo y temporada.</p>}
         </main>}
