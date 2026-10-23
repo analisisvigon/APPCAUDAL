@@ -25,10 +25,15 @@ flujo existente.
    guards de sustituciones usan `can_read_match`/`can_write_match` y que las
    políticas legacy siguen iguales.
 3. Instalar `supabase_multiclub_03_player_create.sql` y repetir el postflight
-   (8 funciones, con la RPC v2).
+   (9 funciones: alta v2 y enlace canónico de perfil existente). En el bloque
+   de contratos de fase B todas las columnas deben ser `true`. La etapa nueva
+   usa `club_seasons.label`; una fecha de inicio enviada debe quedar dentro
+   de la temporada y ninguna fecha se inventa.
    Probar `create_own_player_atomic_v2` en un **entorno de ensayo separado de
    producción** con un CTS autorizado abierto, otro denegado y una temporada
-   cerrada. La función antigua no se reemplaza.
+   cerrada. La función antigua no se reemplaza. Probar por separado el enlace
+   de perfil existente: solo owner/admin de origen y destino, sin etapa actual
+   en otro equipo; crea CTSP sin ficha legacy ni fecha de incorporación.
 4. Antes del corte, conectar TODAS las cargas y guardados de Plantilla,
    Partidos, hijos (incluido el plan de partido), importaciones y vistas
    derivadas al contexto autorizado.
@@ -51,6 +56,10 @@ flujo existente.
 - El alta de partidos ya incluye CTS y revalida la autorización en el modo
   nuevo. El alta de Plantilla puede invocar la RPC v2; la ruta legacy sigue
   activa con el modo nuevo deshabilitado.
+- El enlace de un perfil global existente genera solo la pertenencia canónica.
+  Falta proyectarlo en Plantilla con un editor CTS aislado. Un jugador con una
+  etapa global todavía activa requiere un flujo de traslado explícito; la RPC
+  devuelve error y no cambia esa etapa ni la ficha de otro club.
 - `save_global_player_profile` y `assign_global_player_to_team` pueden operar
   sobre fichas/perfiles globales y carecen de CTS explícito. Revisar las rutas
   usadas por el editor de Plantilla y la importación antes de segundo club.

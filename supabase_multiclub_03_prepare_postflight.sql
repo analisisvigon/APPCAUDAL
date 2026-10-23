@@ -1,9 +1,15 @@
 -- Multiclub 03, fases A/B: SOLO LECTURA. Ejecutar manualmente tras instalar.
--- Tras fase A se esperan 7 funciones de la primera consulta; tras fase B, 8.
+-- Tras fase A se esperan 7 funciones de la primera consulta; tras fase B, 9.
 select to_regprocedure('public.my_cts_jugadores_v1(uuid)') is not null
          as phase_a_roster_present,
        to_regprocedure('public.create_own_player_atomic_v2(uuid,uuid,jsonb,jsonb,jsonb,jsonb)')
-         is not null as phase_b_create_present;
+         is not null as phase_b_create_present,
+       to_regprocedure('public.link_existing_global_player_to_cts_v1(uuid,uuid)')
+         is not null as phase_b_existing_profile_link_present;
+
+select md5(pg_get_functiondef(
+  to_regprocedure('public.create_own_player_atomic(uuid,jsonb,jsonb,jsonb,jsonb)')))
+  as legacy_own_player_create_definition_hash;
 
 select p.oid::regprocedure as function_name, p.prosecdef as security_definer,
        p.proowner = 'postgres'::regrole as owned_by_postgres,
@@ -21,7 +27,8 @@ where p.oid in (
   to_regprocedure('public.can_read_match_snapshot_v1(uuid)'),
   to_regprocedure('public.can_write_match_snapshot_v1(uuid)'),
   to_regprocedure('public.legacy_jugador_in_snapshot_cts_v1(uuid,uuid)'),
-  to_regprocedure('public.create_own_player_atomic_v2(uuid,uuid,jsonb,jsonb,jsonb,jsonb)')
+  to_regprocedure('public.create_own_player_atomic_v2(uuid,uuid,jsonb,jsonb,jsonb,jsonb)'),
+  to_regprocedure('public.link_existing_global_player_to_cts_v1(uuid,uuid)')
 )
 order by p.oid::regprocedure::text;
 
@@ -54,8 +61,58 @@ where p.oid in (
   to_regprocedure('public.mutate_match_substitution_atomic(text,uuid,uuid,jsonb,integer)')
 );
 
+-- Contratos concretos de fase B. Tras instalar B todas deben ser true.
+select
+  (select a.atttypid = 'pg_catalog.text'::regtype from pg_attribute a
+   where a.attrelid = 'public.player_team_memberships'::regclass
+     and a.attname = 'season' and not a.attisdropped) as stage_season_is_text,
+  (select a.atttypid = 'pg_catalog.text'::regtype from pg_attribute a
+   where a.attrelid = 'public.club_seasons'::regclass
+     and a.attname = 'label' and not a.attisdropped) as canonical_season_label_is_text,
+  (select p.prosecdef and p.proowner = 'postgres'::regrole
+      and 'search_path=pg_catalog' = any(p.proconfig)
+      and position('public.can_read_club_team_season(target_club_team_season_id)' in p.prosrc) > 0
+      and position('season.status = ''open''' in p.prosrc) > 0
+   from pg_proc p where p.oid =
+     to_regprocedure('public.can_write_club_team_season(uuid)'))
+     as write_helper_checks_permission_and_open_season,
+  (select not p.prosecdef
+      and position('global_id := nullif(p_player ->> ''id''' in p.prosrc) > 0
+      and position('if p_membership is not null' in p.prosrc) > 0
+   from pg_proc p where p.oid =
+     to_regprocedure('public.save_global_player_profile(jsonb,jsonb,jsonb,jsonb,jsonb)'))
+     as global_save_uses_new_id_and_optional_membership,
+  (select position('target_season_label' in p.prosrc) > 0
+      and position('target_season_label, requested_start_date' in p.prosrc) > 0
+      and position('CTS_START_DATE_OUTSIDE_SEASON' in p.prosrc) > 0
+      and position('p_player - ''id'' - ''globalPlayerId''' in p.prosrc) > 0
+      and position('p_positions, p_sources, p_traits, null' in p.prosrc) > 0
+      and position('GLOBAL_PROFILE_SAVE_SIDE_EFFECT_UNEXPECTED' in p.prosrc) > 0
+   from pg_proc p where p.oid =
+     to_regprocedure('public.create_own_player_atomic_v2(uuid,uuid,jsonb,jsonb,jsonb,jsonb)'))
+     as new_profile_uses_cts_label_and_cannot_update_global_id,
+  (select position('public.can_write_club_team_season(p_club_team_season_id)' in p.prosrc) > 0
+      and position('public.has_club_role(source_cts.club_id' in p.prosrc) > 0
+      and position('GLOBAL_PLAYER_HAS_CURRENT_STAGE_REVIEW_REQUIRED' in p.prosrc) > 0
+      and position('insert into public.club_team_season_players' in p.prosrc) > 0
+      and position('insert into public.jugadores' in p.prosrc) = 0
+      and position('save_global_player_profile' in p.prosrc) = 0
+   from pg_proc p where p.oid =
+     to_regprocedure('public.link_existing_global_player_to_cts_v1(uuid,uuid)'))
+     as existing_profile_link_is_canonical_only;
+
 -- Antes del corte deben seguir vigentes las cuatro politicas legacy por tabla.
 select tablename, policyname, cmd, qual, with_check
 from pg_policies
-where schemaname = 'public' and tablename in ('jugadores', 'partidos')
+where schemaname = 'public' and tablename in (
+  'jugadores', 'partidos', 'players_database', 'player_team_memberships',
+  'club_team_season_players', 'legacy_jugador_cts_links_v1'
+)
 order by tablename, policyname;
+
+-- Pruebas funcionales pendientes con sesiones authenticated en ensayo:
+-- alta nueva en CTS abierto; CTS cerrado/ajeno denegado; nombre global ya
+-- existente denegado sin duplicar; enlace existente por owner/admin con acceso
+-- tambien al club de origen; staff, origen ajeno y etapa actual denegados.
+-- Confirmar que la RPC de enlace NO crea ficha legacy y que un error en la
+-- insercion CTSP revierte la nueva etapa. Nunca probar como postgres/service_role.

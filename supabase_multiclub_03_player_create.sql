@@ -1,19 +1,43 @@
 -- Multiclub 03, fase B. Instalar MANUALMENTE despues de fase A.
 -- Version CTS explicita del alta atomica; no reemplaza la RPC legacy.
--- Requiere revisar el contrato de save_global_player_profile en preflight.
+-- Alta de perfil nuevo y enlace separado de perfil global ya existente.
+-- Ninguna de las dos rutas reutiliza una ficha legacy de otro CTS.
 begin;
 
 do $preflight$
-declare p record;
+declare p record; write_helper record;
 begin
   if auth.uid() is not null then raise exception 'Instalar sin JWT de usuario'; end if;
   if to_regprocedure('public.create_own_player_atomic_v2(uuid,uuid,jsonb,jsonb,jsonb,jsonb)') is not null
-    or to_regprocedure('public.my_cts_jugadores_v1(uuid)') is null then
+    or to_regprocedure('public.link_existing_global_player_to_cts_v1(uuid,uuid)') is not null
+    or to_regprocedure('public.my_cts_jugadores_v1(uuid)') is null
+    or to_regprocedure('public.has_club_role(uuid,text[])') is null
+    or to_regclass('public.legacy_jugador_cts_links_v1') is null
+    or to_regclass('public.club_team_season_players') is null then
     raise exception 'Fase B ya existe o falta fase A';
+  end if;
+  if (select a.atttypid from pg_attribute a
+      where a.attrelid = 'public.player_team_memberships'::regclass
+        and a.attname = 'season' and not a.attisdropped) is distinct from 'pg_catalog.text'::regtype
+    or (select a.atttypid from pg_attribute a
+      where a.attrelid = 'public.club_seasons'::regclass
+        and a.attname = 'label' and not a.attisdropped) is distinct from 'pg_catalog.text'::regtype then
+    raise exception 'Contrato de temporada inesperado';
+  end if;
+  select prosecdef, proowner, proconfig, prosrc into write_helper from pg_proc
+  where oid = to_regprocedure('public.can_write_club_team_season(uuid)');
+  if not found or not write_helper.prosecdef
+    or write_helper.proowner <> 'postgres'::regrole
+    or not coalesce('search_path=pg_catalog' = any(write_helper.proconfig), false)
+    or position('public.can_read_club_team_season(target_club_team_season_id)' in write_helper.prosrc) = 0
+    or position('season.status = ''open''' in write_helper.prosrc) = 0 then
+    raise exception 'can_write_club_team_season no acredita acceso y temporada abierta';
   end if;
   select prosecdef, proowner, prosrc into p from pg_proc
   where oid = to_regprocedure('public.save_global_player_profile(jsonb,jsonb,jsonb,jsonb,jsonb)');
   if not found or p.prosecdef or p.proowner <> 'postgres'::regrole
+    or position('global_id := nullif(p_player ->> ''id''' in p.prosrc) = 0
+    or position('if global_id is null then' in p.prosrc) = 0
     or position('if p_membership is not null' in p.prosrc) = 0 then
     raise exception 'Contrato save_global_player_profile inesperado';
   end if;
@@ -33,6 +57,10 @@ as $function$
 declare
   target_team_id uuid;
   target_club_id uuid;
+  target_season_label text;
+  target_starts_on date;
+  target_ends_on date;
+  requested_start_date date;
   actor_membership_id uuid;
   actor_membership_count integer;
   created_global_id uuid;
@@ -58,13 +86,26 @@ begin
     raise exception 'OWN_PLAYER_ARRAYS_INVALID' using errcode = '22023';
   end if;
 
-  select cts.team_id, cts.club_id into target_team_id, target_club_id
+  select cts.team_id, cts.club_id, season.label, season.starts_on, season.ends_on
+    into target_team_id, target_club_id, target_season_label,
+         target_starts_on, target_ends_on
   from public.club_team_seasons cts
   join public.club_teams team on team.id = cts.team_id and team.club_id = cts.club_id
+  join public.club_seasons season on season.id = cts.season_id
+    and season.club_id = cts.club_id and season.status = 'open'
   join public.equipos_rivales legacy_team on legacy_team.id = team.id
   where cts.id = p_club_team_season_id and legacy_team.team_kind = 'own';
-  if target_team_id is null then
+  if target_team_id is null or nullif(pg_catalog.btrim(target_season_label), '') is null then
     raise exception 'CTS_OWN_TEAM_REQUIRED' using errcode = '22023';
+  end if;
+  if nullif(p_player->>'teamId', '') is not null
+    and p_player->>'teamId' <> target_team_id::text then
+    raise exception 'CTS_TEAM_MISMATCH' using errcode = '22023';
+  end if;
+  requested_start_date := nullif(p_player->>'startDate', '')::date;
+  if requested_start_date is not null
+    and requested_start_date not between target_starts_on and target_ends_on then
+    raise exception 'CTS_START_DATE_OUTSIDE_SEASON' using errcode = '22023';
   end if;
 
   select count(*), min(membership.id::text)::uuid
@@ -143,6 +184,16 @@ begin
   select public.save_global_player_profile(
     p_player - 'id' - 'globalPlayerId', p_positions, p_sources, p_traits, null
   ) into created_global_id;
+  if created_global_id is null
+    or exists (select 1 from public.player_team_memberships stage
+               where stage.player_id = created_global_id)
+    or exists (select 1 from public.jugadores ficha
+               where ficha.global_player_id = created_global_id)
+    or exists (select 1 from public.legacy_own_player_migration migration
+               where migration.global_player_id = created_global_id) then
+    raise exception 'GLOBAL_PROFILE_SAVE_SIDE_EFFECT_UNEXPECTED'
+      using errcode = '23514';
+  end if;
   update public.players_database
   set shirt_name = nullif(pg_catalog.btrim(p_player->>'shirtName'), '')
   where id = created_global_id;
@@ -152,7 +203,7 @@ begin
     captain, is_key, observed, squad_role, source_url
   ) values (
     created_global_id, target_team_id,
-    nullif(p_player->>'season', ''), nullif(p_player->>'startDate', '')::date,
+    target_season_label, requested_start_date,
     true, nullif(p_player->>'number', ''),
     coalesce((p_player->>'captain')::boolean, false),
     coalesce((p_player->>'isKey')::boolean, false),
@@ -209,5 +260,121 @@ alter function public.create_own_player_atomic_v2(uuid,uuid,jsonb,jsonb,jsonb,js
 revoke all on function public.create_own_player_atomic_v2(uuid,uuid,jsonb,jsonb,jsonb,jsonb)
   from public, anon, authenticated;
 grant execute on function public.create_own_player_atomic_v2(uuid,uuid,jsonb,jsonb,jsonb,jsonb)
+  to authenticated;
+
+-- Perfil global existente: solo vinculo canonico. No crea ni reutiliza fichas
+-- legacy; Plantilla requiere despues una proyeccion CTS propia para mostrarlo.
+create function public.link_existing_global_player_to_cts_v1(
+  p_club_team_season_id uuid,
+  p_global_player_id uuid
+)
+returns jsonb language plpgsql volatile security definer set search_path = pg_catalog
+as $function$
+declare
+  target_team_id uuid;
+  target_club_id uuid;
+  target_season_label text;
+  actor_membership_id uuid;
+  actor_membership_count integer;
+  existing_ctsp_id uuid;
+  existing_ctsp_count integer;
+  existing_has_departed boolean;
+  created_stage_id uuid;
+  created_ctsp_id uuid;
+begin
+  if auth.uid() is null or p_club_team_season_id is null
+    or p_global_player_id is null
+    or public.can_write_club_team_season(p_club_team_season_id) is not true then
+    raise exception 'CTS_WRITE_DENIED' using errcode = '42501';
+  end if;
+  select cts.team_id, cts.club_id, season.label
+    into target_team_id, target_club_id, target_season_label
+  from public.club_team_seasons cts
+  join public.club_teams team on team.id = cts.team_id and team.club_id = cts.club_id
+  join public.club_seasons season on season.id = cts.season_id
+    and season.club_id = cts.club_id and season.status = 'open'
+  join public.equipos_rivales legacy_team on legacy_team.id = team.id
+  where cts.id = p_club_team_season_id and legacy_team.team_kind = 'own';
+  if target_team_id is null or nullif(pg_catalog.btrim(target_season_label), '') is null then
+    raise exception 'CTS_OWN_TEAM_REQUIRED' using errcode = '22023';
+  end if;
+  select count(*), min(membership.id::text)::uuid
+    into actor_membership_count, actor_membership_id
+  from public.club_memberships membership
+  where membership.user_id = auth.uid()
+    and membership.club_id = target_club_id
+    and membership.is_active
+    and membership.role in ('owner', 'admin');
+  if actor_membership_count <> 1 then
+    raise exception 'CTS_OWNER_OR_ADMIN_REQUIRED' using errcode = '42501';
+  end if;
+
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(p_global_player_id::text, 1));
+  if not exists (select 1 from public.players_database profile
+                 where profile.id = p_global_player_id) then
+    raise exception 'GLOBAL_PLAYER_NOT_AVAILABLE' using errcode = '42501';
+  end if;
+  -- El permiso de destino no concede acceso al club de procedencia.
+  if exists (
+    select 1 from public.club_team_season_players roster
+    join public.club_team_seasons source_cts
+      on source_cts.id = roster.club_team_season_id
+    where roster.player_id = p_global_player_id
+      and source_cts.club_id <> target_club_id
+      and public.has_club_role(source_cts.club_id, array['owner','admin']::text[]) is not true
+  ) or exists (
+    select 1 from public.player_team_memberships stage
+    join public.club_teams source_team on source_team.id = stage.team_id
+    where stage.player_id = p_global_player_id
+      and source_team.club_id <> target_club_id
+      and public.has_club_role(source_team.club_id, array['owner','admin']::text[]) is not true
+  ) then
+    raise exception 'SOURCE_CLUB_ACCESS_REQUIRED' using errcode = '42501';
+  end if;
+
+  select count(*), min(roster.id::text)::uuid,
+         coalesce(bool_or(roster.has_departed), false)
+    into existing_ctsp_count, existing_ctsp_id, existing_has_departed
+  from public.club_team_season_players roster
+  where roster.club_team_season_id = p_club_team_season_id
+    and roster.player_id = p_global_player_id
+    and roster.voided_at is null;
+  if existing_ctsp_count > 0 then
+    if existing_ctsp_count <> 1 or existing_has_departed then
+      raise exception 'CTS_PLAYER_LINK_REVIEW_REQUIRED' using errcode = '23505';
+    end if;
+    return pg_catalog.jsonb_build_object(
+      'status', 'already_linked', 'playerId', p_global_player_id,
+      'clubTeamSeasonPlayerId', existing_ctsp_id);
+  end if;
+  -- El modelo global actual no permite trasladar de forma implicita una
+  -- etapa activa de otro equipo. Su resolucion queda para un flujo CTS propio.
+  if exists (select 1 from public.player_team_memberships stage
+             where stage.player_id = p_global_player_id and stage.is_current) then
+    raise exception 'GLOBAL_PLAYER_HAS_CURRENT_STAGE_REVIEW_REQUIRED'
+      using errcode = '23505';
+  end if;
+  insert into public.player_team_memberships (
+    player_id, team_id, season, is_current
+  ) values (
+    p_global_player_id, target_team_id, target_season_label, true
+  ) returning id into created_stage_id;
+  insert into public.club_team_season_players (
+    club_team_season_id, player_id, created_by_membership_id
+  ) values (
+    p_club_team_season_id, p_global_player_id, actor_membership_id
+  ) returning id into created_ctsp_id;
+  return pg_catalog.jsonb_build_object(
+    'status', 'linked', 'playerId', p_global_player_id,
+    'clubTeamSeasonPlayerId', created_ctsp_id,
+    'membershipId', created_stage_id);
+end;
+$function$;
+alter function public.link_existing_global_player_to_cts_v1(uuid,uuid)
+  owner to postgres;
+revoke all on function public.link_existing_global_player_to_cts_v1(uuid,uuid)
+  from public, anon, authenticated;
+grant execute on function public.link_existing_global_player_to_cts_v1(uuid,uuid)
   to authenticated;
 commit;

@@ -15,6 +15,20 @@ select p.oid::regprocedure as function_name, not p.prosecdef as security_invoker
 from pg_proc p where p.oid =
   to_regprocedure('public.save_global_player_profile(jsonb,jsonb,jsonb,jsonb,jsonb)');
 
+-- Comparar este hash con el postflight B: la funcion legacy no se reemplaza.
+select md5(pg_get_functiondef(
+  to_regprocedure('public.create_own_player_atomic(uuid,jsonb,jsonb,jsonb,jsonb)')))
+  as legacy_own_player_create_definition_hash;
+
+-- Comparar con el postflight B: las politicas de estas relaciones no cambian.
+select tablename, policyname, cmd, qual, with_check
+from pg_policies
+where schemaname = 'public' and tablename in (
+  'players_database', 'player_team_memberships',
+  'club_team_season_players', 'legacy_jugador_cts_links_v1'
+)
+order by tablename, policyname;
+
 select
   (select count(*) from public.partidos where club_team_season_id is null) as matches_without_cts,
   (select count(*) from public.jugadores ficha

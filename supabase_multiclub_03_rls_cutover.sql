@@ -16,6 +16,7 @@ declare
 begin
   if auth.uid() is not null then raise exception 'Instalar sin JWT de usuario'; end if;
   if to_regprocedure('public.create_own_player_atomic_v2(uuid,uuid,jsonb,jsonb,jsonb,jsonb)') is null
+    or to_regprocedure('public.link_existing_global_player_to_cts_v1(uuid,uuid)') is null
     or to_regprocedure('public.my_cts_jugadores_v1(uuid)') is null
     or to_regprocedure('public.legacy_jugador_in_cts_v1(uuid,uuid)') is null
     or to_regprocedure('public.legacy_jugador_in_snapshot_cts_v1(uuid,uuid)') is null
