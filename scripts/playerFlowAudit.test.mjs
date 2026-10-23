@@ -125,7 +125,8 @@ assert.deepEqual(
 );
 assert.match(shell, /auth\.signOut\(\)/, 'Logout vuelve a Supabase Auth.');
 assert.ok(
-  shell.indexOf("authState.status === 'player'") < shell.indexOf("authState.status === 'staff'"),
+  shell.indexOf("if (authState.status === 'player')")
+    < shell.indexOf("if (authState.status === 'staff')"),
   'Las ramas son mutuamente excluyentes y PLAYER retorna antes de montar STAFF.',
 );
 

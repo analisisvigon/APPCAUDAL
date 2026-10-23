@@ -602,6 +602,21 @@ function TeamLogo({ src, alt, teamName = '', size = 'md', className = '' }) {
   );
 }
 
+function DesktopSportsTabs({ tabs, activeTab, onSelect }) {
+  return <nav aria-label="Secciones de NEXO CLUB" className="hidden flex-wrap gap-3 xl:flex xl:justify-end">
+    {tabs.map((tab) => <button key={tab} type="button" onClick={() => onSelect(tab)}
+      aria-current={activeTab === tab ? 'page' : undefined}
+      className={`inline-flex items-center gap-1.5 rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+        activeTab === tab
+          ? 'bg-caudal-electric text-slate-950 shadow-[0_15px_35px_rgba(79,140,255,0.22)]'
+          : 'bg-white/10 text-slate-200 hover:bg-white/15'
+      }`}>
+      {tab === 'Inicio' ? <img src="/branding/nexo-symbol-dark.png" alt="" className="h-4 w-4 object-contain" /> : null}
+      {tab}
+    </button>)}
+  </nav>;
+}
+
 function RivalCard({ rival, playerCount, accent, menuOpen, onOpen, onEdit, onDelete, onMenuOpen, menuAnchorRect, onMenuClose }) {
   const displayName = cleanTeamDisplayName(rival.name);
   return (
@@ -5266,7 +5281,7 @@ const renderTacticalBlock = (block) => (
   </div>
 );
 
-function App({ controlledSession = undefined, onControlledSignOut = null, identity = null, selectedCtsId = null }) {
+function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, identity = null, selectedCtsId = null }) {
   const hasControlledAuth = controlledSession !== undefined;
   const [activeTab, setActiveTab] = useState('Inicio');
   const [plannedSessionsDirty, setPlannedSessionsDirty] = useState(false);
@@ -30140,22 +30155,7 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
                 Cerrar sesión
               </button>
             </div>
-            <nav className="hidden flex-wrap gap-3 xl:flex xl:justify-end">
-              {desktopTabs.map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => goToTab(tab)}
-                  className={`inline-flex items-center gap-1.5 rounded-2xl px-4 py-2 text-sm font-semibold transition ${
-                    activeTab === tab
-                      ? 'bg-caudal-electric text-slate-950 shadow-[0_15px_35px_rgba(79,140,255,0.22)]'
-                      : 'bg-white/10 text-slate-200 hover:bg-white/15'
-                  }`}
-                >
-                  {tab === 'Inicio' ? <img src="/branding/nexo-symbol-dark.png" alt="" className="h-4 w-4 object-contain" /> : null}
-                  {tab}
-                </button>
-              ))}
-            </nav>
+            <DesktopSportsTabs tabs={desktopTabs} activeTab={activeTab} onSelect={goToTab} />
             {authError ? <p className="max-w-sm text-sm text-red-200">{authError}</p> : null}
           </div>
         </header>
@@ -37869,6 +37869,152 @@ function App({ controlledSession = undefined, onControlledSignOut = null, identi
       ) : null}
     </div>
   );
+}
+
+// El modo CTS comparte la entrada, la imagen y los componentes de App.jsx.
+// LegacyApp no se monta en esta rama: sus efectos de inicio aún leen tablas
+// globales aunque el usuario no abra esas pestañas.
+const CTS_NAV_TABS = [
+  'Inicio', 'Plantilla', 'Perfiles', 'Equipos', 'Partidos', 'Biblioteca',
+  'Tareas', 'Sesiones', 'Rendimiento', 'Fisio', 'Multas',
+  'Registro Delegado', 'Análisis Grupal', 'Mi historial',
+];
+const CTS_READ_TABS = new Set(['Inicio', 'Plantilla', 'Partidos']);
+
+function CtsWorkspace({ controlledSession, selectedCtsId, availableContexts = [],
+  onChangeTeam, onControlledSignOut }) {
+  const [activeTab, setActiveTab] = useState('Inicio');
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const [snapshot, setSnapshot] = useState({ status: 'loading', context: null, players: [], matches: [] });
+  const coordinatorRef = useRef(new SportsContextCoordinator());
+
+  useEffect(() => {
+    let cancelled = false;
+    const coordinator = coordinatorRef.current;
+    coordinator.change(null);
+    setSnapshot({ status: 'loading', context: null, players: [], matches: [] });
+    setActiveTab('Inicio');
+    setMobileMoreOpen(false);
+    void (async () => {
+      try {
+        const context = await verifySportsContext(supabase, selectedCtsId);
+        if (cancelled) return;
+        if (context.seasonStatus !== 'open') throw new Error('Archivo pendiente de bloqueo en backend.');
+        const token = coordinator.change(context);
+        const [players, matches] = await Promise.all([
+          loadCtsRoster(supabase, coordinator, token),
+          loadCtsMatches(supabase, coordinator, token),
+        ]);
+        if (cancelled || !coordinator.isCurrent(token)) return;
+        setSnapshot({ status: 'ready', context, players, matches });
+      } catch {
+        if (!cancelled) setSnapshot({ status: 'error', context: null, players: [], matches: [] });
+      }
+    })();
+    return () => { cancelled = true; coordinator.change(null); };
+  }, [selectedCtsId, revision]);
+
+  const { context, players, matches } = snapshot;
+  const selectTab = (name) => { setActiveTab(name); setMobileMoreOpen(false); };
+  const historicalContexts = availableContexts.filter((item) => item.id !== selectedCtsId);
+  const pendingText = activeTab === 'Biblioteca' || activeTab === 'Tareas'
+    ? 'Las bibliotecas personales de Tareas y ABP se conectarán aquí cuando su acceso independiente del CTS y sus snapshots históricos estén protegidos en el backend.'
+    : 'Esta sección se abrirá después de adaptar sus lecturas, escrituras y permisos al CTS.';
+
+  return <div className="min-h-screen bg-gradient-to-b from-caudal-950 via-caudal-900 to-[#05101f] text-slate-100">
+    <div className="app-shell-content mx-auto flex min-h-screen max-w-6xl flex-col px-4 pt-6 sm:px-6 lg:px-8">
+      <header className="mb-6 flex flex-col gap-4 rounded-3xl border border-white/5 bg-white/5 p-5 shadow-glow backdrop-blur-md xl:flex-row xl:items-center xl:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <img src="/branding/nexo-symbol-dark.png" alt="" className="h-11 w-11 object-contain sm:hidden" />
+            <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-300 sm:hidden">NEXO CLUB</span>
+            <img src="/branding/nexo-horizontal-dark.png" alt="NEXO CLUB" className="hidden h-14 w-auto max-w-full object-contain sm:block" />
+          </div>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">{context?.clubName || 'NEXO CLUB'}</h1>
+          <p className="mt-1 text-sm text-slate-400">{context ? `${context.teamName} · ${context.seasonLabel}` : 'Verificando equipo y temporada'}</p>
+        </div>
+        <div className="flex w-full flex-col gap-3 xl:w-auto xl:items-end">
+          <div className="flex w-full flex-wrap items-center justify-end gap-3 rounded-2xl border border-white/10 bg-caudal-950/40 p-3">
+            <span className="min-w-0 truncate text-sm font-semibold text-white">{controlledSession?.user?.email || ''}</span>
+            {onChangeTeam && <button type="button" onClick={onChangeTeam} className="min-h-11 rounded-2xl border border-white/15 px-4 py-2 text-sm font-semibold">Cambiar espacio</button>}
+            <button type="button" onClick={onControlledSignOut} className="min-h-11 rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-semibold text-slate-950">Cerrar sesión</button>
+          </div>
+          <DesktopSportsTabs tabs={CTS_NAV_TABS} activeTab={activeTab} onSelect={selectTab} />
+        </div>
+      </header>
+      <nav aria-label="Navegación principal" className="mobile-bottom-nav fixed inset-x-3 z-40 rounded-3xl border border-white/10 bg-[#071225]/95 p-2 shadow-glow backdrop-blur-md xl:hidden">
+        {mobileMoreOpen && <div className="mb-2 grid max-h-[50vh] grid-cols-2 gap-2 overflow-y-auto rounded-2xl bg-white/5 p-2">
+          {CTS_NAV_TABS.filter((name) => !['Inicio', 'Plantilla', 'Partidos'].includes(name)).map((name) =>
+            <button type="button" key={name} onClick={() => selectTab(name)} className="min-h-11 rounded-2xl bg-white/10 px-2 text-xs font-bold">{name}</button>)}
+        </div>}
+        <div className="grid grid-cols-4 gap-1">
+          {['Inicio', 'Partidos', 'Plantilla'].map((name) => <button type="button" key={name} onClick={() => selectTab(name)}
+            className={`min-h-12 rounded-2xl px-1 text-xs font-bold ${activeTab === name ? 'bg-caudal-electric text-slate-950' : 'bg-white/10'}`}>{name}</button>)}
+          <button type="button" onClick={() => setMobileMoreOpen((open) => !open)} aria-expanded={mobileMoreOpen}
+            className="min-h-12 rounded-2xl bg-white/10 px-1 text-xs font-bold">Más</button>
+        </div>
+      </nav>
+      <main className="space-y-4 pb-28">
+        {snapshot.status === 'loading' && <p role="status" className="rounded-2xl border border-white/10 bg-white/5 p-6">Verificando acceso y cargando datos…</p>}
+        {snapshot.status === 'error' && <section role="alert" className="rounded-2xl border border-red-300/20 bg-red-500/10 p-6">
+          <p>No se pudo verificar el CTS o cargar sus datos.</p>
+          <button type="button" onClick={() => setRevision((value) => value + 1)} className="mt-4 rounded-xl border border-white/20 px-4 py-2">Reintentar</button>
+        </section>}
+        {snapshot.status === 'ready' && <>
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 text-sm">
+            <TeamLogo src={context.teamCrest} teamName={context.teamName} size="sm" />
+            <span className="font-semibold">{context.teamName} · {context.seasonLabel}</span>
+            <span className="ml-auto rounded-full border border-white/15 px-3 py-1 text-xs font-bold">{context.seasonStatus === 'closed' ? 'Temporada cerrada · consulta' : 'Consulta CTS'}</span>
+          </div>
+          {activeTab === 'Inicio' && <div className="space-y-4">
+            <section className="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0b1220] p-6 shadow-[0_16px_48px_rgba(0,0,0,0.24)]">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-caudal-electric">NEXO CLUB · Cuerpo técnico</p>
+              <h2 className="mt-2 text-2xl font-black">{context.teamName}</h2>
+              <p className="mt-1 text-slate-400">{context.clubName} · {context.seasonLabel}</p>
+            </section>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <button type="button" onClick={() => selectTab('Plantilla')} className="rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.92] p-6 text-left"><span className="text-sm text-slate-400">Plantilla</span><strong className="mt-2 block text-3xl">{players.length}</strong></button>
+              <button type="button" onClick={() => selectTab('Partidos')} className="rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.92] p-6 text-left"><span className="text-sm text-slate-400">Partidos</span><strong className="mt-2 block text-3xl">{matches.length}</strong></button>
+            </div>
+          </div>}
+          {activeTab === 'Plantilla' && <section>
+            <h2 className="text-2xl font-black">Plantilla</h2>
+            <p className="mt-1 text-sm text-slate-400">Fichas vinculadas expresamente a este equipo y temporada.</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{players.map((player) => <article key={player.id} className="flex items-center gap-4 rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.92] p-4">
+              <PlayerAvatar player={player} className="h-14 w-14" />
+              <div className="min-w-0"><h3 className="truncate font-bold">{player.name || 'Jugador'}</h3><p className="text-sm text-slate-400">{player.position || 'Posición sin registrar'}{player.number != null ? ` · ${player.number}` : ''}</p></div>
+            </article>)}</div>
+            {!players.length && <p className="mt-4 rounded-2xl bg-white/5 p-5 text-slate-400">No hay fichas vinculadas a este CTS.</p>}
+          </section>}
+          {activeTab === 'Partidos' && <section>
+            <h2 className="text-2xl font-black">Partidos</h2>
+            <p className="mt-1 text-sm text-slate-400">Encuentros del equipo y temporada seleccionados.</p>
+            <div className="mt-4 grid gap-3">{matches.map((match) => <article key={match.id} className="flex items-center gap-4 rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.92] p-5">
+              <TeamLogo src={context.teamCrest} teamName={context.teamName} size="sm" />
+              <div className="min-w-0"><h3 className="font-bold">{match.opponent || 'Rival pendiente'}</h3><p className="text-sm text-slate-400">{match.date || 'Fecha pendiente'}{match.competition ? ` · ${match.competition}` : ''}</p></div>
+            </article>)}</div>
+            {!matches.length && <p className="mt-4 rounded-2xl bg-white/5 p-5 text-slate-400">No hay partidos vinculados a este CTS.</p>}
+          </section>}
+          {activeTab === 'Mi historial' && <section>
+            <h2 className="text-2xl font-black">Mi historial</h2>
+            <p className="mt-2 text-sm text-slate-400">Otros contextos autorizados. El archivo se abrirá cuando su estado histórico y el bloqueo de escrituras estén acreditados en backend.</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">{historicalContexts.map((item) => <article key={item.id} className="rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.92] p-5">
+              <h3 className="font-bold">{item.clubName} · {item.teamName}</h3><p className="mt-1 text-sm text-slate-400">{item.seasonLabel} · {item.seasonStatus === 'closed' ? 'Pendiente de protección de archivo' : 'Pendiente de cierre y protección de archivo'}</p>
+            </article>)}</div>
+            {!historicalContexts.length && <p className="mt-4 rounded-2xl bg-white/5 p-5 text-slate-400">No hay otros contextos autorizados.</p>}
+          </section>}
+          {!CTS_READ_TABS.has(activeTab) && activeTab !== 'Mi historial' && <section className="rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.92] p-6">
+            <h2 className="text-2xl font-black">{activeTab}</h2><p className="mt-3 text-slate-400">{pendingText}</p>
+          </section>}
+        </>}
+      </main>
+    </div>
+  </div>;
+}
+
+function App(props) {
+  return props.selectedCtsId ? <CtsWorkspace {...props} /> : <LegacyApp {...props} />;
 }
 
 export default App;

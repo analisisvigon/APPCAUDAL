@@ -21,20 +21,32 @@ permiso de lectura ni escritura. Dejarlo vacío conserva el selector existente.
 | Pieza local | Uso previsto |
 | --- | --- |
 | Identidad 01, `my_access_contexts_v1()` y selector | Una cuenta con dos membresías y contextos comprobados por servidor. |
-| Vínculos exactos 02B, RPC de lectura 02/03A y `CtsCoreApp` | Primer archivo de Inicio, Plantilla y Partidos, con nuevo montaje y nueva carga al cambiar de CTS. |
+| Vínculos exactos 02B, RPC de lectura 02/03A y `App.jsx` | Primera rama CTS de Inicio, Plantilla y Partidos, con nuevo montaje y nueva carga al cambiar de CTS. `CtsCoreApp` queda como prototipo de la previsualización local. |
 | `can_write_club_team_season`, `can_write_match`, helpers de fila y 03C | Base del rechazo de escrituras en temporadas cerradas, tras verificar todas sus dependencias. |
 | `App.jsx`, componentes deportivos, cálculos, formularios y PLAYER | Reutilizar la interfaz y la lógica deportiva; sustituir su capa de carga/guardado global por operaciones CTS autorizadas. PLAYER conserva su ruta. |
 
 ## Estado real hoy
 
 Con `VITE_MULTICLUB_03_CTS_ENABLED=false`, Caudal conserva el acceso legacy.
-Con el modo CTS activado localmente, el propietario puede usar únicamente
-`CtsCoreApp`: Inicio, Plantilla y Partidos de consulta. El nuevo CTS preferido,
-cuando exista y se configure, se abre primero en esa misma ruta limitada. El
-archivo Caudal se elige desde el selector. No se abre `App.jsx` para una cuenta
-con dos membresías, porque `current_membership()` y las cargas globales no
-pueden resolverla de forma segura. El histórico **aún no es inmutable en la
-base de datos**: 03C sigue sin instalarse y hay políticas/RPC legacy.
+Con el modo CTS activado localmente, el propietario abre `App.jsx` con su
+cabecera, navegación y componentes visuales originales. Solo Inicio, Plantilla
+y Partidos consultan datos, mediante las RPC CTS. Esas tres pantallas son de
+consulta y todavía no contienen los editores completos de la aplicación
+legacy. El nuevo CTS preferido, cuando exista y se configure, se abre primero.
+`LegacyApp` permanece dentro del mismo archivo, pero no se monta en modo CTS:
+`current_membership()` y sus cargas globales todavía no pueden resolver dos
+membresías de forma segura. Cambiar de CTS desmonta el espacio anterior antes
+de verificar el nuevo. «Mi historial» muestra otros contextos autorizados,
+indicando cuáles aún necesitan cierre, pero su apertura queda bloqueada hasta
+impedir las escrituras al archivo en backend. El histórico **aún no es inmutable en la base de datos**: 03C sigue
+sin instalarse y hay políticas/RPC legacy. El selector tampoco abre temporadas
+cerradas mientras exista este bloqueo.
+
+Biblioteca, Tareas y el laboratorio ABP seguirán visibles como secciones
+pendientes en modo CTS; sus componentes no se montan ni hacen consultas.
+Deberán convertirse en recursos personales independientes del equipo y la
+temporada sin alterar los snapshots guardados en sesiones y partidos. Su
+contrato de permisos y de referencias históricas sigue pendiente.
 
 La app deportiva completa contiene cargas iniciales globales de equipos,
 competiciones, estadio y formación, además de lecturas/escrituras directas de

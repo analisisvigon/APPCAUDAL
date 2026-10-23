@@ -7,7 +7,6 @@ import TeamSelector from './sports/TeamSelector';
 import { supabase } from './lib/supabase';
 
 const StaffApp = lazy(() => import('./App'));
-const CtsCoreApp = lazy(() => import('./sports/CtsCoreApp'));
 const ENABLE_CTS_FRONTEND = import.meta.env.VITE_MULTICLUB_03_CTS_ENABLED === 'true';
 const PREFERRED_ACTIVE_CTS_ID = import.meta.env.VITE_MULTICLUB_PRIMARY_CTS_ID || '';
 
@@ -316,6 +315,7 @@ function AppAuthShell() {
   const chooseSportsContext = async (requestedId) => {
     const request = ++contextRequestRef.current;
     const userId = String(stateRef.current.session?.user?.id || '');
+    setSelectedSportsContext(null);
     setSelectorBusy(true);
     setSelectorError('');
     try {
@@ -323,6 +323,7 @@ function AppAuthShell() {
       if (request !== contextRequestRef.current
         || userId !== String(stateRef.current.session?.user?.id || '')) return;
       if (verified.role !== 'owner') throw new Error('Contexto no autorizado.');
+      if (verified.seasonStatus !== 'open') throw new Error('Archivo pendiente de bloqueo en backend.');
       setSelectedSportsContext(verified);
     } catch (error) {
       if (request !== contextRequestRef.current) return;
@@ -393,10 +394,13 @@ function AppAuthShell() {
   if (authState.status === 'multiple_memberships') {
     if (ENABLE_CTS_FRONTEND && authState.identity.memberships.every((row) => row.role === 'owner')) {
       if (selectedSportsContext) return <Suspense fallback={<LoadingScreen message="Cargando equipo…" />}>
-        <CtsCoreApp key={selectedSportsContext.id} client={supabase} contextId={selectedSportsContext.id}
-          onChangeTeam={returnToSelector} onSignOut={handleSignOut} />
+        <StaffApp key={selectedSportsContext.id} controlledSession={authState.session}
+          identity={authState.identity} selectedCtsId={selectedSportsContext.id}
+          availableContexts={selectorContexts || []}
+          onChangeTeam={returnToSelector} onControlledSignOut={handleSignOut} />
       </Suspense>;
       return <TeamSelector contexts={selectorContexts || []} preferredId={preferredContext?.id} onSelect={chooseSportsContext}
+        canSelectContext={(context) => context.seasonStatus === 'open'}
         onExit={handleSignOut} busy={selectorBusy || !selectorContexts} error={selectorError} />;
     }
     return (
@@ -414,10 +418,13 @@ function AppAuthShell() {
   if (authState.status === 'staff') {
     if (ENABLE_CTS_FRONTEND && authState.identity.membership?.role === 'owner') {
       if (selectedSportsContext) return <Suspense fallback={<LoadingScreen message="Cargando equipo…" />}>
-        <CtsCoreApp key={selectedSportsContext.id} client={supabase} contextId={selectedSportsContext.id}
-          onChangeTeam={returnToSelector} onSignOut={handleSignOut} />
+        <StaffApp key={selectedSportsContext.id} controlledSession={authState.session}
+          identity={authState.identity} selectedCtsId={selectedSportsContext.id}
+          availableContexts={selectorContexts || []}
+          onChangeTeam={returnToSelector} onControlledSignOut={handleSignOut} />
       </Suspense>;
       return <TeamSelector contexts={selectorContexts || []} preferredId={preferredContext?.id} onSelect={chooseSportsContext}
+        canSelectContext={(context) => context.seasonStatus === 'open'}
         onExit={handleSignOut} busy={selectorBusy || !selectorContexts} error={selectorError} />;
     }
     if (ENABLE_CTS_FRONTEND && authState.identity.contexts?.length !== 1) {
@@ -426,8 +433,10 @@ function AppAuthShell() {
         onSignOut={handleSignOut} signingOut={signingOut} />;
     }
     if (ENABLE_CTS_FRONTEND) return <Suspense fallback={<LoadingScreen message="Cargando equipo…" />}>
-      <CtsCoreApp key={authState.identity.contexts[0].club_team_season_id} client={supabase}
-        contextId={authState.identity.contexts[0].club_team_season_id} onSignOut={handleSignOut} />
+      <StaffApp key={authState.identity.contexts[0].club_team_season_id}
+        controlledSession={authState.session} identity={authState.identity}
+        selectedCtsId={authState.identity.contexts[0].club_team_season_id}
+        onControlledSignOut={handleSignOut} />
     </Suspense>;
     return (
       <Suspense fallback={<LoadingScreen message="Cargando NEXO CLUB…" />}>
