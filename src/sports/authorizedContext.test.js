@@ -4,7 +4,7 @@ import { loadAuthorizedSportsContexts, SportsContextCoordinator, verifySportsCon
 const first = {
   club_team_season_id: 'cts-caudal', club_id: 'club-caudal', team_id: 'team-caudal',
   season_id: 'season-open', team_name: 'Caudal', season_label: '2026/2027',
-  season_status: 'open', season_is_active: true,
+  season_status: 'open', season_is_active: true, team_crest: 'https://example.test/crest.png',
 };
 const historical = {
   ...first, club_team_season_id: 'cts-historical', season_id: 'season-closed',
@@ -29,6 +29,7 @@ const authorized = client([
 ]);
 const options = await loadAuthorizedSportsContexts(authorized);
 assert.deepEqual(options.map((row) => row.id), ['cts-caudal', 'cts-historical', 'cts-other']);
+assert.equal(options[0].teamCrest, 'https://example.test/crest.png');
 assert.equal((await verifySportsContext(authorized, 'cts-other')).clubId, 'club-other');
 await assert.rejects(verifySportsContext(authorized, 'browser-invented'), /no autorizados/);
 

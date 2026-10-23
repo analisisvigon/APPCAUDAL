@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import PlayerApp from './PlayerApp';
 import { resolveAppIdentity } from './auth/resolveAppIdentity';
+import { loadAuthorizedSportsContexts, verifySportsContext } from './sports/authorizedContext';
 import { supabase } from './lib/supabase';
 
 const StaffApp = lazy(() => import('./App'));
@@ -87,7 +88,7 @@ function LoginScreen({ form, submitting, error, onChange, onSubmit }) {
   );
 }
 
-function AccessMessage({ title, message, onRetry, onSignOut, signingOut }) {
+function AccessMessage({ title, message, onRetry, retryLabel = 'Reintentar', onSignOut, signingOut }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#02070f] px-4 py-8 text-slate-100">
       <main className="w-full max-w-lg rounded-[1.65rem] border border-white/10 bg-[#081326]/90 p-7 text-center shadow-[0_24px_80px_rgba(0,0,0,0.38)] sm:p-9">
@@ -97,7 +98,7 @@ function AccessMessage({ title, message, onRetry, onSignOut, signingOut }) {
         <div className="mt-7 grid gap-3 sm:grid-cols-2">
           {onRetry ? (
             <button type="button" onClick={onRetry} className="min-h-12 rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-white hover:bg-white/15">
-              Reintentar
+              {retryLabel}
             </button>
           ) : null}
           <button
@@ -114,12 +115,42 @@ function AccessMessage({ title, message, onRetry, onSignOut, signingOut }) {
   );
 }
 
+function TeamSelector({ contexts, onSelect, onSignOut, busy, error }) {
+  return <main className="min-h-screen bg-[#02070f] px-4 py-10 text-slate-100">
+    <div className="mx-auto max-w-4xl">
+      <img src="/branding/nexo-lockup-dark.png" alt="NEXO CLUB" className="h-24 w-auto" />
+      <h1 className="mt-7 text-2xl font-black">Elige equipo y temporada</h1>
+      <p className="mt-2 text-sm text-slate-400">Solo aparecen espacios autorizados para tu cuenta.</p>
+      {error && <p role="alert" className="mt-5 rounded-xl bg-red-500/10 p-4 text-red-100">{error}</p>}
+      <div className="mt-7 grid gap-3 sm:grid-cols-2">
+        {contexts.map((context) => <button type="button" key={context.id}
+          disabled={busy} onClick={() => onSelect(context.id)}
+          className="flex min-h-28 items-center gap-4 rounded-2xl border border-white/10 bg-[#081326] p-4 text-left hover:border-caudal-electric/60 disabled:opacity-50">
+          {context.teamCrest ? <img src={context.teamCrest} alt="" className="h-14 w-14 object-contain" />
+            : <span aria-hidden="true" className="flex h-14 w-14 items-center justify-center rounded-xl bg-white/10">⚽</span>}
+          <span className="min-w-0">
+            <span className="block text-xs font-bold text-caudal-electric">{context.clubName}</span>
+            <span className="block truncate text-base font-black">{context.teamName}</span>
+            <span className="block text-xs text-slate-400">{context.seasonLabel} · {context.seasonStatus === 'open' ? 'Activa' : 'Histórica'}</span>
+          </span>
+        </button>)}
+      </div>
+      {!contexts.length && <p className="mt-6 text-slate-400">No hay equipos y temporadas autorizados.</p>}
+      <button type="button" onClick={onSignOut} className="mt-8 rounded-xl border border-white/20 px-4 py-2 text-sm">Cerrar sesión</button>
+    </div>
+  </main>;
+}
+
 function AppAuthShell() {
   const [authState, setAuthState] = useState(INITIAL_AUTH_STATE);
   const [authForm, setAuthForm] = useState({ email: '', password: '' });
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [authError, setAuthError] = useState('');
   const [signingOut, setSigningOut] = useState(false);
+  const [selectedSportsContext, setSelectedSportsContext] = useState(null);
+  const [selectorContexts, setSelectorContexts] = useState(null);
+  const [selectorBusy, setSelectorBusy] = useState(false);
+  const [selectorError, setSelectorError] = useState('');
   const mountedRef = useRef(false);
   const stateRef = useRef(INITIAL_AUTH_STATE);
   const resolutionGenerationRef = useRef(0);
@@ -138,6 +169,8 @@ function AppAuthShell() {
     const generation = ++resolutionGenerationRef.current;
     resolvingUserIdRef.current = userId;
     commitAuthState({ status: 'resolving_identity', session: nextSession, identity: null });
+    setSelectedSportsContext(null);
+    setSelectorContexts(null);
 
     void resolveAppIdentity(supabase, nextSession)
       .then((identity) => {
@@ -171,6 +204,8 @@ function AppAuthShell() {
       resolutionGenerationRef.current += 1;
       resolvingUserIdRef.current = '';
       commitAuthState({ status: 'unauthenticated', session: null, identity: null });
+      setSelectedSportsContext(null);
+      setSelectorContexts(null);
       return;
     }
 
@@ -274,6 +309,43 @@ function AppAuthShell() {
     else void checkCurrentSession();
   };
 
+  useEffect(() => {
+    const identity = authState.identity;
+    const isOwner = (authState.status === 'staff' && identity?.membership?.role === 'owner')
+      || (authState.status === 'multiple_memberships'
+        && identity?.memberships?.every((row) => row.role === 'owner'));
+    if (!ENABLE_CTS_FRONTEND || !isOwner || selectorContexts) return;
+    let cancelled = false;
+    void loadAuthorizedSportsContexts(supabase).then((contexts) => {
+      if (!cancelled) setSelectorContexts(contexts.filter((row) => row.role === 'owner'));
+    }).catch((error) => {
+      logTechnicalAuthError('CONTEXT_LIST', error);
+      if (!cancelled) setSelectorError('No se pudieron verificar tus equipos.');
+    });
+    return () => { cancelled = true; };
+  }, [authState.identity, authState.status, selectorContexts]);
+
+  const chooseSportsContext = async (requestedId) => {
+    setSelectorBusy(true);
+    setSelectorError('');
+    try {
+      const verified = await verifySportsContext(supabase, requestedId);
+      if (verified.role !== 'owner') throw new Error('Contexto no autorizado.');
+      setSelectedSportsContext(verified);
+    } catch (error) {
+      logTechnicalAuthError('CONTEXT_SELECTION', error);
+      setSelectorError('El equipo ya no está autorizado. Vuelve a verificar tu acceso.');
+      setSelectorContexts(null);
+    } finally {
+      setSelectorBusy(false);
+    }
+  };
+  const returnToSelector = () => {
+    setSelectedSportsContext(null);
+    setSelectorContexts(null);
+    setSelectorError('');
+  };
+
   if (authState.status === 'loading_session') {
     return <LoadingScreen message={signingOut ? 'Cerrando sesión…' : 'Comprobando sesión…'} />;
   }
@@ -313,6 +385,14 @@ function AppAuthShell() {
     );
   }
   if (authState.status === 'multiple_memberships') {
+    if (ENABLE_CTS_FRONTEND && authState.identity.memberships.every((row) => row.role === 'owner')) {
+      if (selectedSportsContext) return <AccessMessage
+        title={`${selectedSportsContext.clubName} · ${selectedSportsContext.teamName}`}
+        message="Selección verificada. La apertura del espacio deportivo espera el aislamiento de las vistas derivadas y el corte RLS."
+        onRetry={returnToSelector} retryLabel="Cambiar equipo" onSignOut={handleSignOut} signingOut={signingOut} />;
+      return <TeamSelector contexts={selectorContexts || []} onSelect={chooseSportsContext}
+        onSignOut={handleSignOut} busy={selectorBusy || !selectorContexts} error={selectorError} />;
+    }
     return (
       <AccessMessage
         title="Varios accesos autorizados"
@@ -326,11 +406,22 @@ function AppAuthShell() {
     return <PlayerApp client={supabase} identity={authState.identity} onRefreshIdentity={retryIdentity} onSignOut={handleSignOut} signingOut={signingOut} />;
   }
   if (authState.status === 'staff') {
+    if (ENABLE_CTS_FRONTEND && authState.identity.membership?.role === 'owner') {
+      if (selectedSportsContext) return <AccessMessage
+        title={`${selectedSportsContext.clubName} · ${selectedSportsContext.teamName}`}
+        message="Selección verificada. La apertura del espacio deportivo espera el aislamiento de las vistas derivadas y el corte RLS."
+        onRetry={returnToSelector} retryLabel="Cambiar equipo" onSignOut={handleSignOut} signingOut={signingOut} />;
+      return <TeamSelector contexts={selectorContexts || []} onSelect={chooseSportsContext}
+        onSignOut={handleSignOut} busy={selectorBusy || !selectorContexts} error={selectorError} />;
+    }
     if (ENABLE_CTS_FRONTEND && authState.identity.contexts?.length !== 1) {
       return <AccessMessage title="Seleccion de equipo pendiente"
         message="Tu cuenta necesita una seleccion explicita de equipo y temporada antes de abrir el espacio deportivo."
         onSignOut={handleSignOut} signingOut={signingOut} />;
     }
+    if (ENABLE_CTS_FRONTEND) return <AccessMessage title="Espacio deportivo en preparación"
+      message="Tu único equipo está autorizado. La apertura espera el aislamiento completo de las vistas deportivas."
+      onSignOut={handleSignOut} signingOut={signingOut} />;
     return (
       <Suspense fallback={<LoadingScreen message="Cargando NEXO CLUB…" />}>
         <StaffApp controlledSession={authState.session} identity={authState.identity}

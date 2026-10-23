@@ -34,6 +34,7 @@ export const loadAuthorizedSportsContexts = async (client) => {
         teamId: option.team_id,
         seasonId: option.season_id,
         clubName: membership.club_name || '',
+        teamCrest: option.team_crest || '',
         teamName: option.team_name || option.team_code || '',
         seasonLabel: option.season_label || '',
         seasonStatus: option.season_status,
