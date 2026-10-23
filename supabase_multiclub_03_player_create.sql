@@ -5,7 +5,7 @@
 begin;
 
 do $preflight$
-declare p record; write_helper record;
+declare write_helper record;
 begin
   if auth.uid() is not null then raise exception 'Instalar sin JWT de usuario'; end if;
   if to_regprocedure('public.create_own_player_atomic_v2(uuid,uuid,jsonb,jsonb,jsonb,jsonb)') is not null
@@ -33,13 +33,28 @@ begin
     or position('season.status = ''open''' in write_helper.prosrc) = 0 then
     raise exception 'can_write_club_team_season no acredita acceso y temporada abierta';
   end if;
-  select prosecdef, proowner, prosrc into p from pg_proc
-  where oid = to_regprocedure('public.save_global_player_profile(jsonb,jsonb,jsonb,jsonb,jsonb)');
-  if not found or p.prosecdef or p.proowner <> 'postgres'::regrole
-    or position('global_id := nullif(p_player ->> ''id''' in p.prosrc) = 0
-    or position('if global_id is null then' in p.prosrc) = 0
-    or position('if p_membership is not null' in p.prosrc) = 0 then
-    raise exception 'Contrato save_global_player_profile inesperado';
+  if to_regclass('public.players_database') is null
+    or to_regclass('public.player_positions') is null
+    or to_regclass('public.player_sources') is null
+    or to_regclass('public.player_scouting_traits') is null
+    or (select a.atttypid from pg_attribute a
+        where a.attrelid = to_regclass('public.players_database')
+          and a.attname = 'shirt_name' and not a.attisdropped)
+       is distinct from 'pg_catalog.text'::regtype then
+    raise exception 'Contrato de perfil global inesperado';
+  end if;
+  if exists (
+    select 1 from pg_trigger trigger_row
+    left join pg_proc function_row on function_row.oid = trigger_row.tgfoid
+    where trigger_row.tgrelid = 'public.players_database'::regclass
+      and not trigger_row.tgisinternal and trigger_row.tgenabled <> 'D'
+      and (trigger_row.tgtype & 4) <> 0
+      and (trigger_row.tgfoid is distinct from
+             to_regprocedure('public.sync_global_player_shirt_name_to_legacy()')::oid
+        or function_row.prosecdef
+        or position('where global_player_id = new.id' in function_row.prosrc) = 0)
+  ) then
+    raise exception 'Trigger INSERT de perfil global no verificado';
   end if;
 end
 $preflight$;
@@ -179,24 +194,54 @@ begin
     raise exception 'OWN_PLAYER_COMPATIBLE_GLOBAL_PROFILE_EXISTS' using errcode = '23505';
   end if;
 
-  -- La funcion legacy guarda perfil, posiciones, fuentes y rasgos. Se llama
-  -- ANTES de crear una pertenencia propia: no genera una ficha automaticamente.
-  select public.save_global_player_profile(
-    p_player - 'id' - 'globalPlayerId', p_positions, p_sources, p_traits, null
-  ) into created_global_id;
-  if created_global_id is null
-    or exists (select 1 from public.player_team_memberships stage
-               where stage.player_id = created_global_id)
-    or exists (select 1 from public.jugadores ficha
-               where ficha.global_player_id = created_global_id)
-    or exists (select 1 from public.legacy_own_player_migration migration
-               where migration.global_player_id = created_global_id) then
-    raise exception 'GLOBAL_PROFILE_SAVE_SIDE_EFFECT_UNEXPECTED'
-      using errcode = '23514';
-  end if;
-  update public.players_database
-  set shirt_name = nullif(pg_catalog.btrim(p_player->>'shirtName'), '')
-  where id = created_global_id;
+  -- INSERT sin ID del cliente; ninguna llamada puede actualizar otro perfil.
+  insert into public.players_database (
+    name, shirt_name, photo_url, dob, age, height, foot, scouting_summary,
+    scouting_priority, card_alert, sent_off_alert, suspended_alert,
+    injured_alert, external_source, external_player_id, field_sources
+  ) values (
+    pg_catalog.btrim(p_player->>'name'),
+    nullif(pg_catalog.btrim(p_player->>'shirtName'), ''),
+    nullif(p_player->>'photoUrl', ''), nullif(p_player->>'dob', '')::date,
+    nullif(p_player->>'age', ''), nullif(p_player->>'height', ''),
+    nullif(p_player->>'foot', ''),
+    pg_catalog.left(nullif(p_player->>'scoutingSummary', ''), 500),
+    nullif(p_player->>'scoutingPriority', ''),
+    coalesce((p_player->>'cardAlert')::boolean, false),
+    coalesce((p_player->>'sentOffAlert')::boolean, false),
+    coalesce((p_player->>'suspendedAlert')::boolean, false),
+    coalesce((p_player->>'injuredAlert')::boolean, false),
+    nullif(p_player->>'externalSource', ''),
+    nullif(p_player->>'externalPlayerId', ''),
+    coalesce(p_player->'fieldSources', '{}'::jsonb)
+  ) returning id into created_global_id;
+
+  insert into public.player_positions (
+    player_id, position_type, position_key, is_primary, source
+  ) select created_global_id, item.position_type, item.position_key,
+           item.is_primary, coalesce(nullif(item.source, ''), 'manual')
+    from pg_catalog.jsonb_to_recordset(p_positions)
+      as item(position_type text, position_key text, is_primary boolean, source text);
+  insert into public.player_sources (
+    player_id, url, source_name, is_primary, analysis_status, analyzed_at,
+    analysis_error, analysis_summary
+  ) select created_global_id, item.url,
+           coalesce(nullif(item.source_name, ''), 'Otro'), item.is_primary,
+           coalesce(nullif(item.analysis_status, ''), 'not_analyzed'),
+           item.analyzed_at, nullif(item.analysis_error, ''),
+           coalesce(item.analysis_summary, '{}'::jsonb)
+    from pg_catalog.jsonb_to_recordset(p_sources)
+      as item(url text, source_name text, is_primary boolean,
+              analysis_status text, analyzed_at timestamptz,
+              analysis_error text, analysis_summary jsonb)
+    where nullif(pg_catalog.btrim(item.url), '') is not null;
+  insert into public.player_scouting_traits (
+    player_id, category, label, position_family
+  ) select created_global_id, item.category, pg_catalog.btrim(item.label),
+           nullif(item.position_family, '')
+    from pg_catalog.jsonb_to_recordset(p_traits)
+      as item(category text, label text, position_family text)
+    where nullif(pg_catalog.btrim(item.label), '') is not null;
 
   insert into public.player_team_memberships (
     player_id, team_id, season, start_date, is_current, number,
@@ -311,24 +356,42 @@ begin
 
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended(p_global_player_id::text, 1));
+  -- Un UUID conocido no acredita procedencia: exigir CTSP canonico previo
+  -- y autorizacion owner/admin en todos sus clubes de origen.
   if not exists (select 1 from public.players_database profile
-                 where profile.id = p_global_player_id) then
-    raise exception 'GLOBAL_PLAYER_NOT_AVAILABLE' using errcode = '42501';
-  end if;
-  -- El permiso de destino no concede acceso al club de procedencia.
-  if exists (
+                 where profile.id = p_global_player_id)
+    or not exists (
+      select 1 from public.club_team_season_players roster
+      where roster.player_id = p_global_player_id and roster.voided_at is null
+    ) or exists (
     select 1 from public.club_team_season_players roster
     join public.club_team_seasons source_cts
       on source_cts.id = roster.club_team_season_id
     where roster.player_id = p_global_player_id
-      and source_cts.club_id <> target_club_id
       and public.has_club_role(source_cts.club_id, array['owner','admin']::text[]) is not true
   ) or exists (
     select 1 from public.player_team_memberships stage
-    join public.club_teams source_team on source_team.id = stage.team_id
+    left join public.club_teams source_team on source_team.id = stage.team_id
     where stage.player_id = p_global_player_id
-      and source_team.club_id <> target_club_id
-      and public.has_club_role(source_team.club_id, array['owner','admin']::text[]) is not true
+      and (source_team.id is null
+        or public.has_club_role(source_team.club_id, array['owner','admin']::text[]) is not true
+        or not exists (
+          select 1 from public.club_team_season_players roster
+          join public.club_team_seasons source_cts
+            on source_cts.id = roster.club_team_season_id
+          where roster.player_id = p_global_player_id
+            and roster.voided_at is null
+            and source_cts.team_id = stage.team_id
+        ))
+  ) or exists (
+    select 1 from public.jugadores ficha
+    left join public.legacy_jugador_cts_links_v1 binding
+      on binding.jugador_id = ficha.id
+    left join public.club_team_season_players roster
+      on roster.id = binding.club_team_season_player_id
+    where ficha.global_player_id = p_global_player_id
+      and (roster.id is null or roster.player_id <> p_global_player_id
+        or roster.voided_at is not null)
   ) then
     raise exception 'SOURCE_CLUB_ACCESS_REQUIRED' using errcode = '42501';
   end if;

@@ -78,3 +78,9 @@ No instalar la fase C para "probar" el frontend actual: denegará el INSERT
 directo en `jugadores` y las rutas derivadas globales aún pueden mezclar datos.
 No crear la segunda membresía
 hasta superar las pruebas reales de aislamiento.
+
+La fase B crea perfiles nuevos con `INSERT ... RETURNING`, sin llamar a
+`save_global_player_profile`. El enlace de un perfil existente exige CTSP
+canónico previo y rol owner/admin en todos sus clubes de origen; perfiles
+sin procedencia canónica quedan pendientes de un flujo separado. Antes de
+utilizar estas RPC, ejecutar `MULTICLUB_03B_STAGING_TESTS.md` en ensayo.

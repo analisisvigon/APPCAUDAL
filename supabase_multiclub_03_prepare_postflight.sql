@@ -85,14 +85,21 @@ select
   (select position('target_season_label' in p.prosrc) > 0
       and position('target_season_label, requested_start_date' in p.prosrc) > 0
       and position('CTS_START_DATE_OUTSIDE_SEASON' in p.prosrc) > 0
-      and position('p_player - ''id'' - ''globalPlayerId''' in p.prosrc) > 0
-      and position('p_positions, p_sources, p_traits, null' in p.prosrc) > 0
-      and position('GLOBAL_PROFILE_SAVE_SIDE_EFFECT_UNEXPECTED' in p.prosrc) > 0
+      and position('insert into public.players_database' in p.prosrc) > 0
+      and position('returning id into created_global_id' in p.prosrc) > 0
+      and position('insert into public.player_positions' in p.prosrc) > 0
+      and position('insert into public.player_sources' in p.prosrc) > 0
+      and position('insert into public.player_scouting_traits' in p.prosrc) > 0
+      and position('save_global_player_profile(' in p.prosrc) = 0
+      and position('update public.players_database' in p.prosrc) = 0
    from pg_proc p where p.oid =
      to_regprocedure('public.create_own_player_atomic_v2(uuid,uuid,jsonb,jsonb,jsonb,jsonb)'))
      as new_profile_uses_cts_label_and_cannot_update_global_id,
   (select position('public.can_write_club_team_season(p_club_team_season_id)' in p.prosrc) > 0
       and position('public.has_club_role(source_cts.club_id' in p.prosrc) > 0
+      and position('roster.voided_at is null' in p.prosrc) > 0
+      and position('left join public.legacy_jugador_cts_links_v1' in p.prosrc) > 0
+      and position('source_team.id is null' in p.prosrc) > 0
       and position('GLOBAL_PLAYER_HAS_CURRENT_STAGE_REVIEW_REQUIRED' in p.prosrc) > 0
       and position('insert into public.club_team_season_players' in p.prosrc) > 0
       and position('insert into public.jugadores' in p.prosrc) = 0
