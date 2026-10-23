@@ -92,6 +92,10 @@ select
       and position('insert into public.player_scouting_traits' in p.prosrc) > 0
       and position('save_global_player_profile(' in p.prosrc) = 0
       and position('update public.players_database' in p.prosrc) = 0
+      and position('OWN_PLAYER_ID_CONFLICT' in p.prosrc) > 0
+      and position('already_created' in p.prosrc) = 0
+      and position('nexoclub:create_own_player_atomic_v2:identity' in p.prosrc) > 0
+      and position('READ_COMMITTED_REQUIRED' in p.prosrc) > 0
    from pg_proc p where p.oid =
      to_regprocedure('public.create_own_player_atomic_v2(uuid,uuid,jsonb,jsonb,jsonb,jsonb)'))
      as new_profile_uses_cts_label_and_cannot_update_global_id,

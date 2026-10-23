@@ -7,7 +7,11 @@ despues. No usar `postgres` ni `service_role` para probar autorizacion.
 | Caso | Resultado esperado |
 | --- | --- |
 | Alta nueva en CTS propio abierto, UUID de ficha nuevo | `created`; un perfil global nuevo, una etapa con equipo y `club_seasons.label`, una ficha, un CTSP y un vinculo exacto. Las posiciones, fuentes y rasgos se conservan. Ningun perfil previo cambia. |
-| Repetir alta con el mismo UUID de ficha | `already_created`; los recuentos siguen iguales. |
+| Repetir alta con el mismo UUID de ficha | `OWN_PLAYER_ID_CONFLICT`; los recuentos siguen iguales. El esquema no acredita que sea la misma petición original. |
+| Reutilizar el UUID de una ficha ajena, incluso del mismo CTS | `OWN_PLAYER_ID_CONFLICT`; no devuelve datos de la ficha previa ni crea relaciones. |
+| Dos altas simultáneas con UUID distintos e igual nombre/fecha | Una crea el perfil; la otra recibe `OWN_PLAYER_COMPATIBLE_GLOBAL_PROFILE_EXISTS`. Solo queda un perfil. |
+| Dos altas simultáneas con UUID distintos e igual identidad externa | Una crea el perfil; la otra recibe conflicto por comprobación o índice único. Solo queda un perfil. |
+| Invocar el alta dentro de una transacción `repeatable read` | `READ_COMMITTED_REQUIRED`; no se inserta ninguna fila. |
 | Alta con `p_player.id` o `globalPlayerId` de un perfil existente | Error de entrada; el perfil existente y sus relaciones no cambian. |
 | Alta con nombre/fecha o identidad externa ya existente | Error de duplicado; no se crea perfil, etapa, ficha ni CTSP. |
 | Alta en CTS ajeno, cerrado o con equipo contradictorio | Denegada; ningun dato nuevo. |

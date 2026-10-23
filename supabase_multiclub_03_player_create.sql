@@ -43,6 +43,16 @@ begin
        is distinct from 'pg_catalog.text'::regtype then
     raise exception 'Contrato de perfil global inesperado';
   end if;
+  if not exists (
+    select 1 from pg_index index_row
+    where index_row.indexrelid = to_regclass('public.players_database_external_identity_uidx')
+      and index_row.indrelid = to_regclass('public.players_database')
+      and index_row.indisunique and index_row.indisvalid and index_row.indisready
+      and position('lower(external_source)' in pg_get_indexdef(index_row.indexrelid)) > 0
+      and position('external_player_id' in pg_get_indexdef(index_row.indexrelid)) > 0
+  ) then
+    raise exception 'Falta indice unico valido de identidad externa';
+  end if;
   if exists (
     select 1 from pg_trigger trigger_row
     left join pg_proc function_row on function_row.oid = trigger_row.tgfoid
@@ -81,11 +91,13 @@ declare
   created_global_id uuid;
   created_stage_id uuid;
   created_ctsp_id uuid;
-  existing_ficha record;
   natural_position_key text;
   position_label text;
   photo_url text;
 begin
+  if pg_catalog.current_setting('transaction_isolation') <> 'read committed' then
+    raise exception 'READ_COMMITTED_REQUIRED' using errcode = '25000';
+  end if;
   if auth.uid() is null or p_club_team_season_id is null
     or not public.can_write_club_team_season(p_club_team_season_id) then
     raise exception 'CTS_WRITE_DENIED' using errcode = '42501';
@@ -136,34 +148,15 @@ begin
 
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended(p_own_player_id::text, 0));
-  select ficha.id, ficha.global_player_id, ficha.membership_id,
-         binding.club_team_season_player_id,
-         roster.club_team_season_id
-    into existing_ficha
-  from public.jugadores ficha
-  left join public.legacy_jugador_cts_links_v1 binding on binding.jugador_id = ficha.id
-  left join public.club_team_season_players roster
-    on roster.id = binding.club_team_season_player_id
-  where ficha.id = p_own_player_id;
-  if found then
-    if existing_ficha.global_player_id is not null
-      and existing_ficha.membership_id is not null
-      and existing_ficha.club_team_season_id = p_club_team_season_id
-      and exists (select 1 from public.player_team_memberships stage
-        where stage.id = existing_ficha.membership_id
-          and stage.player_id = existing_ficha.global_player_id
-          and stage.team_id = target_team_id)
-      and exists (select 1 from public.club_team_season_players roster
-        where roster.id = existing_ficha.club_team_season_player_id
-          and roster.player_id = existing_ficha.global_player_id
-          and roster.voided_at is null) then
-      return pg_catalog.jsonb_build_object(
-        'status', 'already_created', 'ownPlayerId', p_own_player_id,
-        'globalPlayerId', existing_ficha.global_player_id,
-        'membershipId', existing_ficha.membership_id);
-    end if;
+  -- El UUID de ficha no identifica por si solo la peticion original.
+  if exists (select 1 from public.jugadores ficha where ficha.id = p_own_player_id) then
     raise exception 'OWN_PLAYER_ID_CONFLICT' using errcode = '23505';
   end if;
+
+  -- Serializa las altas v2 incluso con UUID de ficha diferentes. El indice
+  -- unico de identidad externa protege tambien frente a otros escritores.
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('nexoclub:create_own_player_atomic_v2:identity', 0));
 
   -- Conserva la proteccion contra duplicados del alta legacy, sin usar nombres
   -- para determinar el CTS. El CTS siempre procede del parametro autorizado.
@@ -181,7 +174,8 @@ begin
       and nullif(pg_catalog.btrim(p_player->>'externalPlayerId'), '') is not null
       and pg_catalog.lower(pg_catalog.btrim(profile.external_source)) =
         pg_catalog.lower(pg_catalog.btrim(p_player->>'externalSource'))
-      and profile.external_player_id = pg_catalog.btrim(p_player->>'externalPlayerId')
+      and pg_catalog.btrim(profile.external_player_id) =
+        pg_catalog.btrim(p_player->>'externalPlayerId')
     ) or exists (
       select 1 from public.player_sources source
       join pg_catalog.jsonb_array_elements(p_sources) incoming on true
@@ -211,8 +205,8 @@ begin
     coalesce((p_player->>'sentOffAlert')::boolean, false),
     coalesce((p_player->>'suspendedAlert')::boolean, false),
     coalesce((p_player->>'injuredAlert')::boolean, false),
-    nullif(p_player->>'externalSource', ''),
-    nullif(p_player->>'externalPlayerId', ''),
+    nullif(pg_catalog.btrim(p_player->>'externalSource'), ''),
+    nullif(pg_catalog.btrim(p_player->>'externalPlayerId'), ''),
     coalesce(p_player->'fieldSources', '{}'::jsonb)
   ) returning id into created_global_id;
 

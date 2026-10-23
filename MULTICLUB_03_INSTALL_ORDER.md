@@ -84,3 +84,7 @@ La fase B crea perfiles nuevos con `INSERT ... RETURNING`, sin llamar a
 canónico previo y rol owner/admin en todos sus clubes de origen; perfiles
 sin procedencia canónica quedan pendientes de un flujo separado. Antes de
 utilizar estas RPC, ejecutar `MULTICLUB_03B_STAGING_TESTS.md` en ensayo.
+Un reintento de alta con el mismo UUID de ficha devuelve conflicto: no existe
+un identificador de petición persistido que permita acreditar idempotencia.
+Las altas v2 se serializan bajo `read committed` y requieren el índice único
+válido de identidad externa; comprobar la concurrencia en ensayo.
