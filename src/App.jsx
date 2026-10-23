@@ -3,8 +3,12 @@ import React from 'react';
 import { createPortal, flushSync } from 'react-dom';
 
 import { supabase } from './lib/supabase';
-import { SportsContextCoordinator, verifySportsContext } from './sports/authorizedContext';
-import { assertCtsCreate, assertCtsMatchWrite, loadCtsMatches, loadCtsRoster } from './sports/ctsSportsData';
+import { SportsContextCoordinator, verifySelectableSportsContext, verifySportsContext } from './sports/authorizedContext';
+import {
+  assertCtsCreate, assertCtsMatchWrite, canWriteOperationalCts,
+  createOperationalMatch, createOperationalPlayer, editOperationalMatch,
+  editOperationalPlayer, loadCtsMatches, loadCtsRoster,
+} from './sports/ctsSportsData';
 import {
   createAuthenticatedDataLoadCoordinator,
   runIndependentAuthenticatedLoaders,
@@ -37881,42 +37885,166 @@ const CTS_NAV_TABS = [
 ];
 const CTS_READ_TABS = new Set(['Inicio', 'Plantilla', 'Partidos']);
 
+function CtsPlayerForm({ player, busy, error, onCancel, onSave }) {
+  const [draft, setDraft] = useState({
+    name: player?.name || '', number: player?.number ?? '',
+    position: player?.position || '', foot: player?.foot || '',
+  });
+  return <form onSubmit={(event) => { event.preventDefault(); onSave(draft); }}
+    className="mt-4 grid gap-3 rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.92] p-5 sm:grid-cols-2">
+    <h3 className="text-lg font-black sm:col-span-2">{player ? 'Editar ficha' : 'Alta de jugador'}</h3>
+    <label className="grid gap-1 text-sm">Nombre
+      <input required disabled={Boolean(player)} value={draft.name} onChange={(event) => setDraft((value) => ({ ...value, name: event.target.value }))}
+        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white disabled:opacity-60" />
+    </label>
+    <label className="grid gap-1 text-sm">Dorsal
+      <input type="number" min="0" max="99" value={draft.number} onChange={(event) => setDraft((value) => ({ ...value, number: event.target.value }))}
+        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" />
+    </label>
+    <label className="grid gap-1 text-sm">Posición
+      <select value={draft.position} onChange={(event) => setDraft((value) => ({ ...value, position: event.target.value }))}
+        className="rounded-xl border border-white/10 bg-caudal-950 px-3 py-2 text-white">
+        <option value="">Sin registrar</option><option>Portero</option><option>Defensa</option>
+        <option>Centrocampista</option><option>Delantero</option>
+      </select>
+    </label>
+    <label className="grid gap-1 text-sm">Pie
+      <input value={draft.foot} maxLength={40} onChange={(event) => setDraft((value) => ({ ...value, foot: event.target.value }))}
+        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" />
+    </label>
+    {error && <p role="alert" className="text-sm text-red-200 sm:col-span-2">{error}</p>}
+    <div className="flex gap-2 sm:col-span-2">
+      <button type="submit" disabled={busy} className="rounded-xl bg-caudal-electric px-4 py-2 font-bold text-slate-950 disabled:opacity-50">{busy ? 'Guardando…' : 'Guardar'}</button>
+      <button type="button" onClick={onCancel} disabled={busy} className="rounded-xl border border-white/15 px-4 py-2">Cancelar</button>
+    </div>
+  </form>;
+}
+
+function CtsMatchForm({ match, busy, error, onCancel, onSave }) {
+  const [draft, setDraft] = useState({
+    date: match?.date || '', time: match?.time || '', opponent: match?.opponent || '',
+    isHome: match?.is_home ?? true, type: match?.type || 'Liga',
+    round: match?.round || '', stadium: match?.stadium || '',
+  });
+  const update = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
+  return <form onSubmit={(event) => { event.preventDefault(); onSave(draft); }}
+    className="mt-4 grid gap-3 rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.92] p-5 sm:grid-cols-2">
+    <h3 className="text-lg font-black sm:col-span-2">{match ? 'Editar previa' : 'Nuevo partido'}</h3>
+    <label className="grid gap-1 text-sm">Fecha
+      <input required type="date" value={draft.date} onChange={(event) => update('date', event.target.value)} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" />
+    </label>
+    <label className="grid gap-1 text-sm">Hora
+      <input type="time" value={draft.time} onChange={(event) => update('time', event.target.value)} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" />
+    </label>
+    <label className="grid gap-1 text-sm">Rival
+      <input required value={draft.opponent} onChange={(event) => update('opponent', event.target.value)} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" />
+    </label>
+    <label className="grid gap-1 text-sm">Localía
+      <select value={String(draft.isHome)} onChange={(event) => update('isHome', event.target.value === 'true')} className="rounded-xl border border-white/10 bg-caudal-950 px-3 py-2 text-white"><option value="true">Local</option><option value="false">Visitante</option></select>
+    </label>
+    <label className="grid gap-1 text-sm">Tipo
+      <input value={draft.type} onChange={(event) => update('type', event.target.value)} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" />
+    </label>
+    <label className="grid gap-1 text-sm">Jornada
+      <input value={draft.round} onChange={(event) => update('round', event.target.value)} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" />
+    </label>
+    <label className="grid gap-1 text-sm sm:col-span-2">Estadio
+      <input value={draft.stadium} onChange={(event) => update('stadium', event.target.value)} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white" />
+    </label>
+    {error && <p role="alert" className="text-sm text-red-200 sm:col-span-2">{error}</p>}
+    <div className="flex gap-2 sm:col-span-2">
+      <button type="submit" disabled={busy} className="rounded-xl bg-caudal-electric px-4 py-2 font-bold text-slate-950 disabled:opacity-50">{busy ? 'Guardando…' : 'Guardar'}</button>
+      <button type="button" onClick={onCancel} disabled={busy} className="rounded-xl border border-white/15 px-4 py-2">Cancelar</button>
+    </div>
+  </form>;
+}
+
 function CtsWorkspace({ controlledSession, selectedCtsId, availableContexts = [],
-  onChangeTeam, onControlledSignOut }) {
+  onSelectContext, onChangeTeam, onControlledSignOut }) {
   const [activeTab, setActiveTab] = useState('Inicio');
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [revision, setRevision] = useState(0);
-  const [snapshot, setSnapshot] = useState({ status: 'loading', context: null, players: [], matches: [] });
+  const [snapshot, setSnapshot] = useState({ status: 'loading', context: null, players: [], matches: [], canWrite: false });
+  const [editing, setEditing] = useState(null);
+  const [mutationBusy, setMutationBusy] = useState(false);
+  const [mutationError, setMutationError] = useState('');
   const coordinatorRef = useRef(new SportsContextCoordinator());
+
+  useEffect(() => {
+    setActiveTab('Inicio');
+    setMobileMoreOpen(false);
+    setEditing(null);
+    setMutationError('');
+  }, [selectedCtsId]);
 
   useEffect(() => {
     let cancelled = false;
     const coordinator = coordinatorRef.current;
     coordinator.change(null);
-    setSnapshot({ status: 'loading', context: null, players: [], matches: [] });
-    setActiveTab('Inicio');
-    setMobileMoreOpen(false);
+    setSnapshot({ status: 'loading', context: null, players: [], matches: [], canWrite: false });
     void (async () => {
       try {
-        const context = await verifySportsContext(supabase, selectedCtsId);
+        const context = await verifySelectableSportsContext(supabase, selectedCtsId);
         if (cancelled) return;
-        if (context.seasonStatus !== 'open') throw new Error('Archivo pendiente de bloqueo en backend.');
         const token = coordinator.change(context);
         const [players, matches] = await Promise.all([
           loadCtsRoster(supabase, coordinator, token),
           loadCtsMatches(supabase, coordinator, token),
         ]);
         if (cancelled || !coordinator.isCurrent(token)) return;
-        setSnapshot({ status: 'ready', context, players, matches });
+        let canWrite = false;
+        try { canWrite = await canWriteOperationalCts(supabase, coordinator, token); }
+        catch { /* La fase operativa puede no estar instalada: solo lectura. */ }
+        if (cancelled || !coordinator.isCurrent(token)) return;
+        setSnapshot({ status: 'ready', context, players, matches, canWrite });
       } catch {
-        if (!cancelled) setSnapshot({ status: 'error', context: null, players: [], matches: [] });
+        if (!cancelled) setSnapshot({ status: 'error', context: null, players: [], matches: [], canWrite: false });
       }
     })();
     return () => { cancelled = true; coordinator.change(null); };
   }, [selectedCtsId, revision]);
 
   const { context, players, matches } = snapshot;
-  const selectTab = (name) => { setActiveTab(name); setMobileMoreOpen(false); };
+  const selectTab = (name) => { setActiveTab(name); setMobileMoreOpen(false); setEditing(null); setMutationError(''); };
+  const openEditor = (type, row = null) => { setEditing({ type, row }); setMutationError(''); };
+  const savePlayer = async (draft) => {
+    if (!snapshot.canWrite || editing?.type !== 'player') return;
+    setMutationBusy(true);
+    setMutationError('');
+    try {
+      const token = coordinatorRef.current.snapshot();
+      const patch = { number: draft.number === '' ? 0 : Number(draft.number),
+        position: draft.position, foot: draft.foot };
+      if (editing.row) {
+        await editOperationalPlayer(supabase, coordinatorRef.current, token, editing.row.id, patch);
+      } else {
+        const positions = { Portero: 'goalkeeper', Defensa: 'defender',
+          Centrocampista: 'midfielder', Delantero: 'forward' };
+        await createOperationalPlayer(supabase, coordinatorRef.current, token,
+          crypto.randomUUID(), { name: draft.name.trim(), number: String(patch.number), foot: draft.foot },
+          positions[draft.position] ? [{ position_type: 'natural', position_key: positions[draft.position], is_primary: true }] : []);
+      }
+      setEditing(null);
+      setRevision((value) => value + 1);
+    } catch (error) { setMutationError(error?.message || 'No se pudo guardar la ficha.'); }
+    finally { setMutationBusy(false); }
+  };
+  const saveMatch = async (draft) => {
+    if (!snapshot.canWrite || editing?.type !== 'match') return;
+    setMutationBusy(true);
+    setMutationError('');
+    try {
+      const token = coordinatorRef.current.snapshot();
+      if (editing.row) {
+        await editOperationalMatch(supabase, coordinatorRef.current, token, editing.row.id, draft);
+      } else {
+        await createOperationalMatch(supabase, coordinatorRef.current, token, draft);
+      }
+      setEditing(null);
+      setRevision((value) => value + 1);
+    } catch (error) { setMutationError(error?.message || 'No se pudo guardar el partido.'); }
+    finally { setMutationBusy(false); }
+  };
   const historicalContexts = availableContexts.filter((item) => item.id !== selectedCtsId);
   const pendingText = activeTab === 'Biblioteca' || activeTab === 'Tareas'
     ? 'Las bibliotecas personales de Tareas y ABP se conectarán aquí cuando su acceso independiente del CTS y sus snapshots históricos estén protegidos en el backend.'
@@ -37979,28 +38107,39 @@ function CtsWorkspace({ controlledSession, selectedCtsId, availableContexts = []
             </div>
           </div>}
           {activeTab === 'Plantilla' && <section>
-            <h2 className="text-2xl font-black">Plantilla</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-2xl font-black">Plantilla</h2>
+              {snapshot.canWrite && <button type="button" onClick={() => openEditor('player')} className="rounded-xl bg-caudal-electric px-4 py-2 text-sm font-bold text-slate-950">Añadir jugador</button>}</div>
             <p className="mt-1 text-sm text-slate-400">Fichas vinculadas expresamente a este equipo y temporada.</p>
+            {!snapshot.canWrite && <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/5 p-3 text-xs text-amber-100">{context.seasonStatus === 'closed' ? 'Archivo de solo lectura.' : 'Edición pendiente del CTS operativo y del corte de protección histórica.'}</p>}
+            {editing?.type === 'player' && <CtsPlayerForm key={editing.row?.id || 'new-player'} player={editing.row}
+              busy={mutationBusy} error={mutationError} onCancel={() => setEditing(null)} onSave={savePlayer} />}
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{players.map((player) => <article key={player.id} className="flex items-center gap-4 rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.92] p-4">
               <PlayerAvatar player={player} className="h-14 w-14" />
               <div className="min-w-0"><h3 className="truncate font-bold">{player.name || 'Jugador'}</h3><p className="text-sm text-slate-400">{player.position || 'Posición sin registrar'}{player.number != null ? ` · ${player.number}` : ''}</p></div>
+              {snapshot.canWrite && <button type="button" onClick={() => openEditor('player', player)} className="ml-auto rounded-xl border border-white/15 px-3 py-2 text-xs font-bold">Editar</button>}
             </article>)}</div>
             {!players.length && <p className="mt-4 rounded-2xl bg-white/5 p-5 text-slate-400">No hay fichas vinculadas a este CTS.</p>}
           </section>}
           {activeTab === 'Partidos' && <section>
-            <h2 className="text-2xl font-black">Partidos</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-2xl font-black">Partidos</h2>
+              {snapshot.canWrite && <button type="button" onClick={() => openEditor('match')} className="rounded-xl bg-caudal-electric px-4 py-2 text-sm font-bold text-slate-950">Añadir partido</button>}</div>
             <p className="mt-1 text-sm text-slate-400">Encuentros del equipo y temporada seleccionados.</p>
+            {!snapshot.canWrite && <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/5 p-3 text-xs text-amber-100">{context.seasonStatus === 'closed' ? 'Archivo de solo lectura.' : 'Altas y ediciones pendientes del CTS operativo y del corte de protección histórica.'}</p>}
+            {editing?.type === 'match' && <CtsMatchForm key={editing.row?.id || 'new-match'} match={editing.row}
+              busy={mutationBusy} error={mutationError} onCancel={() => setEditing(null)} onSave={saveMatch} />}
             <div className="mt-4 grid gap-3">{matches.map((match) => <article key={match.id} className="flex items-center gap-4 rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.92] p-5">
               <TeamLogo src={context.teamCrest} teamName={context.teamName} size="sm" />
               <div className="min-w-0"><h3 className="font-bold">{match.opponent || 'Rival pendiente'}</h3><p className="text-sm text-slate-400">{match.date || 'Fecha pendiente'}{match.competition ? ` · ${match.competition}` : ''}</p></div>
+              {snapshot.canWrite && match.status === 'Previa' && <button type="button" onClick={() => openEditor('match', match)} className="ml-auto rounded-xl border border-white/15 px-3 py-2 text-xs font-bold">Editar previa</button>}
             </article>)}</div>
             {!matches.length && <p className="mt-4 rounded-2xl bg-white/5 p-5 text-slate-400">No hay partidos vinculados a este CTS.</p>}
           </section>}
           {activeTab === 'Mi historial' && <section>
             <h2 className="text-2xl font-black">Mi historial</h2>
-            <p className="mt-2 text-sm text-slate-400">Otros contextos autorizados. El archivo se abrirá cuando su estado histórico y el bloqueo de escrituras estén acreditados en backend.</p>
+            <p className="mt-2 text-sm text-slate-400">Otros contextos autorizados. La apertura de cada temporada cerrada se verifica de nuevo en el backend.</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">{historicalContexts.map((item) => <article key={item.id} className="rounded-[1.35rem] border border-white/10 bg-[#091428]/[0.92] p-5">
-              <h3 className="font-bold">{item.clubName} · {item.teamName}</h3><p className="mt-1 text-sm text-slate-400">{item.seasonLabel} · {item.seasonStatus === 'closed' ? 'Pendiente de protección de archivo' : 'Pendiente de cierre y protección de archivo'}</p>
+              <h3 className="font-bold">{item.clubName} · {item.teamName}</h3><p className="mt-1 text-sm text-slate-400">{item.seasonLabel} · {item.seasonStatus === 'closed' ? 'Consulta condicionada a protección del archivo' : 'Pendiente de cierre y protección de archivo'}</p>
+              {item.seasonStatus === 'closed' && onSelectContext && <button type="button" onClick={() => onSelectContext(item.id)} className="mt-4 rounded-xl border border-white/15 px-3 py-2 text-xs font-bold">Consultar si el archivo está habilitado</button>}
             </article>)}</div>
             {!historicalContexts.length && <p className="mt-4 rounded-2xl bg-white/5 p-5 text-slate-400">No hay otros contextos autorizados.</p>}
           </section>}

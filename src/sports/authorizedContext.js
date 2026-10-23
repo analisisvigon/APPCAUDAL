@@ -56,6 +56,29 @@ export const verifySportsContext = async (client, requestedId) => {
   return context;
 };
 
+export const loadOperationalPreferredContextId = async (client, contexts) => {
+  if (!Array.isArray(contexts) || !contexts.length) return '';
+  try {
+    const { data, error } = await client.rpc('my_operational_cts_v1');
+    if (error) return '';
+    return contexts.some((context) => context.id === data && context.role === 'owner')
+      ? data : '';
+  } catch { return ''; }
+};
+
+// El contexto cerrado solo se abre cuando el servidor confirma el corte del
+// archivo. La lista del selector, por si sola, no concede ese acceso.
+export const verifySelectableSportsContext = async (client, requestedId) => {
+  const context = await verifySportsContext(client, requestedId);
+  if (context.seasonStatus === 'closed') {
+    const { data, error } = await client.rpc('can_open_historical_cts_v1', {
+      target_cts_id: context.id,
+    });
+    if (error || data !== true) throw new Error('Archivo pendiente de bloqueo en backend.');
+  }
+  return context;
+};
+
 export class SportsContextCoordinator {
   #generation = 0;
   #context = null;

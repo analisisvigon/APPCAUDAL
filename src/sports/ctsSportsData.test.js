@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
-import { loadAuthorizedSportsContexts, SportsContextCoordinator } from './authorizedContext.js';
-import { assertCtsCreate, assertCtsMatchWrite, loadCtsMatches, loadCtsRoster } from './ctsSportsData.js';
+import { loadAuthorizedSportsContexts, loadOperationalPreferredContextId,
+  SportsContextCoordinator,
+  verifySelectableSportsContext } from './authorizedContext.js';
+import {
+  assertCtsCreate, assertCtsMatchWrite, canWriteOperationalCts,
+  createOperationalMatch, createOperationalPlayer, editOperationalMatch,
+  editOperationalPlayer, loadCtsMatches, loadCtsRoster,
+} from './ctsSportsData.js';
 
 const row = (id, status = 'open') => ({
   club_team_season_id: id, club_id: 'club-a', team_id: 'team-a',
@@ -10,6 +16,7 @@ let authorized = [row('cts-a')];
 let delayedRoster;
 let delayedMatches;
 let crossedMatchResponse = false;
+let archiveAllowed = false;
 const calls = [];
 const client = {
   rpc: async (name, args) => {
@@ -18,6 +25,7 @@ const client = {
       membership_id: 'm-a', club_id: 'club-a', role: 'staff', is_active: true,
       contexts: authorized,
     }], error: null };
+    if (name === 'my_operational_cts_v1') return { data: 'cts-a', error: null };
     if (name === 'my_cts_jugadores_v1') return delayedRoster || { data: [{ id: 'j-a' }], error: null };
     if (name === 'my_cts_matches_v1') return delayedMatches || { data: [
       { id: 'p-a', club_team_season_id: 'cts-a' },
@@ -25,6 +33,11 @@ const client = {
     ], error: null };
     if (name === 'can_write_match' || name === 'can_write_club_team_season') {
       return { data: true, error: null };
+    }
+    if (name === 'can_write_operational_cts_v1') return { data: true, error: null };
+    if (name === 'can_open_historical_cts_v1') return { data: archiveAllowed, error: null };
+    if (name.startsWith('create_operational_') || name.startsWith('edit_operational_')) {
+      return { data: { status: 'saved' }, error: null };
     }
     throw new Error(`Unexpected RPC ${name}`);
   },
@@ -34,6 +47,9 @@ const client = {
 };
 const coordinator = new SportsContextCoordinator();
 const [context] = await loadAuthorizedSportsContexts(client);
+assert.equal(await loadOperationalPreferredContextId(client, [context]), '');
+assert.equal(await loadOperationalPreferredContextId(client,
+  [{ ...context, role: 'owner' }]), 'cts-a');
 const snapshot = coordinator.change(context);
 assert.deepEqual(await loadCtsRoster(client, coordinator, snapshot), [{ id: 'j-a' }]);
 assert.deepEqual((await loadCtsMatches(client, coordinator, snapshot)).map((match) => match.id), ['p-a']);
@@ -41,11 +57,22 @@ crossedMatchResponse = true;
 await assert.rejects(loadCtsMatches(client, coordinator, snapshot), /contiene otro equipo/);
 crossedMatchResponse = false;
 assert.equal((await assertCtsCreate(client, coordinator, snapshot)).id, 'cts-a');
+assert.equal(await canWriteOperationalCts(client, coordinator, snapshot), true);
+await createOperationalPlayer(client, coordinator, snapshot, 'j-new', { name: 'Ficticio' }, []);
+await editOperationalPlayer(client, coordinator, snapshot, 'j-a', { number: 7 });
+await createOperationalMatch(client, coordinator, snapshot, { date: '2026-10-23', opponent: 'Ficticio B' });
+await editOperationalMatch(client, coordinator, snapshot, 'p-a', { round: '2' });
+for (const [name, args] of calls.filter(([name]) =>
+  name.startsWith('create_operational_') || name.startsWith('edit_operational_'))) {
+  assert.equal(args.p_cts_id, 'cts-a');
+}
 await assert.rejects(assertCtsMatchWrite(client, coordinator, snapshot, 'p-b'), /no pertenece/);
 assert(calls.some(([name, args]) => name === 'my_cts_matches_v1' && args.p_club_team_season_id === 'cts-a'));
 
 authorized = [];
 await assert.rejects(loadCtsRoster(client, coordinator, snapshot), /no autorizados/);
+await assert.rejects(createOperationalPlayer(client, coordinator, snapshot,
+  'j-denied', { name: 'Denegado' }, []), /no autorizados/);
 authorized = [row('cts-a')];
 let release;
 delayedRoster = new Promise((resolve) => { release = resolve; });
@@ -71,5 +98,10 @@ const [closed] = await loadAuthorizedSportsContexts({ rpc: async () => ({
 }) });
 const closedSnapshot = coordinator.change(closed);
 authorized = [row('cts-closed', 'closed')];
+await assert.rejects(verifySelectableSportsContext(client, 'cts-closed'), /Archivo pendiente/);
+archiveAllowed = true;
+assert.equal((await verifySelectableSportsContext(client, 'cts-closed')).id, 'cts-closed');
+assert.equal(await canWriteOperationalCts(client, coordinator, closedSnapshot), false);
 await assert.rejects(assertCtsCreate(client, coordinator, closedSnapshot), /solo consulta/);
+await assert.rejects(createOperationalMatch(client, coordinator, closedSnapshot, {}), /solo consulta/);
 console.log('ctsSportsData tests: OK');

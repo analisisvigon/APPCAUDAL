@@ -28,19 +28,22 @@ permiso de lectura ni escritura. Dejarlo vacío conserva el selector existente.
 ## Estado real hoy
 
 Con `VITE_MULTICLUB_03_CTS_ENABLED=false`, Caudal conserva el acceso legacy.
-Con el modo CTS activado localmente, el propietario abre `App.jsx` con su
-cabecera, navegación y componentes visuales originales. Solo Inicio, Plantilla
-y Partidos consultan datos, mediante las RPC CTS. Esas tres pantallas son de
-consulta y todavía no contienen los editores completos de la aplicación
-legacy. El nuevo CTS preferido, cuando exista y se configure, se abre primero.
+Con el modo CTS activado localmente y un CTS operativo designado, el
+propietario abre `App.jsx` con su cabecera y navegación. El staff con un solo
+contexto autorizado accede directamente a él. Solo Inicio, Plantilla
+y Partidos consultan datos, mediante las RPC CTS. Plantilla y Partidos incluyen
+altas y ediciones limitadas dentro de `App.jsx`, pero sus RPC siguen denegadas
+hasta el corte del archivo y no contienen los editores completos de legacy.
+El CTS designado se abre primero mediante `my_operational_cts_v1()`, tras
+compararlo de nuevo con los contextos autorizados.
 `LegacyApp` permanece dentro del mismo archivo, pero no se monta en modo CTS:
 `current_membership()` y sus cargas globales todavía no pueden resolver dos
 membresías de forma segura. Cambiar de CTS desmonta el espacio anterior antes
 de verificar el nuevo. «Mi historial» muestra otros contextos autorizados,
-indicando cuáles aún necesitan cierre, pero su apertura queda bloqueada hasta
-impedir las escrituras al archivo en backend. El histórico **aún no es inmutable en la base de datos**: 03C sigue
-sin instalarse y hay políticas/RPC legacy. El selector tampoco abre temporadas
-cerradas mientras exista este bloqueo.
+indicando cuáles aún necesitan cierre. Una temporada cerrada solo se abre si
+`can_open_historical_cts_v1` confirma el corte del archivo; hasta entonces la
+apertura se rechaza. El histórico **aún no es inmutable en la base de datos**:
+03C sigue sin instalarse y hay políticas/RPC legacy.
 
 Biblioteca, Tareas y el laboratorio ABP seguirán visibles como secciones
 pendientes en modo CTS; sus componentes no se montan ni hacen consultas.
@@ -65,8 +68,9 @@ almacenamiento deben seguir el mismo CTS que el registro padre.
    Storage; conservar los hashes de funciones/políticas y los recuentos de
    Caudal, incluidos los 24 vínculos 02B. Detenerse si no hay restauración
    verificable o si cambian esos vínculos.
-2. **Contrato de un solo equipo operativo.** Preparar una migración pequeña,
-   revisable, para designar en backend un CTS operativo único y otro estado de
+2. **Contrato de un solo equipo operativo.** Revisar la migración
+   `supabase_transition_02_operational_prepare.sql` para designar en backend
+   un CTS operativo único y otro estado de
    archivo, sin inferirlo de nombres ni de `is_active`. Resolver antes la
    restricción global de un solo equipo propio en `equipos_rivales` y la clave
    única global de `competitions.key` para que Libia tenga identidad propia.
@@ -93,9 +97,10 @@ almacenamiento deben seguir el mismo CTS que el registro padre.
    solo en Libia, y denegación de SELECT/INSERT/UPDATE/DELETE directos y por
    RPC sobre Caudal y otro club. Probar cambio de CTS, cachés, importaciones,
    documentos, temporadas cerradas y restauración del respaldo. Solo entonces
-   considerar instalar 03C y activar el modo CTS en producción; después crear
-   el CTS de Libia, comprobar su autorización real y configurar la preferencia
-   de navegación con su UUID. Para el ensayo, usar una rama aislada o una copia
+   considerar instalar 03C y activar el modo CTS en producción. El orden de
+   designación, corte y verificación está en `TRANSITION_02_INSTALL_ORDER.md`;
+   el corte del archivo permanece bloqueado en el SQL hasta cerrar sus rutas
+   indirectas. Para el ensayo, usar una rama aislada o una copia
    **solo de esquema** con filas ficticias; no copiar registros ni cuentas de
    producción. El paquete 04B/04C para crear todo el esquema desde cero queda
    fuera de este camino mientras exista esa opción.

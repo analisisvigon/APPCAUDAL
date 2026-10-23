@@ -1,7 +1,8 @@
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import PlayerApp from './PlayerApp';
 import { resolveAppIdentity } from './auth/resolveAppIdentity';
-import { loadAuthorizedSportsContexts, verifySportsContext } from './sports/authorizedContext';
+import { loadAuthorizedSportsContexts, loadOperationalPreferredContextId,
+  verifySelectableSportsContext } from './sports/authorizedContext';
 import { findPreferredActiveContext } from './sports/primaryContext';
 import TeamSelector from './sports/TeamSelector';
 import { supabase } from './lib/supabase';
@@ -126,6 +127,7 @@ function AppAuthShell() {
   const [signingOut, setSigningOut] = useState(false);
   const [selectedSportsContext, setSelectedSportsContext] = useState(null);
   const [selectorContexts, setSelectorContexts] = useState(null);
+  const [operationalPreferredId, setOperationalPreferredId] = useState('');
   const [selectorBusy, setSelectorBusy] = useState(false);
   const [selectorError, setSelectorError] = useState('');
   const [showSelector, setShowSelector] = useState(false);
@@ -154,6 +156,7 @@ function AppAuthShell() {
     setShowSelector(false);
     setSelectedSportsContext(null);
     setSelectorContexts(null);
+    setOperationalPreferredId('');
 
     void resolveAppIdentity(supabase, nextSession)
       .then((identity) => {
@@ -192,6 +195,7 @@ function AppAuthShell() {
       setShowSelector(false);
       setSelectedSportsContext(null);
       setSelectorContexts(null);
+      setOperationalPreferredId('');
       return;
     }
 
@@ -300,14 +304,21 @@ function AppAuthShell() {
     const identity = authState.identity;
     const isOwner = (authState.status === 'staff' && identity?.membership?.role === 'owner')
       || (authState.status === 'multiple_memberships'
-        && identity?.memberships?.every((row) => row.role === 'owner'));
+        && identity?.memberships?.some((row) => row.role === 'owner')
+        && identity?.memberships?.every((row) => ['owner','admin','staff'].includes(row.role)));
     if (!ENABLE_CTS_FRONTEND || !isOwner || selectorContexts) return;
     let cancelled = false;
-    void loadAuthorizedSportsContexts(supabase).then((contexts) => {
-      if (!cancelled) setSelectorContexts(contexts.filter((row) => row.role === 'owner'));
+    void loadAuthorizedSportsContexts(supabase).then(async (contexts) => {
+      const operationalId = await loadOperationalPreferredContextId(supabase, contexts);
+      if (cancelled) return;
+      setOperationalPreferredId(operationalId);
+      setSelectorContexts(contexts);
     }).catch((error) => {
       logTechnicalAuthError('CONTEXT_LIST', error);
-      if (!cancelled) setSelectorError('No se pudieron verificar tus equipos.');
+      if (!cancelled) {
+        setSelectorError('No se pudieron verificar tus equipos.');
+        setSelectorContexts([]);
+      }
     });
     return () => { cancelled = true; };
   }, [authState.identity, authState.status, selectorContexts]);
@@ -319,11 +330,16 @@ function AppAuthShell() {
     setSelectorBusy(true);
     setSelectorError('');
     try {
-      const verified = await verifySportsContext(supabase, requestedId);
+      const verified = await verifySelectableSportsContext(supabase, requestedId);
       if (request !== contextRequestRef.current
         || userId !== String(stateRef.current.session?.user?.id || '')) return;
-      if (verified.role !== 'owner') throw new Error('Contexto no autorizado.');
-      if (verified.seasonStatus !== 'open') throw new Error('Archivo pendiente de bloqueo en backend.');
+      if (!operationalPreferredId
+        || (verified.id === operationalPreferredId && verified.role !== 'owner')
+        || (verified.id !== operationalPreferredId && verified.seasonStatus !== 'closed')) {
+        throw new Error('Contexto no autorizado.');
+      }
+      if (request !== contextRequestRef.current
+        || userId !== String(stateRef.current.session?.user?.id || '')) return;
       setSelectedSportsContext(verified);
     } catch (error) {
       if (request !== contextRequestRef.current) return;
@@ -339,10 +355,14 @@ function AppAuthShell() {
     setShowSelector(true);
     setSelectedSportsContext(null);
     setSelectorContexts(null);
+    setOperationalPreferredId('');
     setSelectorError('');
   };
 
-  const preferredContext = findPreferredActiveContext(selectorContexts, PREFERRED_ACTIVE_CTS_ID);
+  const preferredContext = findPreferredActiveContext(selectorContexts,
+    operationalPreferredId || PREFERRED_ACTIVE_CTS_ID);
+  const selectableContexts = (selectorContexts || []).filter((context) =>
+    context.id === operationalPreferredId || context.seasonStatus === 'closed');
   useEffect(() => {
     const userId = String(authState.session?.user?.id || '');
     const key = `${userId}:${preferredContext?.id || ''}`;
@@ -392,15 +412,18 @@ function AppAuthShell() {
     );
   }
   if (authState.status === 'multiple_memberships') {
-    if (ENABLE_CTS_FRONTEND && authState.identity.memberships.every((row) => row.role === 'owner')) {
+    if (ENABLE_CTS_FRONTEND && authState.identity.memberships.some((row) => row.role === 'owner')
+      && authState.identity.memberships.every((row) => ['owner','admin','staff'].includes(row.role))
+      && selectorContexts === null) return <LoadingScreen message="Verificando equipo operativo…" />;
+    if (ENABLE_CTS_FRONTEND && operationalPreferredId
+      && authState.identity.memberships.every((row) => ['owner','admin','staff'].includes(row.role))) {
       if (selectedSportsContext) return <Suspense fallback={<LoadingScreen message="Cargando equipo…" />}>
         <StaffApp key={selectedSportsContext.id} controlledSession={authState.session}
           identity={authState.identity} selectedCtsId={selectedSportsContext.id}
-          availableContexts={selectorContexts || []}
+          availableContexts={selectorContexts || []} onSelectContext={chooseSportsContext}
           onChangeTeam={returnToSelector} onControlledSignOut={handleSignOut} />
       </Suspense>;
-      return <TeamSelector contexts={selectorContexts || []} preferredId={preferredContext?.id} onSelect={chooseSportsContext}
-        canSelectContext={(context) => context.seasonStatus === 'open'}
+      return <TeamSelector contexts={selectableContexts} preferredId={preferredContext?.id} onSelect={chooseSportsContext}
         onExit={handleSignOut} busy={selectorBusy || !selectorContexts} error={selectorError} />;
     }
     return (
@@ -417,14 +440,18 @@ function AppAuthShell() {
   }
   if (authState.status === 'staff') {
     if (ENABLE_CTS_FRONTEND && authState.identity.membership?.role === 'owner') {
+      if (selectorContexts === null) return <LoadingScreen message="Verificando equipo operativo…" />;
+      if (!operationalPreferredId) return <AccessMessage
+        title="Equipo operativo pendiente"
+        message="Aún no hay un equipo operativo designado y autorizado para esta cuenta."
+        onSignOut={handleSignOut} signingOut={signingOut} />;
       if (selectedSportsContext) return <Suspense fallback={<LoadingScreen message="Cargando equipo…" />}>
         <StaffApp key={selectedSportsContext.id} controlledSession={authState.session}
           identity={authState.identity} selectedCtsId={selectedSportsContext.id}
-          availableContexts={selectorContexts || []}
+          availableContexts={selectorContexts || []} onSelectContext={chooseSportsContext}
           onChangeTeam={returnToSelector} onControlledSignOut={handleSignOut} />
       </Suspense>;
-      return <TeamSelector contexts={selectorContexts || []} preferredId={preferredContext?.id} onSelect={chooseSportsContext}
-        canSelectContext={(context) => context.seasonStatus === 'open'}
+      return <TeamSelector contexts={selectableContexts} preferredId={preferredContext?.id} onSelect={chooseSportsContext}
         onExit={handleSignOut} busy={selectorBusy || !selectorContexts} error={selectorError} />;
     }
     if (ENABLE_CTS_FRONTEND && authState.identity.contexts?.length !== 1) {
