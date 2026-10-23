@@ -40,11 +40,17 @@ queda condicionado por el marcador 04C y por una base deportiva vacía.
    Ese SQL deberá revisarse antes de instalarlo. No editar ni ejecutar los
    scripts históricos para forzar su paso.
 
-Faltan principalmente definiciones iniciales exactas de `jugadores`,
-`partidos`, `equipos_rivales` y varias tablas auxiliares que
-`supabase_global_players.sql` altera. Se necesitan también sus FK, índices,
-triggers, políticas y permisos efectivos. El verificador del esquema no puede
-acreditar equivalencia con producción mientras no se conozca ese contrato.
+Los resultados estructurales de las ocho tablas legacy todavía no están en
+este repositorio. Se necesitan en un único paquete, con FK, índices, triggers,
+políticas y permisos efectivos. Además, `supabase_club_core_31_canonical_substitutions.sql`
+exige `partido_estadisticas_jugador`, cuyo CREATE TABLE inicial tampoco aparece
+en el repositorio. Si su contrato o el de `competitions` no está en el paquete,
+ejecutar manualmente solo la consulta adicional
+`supabase_multiclub_04c_missing_metadata_readonly.sql`. La definición local de
+`competitions` está en `supabase_match_competition_key.sql`, pero debe
+contrastarse con la FK real `partidos.competition_id` antes de reutilizarla.
+El verificador del esquema no puede acreditar equivalencia con producción
+mientras no se conozcan esos contratos.
 
 ## 3. Orden previsto en el proyecto nuevo de ENSAYO
 
