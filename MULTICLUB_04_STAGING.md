@@ -1,5 +1,8 @@
 # Multiclub 04: ensayo y criterios de apertura
 
+Para el procedimiento operativo de dos clubes ficticios, usar
+`MULTICLUB_04B_STAGING.md`.
+
 El selector se puede probar localmente con `VITE_MULTICLUB_03_CTS_ENABLED=true`
 contra un proyecto de Supabase **separado de producción** que tenga las fases
 01, 02, 02B, 03A y 03B. No instalar 03C ni reutilizar credenciales o datos de
@@ -10,9 +13,8 @@ Todas las escrituras, documentos, estadísticas hijas y demás módulos siguen
 cerrados. El modo no constituye todavía seguridad completa de la API porque
 las políticas legacy directas continúan vigentes hasta 03C.
 Usar una copia local separada y `.env.staging.example` como plantilla para
-`.env.staging` (ignorado por Git). Vite también carga `.env.local` en modo
-staging: comprobar antes de iniciar que no prevalezca una URL de producción.
-Iniciar con `npm run dev -- --mode staging` solo tras comprobar esa URL.
+`.env.staging` (ignorado por Git). Iniciar con `npm run dev:staging`, que
+verifica la URL efectiva y la compara con el proyecto de producción.
 
 ## Casos del selector
 
@@ -21,8 +23,8 @@ Iniciar con `npm run dev -- --mode staging` solo tras comprobar esa URL.
    consultar `my_access_contexts_v1()`; «Cambiar equipo» regresa al selector.
 2. Revocar uno de los CTS antes de elegirlo: la selección se rechaza tras la
    nueva consulta. Un UUID manipulado tampoco debe ser aceptado.
-3. Staff con un CTS: identidad resuelta sin selector. Su espacio deportivo
-   permanece cerrado en esta bandera hasta que las rutas estén aisladas.
+3. Staff con un CTS: identidad resuelta sin selector y entrada directa a
+   `CtsCoreApp` de solo lectura.
 4. Staff con varios CTS: acceso ambiguo explícito, sin elección automática.
 5. PLAYER: entrada directa al portal actual, sin selector ni datos de staff.
 6. Cerrar sesión y entrar con otra cuenta: desaparecen las opciones previas.
