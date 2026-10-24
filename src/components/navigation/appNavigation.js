@@ -3,8 +3,6 @@ export const STAFF_NAV_GROUPS = Object.freeze([
   { title: 'PRINCIPAL', items: [{ name: 'Inicio', icon: 'home' }] },
   { title: 'EQUIPO', items: [
     { name: 'Plantilla', icon: 'users' },
-    { name: 'Perfiles', icon: 'profile' },
-    { name: 'Equipos', icon: 'shield' },
   ] },
   { title: 'PLANIFICACIÓN', items: [
     { name: 'Calendario', icon: 'calendar' },
@@ -12,7 +10,11 @@ export const STAFF_NAV_GROUPS = Object.freeze([
     { name: 'Tareas', icon: 'tasks' },
     { name: 'Biblioteca', icon: 'library' },
   ] },
-  { title: 'COMPETICIÓN', items: [{ name: 'Partidos', icon: 'ball' }] },
+  { title: 'COMPETICIÓN', items: [
+    { name: 'Equipos', icon: 'shield' },
+    { name: 'Perfiles', icon: 'profile' },
+    { name: 'Partidos', icon: 'ball' },
+  ] },
   { title: 'ANÁLISIS', items: [
     { name: 'Rendimiento', icon: 'chart' },
     { name: 'Análisis Grupal', icon: 'group' },

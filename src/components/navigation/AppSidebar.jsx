@@ -18,6 +18,7 @@ const paths = {
   medical: <><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z" /></>,
   receipt: <><path d="M5 2h14v20l-3-2-4 2-4-2-3 2zM8 8h8m-8 4h8m-8 4h5" /></>,
   assistant: <><path d="M4 4h16v13H9l-5 4zM8 9h8m-8 4h5" /></>,
+  logout: <><path d="M9 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4" /><path d="M14 16l4-4-4-4m4 4H9" /></>,
 };
 
 function NavIcon({ name }) {
@@ -27,7 +28,7 @@ function NavIcon({ name }) {
   </svg>;
 }
 
-function SidebarBody({ collapsed, mobile = false, activeTab, onSelect, onToggle, onClose, onOpenLito, onTooltip, closeRef, club }) {
+function SidebarBody({ collapsed, mobile = false, activeTab, onSelect, onToggle, onClose, onOpenLito, onSignOut, userEmail, onTooltip, closeRef, club }) {
   return <>
     <div className={`flex items-center ${collapsed ? 'flex-col justify-center' : 'justify-between'} gap-2 border-b border-white/10 px-3 py-4`}>
       <div className={`flex min-w-0 items-center ${collapsed ? 'justify-center' : 'gap-2'}`}>
@@ -60,16 +61,28 @@ function SidebarBody({ collapsed, mobile = false, activeTab, onSelect, onToggle,
         </button>)}</div>
       </div>)}
     </nav>
-    {onOpenLito ? <div className="border-t border-white/10 p-2 xl:hidden">
-      <button type="button" onClick={onOpenLito} aria-label={collapsed ? 'Abrir Lito' : undefined} title={collapsed ? 'Abrir Lito' : undefined}
-        className={`flex min-h-11 w-full items-center rounded-xl text-slate-300 hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric ${collapsed ? 'justify-center' : 'gap-3 px-3'}`}>
+    <div className="shrink-0 border-t border-white/10 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2">
+      {onOpenLito ? <button type="button" onClick={onOpenLito} aria-label={collapsed ? 'Abrir Lito' : undefined} title={collapsed ? 'Abrir Lito' : undefined}
+        className={`mb-1 flex min-h-11 w-full items-center rounded-xl text-slate-300 hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric xl:hidden ${collapsed ? 'justify-center' : 'gap-3 px-3'}`}>
         <NavIcon name="assistant" />{!collapsed ? <span className="text-sm font-semibold">Lito</span> : null}
+      </button> : null}
+      {!collapsed ? <div className="min-w-0 px-3 pb-2">
+        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Sesión iniciada</p>
+        <p className="truncate text-xs font-semibold text-slate-200" title={userEmail}>{userEmail}</p>
+      </div> : null}
+      <button type="button" onClick={onSignOut} aria-label="Cerrar sesión" title={collapsed ? 'Cerrar sesión' : undefined}
+        onMouseEnter={collapsed ? (event) => onTooltip?.({ name: 'Cerrar sesión', top: event.currentTarget.getBoundingClientRect().top }) : undefined}
+        onMouseLeave={collapsed ? () => onTooltip?.(null) : undefined}
+        onFocus={collapsed ? (event) => onTooltip?.({ name: 'Cerrar sesión', top: event.currentTarget.getBoundingClientRect().top }) : undefined}
+        onBlur={collapsed ? () => onTooltip?.(null) : undefined}
+        className={`flex min-h-11 w-full items-center rounded-xl text-red-100 transition hover:bg-red-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric ${collapsed ? 'justify-center' : 'gap-3 px-3'}`}>
+        <NavIcon name="logout" />{!collapsed ? <span className="text-sm font-semibold">Cerrar sesión</span> : null}
       </button>
-    </div> : null}
+    </div>
   </>;
 }
 
-export default function AppSidebar({ collapsed, mobileOpen, activeTab, onSelect, onToggle, onClose, onOpenLito, club }) {
+export default function AppSidebar({ collapsed, mobileOpen, activeTab, onSelect, onToggle, onClose, onOpenLito, onSignOut, userEmail, club }) {
   const mobilePanelRef = useRef(null);
   const closeButtonRef = useRef(null);
   const onCloseRef = useRef(onClose);
@@ -99,12 +112,12 @@ export default function AppSidebar({ collapsed, mobileOpen, activeTab, onSelect,
 
   return <>
     <aside className={`app-staff-sidebar fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-white/10 bg-[#071225] shadow-[18px_0_50px_rgba(0,0,0,0.18)] transition-[width] duration-200 md:flex ${collapsed ? 'w-[76px]' : 'w-[256px]'}`}>
-      <SidebarBody collapsed={collapsed} activeTab={activeTab} onSelect={onSelect} onToggle={onToggle} onOpenLito={onOpenLito} onTooltip={setTooltip} club={club} />
+      <SidebarBody collapsed={collapsed} activeTab={activeTab} onSelect={onSelect} onToggle={onToggle} onOpenLito={onOpenLito} onSignOut={onSignOut} userEmail={userEmail} onTooltip={setTooltip} club={club} />
     </aside>
     {mobileOpen ? <div className="fixed inset-0 z-[80] md:hidden">
       <button type="button" aria-label="Cerrar menú al pulsar fuera" onClick={onClose} className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm" />
       <aside ref={mobilePanelRef} role="dialog" aria-modal="true" aria-label="Menú de NEXO CLUB" className="relative flex h-full w-[min(85vw,320px)] flex-col border-r border-white/10 bg-[#071225] shadow-2xl">
-        <SidebarBody mobile activeTab={activeTab} onSelect={onSelect} onClose={onClose} onOpenLito={onOpenLito} closeRef={closeButtonRef} club={club} />
+        <SidebarBody mobile activeTab={activeTab} onSelect={onSelect} onClose={onClose} onOpenLito={onOpenLito} onSignOut={onSignOut} userEmail={userEmail} closeRef={closeButtonRef} club={club} />
       </aside>
     </div> : null}
     {collapsed && tooltip && createPortal(<span role="tooltip" className="pointer-events-none fixed z-[60] rounded-lg border border-white/15 bg-[#10223c] px-3 py-2 text-xs font-semibold text-white shadow-xl"

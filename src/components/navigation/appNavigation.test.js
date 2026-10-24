@@ -3,9 +3,9 @@ import { STAFF_NAV_GROUPS, STAFF_NAV_TABS } from './appNavigation.js';
 
 assert.deepEqual(STAFF_NAV_GROUPS.map((group) => [group.title, group.items.map((item) => item.name)]), [
   ['PRINCIPAL', ['Inicio']],
-  ['EQUIPO', ['Plantilla', 'Perfiles', 'Equipos']],
+  ['EQUIPO', ['Plantilla']],
   ['PLANIFICACIÓN', ['Calendario', 'Sesiones', 'Tareas', 'Biblioteca']],
-  ['COMPETICIÓN', ['Partidos']],
+  ['COMPETICIÓN', ['Equipos', 'Perfiles', 'Partidos']],
   ['ANÁLISIS', ['Rendimiento', 'Análisis Grupal', 'Registro Delegado']],
   ['GESTIÓN', ['Fisio', 'Multas']],
 ]);

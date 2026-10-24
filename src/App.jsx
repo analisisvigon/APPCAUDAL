@@ -691,9 +691,9 @@ function LeagueResultsDistribution({ results, compact = false, onViewStats }) {
   const counterValue = (value) => (hasData ? value : '—');
 
   return (
-    <div className={compact ? 'rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]' : 'rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow'}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
+    <div className={compact ? 'min-w-0 rounded-[1.35rem] border border-white/10 bg-[#0b1424]/92 p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]' : 'min-w-0 rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow'}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <CompetitionIcon competition={competition} />
           <h3 className="text-sm font-black uppercase tracking-[0.18em] text-white">{title}</h3>
         </div>
@@ -30114,6 +30114,8 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
         onToggle={() => setSidebarCollapsed((current) => !current)}
         onClose={() => setIsMobileSidebarOpen(false)}
         onOpenLito={() => { setIsMobileSidebarOpen(false); setIsLitoOpen(true); }}
+        onSignOut={() => { setIsMobileSidebarOpen(false); handleSignOut(); }}
+        userEmail={authUser.email}
         club={{ name: OWN_CLUB_IDENTITY.name, category: ownClubCategory,
           location: OWN_CLUB_IDENTITY.location, crest: clubCrest }} />
       <div className="app-shell-content flex min-h-screen min-w-0 flex-col px-4 pt-4 sm:px-6 md:px-5 lg:px-8"
@@ -30136,28 +30138,15 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             </div>
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-caudal-950/40 p-2.5 sm:justify-end">
-              <div className="min-w-0 text-sm text-slate-300 sm:text-right">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Sesión iniciada</p>
-                <p className="truncate font-semibold text-white">{authUser.email}</p>
-              </div>
-              {installPromptEvent && !isAppInstalled ? (
-                <button
-                  type="button"
-                  onClick={handleInstallApp}
-                  className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-2xl border border-caudal-electric/50 bg-white/5 px-4 py-2 text-sm font-semibold text-caudal-electric transition hover:bg-white/10"
-                >
-                  Instalar app
-                </button>
-              ) : null}
+            {installPromptEvent && !isAppInstalled ? <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-caudal-950/40 p-2.5 sm:justify-end">
               <button
                 type="button"
-                onClick={handleSignOut}
-                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-2xl bg-caudal-electric px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-[#7aacff]"
+                onClick={handleInstallApp}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-2xl border border-caudal-electric/50 bg-white/5 px-4 py-2 text-sm font-semibold text-caudal-electric transition hover:bg-white/10"
               >
-                Cerrar sesión
+                Instalar app
               </button>
-            </div>
+            </div> : null}
             {authError ? <p className="max-w-sm text-sm text-red-200">{authError}</p> : null}
           </div>
         </header>
@@ -30166,7 +30155,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
           <main className="space-y-3 pb-8 sm:space-y-4">
             <section className="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0b1220] shadow-[0_16px_48px_rgba(0,0,0,0.24)]">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(212,0,0,0.10),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.045),transparent_46%)]" />
-              <div className="relative grid gap-4 p-3.5 sm:p-4 lg:grid-cols-[auto_1fr_auto] lg:items-center">
+              <div className="home-identity-grid relative grid gap-4 p-3.5 sm:p-4">
                 <TeamLogo className="mx-auto sm:mx-0" src={clubCrest} alt={`Escudo de ${OWN_CLUB_IDENTITY.shortName}`} teamName={OWN_CLUB_IDENTITY.shortName} size="lg" />
                 <div className="text-center sm:text-left">
                   <div className="flex items-center justify-center gap-1.5 sm:justify-start">
@@ -30255,10 +30244,10 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                 {homeError}
               </div>
             ) : null}
-            <section className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
+            <section className="home-primary-grid grid gap-4">
               <div className="relative overflow-hidden rounded-[1.55rem] border border-caudal-electric/20 bg-[#091428]/95 p-5 shadow-[0_20px_58px_rgba(0,0,0,0.24)] transition duration-200 hover:-translate-y-0.5 hover:border-caudal-electric/35 hover:shadow-[0_26px_70px_rgba(0,0,0,0.30)] sm:p-6">
                 <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(79,140,255,0.18),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.05),transparent_48%)]" />
-                <div className="relative grid gap-6 lg:grid-cols-[auto_1fr_auto] lg:items-center">
+                <div className="home-next-match-grid relative grid gap-6">
                   <TeamLogo src={homeDashboard.nextMatch?.opponentCrest || homeDashboard.nextOpponentTeam?.crest} alt={homeDashboard.nextMatch?.opponent || 'Escudo rival'} teamName={homeDashboard.nextMatch?.opponent || homeDashboard.nextOpponentTeam?.name || 'Rival'} size="2xl" />
                   <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric/85">Partido en preparación</p>
@@ -30343,7 +30332,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
               </div>
             </section>
 
-            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
+            <section className="home-quick-links grid gap-3">
               {[
                 {
                   tab: 'Plantilla',
@@ -30435,7 +30424,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                   onClick={() => setActiveTab(item.tab)}
                   className={`group rounded-[1.35rem] border p-4 text-left transition duration-200 hover:-translate-y-0.5 active:translate-y-0 ${
                     item.tab === 'Partidos'
-                      ? 'min-h-32 border-caudal-electric/28 bg-caudal-electric/[0.09] shadow-[0_18px_46px_rgba(79,140,255,0.14)] hover:border-caudal-electric/55 hover:bg-caudal-electric/[0.13] hover:shadow-[0_24px_58px_rgba(79,140,255,0.18)] xl:col-span-2'
+                      ? 'min-h-32 border-caudal-electric/28 bg-caudal-electric/[0.09] shadow-[0_18px_46px_rgba(79,140,255,0.14)] hover:border-caudal-electric/55 hover:bg-caudal-electric/[0.13] hover:shadow-[0_24px_58px_rgba(79,140,255,0.18)]'
                       : `min-h-28 border-white/10 ${item.accent} shadow-[0_12px_35px_rgba(0,0,0,0.16)] hover:border-white/20 hover:bg-white/[0.07]`
                   }`}
                 >
@@ -30448,7 +30437,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
               ))}
             </section>
 
-            <section className="grid gap-4 xl:grid-cols-[1.35fr_0.85fr]">
+            <section className="home-secondary-grid grid gap-4">
               <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.045] p-4 shadow-[0_16px_42px_rgba(0,0,0,0.18)]">
                 <div className="flex items-center justify-between gap-3">
                   <div>
