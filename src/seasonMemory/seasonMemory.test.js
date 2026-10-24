@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { jsPDF } from 'jspdf';
 import { SEASON_MEMORY_DEMO } from './demoData.js';
-import { buildSeasonMemoryPresentation } from './presentation.js';
+import { buildSeasonMemoryPresentation, getCompetitionPresentation } from './presentation.js';
 import { createSeasonMemoryPdf, drawExternalLink } from './pdf.js';
 
 const model = buildSeasonMemoryPresentation(SEASON_MEMORY_DEMO);
@@ -11,10 +11,24 @@ assert.deepEqual(model.totals, {
   goalsFor: 54, goalsAgainst: 30, goalDifference: 24,
 });
 assert.equal(model.competitions.length, 3);
+assert.equal(model.match.formation, '4-3-3');
+assert.equal(model.match.lineup.filter((player) => Number.isFinite(player.x) && Number.isFinite(player.y)).length, 11);
+assert.deepEqual(getCompetitionPresentation({ key: 'mystery', name: 'Texto no acreditado' }), {
+  key: 'unknown',
+  name: 'Competición sin identificar',
+});
 assert.throws(() => buildSeasonMemoryPresentation({
   ...SEASON_MEMORY_DEMO,
   competitions: [{ ...SEASON_MEMORY_DEMO.competitions[0], wins: 12 }],
 }), /inconsistentes/);
+assert.throws(() => buildSeasonMemoryPresentation({
+  ...SEASON_MEMORY_DEMO,
+  match: {
+    ...SEASON_MEMORY_DEMO.match,
+    lineup: SEASON_MEMORY_DEMO.match.lineup.map((player, index) =>
+      index === 0 ? { ...player, x: 120 } : player),
+  },
+}), /inconsistente/);
 
 const crest = readFileSync(new URL('../../public/branding/almadina-sc-crest.png', import.meta.url));
 const pdf = createSeasonMemoryPdf({
