@@ -19,6 +19,7 @@ import TrainingTasksSection from './components/training/TrainingTasksSection';
 import PlannedSessionsSection from './components/training/PlannedSessionsSection';
 import TeamCalendarSection from './components/calendar/TeamCalendarSection';
 import AppSidebar from './components/navigation/AppSidebar';
+import SeasonMemoryPanel from './seasonMemory/SeasonMemoryPanel';
 import { calendarTime } from './utils/teamCalendar';
 import MatchVideoPlayer, { detectMatchVideoProvider } from './components/matches/MatchVideoPlayer';
 import MatchPrintTab from './components/print/MatchPrintTab';
@@ -30154,6 +30155,8 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
 
         {activeTab === 'Inicio' ? (
           <main className="space-y-3 pb-8 sm:space-y-4">
+            <SeasonMemoryPanel key={`${session?.user?.id || ''}:${identity?.membership?.club_id || ''}`}
+              client={supabase} identity={identity} sessionUserId={session?.user?.id || ''} />
             {import.meta.env.DEV ? (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#0b1220] px-4 py-3">
                 <div>
