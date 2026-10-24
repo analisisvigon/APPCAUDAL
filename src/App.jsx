@@ -5295,6 +5295,7 @@ const renderTacticalBlock = (block) => (
 function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, identity = null, selectedCtsId = null }) {
   const hasControlledAuth = controlledSession !== undefined;
   const [activeTab, setActiveTab] = useState('Inicio');
+  const [seasonMemoryDemoError, setSeasonMemoryDemoError] = useState('');
   const [plannedSessionsDirty, setPlannedSessionsDirty] = useState(false);
   const [players, setPlayers] = useState([]);
   const [playerRemovalNotice, setPlayerRemovalNotice] = useState('');
@@ -30153,6 +30154,26 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
 
         {activeTab === 'Inicio' ? (
           <main className="space-y-3 pb-8 sm:space-y-4">
+            {import.meta.env.DEV ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#0b1220] px-4 py-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-300">Memoria de Temporada · Prototipo</p>
+                  <p className="text-xs text-slate-400">Tres páginas con datos ficticios, generadas en tu navegador.</p>
+                </div>
+                <button type="button" className="rounded-xl border border-caudal-electric/40 bg-caudal-electric/10 px-4 py-2 text-xs font-bold text-caudal-electric transition hover:bg-caudal-electric/20"
+                  onClick={async () => {
+                    setSeasonMemoryDemoError('');
+                    try {
+                      const { downloadSeasonMemoryDemo } = await import('./seasonMemory/downloadDemo.js');
+                      await downloadSeasonMemoryDemo();
+                    } catch (error) {
+                      setSeasonMemoryDemoError(error?.message || 'No se pudo generar la vista previa.');
+                    }
+                  }}
+                >Vista previa PDF · Demo</button>
+                {seasonMemoryDemoError ? <p role="alert" className="w-full text-xs text-red-200">{seasonMemoryDemoError}</p> : null}
+              </div>
+            ) : null}
             <section className="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0b1220] shadow-[0_16px_48px_rgba(0,0,0,0.24)]">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(212,0,0,0.10),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.045),transparent_46%)]" />
               <div className="home-identity-grid relative grid gap-4 p-3.5 sm:p-4">
