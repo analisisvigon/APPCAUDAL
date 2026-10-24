@@ -29,8 +29,10 @@ export async function deleteOwnPlayer(supabase, jugadorId) {
       ? `${reason} (Código: ${code})`
       : 'No se pudo eliminar el jugador. Consulta al administrador.');
   }
-  if (data?.status !== 'deleted' || data?.jugador_id !== jugadorId) {
-    throw new Error('El servidor no confirmó la eliminación del jugador.');
+  if (!['deleted', 'retired'].includes(data?.status)
+    || data?.jugador_id !== jugadorId
+    || (data.status === 'retired' && data.fine_payments_preserved !== true)) {
+    throw new Error('El servidor no confirmó la retirada del jugador.');
   }
   return data;
 }

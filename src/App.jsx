@@ -506,6 +506,9 @@ import './styles/print.css';
 import { OWN_CLUB_IDENTITY, getOwnClubDisplayName } from './constants/clubIdentity';
 
 const clubCrest = OWN_CLUB_IDENTITY.crest;
+const ownClubCategory = OWN_CLUB_IDENTITY.shortName.startsWith(`${OWN_CLUB_IDENTITY.name} `)
+  ? OWN_CLUB_IDENTITY.shortName.slice(OWN_CLUB_IDENTITY.name.length).trim()
+  : '';
 const defaultHomePhrase = 'Trabajo, identidad y detalle competitivo para preparar cada partido.';
 const homePhraseConfigKey = 'home_hero_phrase';
 const ownClubStadiumConfigKeys = ['own_club_stadium', 'club_stadium', 'caudal_stadium', 'home_stadium'];
@@ -5291,6 +5294,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   const [activeTab, setActiveTab] = useState('Inicio');
   const [plannedSessionsDirty, setPlannedSessionsDirty] = useState(false);
   const [players, setPlayers] = useState([]);
+  const [playerRemovalNotice, setPlayerRemovalNotice] = useState('');
   const sportsContextCoordinatorRef = useRef(new SportsContextCoordinator());
   const sportsSnapshotRef = useRef(null);
   const getScopedJugadores = () => getJugadores({
@@ -24592,19 +24596,23 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   };
 
   const handleDelete = async (player) => {
-    const confirmed = window.confirm(`¿Eliminar definitivamente a ${player.name} y sus datos personales asociados? Se conservarán los partidos, sesiones y recursos compartidos. Esta acción no se puede deshacer.`);
+    const confirmed = window.confirm(`¿Retirar a ${player.name} de la plantilla? Si tiene pagos de multas, su ficha quedará de baja y se conservará el historial contable. Si no tiene pagos, su ficha y datos personales exclusivos se eliminarán definitivamente. Se conservarán partidos, sesiones y recursos compartidos.`);
     if (!confirmed) return;
     setLoading(true);
     setError(null);
+    setPlayerRemovalNotice('');
     try {
       if (sportsSnapshotRef.current) {
         throw new Error('La eliminación de fichas requiere un flujo específico por equipo y temporada.');
       }
-      await deleteOwnPlayer(supabase, player.id);
+      const result = await deleteOwnPlayer(supabase, player.id);
       const jugadores = await getScopedJugadores();
       setPlayers(jugadores);
       setEmpty(jugadores.length === 0);
       if (selectedPlayerProfileId === player.id) setSelectedPlayerProfileId(null);
+      setPlayerRemovalNotice(result.status === 'retired'
+        ? `${player.name} está de baja de la plantilla. Su ficha, multas y pagos permanecen conservados.`
+        : `${player.name} y sus datos personales exclusivos se han eliminado.`);
     } catch (deleteError) {
       console.error('Error eliminando jugador en Supabase:', deleteError);
       setError(deleteError.message || 'No se pudo eliminar el jugador.');
@@ -30136,7 +30144,10 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             <div className="mt-2 flex items-center gap-3">
               <TeamLogo src={clubCrest} alt={`Escudo de ${OWN_CLUB_IDENTITY.shortName}`} teamName={OWN_CLUB_IDENTITY.shortName} size="sm" />
               <div className="min-w-0">
-                <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">{OWN_CLUB_IDENTITY.shortName}</h1>
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                  <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">{OWN_CLUB_IDENTITY.name}</h1>
+                  {ownClubCategory ? <span className="text-xs font-black uppercase tracking-[0.16em] text-red-200 sm:text-sm">{ownClubCategory}</span> : null}
+                </div>
                 <p className="mt-1 text-sm text-slate-400">{OWN_CLUB_IDENTITY.location} · {OWN_CLUB_IDENTITY.description}</p>
               </div>
             </div>
@@ -30233,7 +30244,10 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                     <img src="/branding/nexo-symbol-dark.png" alt="" className="h-6 w-6 object-contain" />
                     <p className="text-[10px] font-black uppercase tracking-[0.22em] text-red-200/80">NEXO CLUB · Cuerpo técnico</p>
                   </div>
-                  <h2 className="mt-1 text-xl font-black text-white sm:text-3xl">{OWN_CLUB_IDENTITY.shortName}</h2>
+                  <div className="mt-1 flex flex-wrap items-baseline justify-center gap-x-2 gap-y-0.5 sm:justify-start">
+                    <h2 className="text-xl font-black text-white sm:text-3xl">{OWN_CLUB_IDENTITY.name}</h2>
+                    {ownClubCategory ? <span className="text-xs font-black uppercase tracking-[0.16em] text-red-200 sm:text-sm">{ownClubCategory}</span> : null}
+                  </div>
                   <div className="mt-2 max-w-3xl">
                     {isEditingHomePhrase ? (
                       <div className="space-y-2">
@@ -31440,6 +31454,9 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
               </div>
             </section>
 
+            {playerRemovalNotice ? (
+              <p role="status" className="rounded-[1.35rem] border border-emerald-300/20 bg-emerald-300/10 px-5 py-3 text-sm text-emerald-100">{playerRemovalNotice}</p>
+            ) : null}
             {loading ? (
               <div className="rounded-[1.35rem] border border-dashed border-white/10 bg-white/[0.03] px-5 py-5 text-sm text-slate-400">
                 Cargando jugadores...

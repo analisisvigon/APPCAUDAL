@@ -12,6 +12,16 @@ const client = {
 };
 await deleteOwnPlayer(client, playerId);
 assert.deepEqual(calls, [['delete_own_player_atomic_v1', { p_jugador_id: playerId }]]);
+const retired = await deleteOwnPlayer({
+  rpc: async () => ({ data: { status: 'retired', jugador_id: playerId, fine_payments_preserved: true }, error: null }),
+  from: () => { throw new Error('No debe acceder directamente a tablas'); },
+}, playerId);
+assert.equal(retired.status, 'retired');
+assert.equal(retired.fine_payments_preserved, true);
+await assert.rejects(
+  () => deleteOwnPlayer({ rpc: async () => ({ data: { status: 'retired', jugador_id: playerId }, error: null }) }, playerId),
+  /no confirmo|no confirmó/,
+);
 
 await assert.rejects(
   () => deleteOwnPlayer({ rpc: async () => ({ data: null, error: new Error('denied') }) }, playerId),
