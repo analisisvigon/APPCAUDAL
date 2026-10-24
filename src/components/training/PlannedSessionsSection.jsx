@@ -58,7 +58,7 @@ const unsupportedSession = (data, next) => data.items.some((item) =>
     item.task_snapshot.source_task_id !== item.source_task_uuid_snapshot))) ||
   next.slots.some((slot) => slot.items.length > 2);
 
-export default function PlannedSessionsSection({ client, membership, userId, onDirtyChange, leagueLogoUrl = '' }) {
+export default function PlannedSessionsSection({ client, membership, userId, onDirtyChange, leagueLogoUrl = '', openSessionRequest = null }) {
   const [contexts, setContexts] = useState([]);
   const [contextId, setContextId] = useState('');
   const [contextsLoading, setContextsLoading] = useState(true);
@@ -73,6 +73,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [unsupportedItems, setUnsupportedItems] = useState(false);
   const [busy, setBusy] = useState(false);
   const operationRef = useRef(false);
+  const openedCalendarRequestRef = useRef('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [conflict, setConflict] = useState(false);
@@ -259,6 +260,24 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       setError(`${errorKind(cause)}: no se pudo abrir la sesión. ${readError(cause)}`);
     } finally { operationRef.current = false; setBusy(false); }
   };
+  useEffect(() => {
+    if (!openSessionRequest?.id || !openSessionRequest?.contextId || contextsLoading) return;
+    const requestKey = `${openSessionRequest.contextId}:${openSessionRequest.id}`;
+    if (openedCalendarRequestRef.current === requestKey) return;
+    if (!contexts.some((row) => row.id === openSessionRequest.contextId)) {
+      openedCalendarRequestRef.current = requestKey;
+      setError('La sesión seleccionada no pertenece a un contexto disponible.');
+      return;
+    }
+    if (contextId !== openSessionRequest.contextId) {
+      changeContext(openSessionRequest.contextId);
+      return;
+    }
+    openedCalendarRequestRef.current = requestKey;
+    openSession(openSessionRequest.id).then(() => {
+      requestAnimationFrame(() => document.querySelector('[aria-label="Ficha de sesión"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    });
+  }, [openSessionRequest?.id, openSessionRequest?.contextId, contextsLoading, contexts, contextId]);
   const startNew = () => {
     if (!canWriteContext || busy || !requestDiscard()) return;
     setEditor(createEmptyPlannedEditor()); setBaseline(null);

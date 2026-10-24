@@ -17,6 +17,8 @@ import {
 import LibrarySection from './components/library/LibrarySection';
 import TrainingTasksSection from './components/training/TrainingTasksSection';
 import PlannedSessionsSection from './components/training/PlannedSessionsSection';
+import TeamCalendarSection from './components/calendar/TeamCalendarSection';
+import { calendarTime } from './utils/teamCalendar';
 import MatchVideoPlayer, { detectMatchVideoProvider } from './components/matches/MatchVideoPlayer';
 import MatchPrintTab from './components/print/MatchPrintTab';
 import FootballZoneMap from './components/visualization/FootballZoneMap';
@@ -5378,6 +5380,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   const [homePhraseSaving, setHomePhraseSaving] = useState(false);
   const [homePhraseStatus, setHomePhraseStatus] = useState('');
   const [matches, setMatches] = useState([]);
+  const [calendarSessionTarget, setCalendarSessionTarget] = useState(null);
   const [competitions, setCompetitions] = useState(() => buildDefaultCompetitionCatalog());
   const [competitionCatalogError, setCompetitionCatalogError] = useState('');
   const [uploadingCompetitionKey, setUploadingCompetitionKey] = useState('');
@@ -7449,6 +7452,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     setCaptainPrioritySchemaAvailable(true);
     setCaptainPanelOpen(false);
     setMatches([]);
+    setCalendarSessionTarget(null);
     setTeams([]);
     setGlobalPlayers([]);
     setGlobalPlayersAvailable(true);
@@ -24883,6 +24887,9 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       errors.competitionKey = 'Selecciona la competicion.';
     }
     if (!String(formState.date || '').trim()) errors.date = 'Indica la fecha del encuentro.';
+    if (String(formState.time || '').trim() && calendarTime(formState.time) !== String(formState.time).trim()) {
+      errors.time = 'Indica una hora válida en formato HH:mm o deja el campo vacío.';
+    }
     if (formState.isHome !== true && formState.isHome !== false) errors.isHome = 'Indica si el partido es local o visitante.';
     const homeScoreIsBlank = formState.homeScore === null || formState.homeScore === undefined || String(formState.homeScore).trim() === '';
     const awayScoreIsBlank = formState.awayScore === null || formState.awayScore === undefined || String(formState.awayScore).trim() === '';
@@ -24901,7 +24908,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     setMatchStadiumManuallyEdited(Boolean(match?.stadium));
     if (match) {
       setEditingMatchId(match.id);
-      setMatchFormState(normalizeMatch(match));
+      setMatchFormState({ ...normalizeMatch(match), time: calendarTime(match.time) });
     } else {
       setEditingMatchId(null);
       setMatchFormState({
@@ -30019,7 +30026,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   };
 
   const authUser = session?.user ?? null;
-  const desktopTabs = ['Inicio', 'Plantilla', 'Perfiles', 'Equipos', 'Partidos', 'Biblioteca', 'Tareas', 'Sesiones', 'Rendimiento', 'Fisio', 'Multas', 'Registro Delegado', 'Análisis Grupal'];
+  const desktopTabs = ['Inicio', 'Plantilla', 'Perfiles', 'Equipos', 'Partidos', 'Calendario', 'Biblioteca', 'Tareas', 'Sesiones', 'Rendimiento', 'Fisio', 'Multas', 'Registro Delegado', 'Análisis Grupal'];
   const mobilePrimaryTabs = [
     ['Inicio', 'Inicio'],
     ['Partidos', 'Partidos'],
@@ -30027,7 +30034,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     ['Registro Delegado', 'Deleg.'],
     ['Análisis Grupal', 'Análisis'],
   ];
-  const mobileMoreTabs = ['Perfiles', 'Equipos', 'Biblioteca', 'Tareas', 'Sesiones', 'Rendimiento', 'Fisio', 'Multas'];
+  const mobileMoreTabs = ['Calendario', 'Perfiles', 'Equipos', 'Biblioteca', 'Tareas', 'Sesiones', 'Rendimiento', 'Fisio', 'Multas'];
   const goToTab = (tab) => {
     if (tab === activeTab) {
       setIsMobileMoreOpen(false);
@@ -30038,6 +30045,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     requestMatchPlanNavigation({
       type: 'change-module',
       execute: () => {
+        if (tab !== 'Sesiones') setCalendarSessionTarget(null);
         setActiveTab(tab);
         setIsMobileMoreOpen(false);
       },
@@ -33409,10 +33417,23 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
         {activeTab === 'Tareas' ? (
           <TrainingTasksSection membership={identity?.membership} userId={session?.user?.id || ''} players={players} />
         ) : null}
+        {activeTab === 'Calendario' ? (
+          <TeamCalendarSection client={supabase} clubId={identity?.membership?.club_id || ''}
+            matches={matches} teams={teams} onRefreshMatches={loadPartidos}
+            onOpenSession={(target) => {
+              setCalendarSessionTarget(target);
+              setActiveTab('Sesiones');
+            }}
+            onOpenMatch={(match) => {
+              setActiveTab('Partidos');
+              openMatchPage(match, 'PRE');
+            }} />
+        ) : null}
         {activeTab === 'Sesiones' ? (
           <PlannedSessionsSection key={`${session?.user?.id || ''}:${identity?.membership?.club_id || ''}`}
             client={supabase} membership={identity?.membership}
             userId={session?.user?.id || ''} onDirtyChange={setPlannedSessionsDirty}
+            openSessionRequest={calendarSessionTarget}
             leagueLogoUrl={competitions.find((competition) => competition.key === 'league')?.logoUrl || ''} />
         ) : null}
 
@@ -37736,6 +37757,12 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                   <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Fecha</span>
                   <input type="date" name="date" value={matchFormState.date} onChange={handleMatchChange} className={`w-full rounded-2xl border bg-white/5 px-4 py-3 text-sm font-semibold text-white ${matchFieldErrors.date ? 'border-red-300/50' : 'border-white/10'}`} />
                   {matchFieldErrors.date ? <span className="block text-xs font-semibold text-red-200">{matchFieldErrors.date}</span> : null}
+                </label>
+                <label className="space-y-2 text-sm text-slate-300">
+                  <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Hora del partido (opcional)</span>
+                  <input type="time" name="time" value={matchFormState.time || ''} onChange={handleMatchChange}
+                    className={`w-full rounded-2xl border bg-white/5 px-4 py-3 text-sm font-semibold text-white ${matchFieldErrors.time ? 'border-red-300/50' : 'border-white/10'}`} />
+                  {matchFieldErrors.time ? <span className="block text-xs font-semibold text-red-200">{matchFieldErrors.time}</span> : null}
                 </label>
                 <label className="space-y-2 text-sm text-slate-300">
                   <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Condición</span>
