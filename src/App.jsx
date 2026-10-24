@@ -3,6 +3,7 @@ import React from 'react';
 import { createPortal, flushSync } from 'react-dom';
 
 import { supabase } from './lib/supabase';
+import { deleteOwnPlayer } from './data/ownPlayerDeletion';
 import { SportsContextCoordinator, verifySelectableSportsContext, verifySportsContext } from './sports/authorizedContext';
 import {
   assertCtsCreate, assertCtsMatchWrite, canWriteOperationalCts,
@@ -24591,7 +24592,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   };
 
   const handleDelete = async (player) => {
-    const confirmed = window.confirm(`¿Eliminar a ${player.name}? Esta acción no se puede deshacer.`);
+    const confirmed = window.confirm(`¿Eliminar definitivamente a ${player.name} y sus datos personales asociados? Se conservarán los partidos, sesiones y recursos compartidos. Esta acción no se puede deshacer.`);
     if (!confirmed) return;
     setLoading(true);
     setError(null);
@@ -24599,8 +24600,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       if (sportsSnapshotRef.current) {
         throw new Error('La eliminación de fichas requiere un flujo específico por equipo y temporada.');
       }
-      const { error: deleteError } = await supabase.from("jugadores").delete().eq("id", player.id);
-      if (deleteError) throw deleteError;
+      await deleteOwnPlayer(supabase, player.id);
       const jugadores = await getScopedJugadores();
       setPlayers(jugadores);
       setEmpty(jugadores.length === 0);
