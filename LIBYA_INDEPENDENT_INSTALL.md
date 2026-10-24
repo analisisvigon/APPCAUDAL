@@ -47,6 +47,7 @@ dominio del Caudal.
    alguna comprobación es falsa o ya hay cuentas.
 2. Obtener **solo esquema**, sin registros ni datos de Auth o Storage, del
    proyecto actual mediante un export estructural realizado por el propietario.
+   Para el proyecto Almadina SC, seguir `ALMADINA_SCHEMA_EXPORT.md`.
    No ejecutar en Libia los SQL históricos que insertan UUID, jugadores o el
    equipo del Caudal. El paquete 04C contiene solo diez tablas y sirve al
    ensayo parcial; no constituye un baseline de las nueve pestañas.

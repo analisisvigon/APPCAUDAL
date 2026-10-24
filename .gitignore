@@ -2,6 +2,7 @@ node_modules
 dist
 dist-preview
 dist-libya
+/local-exports/
 .DS_Store
 .env
 .env.local
