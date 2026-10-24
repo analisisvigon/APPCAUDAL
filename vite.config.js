@@ -21,6 +21,7 @@ export default defineConfig(({ mode }) => ({
       injectRegister: null,
       manifestFilename: 'manifest.json',
       includeAssets: [
+        'branding/almadina-sc-crest.png',
         'branding/nexo-favicon-32.png',
         'branding/nexo-icon-48.png',
         'branding/nexo-icon-192.png',

@@ -31,10 +31,11 @@ for (const eventType of ['Gol a favor', 'Gol en contra', 'Amarilla', 'Roja']) {
 assert.match(store, /if \(!ALLOWED_EVENT_TYPES\.has\(eventType\)\) return \[\]/);
 
 for (const copy of [
-  'Partidos', 'Tus partidos con el Caudal.', 'Pendiente', 'Finalizado',
+  'Partidos', 'Tus partidos con ', 'Pendiente', 'Finalizado',
   'Local', 'Visitante', 'Timeline', 'Asistencia:', 'No hay partidos disponibles.',
   'No se pudieron cargar los partidos.', 'Reintentar',
 ]) assert.ok(source.includes(copy), `Falta estado o contenido ${copy}.`);
+assert.match(panel, /Tus partidos con \{OWN_CLUB_IDENTITY\.shortName\}/);
 assert.match(panel, /match\.matchRound \?/);
 assert.match(panel, /match\.stadium \?/);
 assert.match(panel, /match\.competitionLogoUrl \?/);

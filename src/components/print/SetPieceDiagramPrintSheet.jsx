@@ -166,7 +166,7 @@ export default function SetPieceDiagramPrintSheet({ match, title = 'ABP', diagra
         return (
           <article key={pageKey} data-render-model="set-piece-print" data-page-format="A4-landscape" data-has-rival-references={pageHasRivalReferences ? 'true' : 'false'} className={`lineup-print-sheet print-sheet-a4 diagram-print-sheet diagram-print-landscape set-piece-pro-sheet abp-print-page ${preview ? 'set-piece-preview-sheet set-piece-is-preview' : ''}`}>
             <header className="set-piece-print-sheet-header">
-              <p>{OWN_CLUB_IDENTITY.name} · Dossier ABP</p>
+              <p>{OWN_CLUB_IDENTITY.shortName} · Dossier ABP</p>
               {(matchLabel || matchDate) ? <div>{matchLabel ? <strong>{matchLabel}</strong> : null}{matchDate ? <span>{matchDate}</span> : null}</div> : null}
             </header>
 

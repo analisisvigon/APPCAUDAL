@@ -209,7 +209,7 @@ assert.deepEqual(buildTacticalCapturePresentation({
 assert.match(boardSource, /selectedDefensivePlay\.arrows \|\| \[\]/, 'J: captura consume los pases y movimientos de la jugada actual');
 assert.match(boardSource, /getTacticalBoardArrowPath\(arrow\)/, 'J: conserva flechas rectas y curvas editadas');
 assert.match(boardSource, /enableDefensiveEditing && tacticalBallVisible/, 'D y J: conserva el balón actual');
-assert.match(boardSource, /!tacticalCaptureMode \? \([\s\S]*?<span>Rival \{rivalSystem\}<\/span>[\s\S]*?<span>Caudal \{caudalSystem\}<\/span>/, 'los sistemas solo permanecen en la vista normal');
+assert.match(boardSource, /!tacticalCaptureMode \? \([\s\S]*?<span>Rival \{rivalSystem\}<\/span>[\s\S]*?<span>\{OWN_CLUB_IDENTITY\.shortName\} \{caudalSystem\}<\/span>/, 'los sistemas solo permanecen en la vista normal');
 
 assert.match(appSource, /document\.body\.style\.overflow = 'hidden'/);
 assert.match(appSource, /document\.documentElement\.style\.overflow = 'hidden'/);

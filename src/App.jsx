@@ -2913,8 +2913,8 @@ const buildTacticalPrompt = ({ match, caudalSystem, rivalSystem, caudalLineup, r
       `Rival tras robo: ${valueOrMissing(questionnaire.preRivalAfterRecovery)}`,
       `Lanzadores transicion rival: ${valueOrMissing(questionnaire.preRivalTransitionLaunchers)}`,
       `Zonas donde corre mejor: ${valueOrMissing(questionnaire.preRivalBestRunningZones)}`,
-      `Caudal tras perdida: ${valueOrMissing(questionnaire.preCaudalAfterLoss)}`,
-      `Caudal tras robo: ${valueOrMissing(questionnaire.preCaudalAfterRecovery)}`,
+      `${OWN_CLUB_IDENTITY.shortName} tras perdida: ${valueOrMissing(questionnaire.preCaudalAfterLoss)}`,
+      `${OWN_CLUB_IDENTITY.shortName} tras robo: ${valueOrMissing(questionnaire.preCaudalAfterRecovery)}`,
     ]],
     ['ABP rival', [
       `Corners ofensivos: ${valueOrMissing(questionnaire.preRivalCornersFor)}`,
@@ -12704,7 +12704,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     const caudalPlayers = Array.from({ length: 11 }, (_, index) => ({
       id: `caudal:${index}`,
       boardKey: `caudal:${index}`,
-      name: safeArray(selectedMatch.preCaudalLineup)[index] || caudalRoles[index] || `Caudal ${index + 1}`,
+      name: safeArray(selectedMatch.preCaudalLineup)[index] || caudalRoles[index] || `${OWN_CLUB_IDENTITY.shortName} ${index + 1}`,
       role: caudalRoles[index] || '',
     }));
     const playGroups = [
@@ -26952,7 +26952,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
         {!tacticalCaptureMode ? (
           <div className="absolute left-0 right-0 top-1/2 flex -translate-y-1/2 justify-between px-5 text-[10px] font-black uppercase tracking-[0.16em] text-white/45">
             <span>Rival {rivalSystem}</span>
-            <span>Caudal {caudalSystem}</span>
+            <span>{OWN_CLUB_IDENTITY.shortName} {caudalSystem}</span>
           </div>
         ) : null}
         {renderConnectionLayer()}
@@ -30133,8 +30133,13 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
               <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-300 sm:hidden">NEXO CLUB</span>
               <img src="/branding/nexo-horizontal-dark.png" alt="NEXO CLUB" className="hidden h-14 w-auto max-w-full object-contain sm:block" />
             </div>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">{OWN_CLUB_IDENTITY.name}</h1>
-            <p className="mt-1 text-sm text-slate-400">{OWN_CLUB_IDENTITY.location} · {OWN_CLUB_IDENTITY.description}</p>
+            <div className="mt-2 flex items-center gap-3">
+              <TeamLogo src={clubCrest} alt={`Escudo de ${OWN_CLUB_IDENTITY.shortName}`} teamName={OWN_CLUB_IDENTITY.shortName} size="sm" />
+              <div className="min-w-0">
+                <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">{OWN_CLUB_IDENTITY.shortName}</h1>
+                <p className="mt-1 text-sm text-slate-400">{OWN_CLUB_IDENTITY.location} · {OWN_CLUB_IDENTITY.description}</p>
+              </div>
+            </div>
           </div>
           <div className="flex w-full flex-col gap-3 xl:w-auto xl:items-end">
             <div className="flex w-full flex-col gap-3 rounded-2xl border border-white/10 bg-caudal-950/40 p-3 sm:flex-row sm:items-center sm:justify-end xl:w-auto xl:min-w-72">
@@ -30228,7 +30233,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                     <img src="/branding/nexo-symbol-dark.png" alt="" className="h-6 w-6 object-contain" />
                     <p className="text-[10px] font-black uppercase tracking-[0.22em] text-red-200/80">NEXO CLUB · Cuerpo técnico</p>
                   </div>
-                  <h2 className="mt-1 text-xl font-black text-white sm:text-3xl">{OWN_CLUB_IDENTITY.name}</h2>
+                  <h2 className="mt-1 text-xl font-black text-white sm:text-3xl">{OWN_CLUB_IDENTITY.shortName}</h2>
                   <div className="mt-2 max-w-3xl">
                     {isEditingHomePhrase ? (
                       <div className="space-y-2">
@@ -34926,7 +34931,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                         <div className={`rounded-[1.45rem] border border-caudal-electric/[0.12] bg-[#091428]/80 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.20)] ${isPreTalkMode ? 'hidden' : ''}`}>
                           <div className="grid gap-4 xl:grid-cols-[1fr_auto_1fr] xl:items-center">
                             <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-                              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Caudal</p>
+                              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">{OWN_CLUB_IDENTITY.shortName}</p>
                               <select
                                 value={selectedMatch.preCaudalSystem || '4-4-2'}
                                 onChange={(event) => updateCaudalPreSystem(event.target.value)}

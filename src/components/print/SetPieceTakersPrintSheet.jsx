@@ -26,7 +26,7 @@ export default function SetPieceTakersPrintSheet({ match, sections = [], takers 
   return (
     <article className="lineup-print-sheet print-sheet-a4 set-piece-print-sheet">
       <header className="set-piece-header">
-        <p>{OWN_CLUB_IDENTITY.name}</p>
+        <p>{OWN_CLUB_IDENTITY.shortName}</p>
         <h1>LANZADORES</h1>
         <div>
           <span>{match?.isHome ? `${OWN_CLUB_IDENTITY.shortName} - ${match?.opponent || 'Rival'}` : `${match?.opponent || 'Rival'} - ${OWN_CLUB_IDENTITY.shortName}`}</span>

@@ -56,7 +56,7 @@ export default function MatchPlanPrintSheet({ match, situations = [], preview = 
       {pages.map((page) => (
         <article key={`match-plan-${page.pageNumber}`} data-render-model="match-plan-print" className={`lineup-print-sheet print-sheet-a4 match-plan-print-sheet ${preview ? 'match-plan-is-preview' : ''}`}>
           <header className="match-plan-print-page-header">
-            <p>{OWN_CLUB_IDENTITY.name} · Plan de partido</p>
+            <p>{OWN_CLUB_IDENTITY.shortName} · Plan de partido</p>
             <div>{matchLabel ? <strong>{matchLabel}</strong> : null}{match?.date ? <span>{formatDate(match.date)}</span> : null}</div>
           </header>
           <div className="match-plan-print-situations" data-count={page.situations.length} data-page-number={page.pageNumber}>

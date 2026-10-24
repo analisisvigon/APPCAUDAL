@@ -15,7 +15,7 @@ export default function DefensiveSetPiecePrintSheet({ match, note }) {
   return (
     <article className="lineup-print-sheet print-sheet-a4 defensive-abp-print-sheet">
       <header className="offensive-abp-header">
-        <p>{OWN_CLUB_IDENTITY.name}</p>
+        <p>{OWN_CLUB_IDENTITY.shortName}</p>
         <h1>{note?.titulo || 'ABP DEFENSIVA'}</h1>
         <div>
           <span>{match?.isHome ? `${OWN_CLUB_IDENTITY.shortName} - ${match?.opponent || 'Rival'}` : `${match?.opponent || 'Rival'} - ${OWN_CLUB_IDENTITY.shortName}`}</span>

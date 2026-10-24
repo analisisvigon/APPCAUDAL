@@ -18,7 +18,7 @@ export default function LineupPrintSheet({ match, starters = [], bench = [], coo
     <article className="lineup-print-sheet print-sheet-a4 lineup-match-sheet">
       <header className="print-sheet-header">
         <div>
-          <h1>{OWN_CLUB_IDENTITY.name}</h1>
+          <h1>{OWN_CLUB_IDENTITY.shortName}</h1>
         </div>
         <div className="print-sheet-meta">
           <p><strong>Rival:</strong> {match?.opponent || 'Sin información'}</p>

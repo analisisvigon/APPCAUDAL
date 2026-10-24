@@ -22,6 +22,14 @@ await assert.rejects(
   /pagos de multas/,
 );
 await assert.rejects(
+  () => deleteOwnPlayer({ rpc: async () => ({ data: null, error: { message: 'PLAYER_DELETE_DENIED' } }) }, playerId),
+  /No tienes permiso/,
+);
+await assert.rejects(
+  () => deleteOwnPlayer({ rpc: async () => ({ data: null, error: { message: 'PLAYER_DELETE_FK_REVIEW_REQUIRED: tabla.columna' } }) }, playerId),
+  /datos relacionados/,
+);
+await assert.rejects(
   () => deleteOwnPlayer({ rpc: async () => ({ data: { status: 'deleted', jugador_id: 'wrong' } }) }, playerId),
   /no confirmo|no confirmó/,
 );
