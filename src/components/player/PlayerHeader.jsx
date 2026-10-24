@@ -1,4 +1,5 @@
 import PlayerAvatar from './PlayerAvatar';
+import { OWN_CLUB_IDENTITY } from '../../constants/clubIdentity';
 
 export default function PlayerHeader({ profile }) {
   const shirtName = String(profile?.shirt_name || '').trim();
@@ -22,7 +23,7 @@ export default function PlayerHeader({ profile }) {
           <div className="flex items-center gap-1.5">
             <img src="/branding/nexo-symbol-dark.png" alt="" className="h-5 w-5 shrink-0 object-contain" />
             <p className="text-[9px] font-black uppercase tracking-[0.18em] text-caudal-electric/85 sm:text-[10px] sm:tracking-[0.22em]">
-              NEXO CLUB · Jugador · C.D. Caudal de Mieres
+              NEXO CLUB · Jugador · {OWN_CLUB_IDENTITY.name}
             </p>
           </div>
           <h1 className="mt-1 truncate text-2xl font-black tracking-tight text-white sm:text-4xl" title={displayName}>

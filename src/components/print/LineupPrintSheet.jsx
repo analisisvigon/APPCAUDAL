@@ -1,6 +1,7 @@
 import FootballPitchPrint from './FootballPitchPrint';
 import { buildLineupPrintBenchRows } from '../../utils/lineupPrintBench';
 import { getOwnPrintKitForMatch } from '../../utils/printPlayerShirt';
+import { OWN_CLUB_IDENTITY } from '../../constants/clubIdentity';
 
 const formatDate = (value) => {
   if (!value) return 'Sin información';
@@ -17,7 +18,7 @@ export default function LineupPrintSheet({ match, starters = [], bench = [], coo
     <article className="lineup-print-sheet print-sheet-a4 lineup-match-sheet">
       <header className="print-sheet-header">
         <div>
-          <h1>C.D. Caudal de Mieres</h1>
+          <h1>{OWN_CLUB_IDENTITY.name}</h1>
         </div>
         <div className="print-sheet-meta">
           <p><strong>Rival:</strong> {match?.opponent || 'Sin información'}</p>

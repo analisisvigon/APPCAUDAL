@@ -43,7 +43,8 @@ for (const forbidden of [
 assert.match(header, /flex min-w-0 items-center/, 'La identidad usa cabecera horizontal.');
 assert.match(header, /h-\[76px\] w-\[76px\]/, 'La foto conserva protagonismo sin dominar la pantalla.');
 assert.doesNotMatch(branch, /h-36 w-36|h-40 w-40/, 'No vuelve la foto de perfil sobredimensionada.');
-assert.match(header, /Jugador · C\.D\. Caudal de Mieres/);
+assert.match(header, /Jugador · \{OWN_CLUB_IDENTITY\.name\}/);
+assert.match(header, /import \{ OWN_CLUB_IDENTITY \} from '\.\.\/\.\.\/constants\/clubIdentity'/);
 assert.match(header, /profile\?\.shirt_name/);
 assert.match(header, /profile\?\.name/);
 assert.match(header, /profile\?\.number/);

@@ -1,4 +1,5 @@
 import SetPieceDiagramCanvas from './SetPieceDiagramCanvas';
+import { OWN_CLUB_IDENTITY } from '../../constants/clubIdentity';
 import MatchPlanIdentityLegend from './MatchPlanIdentityLegend';
 import {
   buildMatchPlanPages,
@@ -49,13 +50,13 @@ export default function MatchPlanPrintSheet({ match, situations = [], preview = 
   const pages = buildMatchPlanPages(situations);
   if (!pages.length) return null;
   const opponent = String(match?.opponent || '').trim();
-  const matchLabel = opponent ? (match?.isHome ? `C.D. Caudal - ${opponent}` : `${opponent} - C.D. Caudal`) : '';
+  const matchLabel = opponent ? (match?.isHome ? `${OWN_CLUB_IDENTITY.shortName} - ${opponent}` : `${opponent} - ${OWN_CLUB_IDENTITY.shortName}`) : '';
   return (
     <>
       {pages.map((page) => (
         <article key={`match-plan-${page.pageNumber}`} data-render-model="match-plan-print" className={`lineup-print-sheet print-sheet-a4 match-plan-print-sheet ${preview ? 'match-plan-is-preview' : ''}`}>
           <header className="match-plan-print-page-header">
-            <p>C.D. Caudal de Mieres · Plan de partido</p>
+            <p>{OWN_CLUB_IDENTITY.name} · Plan de partido</p>
             <div>{matchLabel ? <strong>{matchLabel}</strong> : null}{match?.date ? <span>{formatDate(match.date)}</span> : null}</div>
           </header>
           <div className="match-plan-print-situations" data-count={page.situations.length} data-page-number={page.pageNumber}>

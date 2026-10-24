@@ -11,6 +11,7 @@ import PlannedSessionPrint from './PlannedSessionPrint';
 import PlannedSessionRoster from './PlannedSessionRoster';
 import { SessionPlayerDistribution, SessionSpaceDistribution } from './PlannedSessionDistributionBoards';
 import { sessionPlayerCounts } from '../../utils/plannedSessionPlayers';
+import { OWN_CLUB_IDENTITY } from '../../constants/clubIdentity';
 import './plannedSessionDocument.css';
 
 const PhaseName = ({ phase }) => PLANNED_PHASES.find((entry) => entry.key === phase)?.label || phase;
@@ -42,8 +43,10 @@ function PendingArea({ label, children, className = '' }) {
 
 function SheetIdentity({ selected, page, leagueLogoUrl }) {
   return <header className="planned-sheet-identity">
-    {selected.team_id === CAUDAL_TEAM_ID
-      ? <img src="/pwa-512x512.png" alt="Escudo del C.D. Caudal" />
+    {(selected.team_id === CAUDAL_TEAM_ID || (import.meta.env.VITE_DEPLOYMENT_ID === 'libya'
+      && [OWN_CLUB_IDENTITY.name, OWN_CLUB_IDENTITY.shortName].includes(selected.team_name)))
+      && (import.meta.env.VITE_DEPLOYMENT_ID !== 'libya' || OWN_CLUB_IDENTITY.crest)
+      ? <img src={import.meta.env.VITE_DEPLOYMENT_ID === 'libya' ? OWN_CLUB_IDENTITY.crest : '/pwa-512x512.png'} alt={`Escudo de ${OWN_CLUB_IDENTITY.shortName}`} />
       : <div className="planned-sheet-team-crest-pending" aria-label="Espacio reservado para el escudo del equipo"><span className="planned-sheet-reserved-hint">Escudo pendiente</span></div>}
     <div><strong>{selected.team_name}</strong><span>{selected.label} · Hoja {page}</span></div>
     <div className={`planned-sheet-federation${leagueLogoUrl ? ' planned-sheet-federation-logo' : ''}`} aria-label="Escudo de Liga">

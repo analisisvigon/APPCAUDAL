@@ -1,11 +1,12 @@
 import SetPieceDiagramCanvas from '../print/SetPieceDiagramCanvas';
+import { OWN_CLUB_IDENTITY } from '../../constants/clubIdentity';
 
 export default function LibraryPrintSheet({ items = [], perPage = 2 }) {
   const visible = items.slice(0, perPage);
   return (
     <article className={`lineup-print-sheet library-print-sheet print-sheet-a4 library-print-${perPage}`}>
       <header className="library-print-header">
-        <p>C.D. Caudal de Mieres</p>
+        <p>{OWN_CLUB_IDENTITY.name}</p>
         <h1>Biblioteca táctica y de entrenamiento</h1>
       </header>
       <section className="library-print-grid">

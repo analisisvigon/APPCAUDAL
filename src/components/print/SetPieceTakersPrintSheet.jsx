@@ -1,5 +1,7 @@
 import { getPlayerDisplayName } from '../../utils/playerDisplayName';
 
+import { OWN_CLUB_IDENTITY } from '../../constants/clubIdentity';
+
 const formatDate = (value) => {
   if (!value) return 'Fecha pendiente';
   const date = new Date(value);
@@ -24,10 +26,10 @@ export default function SetPieceTakersPrintSheet({ match, sections = [], takers 
   return (
     <article className="lineup-print-sheet print-sheet-a4 set-piece-print-sheet">
       <header className="set-piece-header">
-        <p>C.D. Caudal de Mieres</p>
+        <p>{OWN_CLUB_IDENTITY.name}</p>
         <h1>LANZADORES</h1>
         <div>
-          <span>{match?.isHome ? `C.D. Caudal - ${match?.opponent || 'Rival'}` : `${match?.opponent || 'Rival'} - C.D. Caudal`}</span>
+          <span>{match?.isHome ? `${OWN_CLUB_IDENTITY.shortName} - ${match?.opponent || 'Rival'}` : `${match?.opponent || 'Rival'} - ${OWN_CLUB_IDENTITY.shortName}`}</span>
           <span>{formatDate(match?.date)}</span>
         </div>
       </header>

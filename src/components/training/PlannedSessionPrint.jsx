@@ -6,6 +6,7 @@ import TrainingTaskBoardPreview from './TrainingTaskBoardPreview';
 import PlannedSessionRoster from './PlannedSessionRoster';
 import { SessionPlayerDistribution, SessionSpaceDistribution } from './PlannedSessionDistributionBoards';
 import { sessionPlayerCounts } from '../../utils/plannedSessionPlayers';
+import { OWN_CLUB_IDENTITY } from '../../constants/clubIdentity';
 import './plannedSessionPrint.css';
 
 const CAUDAL_TEAM_ID = '85a16f33-9fe5-44d4-b85d-37d73651ebf6';
@@ -18,7 +19,10 @@ function PrintField({ label, children }) {
 
 function PrintIdentity({ selected, page, leagueLogoUrl }) {
   return <header className="planned-print-identity">
-    {selected?.team_id === CAUDAL_TEAM_ID ? <img src="/pwa-512x512.png" alt="Escudo del C.D. Caudal" />
+    {(selected?.team_id === CAUDAL_TEAM_ID || (import.meta.env.VITE_DEPLOYMENT_ID === 'libya'
+      && [OWN_CLUB_IDENTITY.name, OWN_CLUB_IDENTITY.shortName].includes(selected?.team_name)))
+      && (import.meta.env.VITE_DEPLOYMENT_ID !== 'libya' || OWN_CLUB_IDENTITY.crest)
+      ? <img src={import.meta.env.VITE_DEPLOYMENT_ID === 'libya' ? OWN_CLUB_IDENTITY.crest : '/pwa-512x512.png'} alt={`Escudo de ${OWN_CLUB_IDENTITY.shortName}`} />
       : <div className="planned-print-crest-space" />}
     <div><strong>{selected?.team_name || ''}</strong><span>{selected?.label || ''} · Hoja {page}</span></div>
     <div className={`planned-print-crest-space${leagueLogoUrl ? ' planned-print-league-crest' : ''}`} aria-label="Escudo de Liga">

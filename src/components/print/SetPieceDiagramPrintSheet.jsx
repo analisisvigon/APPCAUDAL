@@ -1,4 +1,5 @@
 import SetPieceDiagramCanvas from './SetPieceDiagramCanvas';
+import { OWN_CLUB_IDENTITY } from '../../constants/clubIdentity';
 import {
   buildSetPiecePrintPages,
   isDefensiveCornerSetPieceType,
@@ -14,7 +15,7 @@ const formatDate = (value) => {
 const getMatchLabel = (match) => {
   const opponent = String(match?.opponent || '').trim();
   if (!opponent) return '';
-  return match?.isHome ? `C.D. Caudal - ${opponent}` : `${opponent} - C.D. Caudal`;
+  return match?.isHome ? `${OWN_CLUB_IDENTITY.shortName} - ${opponent}` : `${opponent} - ${OWN_CLUB_IDENTITY.shortName}`;
 };
 
 function PrintDetail({ label, value, className = '' }) {
@@ -165,7 +166,7 @@ export default function SetPieceDiagramPrintSheet({ match, title = 'ABP', diagra
         return (
           <article key={pageKey} data-render-model="set-piece-print" data-page-format="A4-landscape" data-has-rival-references={pageHasRivalReferences ? 'true' : 'false'} className={`lineup-print-sheet print-sheet-a4 diagram-print-sheet diagram-print-landscape set-piece-pro-sheet abp-print-page ${preview ? 'set-piece-preview-sheet set-piece-is-preview' : ''}`}>
             <header className="set-piece-print-sheet-header">
-              <p>C.D. Caudal de Mieres · Dossier ABP</p>
+              <p>{OWN_CLUB_IDENTITY.name} · Dossier ABP</p>
               {(matchLabel || matchDate) ? <div>{matchLabel ? <strong>{matchLabel}</strong> : null}{matchDate ? <span>{matchDate}</span> : null}</div> : null}
             </header>
 

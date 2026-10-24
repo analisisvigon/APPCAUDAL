@@ -1,3 +1,5 @@
+import { OWN_CLUB_IDENTITY } from '../../constants/clubIdentity';
+
 const splitLines = (value, limit = 6) =>
   String(value || '')
     .split('\n')
@@ -39,7 +41,7 @@ export default function DossierTacticalSheet({ match, pageId, dossierType = 'Dos
           <h1>{title}</h1>
         </div>
         <div className="print-sheet-meta">
-          <p><strong>Partido:</strong> C.D. Caudal - {rival}</p>
+          <p><strong>Partido:</strong> {OWN_CLUB_IDENTITY.shortName} - {rival}</p>
           <p><strong>Fecha:</strong> {formatDate(match?.date)}</p>
           <p><strong>Sistema:</strong> {match?.preCaudalSystem || match?.statsSystem || 'Pendiente'}</p>
           <p><strong>Rival:</strong> {match?.preRivalSystem || 'Pendiente'}</p>
@@ -68,7 +70,7 @@ export default function DossierTacticalSheet({ match, pageId, dossierType = 'Dos
         ))}
       </section>
       <footer className="operational-print-footer">
-        <span>C.D. Caudal · {rival}</span>
+        <span>{OWN_CLUB_IDENTITY.shortName} · {rival}</span>
         <strong>{pageNumber}/{totalPages}</strong>
       </footer>
     </article>

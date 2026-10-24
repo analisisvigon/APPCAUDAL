@@ -1,10 +1,13 @@
 node_modules
 dist
 dist-preview
+dist-libya
 .DS_Store
 .env
 .env.local
 .env.staging
+.env.libya
+.env.libya.local
 vite-dev*.log
 
 # Perfiles locales de navegador

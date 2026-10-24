@@ -2,8 +2,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   build: {
+    outDir: mode === 'libya' ? 'dist-libya' : 'dist',
     rollupOptions: {
       output: {
         manualChunks(moduleId) {
@@ -74,7 +75,7 @@ export default defineConfig({
             urlPattern: /\/assets\/App-.+\.(?:js|css)$/,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'appcaudal-staff-on-demand',
+              cacheName: mode === 'libya' ? 'nexo-libya-staff-on-demand' : 'appcaudal-staff-on-demand',
               expiration: {
                 maxEntries: 12,
                 maxAgeSeconds: 30 * 24 * 60 * 60,
@@ -85,4 +86,4 @@ export default defineConfig({
       },
     }),
   ],
-});
+}));

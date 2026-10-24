@@ -1006,7 +1006,7 @@ const emptyMatchForm = {
   stadium: '',
   opponent: '',
   opponentCrest: '',
-  homeTeam: 'C.D. Caudal',
+  homeTeam: OWN_CLUB_IDENTITY.shortName,
   awayTeam: '',
   isHome: true,
   status: 'Previa',
@@ -2034,7 +2034,7 @@ const normalizeSupabasePartido = (match) =>
     stadium: match.stadium || '',
     opponent: match.opponent || '',
     opponentCrest: match.opponent_crest || '',
-    homeTeam: match.home_team || 'C.D. Caudal',
+    homeTeam: match.home_team || OWN_CLUB_IDENTITY.shortName,
     awayTeam: match.away_team || '',
     isHome: typeof (match.is_home ?? match.isHome) === 'boolean' ? (match.is_home ?? match.isHome) : null,
     status: match.status || 'Previa',
@@ -2061,7 +2061,7 @@ const createPartidoPayload = (matchFormState, teams = [], competitions = [], spo
   const competitionKey = normalizeCompetitionKey(matchFormState.competitionKey);
   const competitionMeta = getCompetitionMeta(competitionKey);
   const selectedCompetition = safeArray(competitions).find((competition) => competition.key === competitionKey);
-  const ownTeamName = sportsContext?.teamName || 'C.D. Caudal';
+  const ownTeamName = sportsContext?.teamName || OWN_CLUB_IDENTITY.shortName;
   const basePayload = {
     ...(sportsContext ? { club_team_season_id: sportsContext.id } : {}),
     date: matchFormState.date || null,
@@ -2870,11 +2870,11 @@ const extractRivalReportData = (text) => {
 const buildTacticalPrompt = ({ match, caudalSystem, rivalSystem, caudalLineup, rivalLineup, questionnaire, playerNotes = {}, rivalNotes = {} }) => {
   const sections = [
     ['Contexto', [
-      `Partido: C.D. Caudal vs ${valueOrMissing(match?.opponent)}`,
-      `Sistema C.D. Caudal: ${caudalSystem}`,
+      `Partido: ${OWN_CLUB_IDENTITY.shortName} vs ${valueOrMissing(match?.opponent)}`,
+      `Sistema ${OWN_CLUB_IDENTITY.shortName}: ${caudalSystem}`,
       `Sistema rival: ${rivalSystem}`,
     ]],
-    ['Alineacion C.D. Caudal', [formatLineupForPrompt(caudalSystem, caudalLineup)]],
+    [`Alineacion ${OWN_CLUB_IDENTITY.shortName}`, [formatLineupForPrompt(caudalSystem, caudalLineup)]],
     ['Alineacion rival', [formatLineupForPrompt(rivalSystem, rivalLineup)]],
     ['Resumen actual', [
       `Como juega el rival: ${valueOrMissing(questionnaire.preRivalStyle)}`,
@@ -2948,7 +2948,7 @@ const buildTacticalPrompt = ({ match, caudalSystem, rivalSystem, caudalLineup, r
   ];
 
   return [
-    'Actua como analista tactico profesional para el cuerpo tecnico del C.D. Caudal.',
+    `Actua como analista tactico profesional para el cuerpo tecnico de ${OWN_CLUB_IDENTITY.name}.`,
     'Reglas obligatorias:',
     '- No dar respuestas genericas.',
     '- Cada idea debe explicar donde, por que y que hacer.',
@@ -2958,7 +2958,7 @@ const buildTacticalPrompt = ({ match, caudalSystem, rivalSystem, caudalLineup, r
     '- Si falta informacion, decir que dato falta.',
     '- Cada bloque debe tener exactamente 3 frases verdes de HACER y 3 frases rojas de EVITAR.',
     '- Las frases verdes deben empezar con una accion concreta y las rojas con una alerta concreta.',
-    '- Ventajas y riesgos deben comparar el sistema del C.D. Caudal con el sistema rival.',
+    `- Ventajas y riesgos deben comparar el sistema de ${OWN_CLUB_IDENTITY.shortName} con el sistema rival.`,
     '- Como atacar debe dividirse en FASE INICIACION, FASE CREACION y FASE FINALIZACION.',
     '- Como defender debe dividirse en B.BAJO, B.MEDIO y B.ALTO, indicando cual es el bloque mas recomendable.',
     '- Ajustes debe proponer cambios de tipo de juego, alturas de presion o sistema si el partido cambia.',
@@ -19840,8 +19840,8 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       (player) => getStatsPlayerData(player.name).role
     );
     const callupCounts = getStatsCallupCounts();
-    const homeTeamName = selectedMatch.isHome ? 'C.D. Caudal' : selectedMatch.opponent || 'Rival';
-    const awayTeamName = selectedMatch.isHome ? selectedMatch.opponent || 'Rival' : 'C.D. Caudal';
+    const homeTeamName = selectedMatch.isHome ? OWN_CLUB_IDENTITY.shortName : selectedMatch.opponent || 'Rival';
+    const awayTeamName = selectedMatch.isHome ? selectedMatch.opponent || 'Rival' : OWN_CLUB_IDENTITY.shortName;
     const homeTeamCrest = selectedMatch.isHome ? clubCrest : selectedMatch.opponentCrest;
     const awayTeamCrest = selectedMatch.isHome ? selectedMatch.opponentCrest : clubCrest;
     const renderStatsSquadCard = ({ player, status }) => {
@@ -21897,7 +21897,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   const getMatchScoreLabel = (match) => {
     const score = getMatchScore(match);
     if (!score) return `${match.opponent || 'Rival'} · Resultado pendiente`;
-    return match.isHome ? `C.D. Caudal ${score.caudal}-${score.rival} ${match.opponent}` : `${match.opponent} ${score.rival}-${score.caudal} C.D. Caudal`;
+    return match.isHome ? `${OWN_CLUB_IDENTITY.shortName} ${score.caudal}-${score.rival} ${match.opponent}` : `${match.opponent} ${score.rival}-${score.caudal} ${OWN_CLUB_IDENTITY.shortName}`;
   };
 
   const getRivalCardProfile = (team) => {
@@ -26440,7 +26440,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             Rival · {getCurrentRivalSystem()}
           </div>
           <div className="absolute bottom-4 left-4 rounded-xl bg-caudal-950/75 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-white">
-            C.D. Caudal · {selectedMatch.preCaudalSystem || '4-4-2'}
+            {OWN_CLUB_IDENTITY.shortName} · {selectedMatch.preCaudalSystem || '4-4-2'}
           </div>
           {caudalCoordinates.map((position, index) => renderPlayer(position, index, 'caudal', caudalLineup))}
           {rivalCoordinates.map((position, index) => renderPlayer(position, index, 'rival', rivalLineup))}
@@ -30058,7 +30058,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       <div className="flex min-h-screen items-center justify-center bg-[#02070f] px-6 text-center text-slate-100">
         {splashScreen}
         <div>
-          <TeamLogo className="mx-auto" src={clubCrest} alt="Escudo del C.D. Caudal" teamName="C.D. Caudal" size="xl" />
+          <TeamLogo className="mx-auto" src={clubCrest} alt={`Escudo de ${OWN_CLUB_IDENTITY.shortName}`} teamName={OWN_CLUB_IDENTITY.shortName} size="xl" />
           <p className="mt-5 text-sm font-black uppercase tracking-[0.18em] text-caudal-electric">
             {authLoading ? 'Comprobando sesión…' : 'Cargando datos…'}
           </p>
@@ -30133,7 +30133,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
               <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-300 sm:hidden">NEXO CLUB</span>
               <img src="/branding/nexo-horizontal-dark.png" alt="NEXO CLUB" className="hidden h-14 w-auto max-w-full object-contain sm:block" />
             </div>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">C.D. Caudal de Mieres</h1>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">{OWN_CLUB_IDENTITY.name}</h1>
             <p className="mt-1 text-sm text-slate-400">Mieres, Asturias · Cuerpo técnico</p>
           </div>
           <div className="flex w-full flex-col gap-3 xl:w-auto xl:items-end">
@@ -30222,13 +30222,13 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             <section className="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#0b1220] shadow-[0_16px_48px_rgba(0,0,0,0.24)]">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(212,0,0,0.10),transparent_32%),linear-gradient(135deg,rgba(255,255,255,0.045),transparent_46%)]" />
               <div className="relative grid gap-4 p-3.5 sm:p-4 lg:grid-cols-[auto_1fr_auto] lg:items-center">
-                <TeamLogo className="mx-auto sm:mx-0" src={clubCrest} alt="Escudo del C.D. Caudal" teamName="C.D. Caudal" size="lg" />
+                <TeamLogo className="mx-auto sm:mx-0" src={clubCrest} alt={`Escudo de ${OWN_CLUB_IDENTITY.shortName}`} teamName={OWN_CLUB_IDENTITY.shortName} size="lg" />
                 <div className="text-center sm:text-left">
                   <div className="flex items-center justify-center gap-1.5 sm:justify-start">
                     <img src="/branding/nexo-symbol-dark.png" alt="" className="h-6 w-6 object-contain" />
                     <p className="text-[10px] font-black uppercase tracking-[0.22em] text-red-200/80">NEXO CLUB · Cuerpo técnico</p>
                   </div>
-                  <h2 className="mt-1 text-xl font-black text-white sm:text-3xl">C.D. Caudal de Mieres</h2>
+                  <h2 className="mt-1 text-xl font-black text-white sm:text-3xl">{OWN_CLUB_IDENTITY.name}</h2>
                   <div className="mt-2 max-w-3xl">
                     {isEditingHomePhrase ? (
                       <div className="space-y-2">
@@ -34198,7 +34198,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                         : statusPresentation.outcome === 'loss'
                           ? 'Derrota'
                           : statusPresentation.label;
-                    const cardAriaLabel = `${outcomeLabel}${played && score.hasCompleteScore ? ` ${score.home}-${score.away}` : ''}: ${match.isHome ? 'C.D. Caudal contra' : `${match.opponent} contra`} ${match.isHome ? match.opponent : 'C.D. Caudal'}`;
+                    const cardAriaLabel = `${outcomeLabel}${played && score.hasCompleteScore ? ` ${score.home}-${score.away}` : ''}: ${match.isHome ? `${OWN_CLUB_IDENTITY.shortName} contra` : `${match.opponent} contra`} ${match.isHome ? match.opponent : OWN_CLUB_IDENTITY.shortName}`;
                     const getMatchMdLabel = () => {
                       if (!match.date) return 'MD';
                       const today = new Date();
@@ -34342,8 +34342,8 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                         </div>
                         <div className={`relative mx-auto grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1 px-4 pb-3 pt-4 sm:gap-3 ${played ? 'max-w-[620px]' : 'max-w-[540px]'}`}>
                           <div className="text-center">
-                            <TeamLogo className="mx-auto" src={caudalIsHome ? clubCrest : match.opponentCrest} alt={`Escudo de ${caudalIsHome ? 'C.D. Caudal' : match.opponent}`} teamName={caudalIsHome ? 'C.D. Caudal' : match.opponent} />
-                            <p className="mt-2 line-clamp-1 text-sm font-bold text-white" title={caudalIsHome ? 'C.D. Caudal' : match.opponent}>{caudalIsHome ? 'C.D. Caudal' : match.opponent}</p>
+                            <TeamLogo className="mx-auto" src={caudalIsHome ? clubCrest : match.opponentCrest} alt={`Escudo de ${caudalIsHome ? OWN_CLUB_IDENTITY.shortName : match.opponent}`} teamName={caudalIsHome ? OWN_CLUB_IDENTITY.shortName : match.opponent} />
+                            <p className="mt-2 line-clamp-1 text-sm font-bold text-white" title={caudalIsHome ? OWN_CLUB_IDENTITY.shortName : match.opponent}>{caudalIsHome ? OWN_CLUB_IDENTITY.shortName : match.opponent}</p>
                           </div>
                           <div className="text-center">
                             <p className="rounded-xl bg-caudal-950/80 px-3 py-1 text-xs text-slate-400">{matchDisplayDate(match.date)}</p>
@@ -34372,8 +34372,8 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                             {match.stadium ? <p className="mx-auto mt-1 max-w-[180px] truncate text-xs font-semibold text-slate-400" title={match.stadium}>{match.stadium}</p> : null}
                           </div>
                           <div className="text-center">
-                            <TeamLogo className="mx-auto" src={caudalIsHome ? match.opponentCrest : clubCrest} alt={`Escudo de ${caudalIsHome ? match.opponent : 'C.D. Caudal'}`} teamName={caudalIsHome ? match.opponent : 'C.D. Caudal'} />
-                            <p className="mt-2 line-clamp-1 text-sm font-bold text-white" title={caudalIsHome ? match.opponent : 'C.D. Caudal'}>{caudalIsHome ? match.opponent : 'C.D. Caudal'}</p>
+                            <TeamLogo className="mx-auto" src={caudalIsHome ? match.opponentCrest : clubCrest} alt={`Escudo de ${caudalIsHome ? match.opponent : OWN_CLUB_IDENTITY.shortName}`} teamName={caudalIsHome ? match.opponent : OWN_CLUB_IDENTITY.shortName} />
+                            <p className="mt-2 line-clamp-1 text-sm font-bold text-white" title={caudalIsHome ? match.opponent : OWN_CLUB_IDENTITY.shortName}>{caudalIsHome ? match.opponent : OWN_CLUB_IDENTITY.shortName}</p>
                           </div>
                         </div>
                         {played ? (
@@ -35747,8 +35747,8 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                       <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Resumen de marcador</h3>
                       <div className="mt-6 grid items-center gap-6 lg:grid-cols-[1fr_auto_1fr]">
                         <div className="text-center">
-                          <TeamLogo className="mx-auto" src={clubCrest} alt="Escudo de C.D. Caudal" teamName="C.D. Caudal" size="lg" />
-                          <p className="mt-3 text-sm font-bold text-white">C.D. Caudal</p>
+                          <TeamLogo className="mx-auto" src={clubCrest} alt={`Escudo de ${OWN_CLUB_IDENTITY.shortName}`} teamName={OWN_CLUB_IDENTITY.shortName} size="lg" />
+                          <p className="mt-3 text-sm font-bold text-white">{OWN_CLUB_IDENTITY.shortName}</p>
                         </div>
                         <div className="text-center">
                           <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Resultado</p>
@@ -37735,8 +37735,8 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                 <legend className="px-2 text-xs font-black uppercase tracking-[0.16em] text-slate-500">Marcador oficial</legend>
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    ['homeScore', matchFormState.isHome ? 'C.D. Caudal' : matchFormState.opponent || 'Local'],
-                    ['awayScore', matchFormState.isHome ? matchFormState.opponent || 'Visitante' : 'C.D. Caudal'],
+                    ['homeScore', matchFormState.isHome ? OWN_CLUB_IDENTITY.shortName : matchFormState.opponent || 'Local'],
+                    ['awayScore', matchFormState.isHome ? matchFormState.opponent || 'Visitante' : OWN_CLUB_IDENTITY.shortName],
                   ].map(([name, label]) => (
                     <label key={name} className="min-w-0 space-y-2 text-sm text-slate-300">
                       <span className="block truncate text-[10px] font-black uppercase tracking-[0.12em] text-slate-500" title={label}>{label}</span>
