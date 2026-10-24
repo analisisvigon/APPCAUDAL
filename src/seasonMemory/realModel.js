@@ -1,6 +1,7 @@
 import { getMatchStatus, isMatchScheduledInFuture, parseLocalMatchDate } from '../utils/matchStatus.js';
 import { normalizeCompetitionKey } from '../utils/competitionFilters.js';
 import { OWN_CLUB_IDENTITY } from '../constants/clubIdentity.js';
+import { buildRealIndividualMemory } from './realIndividualModel.js';
 
 const trim = (value) => String(value ?? '').trim();
 const fold = (value) => trim(value).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -170,7 +171,7 @@ function aggregateMetrics(matches) {
 }
 
 export function buildRealSeasonMemory({ context, matches = [], catalog = [], unlinkedCount = 0,
-  competitionId = 'all', now = new Date() }) {
+  individual, individualError = null, competitionId = 'all', now = new Date() }) {
   if (!context?.id || !context?.teamId || !context?.clubId || !context?.seasonId) {
     throw new Error('Temporada y equipo no acreditados.');
   }
@@ -223,7 +224,10 @@ export function buildRealSeasonMemory({ context, matches = [], catalog = [], unl
     Object.keys(newTotals()).forEach((key) => { acc[key] += competition.totals[key]; });
     return acc;
   }, newTotals()));
-  return { context, matches: selected, competitions, totals,
+  const individualMemory = individual
+    ? buildRealIndividualMemory({ context, matches: selected, competitions, source: individual }) : null;
+  return { context, matches: selected, competitions, totals, individual: individualMemory,
+    individualUnavailable: individualError !== null,
     metrics: aggregateMetrics(selected), verified: selected.length,
     allVerified: accepted.length, excluded,
     excludedTotal: Object.values(excluded).reduce((a, b) => a + b, 0),

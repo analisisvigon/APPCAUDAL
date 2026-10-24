@@ -61,7 +61,7 @@ export default function SeasonMemoryPanel({ client, identity, sessionUserId }) {
     setSnapshot(null);
     setCompetitionId('all');
     setState('loading');
-    loadRealSeasonMemorySnapshot(client, context).then((data) => {
+    loadRealSeasonMemorySnapshot(client, context, { includeIndividual: true }).then((data) => {
       if (cancelled) return;
       setSnapshot(data);
       setReadAt(new Date());
@@ -105,7 +105,7 @@ export default function SeasonMemoryPanel({ client, identity, sessionUserId }) {
         'seasonLabel', 'startsOn', 'endsOn', 'displayName'].some((key) => freshContext[key] !== context[key])) {
         throw new Error('El equipo o la temporada cambió desde la lectura previa.');
       }
-      const fresh = await loadRealSeasonMemorySnapshot(client, freshContext);
+      const fresh = await loadRealSeasonMemorySnapshot(client, freshContext, { includeIndividual: true });
       const next = buildRealSeasonMemory({ context: freshContext, ...fresh,
         competitionId, now: new Date() });
       if (!next.verified || !next.totals.played) throw new Error('Ya no hay partidos válidos para esta selección.');
@@ -172,6 +172,8 @@ export default function SeasonMemoryPanel({ client, identity, sessionUserId }) {
           ? model.excludedTotal ? 'Informe del CTS con registros excluidos' : 'Memoria completa del CTS seleccionado'
           : 'Informe de competición · selección parcial'} · {model.competitions.map((item) => item.name).join(', ') || 'Sin competiciones'}</p>
         <p className="text-xs text-slate-400">Indicadores disponibles: {model.metrics.filter((item) => item.covered).map((item) => `${item.label} (${item.covered}/${item.eligible})`).join(', ') || 'ninguno'}.</p>
+        <p className="text-xs text-slate-400">Plantilla: {model.individualUnavailable ? 'lectura no verificada' : `${model.individual?.rows.length || 0} jugadores con participación acreditada`}. {model.totals.played && !model.individual?.rows.length && !model.individualUnavailable ? 'Aún no hay estadísticas individuales atribuibles por UUID.' : ''}</p>
+        {model.individualUnavailable ? <p className="text-xs text-amber-200">Los datos individuales no pudieron verificarse. El PDF conservará las secciones colectivas y señalará esta limitación.</p> : null}
         {model.excludedTotal ? <p className="text-xs text-amber-200">Excluidos: {model.excluded.unlinked} sin vínculo CTS en la base, {model.excluded.teamContradiction} con identidad de equipo contradictoria, {model.excluded.invalidDate} fuera de temporada o sin fecha, {model.excluded.competitionConflict} con competición discrepante y {model.excluded.duplicate} duplicados.</p> : null}
         <p className="text-xs text-slate-400">Fecha prevista: {new Date().toLocaleDateString('es-ES')}. Lectura: {readAt?.toLocaleString('es-ES')}. El PDF reflejará los datos existentes al generarlo.</p>
       </> : null}

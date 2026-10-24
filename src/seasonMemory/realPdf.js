@@ -1,5 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { PDF_THEME, competitionColor } from './pdfTheme.js';
+import { individualSectionCount, renderIndividualCompetition,
+  renderIndividualGlobal } from './realIndividualPdf.js';
 
 const { page: P, colors: C } = PDF_THEME;
 const W = P.width;
@@ -289,6 +291,8 @@ function finalPage(pdf, model, sections) {
     + `${model.excluded.duplicate} duplicados. `
     + 'Los promedios se calculan solo con indicadores válidos; un campo vacío no equivale a cero.',
     M, 246, W - 2 * M, { size: 7, color: C.slate, leading: 5 });
+  if (model.individualUnavailable) ink(pdf, 'DATOS INDIVIDUALES NO VERIFICADOS EN ESTA LECTURA',
+    M, 236, { size: 7, color: C.amber, bold: true });
 }
 
 function indexPage(pdf, sections, model, indexPages) {
@@ -320,12 +324,17 @@ export function createRealSeasonMemoryPdf({ model, crestDataUrl }) {
     subject: 'Informe deportivo de partidos acreditados', author: 'NEXO CLUB' });
   cover(pdf, model, crestDataUrl);
   summary(pdf, model);
-  const indexPages = Math.max(1, Math.ceil((model.competitions.length + 5) / 14));
+  const indexPages = Math.max(1, Math.ceil((model.competitions.length + 5
+    + individualSectionCount(model.individual)) / 14));
   for (let i = 0; i < indexPages; i++) page(pdf, 'Índice');
   const sections = [{ name: 'Resumen ejecutivo', page: 2 }, { name: 'Índice', page: 3 }];
   evolution(pdf, model, sections);
   statistics(pdf, model, sections);
-  model.competitions.forEach((comp) => competitionPages(pdf, comp, sections));
+  renderIndividualGlobal(pdf, model.individual, sections);
+  model.competitions.forEach((comp) => {
+    competitionPages(pdf, comp, sections);
+    renderIndividualCompetition(pdf, comp, model.individual, sections);
+  });
   finalPage(pdf, model, sections);
   indexPage(pdf, sections, model, indexPages);
   const total = pdf.getNumberOfPages();

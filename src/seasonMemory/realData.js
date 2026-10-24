@@ -1,4 +1,5 @@
 import { resolveSeasonMemoryContexts } from './realModel.js';
+import { loadRealIndividualSnapshot } from './realIndividualData.js';
 
 const unwrap = (response, label) => {
   if (response?.error) throw new Error(`No se pudieron leer ${label}.`);
@@ -37,7 +38,7 @@ export async function loadRealSeasonMemoryContexts(client, membership) {
 
 const MATCH_COLUMNS = 'id,club_team_season_id,date,time,type,round,opponent,is_home,home_team,away_team,status,home_score,away_score,goals_for,goals_against,competition_id,competition_key,possession,shots,shots_on_target,corners,yellow_cards,red_cards';
 
-export async function loadRealSeasonMemorySnapshot(client, context) {
+export async function loadRealSeasonMemorySnapshot(client, context, { includeIndividual = false } = {}) {
   if (!context?.id || !context?.clubId) throw new Error('CTS no acreditado.');
   const [matches, catalog, unlinked] = await Promise.all([
     readAll(() => client.from('partidos').select(MATCH_COLUMNS)
@@ -52,5 +53,14 @@ export async function loadRealSeasonMemorySnapshot(client, context) {
   if (unlinked.error || !Number.isInteger(unlinked.count)) {
     throw new Error('No se pudo verificar el número de partidos sin vínculo CTS.');
   }
-  return { matches, catalog, unlinkedCount: unlinked.count };
+  let individual;
+  let individualError = null;
+  if (includeIndividual) {
+    try {
+      individual = await loadRealIndividualSnapshot(client, context, matches);
+    } catch {
+      individualError = 'No se pudieron verificar los datos individuales.';
+    }
+  }
+  return { matches, catalog, unlinkedCount: unlinked.count, individual, individualError };
 }

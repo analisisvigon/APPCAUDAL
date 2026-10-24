@@ -52,6 +52,9 @@ const loadedContexts = await loadRealSeasonMemoryContexts(client, membership);
 assert.equal(loadedContexts.length, 1);
 const loadedSnapshot = await loadRealSeasonMemorySnapshot(client, context);
 assert.equal(loadedSnapshot.unlinkedCount, 2);
+const partialSnapshot = await loadRealSeasonMemorySnapshot(client, context, { includeIndividual: true });
+assert.equal(partialSnapshot.matches.length, 1);
+assert.equal(partialSnapshot.individualError, 'No se pudieron verificar los datos individuales.');
 assert.ok(calls.some((item) => item[0] === 'partidos' && item[1] === 'eq'
   && item[2] === 'club_team_season_id' && item[3] === ctsId));
 assert.ok(calls.some((item) => item[0] === 'partidos' && item[1] === 'is'
