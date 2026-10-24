@@ -5,6 +5,15 @@ select count(*) as operational_cts_rows,
        count(*) filter (where writes_enabled) = 0 as no_writes_enabled
 from public.operational_cts_v1;
 
+select count(*) = 0 as guard_not_activated
+from public.operational_guard_versions_v1;
+
+select conname, pg_get_constraintdef(oid,true) as definition
+from pg_constraint where conrelid = 'public.operational_cts_v1'::regclass
+  and conname in ('operational_guard_required_check',
+    'operational_cts_v1_guard_version_fkey')
+order by conname;
+
 -- Sin JWT, ni el CTS preferido ni el permiso de escritura deben existir.
 select public.my_operational_cts_v1() is null as no_anonymous_preference,
        public.can_write_operational_cts_v1(null::uuid) is false

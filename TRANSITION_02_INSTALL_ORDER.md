@@ -1,94 +1,111 @@
-# Transición 02: operaciones iniciales y protección del archivo
+# Transición 02: preparación y corte del archivo histórico
 
-**Estado:** SQL preparado, no instalado. No designar todavía Libia ni activar
-`VITE_MULTICLUB_03_CTS_ENABLED` en producción. Este bloque no ejecuta SQL ni
-modifica la rama legacy o PLAYER. Ninguna de las RPC nuevas concede escritura
-si el registro operativo está vacío o `writes_enabled=false`.
+**Estado: SQL local, sin instalar.** La rama legacy y PLAYER conservan su
+comportamiento mientras no se active el modo CTS. No crear todavía Libia ni
+activar 03C con esta guía: el corte futuro permanece bloqueado expresamente.
 
-## Bloque A: preparación reversible, sin CTS operativo
+## Bloque A: preparación sin activar escrituras
 
-1. Revisar y ejecutar manualmente
-   `supabase_transition_02_operational_preflight.sql`.
-2. Si coincide el contrato, revisar y ejecutar manualmente
-   `supabase_transition_02_operational_prepare.sql`.
-3. Revisar y ejecutar manualmente
-   `supabase_transition_02_operational_postflight.sql`.
-   Debe devolver **cero** filas operativas y `no_writes_enabled=true`.
+1. Revisar y ejecutar manualmente `supabase_transition_02_operational_preflight.sql`.
+2. Revisar y ejecutar manualmente `supabase_transition_02_operational_prepare.sql`.
+3. Ejecutar `supabase_transition_02_operational_postflight.sql` (solo lectura).
+   Debe mostrar registro y marcador vacíos y `no_writes_enabled=true`.
 
-Estas RPC nuevas son `create_operational_player_v1`,
-`edit_operational_player_v1`, `create_operational_match_v1` y
-`edit_operational_match_v1`. `my_operational_cts_v1()` devuelve el CTS
-designado únicamente a la cuenta owner autorizada para abrirlo por defecto;
-si no hay designación, el selector continúa sin preferencia operativa. El alta
-de jugador reutiliza la RPC 03B; las
-ediciones solo afectan campos locales de una ficha con vínculo exacto. Los
-partidos solo admiten alta y edición de campos de agenda de una `Previa`,
-con fecha dentro de la temporada del CTS.
-Cada RPC bloquea la fila del registro operativo y vuelve a comprobar
-`can_write_club_team_season`; el frontend no es su barrera de seguridad.
+La preparación añade las cuatro RPC operativas, pero el registro de un único
+CTS sigue vacío. Un `UPDATE writes_enabled=true` aislado tampoco es válido:
+requiere una fila de versión 1 en `operational_guard_versions_v1`, protegida
+por FK, CHECK, RLS y ACL. Esta es una condición estructural de habilitación;
+no inspecciona texto de funciones. No instalar un marcador de forma separada.
 
-## Bloque B: corte futuro, aún bloqueado
+## Bloque B: guardas de fila, todavía sin activar
 
-1. Preparar y verificar respaldo restaurable de base de datos y Storage.
-2. Crear y verificar **manualmente** el CTS de Libia y la membresía owner de
-   la cuenta personal. No crear ni inferir vínculos del Caudal.
-3. Revisar `supabase_transition_02_designate_template.sql` y completar sus
-   dos UUID exactos tras verificar el CTS y la cuenta owner. Designa la única
-   fila de `operational_cts_v1` con `writes_enabled=false`. El trigger exige
-   temporada abierta y activa, equipo propio y membresía owner activa. La plantilla
-   original con valores `NULL` falla sin modificar nada.
-4. Resolver los requisitos y pruebas negativas de 03C; instalarlo solamente
-   cuando su propio preflight y postflight sean correctos. Cerrar también las
-   rutas de escritura históricas **fuera** de su perímetro: perfiles globales,
-   etapas, equipos, bibliotecas, sesiones, documentos, Storage y cualquier RPC
-   `SECURITY DEFINER` que modifique esos datos. La política legacy `ALL true`
-   de rivales también requiere decisión específica. Ninguna fila histórica
-   debe quedar escribible mediante consultas directas o funciones indirectas.
-5. Tras comprobar las cuatro operaciones SQL directas y RPC con cuentas
-   authenticated de Libia, Caudal y sin acceso, revisar
-   `supabase_transition_02_archive_cutover.sql`. **Actualmente aborta siempre**
-   con `ARCHIVE_CUTOVER_BLOCKED_PENDING_INDIRECT_WRITE_PROTECTION`: el corte
-   indirecto de los módulos ajenos a 03C no está acreditado. En una revisión
-   posterior, una vez cerrado ese perímetro y retirado expresamente el
-   interbloqueo, el archivo restringirá el helper común al CTS designado y
-   habilitará `writes_enabled` en **la misma transacción**. Verificar con
-   `supabase_transition_02_archive_postflight.sql` y repetir las pruebas
-   negativas bajo JWT reales, nunca como `postgres` o `service_role`.
-6. Solo entonces considerar activar el frontend CTS de producción.
+1. Confirmar el contrato de las 16 tablas del perímetro 03C y las tablas
+   canónicas. Revisar y ejecutar manualmente
+   `supabase_transition_02_row_guards_prepare.sql`.
+2. Ejecutar `supabase_transition_02_row_guards_postflight.sql` (solo lectura).
+   Todas las guardas deben figurar activas, y `active_writes_false=true`.
+3. Antes de considerar el corte, ensayar con `writes_enabled=false` la creación
+   y edición legacy del Caudal y el acceso PLAYER; el marcador debe seguir
+   ausente y estas guardas no deben cambiar el resultado funcional.
 
-**Detenerse** si una RPC legacy o una tabla hija permite cambiar el Caudal,
-si hay políticas permisivas adicionales, si un registro deportivo carece de
-CTS exacto o si falla PLAYER. El corte futuro preparado aquí cubre el
-perímetro de Plantilla/Partidos de 03C; no certifica los demás módulos.
+Estas guardas permanecen inertes solo antes del marcador de corte. Después del
+corte, `writes_enabled=false` bloquea todo DML protegido. Con escrituras
+habilitadas, rechazarán DML en fichas, partidos, hijos de partidos, etapas, vínculos
+CTS y perfiles globales fuera del CTS operativo. La inserción de perfil, etapa
+y ficha usa triggers diferidos porque 03B inserta sus vínculos después.
+`equipos_rivales`, las tres tablas de rivales y `competitions` se congelan
+por completo al activar: todavía no tienen una clave CTS segura para editarse.
+Las RPC `SECURITY DEFINER` tampoco pueden eludir un trigger de fila habilitado.
+Esto protege el perímetro documentado; funciones que escriban otras tablas,
+Storage o documentos requieren cobertura adicional.
 
-## Ensayo funcional obligatorio antes del bloque B
+## Bloque C: corte futuro, bloqueado
 
-Usar un Supabase aislado con dos clubes y usuarios ficticios autenticados:
+1. Preparar un respaldo restaurable de base de datos y Storage. Resolver la
+   restricción de equipo propio y crear/verificar manualmente el CTS de Libia,
+   temporada abierta y membresía owner de la cuenta personal.
+2. Revisar `supabase_transition_02_designate_template.sql`, completar solo los
+   UUID verificados y designar un único CTS con `writes_enabled=false`.
+3. Completar las dependencias y pruebas de 03C. Revisar todas las escrituras
+   directas e indirectas fuera de Plantilla y Partidos, incluida PLAYER; cerrar
+   sus vías históricas y comprobar las bibliotecas de Tareas/ABP y snapshots.
+   `supabase_transition_02_write_paths_readonly.sql` ayuda a localizar RPC y
+   triggers adicionales en el catálogo del proyecto de ensayo; devuelve solo
+   metadatos y sus coincidencias no acreditan seguridad por sí solas.
+4. Ensayar el corte en un Supabase aislado con usuarios ficticios. Ejecutar
+   las pruebas negativas de `scripts/transition02NegativeStaging.mjs` tras
+   preparar sus fixtures; complementar con la matriz de la sección siguiente.
+5. Revisar `supabase_transition_02_archive_cutover.sql`. **Ahora aborta siempre**
+   con `ARCHIVE_CUTOVER_BLOCKED_PENDING_INDIRECT_WRITE_PROTECTION`. Solo una
+   revisión posterior, con pruebas completas, puede retirar esa línea. En una
+   única transacción futura restringirá el helper compartido al CTS designado,
+   quitará DML directo authenticated de tablas canónicas, revocará `TRUNCATE`
+   en el perímetro protegido, insertará el marcador de guard y habilitará
+   `writes_enabled`. Si falla una comprobación, revierte.
+6. Verificar con `supabase_transition_02_archive_postflight.sql` y repetir las
+   pruebas bajo JWT authenticated, nunca como postgres ni service_role.
 
-| Actor / intento | Resultado esperado |
-| --- | --- |
-| Owner y staff de Libia con CTS operativo abierto: alta de jugador nuevo y partido `Previa`, edición local de ficha y agenda | Éxito; cada fila queda en el CTS operativo y las lecturas RPC la muestran. |
-| Repetir alta de jugador con otro UUID pero igual identidad externa | Conflicto; ninguna fila parcial. |
-| Repetir alta con el mismo UUID de ficha | Conflicto seguro; no sustituye la ficha. |
-| Staff solo del Caudal o usuario sin membresía: llamar las cuatro RPC con UUID de Libia conocido | Denegado y sin cambios. |
-| Owner de Libia: editar UUID de ficha o partido del Caudal, o pasar CTS Caudal como parámetro | Denegado y sin cambios. |
-| Enviar en JSON `club_team_season_id`, `id`, `status` o claves no permitidas | Denegado; no se altera el CTS ni el resultado. |
-| Editar partido ya jugado | Denegado; solo se edita una `Previa`. |
-| Crear o mover una previa fuera de las fechas de la temporada del CTS | Denegado; no aparece una fila parcial. |
-| Consultas directas y RPC legacy: INSERT, UPDATE y DELETE sobre Caudal y todas las tablas hijas del perímetro 03C | Denegado, también a través de funciones `SECURITY DEFINER`. |
-| Temporada cerrada, revocación de membresía y cambio de CTS durante una carga | Sin escritura ni datos retenidos del contexto anterior. |
-| PLAYER ficticio y snapshots anteriores de Tareas/ABP | Misma visibilidad y contenido antes y después del corte. |
+## Matriz mínima de ensayo autenticado
 
-Ejecutar los intentos bajo sesiones `authenticated` distintas; el SQL Editor
-como `postgres` no representa la autorización del usuario. Registrar recuentos
-y hashes de las filas históricas antes y después. Si un caso falla, no activar
-el registro operativo ni el frontend CTS.
+| Ruta | Activo autorizado | Caudal histórico / ajeno |
+| --- | --- | --- |
+| RPC 03B directa: alta y enlace global | Solo CTS operativo, respetando origen | Denegada |
+| RPC legacy `create_own_player_atomic` | Revisar según flujo legacy | Denegada después del corte |
+| RPC operativas: alta/edición ficha y partido | Éxito en temporada abierta | Denegadas |
+| `mutate_match_substitution_atomic` y otras RPC de hijos | Solo con guard CTS | Denegadas |
+| DML directo en jugadores, partidos y 14 tablas hijas | Solo si RLS y guard lo permiten | Denegado |
+| DML directo en perfiles, etapas, CTSP y vínculos | Revocado a authenticated | Denegado |
+| DML en equipos, rivales y competiciones | Pendiente de API CTS | Denegado |
+| Pausar `writes_enabled` tras el corte (solo en ensayo) | Todo DML protegido denegado | Denegado |
+| PLAYER y documentos / snapshots históricos | Datos autorizados, sin regresión | Inmutables |
 
-## Bibliotecas y snapshots
+El script de ensayo exige `.env.staging`, referencias distintas de producción,
+un proyecto ficticio desechable, cuatro usuarios ficticios y los UUID de una
+ficha, un partido y **una fila por cada una de las 14 tablas hijas** del mismo
+partido histórico. `T02_ARCHIVE_CHILD_IDS_JSON` es un objeto JSON cuyas claves
+son los nombres de tabla de `scripts/transition02NegativeStaging.mjs` y cuyos
+valores son UUID ficticios. Si una RPC falta o una tabla hija no tiene fixture,
+el script se detiene sin declarar éxito. Ejemplo de ejecución manual **solo tras
+preparar el ensayo**:
 
-`training_library` no contiene propietario personal y su SQL actual concede
-`ALL true` a authenticated. `training_tasks` pertenece a un club y su
-autorización depende de ese club. Montar sus editores en CTS expondría recursos
-de otro club o permitiría escrituras históricas. Permanecen sin montar hasta
-una migración personal específica. Las referencias y snapshots ya guardados
-en sesiones y partidos no se transforman ni se eliminan en este bloque.
+```powershell
+$env:T02_STAGING_ACK='SOLO_ENSAYO_FICTICIO'
+# Definir T02_ACTIVE_CTS_ID, T02_ARCHIVE_CTS_ID, T02_ARCHIVE_JUGADOR_ID,
+# T02_ARCHIVE_PARTIDO_ID, T02_ARCHIVE_CHILD_IDS_JSON y credenciales T02_*
+# de los cuatro usuarios ficticios.
+node scripts/transition02NegativeStaging.mjs
+```
+
+Si una prueba falla, detenerse y restaurar el seed ficticio: las pruebas
+intentaron escribir y una protección ausente podría haber cambiado filas.
+Registrar recuentos y hashes de datos históricos antes y después. El SQL Editor
+como postgres no prueba permisos de usuarios.
+
+## Condiciones pendientes antes de Libia en producción
+
+Resolver la restricción legacy de un equipo propio, verificar todas las tablas
+y RPC de otros módulos, 03C, políticas permisivas adicionales, documentos y
+Storage, permisos de PLAYER y bibliotecas personales de Tareas/ABP. Su esquema
+actual no demuestra propiedad personal atemporal y no se modifica aquí. Los
+snapshots históricos de sesiones y partidos no se transforman en este bloque.
+Hasta entonces no activar `writes_enabled` ni el frontend CTS en producción.

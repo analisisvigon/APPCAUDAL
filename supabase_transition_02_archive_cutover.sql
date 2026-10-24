@@ -8,6 +8,7 @@ begin;
 
 do $preflight$
 declare helper record; target text; write_guard text; policy_row record;
+  expected_trigger text;
 begin
   -- Interbloqueo deliberado: el perimetro 03C no cubre todas las rutas
   -- indirectas de perfiles, documentos, Storage y modulos deportivos.
@@ -16,11 +17,15 @@ begin
   raise exception 'ARCHIVE_CUTOVER_BLOCKED_PENDING_INDIRECT_WRITE_PROTECTION';
   if auth.uid() is not null then raise exception 'Instalar sin JWT de usuario'; end if;
   if to_regclass('public.operational_cts_v1') is null
+    or to_regclass('public.operational_guard_versions_v1') is null
     or (select count(*) from public.operational_cts_v1) <> 1 then
     raise exception 'Debe existir exactamente un CTS operativo designado';
   end if;
   if exists (select 1 from public.operational_cts_v1 where writes_enabled) then
     raise exception 'La activacion operativa ya se realizo';
+  end if;
+  if exists (select 1 from public.operational_guard_versions_v1) then
+    raise exception 'Marcador de guard ya instalado: revisar';
   end if;
   if not exists (
     select 1 from public.operational_cts_v1 active
@@ -108,6 +113,59 @@ begin
       and p.prosecdef and p.proowner = 'postgres'::regrole
       and position('public.can_write_match(p_partido_id)' in p.prosrc) > 0
   ) then raise exception 'RPC de sustituciones no protegida por CTS'; end if;
+  if not exists (select 1 from pg_proc p
+    where p.oid=to_regprocedure('public.transition_02_row_write_guard_v1()')
+      and p.prosecdef and p.proowner='postgres'::regrole
+      and 'search_path=pg_catalog'=any(p.proconfig))
+    or has_table_privilege('authenticated',
+      'public.operational_guard_versions_v1'::regclass,'INSERT') then
+    raise exception 'Contrato de guardas de Transicion 02 invalido';
+  end if;
+  foreach target in array array[
+    'jugadores','partidos','partido_estadisticas_jugador',
+    'partido_eventos_gol','match_quick_events','partido_alineacion_slots',
+    'partido_eventos_sistema','partido_snapshots_tacticos',
+    'partido_snapshot_tactico_slots','partido_eventos_post',
+    'partido_convocados','partido_notas_individuales_pre',
+    'partido_eventos_sustitucion','match_set_piece_takers',
+    'match_set_piece_notes','match_set_piece_diagrams',
+    'club_team_season_players','legacy_jugador_cts_links_v1',
+    'player_team_memberships','players_database','player_positions',
+    'player_sources','player_scouting_traits','legacy_own_player_migration',
+    'equipos_rivales','jugadores_rivales','equipo_rival_alineacion',
+    'equipo_rival_banquillo','competitions'
+  ] loop
+    expected_trigger := case when target='jugadores'
+      then 'transition_02_ficha_change_guard'
+      when target='player_team_memberships'
+      then 'transition_02_stage_change_guard'
+      when target in ('players_database','player_positions','player_sources',
+        'player_scouting_traits','legacy_own_player_migration')
+      then 'transition_02_change_guard'
+      when target in ('equipos_rivales','jugadores_rivales',
+        'equipo_rival_alineacion','equipo_rival_banquillo','competitions')
+      then 'transition_02_global_freeze_guard'
+      else 'transition_02_row_write_guard' end;
+    if not exists (select 1 from pg_trigger t
+      where t.tgrelid=to_regclass(format('public.%I',target))
+        and t.tgname=expected_trigger and t.tgenabled in ('O','A')
+        and t.tgfoid=to_regprocedure('public.transition_02_row_write_guard_v1()')) then
+      raise exception 'Guarda de escritura ausente o desactivada: %',target;
+    end if;
+    if target in ('jugadores','player_team_memberships','players_database',
+       'player_positions','player_sources','player_scouting_traits',
+       'legacy_own_player_migration') and not exists (
+      select 1 from pg_trigger t
+      where t.tgrelid=to_regclass(format('public.%I',target))
+        and t.tgname=case when target='jugadores'
+          then 'transition_02_ficha_insert_guard'
+          when target='player_team_memberships'
+          then 'transition_02_stage_insert_guard'
+          else 'transition_02_insert_guard' end
+        and t.tgenabled in ('O','A') and t.tgdeferrable and t.tginitdeferred
+        and t.tgfoid=to_regprocedure('public.transition_02_row_write_guard_v1()')
+    ) then raise exception 'Guarda diferida ausente: %',target; end if;
+  end loop;
 end $preflight$;
 
 create or replace function public.can_write_club_team_season(
@@ -129,7 +187,8 @@ as $function$
         and owner_membership.club_id = relation.club_id
         and owner_membership.role = 'owner' and owner_membership.is_active
       where relation.id = target_club_team_season_id
-        and season.status = 'open'
+        and season.status = 'open' and season.is_active
+        and active.writes_enabled
     ), false
   );
 $function$;
@@ -139,16 +198,101 @@ revoke all on function public.can_write_club_team_season(uuid)
 grant execute on function public.can_write_club_team_season(uuid)
   to authenticated, service_role;
 
+-- Las altas canonicas solo pasan por RPC SECURITY DEFINER con controles CTS.
+-- Revocar el DML de tabla impide que un JWT inserte una etapa o CTSP para un
+-- UUID privado conocido, aun cuando su RLS de lectura fuera permisivo.
+create temporary table transition_02_service_acl_before on commit drop as
+with target(name) as (values
+  ('players_database'),('player_positions'),('player_sources'),
+  ('player_scouting_traits'),('player_team_memberships'),
+  ('club_team_season_players'),('legacy_jugador_cts_links_v1'),
+  ('legacy_own_player_migration')
+), operation(privilege) as (values ('INSERT'),('UPDATE'),('DELETE'))
+select target.name, operation.privilege,
+  has_table_privilege('service_role',
+    to_regclass(format('public.%I',target.name)),operation.privilege) as was_allowed
+from target cross join operation;
+
+revoke insert, update, delete on table
+  public.players_database, public.player_positions, public.player_sources,
+  public.player_scouting_traits, public.player_team_memberships,
+  public.club_team_season_players, public.legacy_jugador_cts_links_v1,
+  public.legacy_own_player_migration
+from public, anon, authenticated;
+
+do $acl_check$
+declare row_before record;
+begin
+  for row_before in select * from transition_02_service_acl_before loop
+    if has_table_privilege('service_role',
+      to_regclass(format('public.%I',row_before.name)),row_before.privilege)
+      is distinct from row_before.was_allowed then
+      raise exception 'Cambio inesperado del permiso service_role: %.%',
+        row_before.name,row_before.privilege;
+    end if;
+    if has_table_privilege('authenticated',
+      to_regclass(format('public.%I',row_before.name)),row_before.privilege)
+      or has_table_privilege('anon',
+      to_regclass(format('public.%I',row_before.name)),row_before.privilege) then
+      raise exception 'DML directo sigue abierto: %.%',
+        row_before.name,row_before.privilege;
+    end if;
+  end loop;
+end $acl_check$;
+
+-- TRUNCATE no dispara triggers de fila. Se revoca en todo el perimetro
+-- protegido y se conserva el permiso efectivo previo de service_role.
+create temporary table transition_02_truncate_acl_before on commit drop as
+with target(name) as (values
+  ('jugadores'),('partidos'),('partido_estadisticas_jugador'),
+  ('partido_eventos_gol'),('match_quick_events'),('partido_alineacion_slots'),
+  ('partido_eventos_sistema'),('partido_snapshots_tacticos'),
+  ('partido_snapshot_tactico_slots'),('partido_eventos_post'),
+  ('partido_convocados'),('partido_notas_individuales_pre'),
+  ('partido_eventos_sustitucion'),('match_set_piece_takers'),
+  ('match_set_piece_notes'),('match_set_piece_diagrams'),
+  ('club_team_season_players'),('legacy_jugador_cts_links_v1'),
+  ('player_team_memberships'),('players_database'),('player_positions'),
+  ('player_sources'),('player_scouting_traits'),
+  ('legacy_own_player_migration'),('equipos_rivales'),('jugadores_rivales'),
+  ('equipo_rival_alineacion'),('equipo_rival_banquillo'),('competitions')
+)
+select target.name,
+  has_table_privilege('service_role',
+    to_regclass(format('public.%I',target.name)),'TRUNCATE') as service_was_allowed
+from target;
+
+do $revoke_truncate$
+declare target record;
+begin
+  for target in select * from transition_02_truncate_acl_before loop
+    execute format('revoke truncate on table public.%I from public, anon, authenticated',
+      target.name);
+    if has_table_privilege('service_role',
+      to_regclass(format('public.%I',target.name)),'TRUNCATE')
+      is distinct from target.service_was_allowed
+      or has_table_privilege('authenticated',
+        to_regclass(format('public.%I',target.name)),'TRUNCATE')
+      or has_table_privilege('anon',
+        to_regclass(format('public.%I',target.name)),'TRUNCATE') then
+      raise exception 'Permiso TRUNCATE inesperado en public.%', target.name;
+    end if;
+  end loop;
+end $revoke_truncate$;
+
 -- El permiso de las RPC de Transicion 02 se habilita en el mismo COMMIT que
 -- el helper de escritura historica. Si algo falla, ambos cambios revierten.
-update public.operational_cts_v1 set writes_enabled = true where singleton;
+insert into public.operational_guard_versions_v1(version) values (1);
+update public.operational_cts_v1
+set guard_version = 1, writes_enabled = true where singleton;
 
 do $post$
 begin
-  if position('public.operational_cts_v1' in
-    (select prosrc from pg_proc where oid =
-      to_regprocedure('public.can_write_club_team_season(uuid)'))) = 0 then
-    raise exception 'Helper operativo no instalado';
+  if not exists (select 1 from public.operational_cts_v1
+    where singleton and writes_enabled and guard_version=1)
+    or not exists (select 1 from public.operational_guard_versions_v1
+      where version=1) then
+    raise exception 'Corte operativo incompleto';
   end if;
 end $post$;
 commit;

@@ -1,13 +1,14 @@
 -- TRANSICION 02 / PREPARACION. INSTALACION MANUAL tras revisar preflight.
 -- No designa ningun CTS, no cambia datos deportivos, RLS ni RPC legacy.
 -- Las RPC nuevas deniegan toda escritura mientras el registro este vacio.
--- NO activar/designar un CTS hasta instalar y verificar el guard del archivo.
+-- La habilitacion requiere un marcador FK insertado en el corte posterior.
 begin;
 
 do $preflight$
 begin
   if auth.uid() is not null then raise exception 'Instalar sin JWT de usuario'; end if;
   if to_regclass('public.operational_cts_v1') is not null
+    or to_regclass('public.operational_guard_versions_v1') is not null
     or to_regprocedure('public.can_write_operational_cts_v1(uuid)') is not null
     or to_regprocedure('public.my_operational_cts_v1()') is not null
     or to_regprocedure('public.can_open_historical_cts_v1(uuid)') is not null
@@ -74,12 +75,27 @@ end $preflight$;
 
 -- Solo una fila posible en toda la base. El propietario se fija expresamente
 -- durante la activacion futura y debe ser owner del club del CTS elegido.
+-- La fila de version 1 no existe en esta fase: el CHECK+FK impide activar
+-- writes_enabled por un UPDATE aislado, sin inspeccionar texto de funciones.
+create table public.operational_guard_versions_v1 (
+  version smallint primary key check (version = 1),
+  installed_at timestamptz not null default now()
+);
+alter table public.operational_guard_versions_v1 owner to postgres;
+alter table public.operational_guard_versions_v1 enable row level security;
+revoke all on table public.operational_guard_versions_v1
+  from public, anon, authenticated, service_role;
+
 create table public.operational_cts_v1 (
   singleton boolean primary key default true check (singleton),
   club_team_season_id uuid not null unique
     references public.club_team_seasons(id) on delete restrict,
   owner_user_id uuid not null references auth.users(id) on delete restrict,
   writes_enabled boolean not null default false,
+  guard_version smallint references public.operational_guard_versions_v1(version)
+    on delete restrict,
+  constraint operational_guard_required_check
+    check (not writes_enabled or (guard_version is not null and guard_version = 1)),
   designated_at timestamptz not null default now()
 );
 alter table public.operational_cts_v1 owner to postgres;
@@ -94,12 +110,20 @@ begin
   if auth.uid() is not null then
     raise exception 'OPERATIONAL_CTS_ADMIN_ONLY' using errcode = '42501';
   end if;
-  if new.writes_enabled and not exists (
-      select 1 from pg_proc p
-      where p.oid = to_regprocedure('public.can_write_club_team_season(uuid)')
-        and position('join public.operational_cts_v1 active' in p.prosrc) > 0
-    ) then
-    raise exception 'ARCHIVE_CUTOVER_REQUIRED' using errcode = '23514';
+  if tg_op = 'DELETE' then
+    if old.guard_version is not null or old.writes_enabled then
+      raise exception 'OPERATIONAL_CTS_DESIGNATION_IMMUTABLE'
+        using errcode = '23514';
+    end if;
+    return old;
+  end if;
+  if tg_op = 'UPDATE' and old.guard_version is not null and (
+    new.club_team_season_id is distinct from old.club_team_season_id
+    or new.owner_user_id is distinct from old.owner_user_id
+    or new.guard_version is distinct from old.guard_version
+  ) then
+    raise exception 'OPERATIONAL_CTS_DESIGNATION_IMMUTABLE'
+      using errcode = '23514';
   end if;
   select cts.club_id into target_club
   from public.club_team_seasons cts
@@ -125,7 +149,7 @@ $function$;
 alter function public.validate_operational_cts_v1() owner to postgres;
 revoke all on function public.validate_operational_cts_v1() from public, anon, authenticated;
 create trigger validate_operational_cts_v1
-before insert or update on public.operational_cts_v1
+before insert or update or delete on public.operational_cts_v1
 for each row execute function public.validate_operational_cts_v1();
 
 create function public.can_write_operational_cts_v1(target_cts_id uuid)
