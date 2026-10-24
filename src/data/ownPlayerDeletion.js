@@ -20,10 +20,14 @@ export async function deleteOwnPlayer(supabase, jugadorId) {
       PLAYER_DELETE_TRIGGER_REVIEW_REQUIRED: 'Una automatización de la base de datos impide eliminar este jugador. Revisa su configuración.',
     };
     const message = error.message || '';
-    if (message.startsWith('PLAYER_DELETE_FK_REVIEW_REQUIRED:')) {
-      throw new Error('Existen datos relacionados con el jugador que requieren revisión antes de eliminarlo.');
-    }
-    throw new Error(reasons[message] || message || 'No se pudo eliminar el jugador.');
+    const code = message.startsWith('PLAYER_DELETE_FK_REVIEW_REQUIRED:')
+      ? 'PLAYER_DELETE_FK_REVIEW_REQUIRED' : message;
+    const reason = code === 'PLAYER_DELETE_FK_REVIEW_REQUIRED'
+      ? 'Existen datos relacionados con el jugador que requieren revisión antes de eliminarlo.'
+      : reasons[code];
+    throw new Error(reason
+      ? `${reason} (Código: ${code})`
+      : 'No se pudo eliminar el jugador. Consulta al administrador.');
   }
   if (data?.status !== 'deleted' || data?.jugador_id !== jugadorId) {
     throw new Error('El servidor no confirmó la eliminación del jugador.');

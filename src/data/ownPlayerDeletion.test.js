@@ -15,7 +15,7 @@ assert.deepEqual(calls, [['delete_own_player_atomic_v1', { p_jugador_id: playerI
 
 await assert.rejects(
   () => deleteOwnPlayer({ rpc: async () => ({ data: null, error: new Error('denied') }) }, playerId),
-  /denied/,
+  /Consulta al administrador/,
 );
 await assert.rejects(
   () => deleteOwnPlayer({ rpc: async () => ({ data: null, error: { message: 'PLAYER_IMMUTABLE_FINE_PAYMENTS_REVIEW_REQUIRED' } }) }, playerId),
@@ -27,7 +27,9 @@ await assert.rejects(
 );
 await assert.rejects(
   () => deleteOwnPlayer({ rpc: async () => ({ data: null, error: { message: 'PLAYER_DELETE_FK_REVIEW_REQUIRED: tabla.columna' } }) }, playerId),
-  /datos relacionados/,
+  (error) => error.message.includes('datos relacionados')
+    && error.message.includes('Código: PLAYER_DELETE_FK_REVIEW_REQUIRED')
+    && !error.message.includes('tabla.columna'),
 );
 await assert.rejects(
   () => deleteOwnPlayer({ rpc: async () => ({ data: { status: 'deleted', jugador_id: 'wrong' } }) }, playerId),
