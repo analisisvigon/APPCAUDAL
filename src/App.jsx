@@ -18,6 +18,7 @@ import LibrarySection from './components/library/LibrarySection';
 import TrainingTasksSection from './components/training/TrainingTasksSection';
 import PlannedSessionsSection from './components/training/PlannedSessionsSection';
 import TeamCalendarSection from './components/calendar/TeamCalendarSection';
+import AppSidebar from './components/navigation/AppSidebar';
 import { calendarTime } from './utils/teamCalendar';
 import MatchVideoPlayer, { detectMatchVideoProvider } from './components/matches/MatchVideoPlayer';
 import MatchPrintTab from './components/print/MatchPrintTab';
@@ -6049,32 +6050,8 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   const [delegatedAnalysisPeriodFilter, setDelegatedAnalysisPeriodFilter] = useState('todos');
   const [delegatedSelectedMatchIds, setDelegatedSelectedMatchIds] = useState([]);
   const [groupAssistFilter, setGroupAssistFilter] = useState('Todas');
-  const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
-  const [isMobileKeyboardActive, setIsMobileKeyboardActive] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
-    const isEditableControl = (element) => element instanceof window.HTMLElement && (
-      ['INPUT', 'SELECT', 'TEXTAREA'].includes(element.tagName) || element.isContentEditable
-    );
-    const isCoarseMobileViewport = () => (
-      window.innerWidth < 1280 && window.matchMedia('(pointer: coarse)').matches
-    );
-    const syncKeyboardState = () => {
-      const keyboardExpected = isCoarseMobileViewport() && isEditableControl(document.activeElement);
-      setIsMobileKeyboardActive(keyboardExpected);
-      if (keyboardExpected) setIsMobileMoreOpen(false);
-    };
-    const handleFocusOut = () => window.setTimeout(syncKeyboardState, 0);
-    document.addEventListener('focusin', syncKeyboardState);
-    document.addEventListener('focusout', handleFocusOut);
-    window.addEventListener('resize', syncKeyboardState);
-    return () => {
-      document.removeEventListener('focusin', syncKeyboardState);
-      document.removeEventListener('focusout', handleFocusOut);
-      window.removeEventListener('resize', syncKeyboardState);
-    };
-  }, []);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [groupShotFilter, setGroupShotFilter] = useState('Ambos');
   const [groupLoading, setGroupLoading] = useState(false);
   const [groupError, setGroupError] = useState('');
@@ -30026,18 +30003,9 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   };
 
   const authUser = session?.user ?? null;
-  const desktopTabs = ['Inicio', 'Plantilla', 'Perfiles', 'Equipos', 'Partidos', 'Calendario', 'Biblioteca', 'Tareas', 'Sesiones', 'Rendimiento', 'Fisio', 'Multas', 'Registro Delegado', 'Análisis Grupal'];
-  const mobilePrimaryTabs = [
-    ['Inicio', 'Inicio'],
-    ['Partidos', 'Partidos'],
-    ['Plantilla', 'Plant.'],
-    ['Registro Delegado', 'Deleg.'],
-    ['Análisis Grupal', 'Análisis'],
-  ];
-  const mobileMoreTabs = ['Calendario', 'Perfiles', 'Equipos', 'Biblioteca', 'Tareas', 'Sesiones', 'Rendimiento', 'Fisio', 'Multas'];
   const goToTab = (tab) => {
     if (tab === activeTab) {
-      setIsMobileMoreOpen(false);
+      setIsMobileSidebarOpen(false);
       return;
     }
     if (activeTab === 'Sesiones' && plannedSessionsDirty &&
@@ -30047,7 +30015,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       execute: () => {
         if (tab !== 'Sesiones') setCalendarSessionTarget(null);
         setActiveTab(tab);
-        setIsMobileMoreOpen(false);
+        setIsMobileSidebarOpen(false);
       },
     });
   };
@@ -30141,27 +30109,34 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   return (
     <div className="min-h-screen bg-gradient-to-b from-caudal-950 via-caudal-900 to-[#05101f] text-slate-100">
       {splashScreen}
-      <div className="app-shell-content mx-auto flex min-h-screen max-w-6xl flex-col px-4 pt-6 sm:px-6 lg:px-8">
-        <header className="mb-6 flex flex-col gap-4 rounded-3xl border border-white/5 bg-white/5 p-5 shadow-glow backdrop-blur-md xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <img src="/branding/nexo-symbol-dark.png" alt="" className="h-11 w-11 object-contain sm:hidden" />
-              <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-300 sm:hidden">NEXO CLUB</span>
-              <img src="/branding/nexo-horizontal-dark.png" alt="NEXO CLUB" className="hidden h-14 w-auto max-w-full object-contain sm:block" />
-            </div>
-            <div className="mt-2 flex items-center gap-3">
-              <TeamLogo src={clubCrest} alt={`Escudo de ${OWN_CLUB_IDENTITY.shortName}`} teamName={OWN_CLUB_IDENTITY.shortName} size="sm" />
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                  <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">{OWN_CLUB_IDENTITY.name}</h1>
-                  {ownClubCategory ? <span className="text-xs font-black uppercase tracking-[0.16em] text-red-200 sm:text-sm">{ownClubCategory}</span> : null}
-                </div>
-                <p className="mt-1 text-sm text-slate-400">{OWN_CLUB_IDENTITY.location} · {OWN_CLUB_IDENTITY.description}</p>
+      <AppSidebar collapsed={sidebarCollapsed} mobileOpen={isMobileSidebarOpen}
+        activeTab={activeTab} onSelect={goToTab}
+        onToggle={() => setSidebarCollapsed((current) => !current)}
+        onClose={() => setIsMobileSidebarOpen(false)}
+        onOpenLito={() => { setIsMobileSidebarOpen(false); setIsLitoOpen(true); }}
+        club={{ name: OWN_CLUB_IDENTITY.name, category: ownClubCategory,
+          location: OWN_CLUB_IDENTITY.location, crest: clubCrest }} />
+      <div className="app-shell-content flex min-h-screen min-w-0 flex-col px-4 pt-4 sm:px-6 md:px-5 lg:px-8"
+        data-navigation-layout="sidebar" data-sidebar-collapsed={sidebarCollapsed ? 'true' : 'false'}>
+        <header className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-white/5 bg-white/5 p-4 shadow-glow backdrop-blur-md sm:p-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <button type="button" onClick={() => setIsMobileSidebarOpen(true)}
+              aria-label="Abrir menú de módulos" aria-expanded={isMobileSidebarOpen}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/5 text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric md:hidden">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="h-5 w-5"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+            </button>
+            <img src="/branding/nexo-symbol-dark.png" alt="NEXO CLUB" className="h-10 w-10 shrink-0 object-contain md:hidden" />
+            <div className="shrink-0 md:hidden"><TeamLogo src={clubCrest} alt={`Escudo de ${OWN_CLUB_IDENTITY.shortName}`} teamName={OWN_CLUB_IDENTITY.shortName} size="xs" /></div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <h1 className="truncate text-xl font-semibold tracking-tight text-white sm:text-2xl">{OWN_CLUB_IDENTITY.name}</h1>
+                {ownClubCategory ? <span className="text-[11px] font-black uppercase tracking-[0.16em] text-red-200">{ownClubCategory}</span> : null}
               </div>
+              <p className="text-xs text-slate-400 sm:text-sm">{OWN_CLUB_IDENTITY.location} · {OWN_CLUB_IDENTITY.description}</p>
             </div>
           </div>
-          <div className="flex w-full flex-col gap-3 xl:w-auto xl:items-end">
-            <div className="flex w-full flex-col gap-3 rounded-2xl border border-white/10 bg-caudal-950/40 p-3 sm:flex-row sm:items-center sm:justify-end xl:w-auto xl:min-w-72">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-caudal-950/40 p-2.5 sm:justify-end">
               <div className="min-w-0 text-sm text-slate-300 sm:text-right">
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Sesión iniciada</p>
                 <p className="truncate font-semibold text-white">{authUser.email}</p>
@@ -30183,63 +30158,9 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                 Cerrar sesión
               </button>
             </div>
-            <DesktopSportsTabs tabs={desktopTabs} activeTab={activeTab} onSelect={goToTab} />
             {authError ? <p className="max-w-sm text-sm text-red-200">{authError}</p> : null}
           </div>
         </header>
-
-        <nav
-          aria-label="Navegacion principal"
-          data-keyboard-active={isMobileKeyboardActive ? 'true' : 'false'}
-          className="mobile-bottom-nav fixed inset-x-3 z-40 overflow-y-auto rounded-3xl border border-white/10 bg-[#071225]/95 p-2 shadow-glow backdrop-blur-md xl:hidden"
-        >
-          {isMobileMoreOpen ? (
-            <div id="mobile-more-menu" className="mb-2 grid grid-cols-2 gap-2 rounded-2xl bg-white/5 p-2">
-              {mobileMoreTabs.map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => goToTab(tab)}
-                  className={`min-h-[46px] rounded-2xl px-3 py-2 text-xs font-black uppercase tracking-[0.1em] ${activeTab === tab ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200'}`}
-                >
-                  {tab}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsLitoOpen(true);
-                  setIsMobileMoreOpen(false);
-                }}
-                className="min-h-[46px] rounded-2xl bg-white/10 px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-slate-200"
-              >
-                Lito
-              </button>
-            </div>
-          ) : null}
-          <div className="mobile-primary-nav grid grid-cols-3 gap-1 rounded-2xl min-[430px]:grid-cols-6">
-            {mobilePrimaryTabs.map(([tab, label]) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => goToTab(tab)}
-                className={`inline-flex min-h-[48px] items-center justify-center gap-1 rounded-2xl px-1.5 py-2 text-[10px] font-black uppercase tracking-[0.02em] ${activeTab === tab ? 'bg-caudal-electric text-slate-950' : 'bg-white/10 text-slate-200'}`}
-              >
-                {tab === 'Inicio' ? <img src="/branding/nexo-symbol-dark.png" alt="" className="h-4 w-4 object-contain" /> : null}
-                {label}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => setIsMobileMoreOpen((current) => !current)}
-              aria-expanded={isMobileMoreOpen}
-              aria-controls="mobile-more-menu"
-              className={`min-h-[48px] rounded-2xl px-1.5 py-2 text-[10px] font-black uppercase tracking-[0.02em] ${isMobileMoreOpen || mobileMoreTabs.includes(activeTab) ? 'bg-white text-slate-950' : 'bg-white/10 text-slate-200'}`}
-            >
-              Más
-            </button>
-          </div>
-        </nav>
 
         {activeTab === 'Inicio' ? (
           <main className="space-y-3 pb-8 sm:space-y-4">
