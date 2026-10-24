@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { OWN_CLUB_IDENTITY } from '../../constants/clubIdentity';
 import {
   isAllowedPlayerMatchVideo,
   loadMyPlayerMatches,
@@ -193,7 +194,7 @@ export default function PlayerMatchesPanel({ client }) {
       <header className="border-b border-white/10 pb-3">
         <p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric/80">Temporada</p>
         <h2 id="player-matches-title" className="mt-1 text-xl font-black uppercase text-white sm:text-2xl">Partidos</h2>
-        <p className="mt-1 text-xs leading-5 text-slate-400 sm:text-sm">Tus partidos con el Caudal.</p>
+        <p className="mt-1 text-xs leading-5 text-slate-400 sm:text-sm">Tus partidos con {OWN_CLUB_IDENTITY.shortName}.</p>
       </header>
 
       {state.status === 'loading' ? <PlayerMatchesLoading /> : null}

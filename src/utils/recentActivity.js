@@ -1,3 +1,5 @@
+import { OWN_CLUB_IDENTITY } from '../constants/clubIdentity.js';
+
 const UPDATE_CREATION_TOLERANCE_MS = 5000;
 const DEFAULT_MODULE_LIMIT = 6;
 const DEFAULT_WINDOW_DAYS = 7;
@@ -174,7 +176,7 @@ const buildCreatedActivity = ({
 const matchEntity = (match) => {
   const opponent = firstValue(match, ['opponent', 'rival']) || 'Rival no disponible';
   const isHome = Boolean(firstValue(match, ['is_home', 'isHome']));
-  return isHome ? `Caudal vs ${opponent}` : `${opponent} vs Caudal`;
+  return isHome ? `${OWN_CLUB_IDENTITY.shortName} vs ${opponent}` : `${opponent} vs ${OWN_CLUB_IDENTITY.shortName}`;
 };
 
 const playerEntity = (player, fallback = 'Jugador no disponible') => (

@@ -47,7 +47,7 @@ assert.equal(isGoalOwnGoal(ownGoalFor), true);
 assert.equal(isGoalOwnGoal({ type: 'Gol a favor', is_own_goal: true }), true, 'lectura SQL usa el mismo contrato canónico');
 assert.equal(isGoalOwnGoal({ type: 'Gol a favor' }), false, 'los eventos legacy no se reinterpretan como propias');
 assert.equal(getGoalOwnGoalLabel(ownGoalFor), 'Gol en propia del rival');
-assert.equal(getGoalOwnGoalLabel({ type: 'Gol en contra', is_own_goal: true }), 'Gol en propia del Caudal');
+assert.equal(getGoalOwnGoalLabel({ type: 'Gol en contra', is_own_goal: true }), 'Gol en propia de Almadina SC');
 assert.deepEqual(createGoalParticipantDbFields(ownGoalFor), {
   scorer: null, scorer_id: null, assistant: null, assistant_id: null,
 }, 'la serialización de una propia limpia cualquier participante previo');
@@ -149,7 +149,7 @@ assert.deepEqual(buildRivalGoalTimelinePresentation({
 }, {
   teamName: 'CD Praviano',
 }), {
-  label: 'GOL EN PROPIA DEL CAUDAL',
+  label: 'GOL EN PROPIA DE ALMADINA SC',
   assist: '',
 }, 'el timeline distingue una propia de un goleador rival desconocido');
 

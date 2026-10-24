@@ -1,4 +1,5 @@
 import React, { memo, useEffect, useMemo, useState } from 'react';
+import { OWN_CLUB_IDENTITY } from '../../constants/clubIdentity';
 
 import {
   NATURAL_POSITION_OPTIONS,
@@ -48,7 +49,7 @@ const COMPLETION_FIELD_LABELS = {
   scoutingSummary: 'observaciones',
 };
 const ORIGIN_LABELS = {
-  caudal: 'C.D. Caudal',
+  caudal: OWN_CLUB_IDENTITY.shortName,
   rival: 'Equipo rival',
   free: 'Sin equipo',
   historical: 'Histórico',
@@ -436,7 +437,7 @@ function GlobalPlayerDatabase({
           <select aria-label="Posición natural" value={filters.naturalPosition} onChange={(event) => changeNaturalPosition(event.target.value)} className="field-input"><option value="">Posición natural</option>{NATURAL_POSITION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
           <select aria-label="Posición específica" value={filters.specificPosition} onChange={(event) => { setFilter('specificPosition', event.target.value); setFilterNotice(''); }} className="field-input"><option value="">Posición específica</option>{specificPositionGroups.map(([naturalKey, options]) => <optgroup key={naturalKey} label={getNaturalPositionLabel(naturalKey)}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>)}</select>
           <select value={filters.teamId} onChange={(event) => setFilter('teamId', event.target.value)} className="field-input"><option value="">Equipo actual</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}<option value="__without_team__">Sin equipo</option></select>
-          <select aria-label="Procedencia" value={filters.origin} onChange={(event) => setFilter('origin', event.target.value)} className="field-input"><option value="">Todas las procedencias</option><option value="caudal">C.D. Caudal</option><option value="rival">Equipos rivales</option><option value="free">Sin equipo</option><option value="historical">Histórico</option></select>
+          <select aria-label="Procedencia" value={filters.origin} onChange={(event) => setFilter('origin', event.target.value)} className="field-input"><option value="">Todas las procedencias</option><option value="caudal">{OWN_CLUB_IDENTITY.shortName}</option><option value="rival">Equipos rivales</option><option value="free">Sin equipo</option><option value="historical">Histórico</option></select>
           <select value={filters.trait} onChange={(event) => setFilter('trait', event.target.value)} className="field-input"><option value="">Característica</option>{traitOptions.map((trait) => <option key={trait} value={trait}>{trait}</option>)}</select>
         </div>
 

@@ -2939,7 +2939,7 @@ const buildTacticalPrompt = ({ match, caudalSystem, rivalSystem, caudalLineup, r
       `Jugador nuestro a potenciar: ${valueOrMissing(questionnaire.preCaudalPlayerToBoost)}`,
       `Jugador rival a vigilar: ${valueOrMissing(questionnaire.preRivalPlayerToWatch)}`,
       `Duelos importantes: ${valueOrMissing(questionnaire.preImportantDuels)}`,
-      `Notas jugadores Caudal: ${JSON.stringify(playerNotes)}`,
+      `Notas jugadores propios: ${JSON.stringify(playerNotes)}`,
       `Caracteristicas jugadores rivales: ${JSON.stringify(rivalNotes)}`,
     ]],
     ['Informacion adicional para la IA', [
@@ -8765,7 +8765,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     const clips = safeArray(match.events).slice(0, 4).map((event) => `${event.minute || '-'}' ${event.typeLabel || event.type}: ${event.description || 'sin descripción'}`);
     return [
       `${formatLitoMatchName(match)} terminó ${getLitoMatchScoreText(match)}.`,
-      goals.length ? `Goles Caudal: ${goals.map((goal) => `${getGoalScorerDisplayName(goal, 'sin goleador')}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.` : 'No hay goles a favor registrados para ese partido.',
+      goals.length ? `Goles a favor: ${goals.map((goal) => `${getGoalScorerDisplayName(goal, 'sin goleador')}${goal.minute ? ` (${goal.minute}')` : ''}`).join(', ')}.` : 'No hay goles a favor registrados para ese partido.',
       ...postLines,
       clips.length ? `Clips POST: ${clips.join(' · ')}` : '',
       !postLines.length && !clips.length ? 'No hay todavía un análisis POST guardado.' : '',
@@ -8831,7 +8831,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       const match = getLitoLastMatch(context);
       if (!match) return missing('No hay últimos partidos jugados registrados.', 'Partidos');
       const goals = getLitoGoalsForMatch(context, match);
-      return litoResponse(`El último partido fue contra ${formatLitoMatchName(match)} y quedó ${getLitoMatchScoreText(match)}. ${goals.length ? `Goles Caudal: ${goals.map((goal) => getGoalScorerDisplayName(goal, '')).filter(Boolean).join(', ')}.` : 'No tengo goleadores a favor registrados.'}`, { source: 'Partidos y goles', context: { ...responseContext, lastMatchId: match.id, lastPlayerName: goals[0]?.scorer || '' } });
+      return litoResponse(`El último partido fue contra ${formatLitoMatchName(match)} y quedó ${getLitoMatchScoreText(match)}. ${goals.length ? `Goles a favor: ${goals.map((goal) => getGoalScorerDisplayName(goal, '')).filter(Boolean).join(', ')}.` : 'No tengo goleadores a favor registrados.'}`, { source: 'Partidos y goles', context: { ...responseContext, lastMatchId: match.id, lastPlayerName: goals[0]?.scorer || '' } });
     }
 
     if (intent === 'match_result' || intent === 'match_summary') {
@@ -10645,7 +10645,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       },
       {
         zone: 'Transición',
-        duel: `Pérdida Caudal vs ${identity.mainThreat}`,
+        duel: `Pérdida propia vs ${identity.mainThreat}`,
         reading: `Riesgo tras pérdida si atacamos con equipo abierto ante ritmo ${identity.attackingRhythm}.`,
         action: 'Cerrar pase interior, finalizar ataques y sostener vigilancia en lado débil.',
       },
@@ -12637,7 +12637,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
           <div role="menu" className="absolute left-0 top-full z-[80] mt-1 min-w-40 rounded-xl border border-white/15 bg-[#081327]/[0.98] p-1.5 shadow-2xl backdrop-blur">
             {[
               ['rivalNames', 'Rival', names.rival],
-              ['caudalNames', 'Caudal', names.caudal],
+              ['caudalNames', 'Equipo propio', names.caudal],
             ].map(([key, label, checked]) => (
               <button
                 key={key}
@@ -14040,7 +14040,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-caudal-electric">Análisis táctico</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 <label className="grid gap-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
-                  <span>Sistema Caudal</span>
+                  <span>Sistema propio</span>
                   <select value={caudalSystem} onChange={(event) => updateCaudalPreSystem(event.target.value)} className="h-10 w-full border border-white/10 bg-black/20 px-3 text-xs font-black normal-case tracking-normal text-white outline-none">
                     {gameSystems.filter((system) => system !== 'Otro').map((system) => <option key={system} value={system}>{system}</option>)}
                   </select>
@@ -14393,7 +14393,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                     ['zones', 'Zonas', 'Mostrar u ocultar zonas y contexto táctico'],
                     ['badges', 'Alertas', 'Mostrar u ocultar alertas de jugadores'],
                     ['rival', 'Rival', 'Mostrar u ocultar el equipo rival'],
-                    ['caudal', 'Caudal', 'Mostrar u ocultar el Caudal'],
+                    ['caudal', 'Equipo propio', 'Mostrar u ocultar el equipo propio'],
                     ['connections', 'Conexiones', 'Mostrar u ocultar conexiones tácticas registradas'],
                   ].map(([key, label, tooltip]) => (
                     <button
@@ -14529,7 +14529,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-[90px_1fr_1fr_130px_100px]">
                   <select value={tacticalConnectionDraft.team} onChange={(event) => updateTacticalConnectionDraft({ team: event.target.value, origin: '', destination: '' })} className="border border-white/10 bg-black/20 px-2 py-2 text-xs font-bold text-white">
                     <option value="rival">Rival</option>
-                    <option value="caudal">Caudal</option>
+                    <option value="caudal">Equipo propio</option>
                   </select>
                   <select value={tacticalConnectionDraft.origin} onChange={(event) => updateTacticalConnectionDraft({ origin: event.target.value })} className="border border-white/10 bg-black/20 px-2 py-2 text-xs font-bold text-white">
                     <option value="">Origen</option>
@@ -14885,7 +14885,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                   <input value={tacticalTemplateDraft.baseRivalSystem} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, baseRivalSystem: event.target.value }))} placeholder="Referencia opcional" className="h-11 border border-white/10 bg-black/20 px-3 text-sm font-semibold normal-case tracking-normal text-white outline-none placeholder:text-slate-600" />
                 </label>
                 <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  <span>Sistema Caudal base</span>
+                  <span>Sistema propio base</span>
                   <input value={tacticalTemplateDraft.baseCaudalSystem} onChange={(event) => setTacticalTemplateDraft((current) => ({ ...current, baseCaudalSystem: event.target.value }))} placeholder="Referencia opcional" className="h-11 border border-white/10 bg-black/20 px-3 text-sm font-semibold normal-case tracking-normal text-white outline-none placeholder:text-slate-600" />
                 </label>
                 <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 sm:col-span-2">
@@ -14982,7 +14982,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     const importantInputs = [
       ['Rival conectado en EQUIPOS', selectedMatchRivalTeam?.name || ''],
       ['Texto informe rival', hasRivalReportText ? 'Disponible como fuente del cuestionario' : ''],
-      ['Sistema Caudal', selectedMatch?.preCaudalSystem || '4-4-2'],
+      ['Sistema propio', selectedMatch?.preCaudalSystem || '4-4-2'],
       ['Sistema rival', getCurrentRivalSystem()],
       ['Lado fuerte EQUIPOS', liveRivalIdentity.strongSide],
       ['Amenaza EQUIPOS', liveRivalIdentity.mainThreat],
@@ -15006,7 +15006,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     ];
     const filledInputs = importantInputs.filter(([, value]) => String(value || '').trim());
     const tags = [
-      selectedMatch?.preCaudalSystem ? `Caudal ${selectedMatch.preCaudalSystem}` : 'Caudal 4-4-2',
+      selectedMatch?.preCaudalSystem ? `Equipo propio ${selectedMatch.preCaudalSystem}` : 'Equipo propio 4-4-2',
       `Rival ${getCurrentRivalSystem()}`,
       questionnaire.preRivalDefensiveBlock ? `bloque ${questionnaire.preRivalDefensiveBlock}` : null,
       questionnaire.preRivalPressure ? `presión ${questionnaire.preRivalPressure}` : null,
@@ -15018,7 +15018,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       selectedMatchRivalTeam ? 'EQUIPOS conectado' : null,
       liveRivalMarkedPlayers.length ? `${liveRivalMarkedPlayers.length} estados reales` : null,
       rivalPlayersWithNotes.length ? `${rivalPlayersWithNotes.length} rivales con característica` : null,
-      caudalPlayersWithNotes.length ? `${caudalPlayersWithNotes.length} notas Caudal` : null,
+      caudalPlayersWithNotes.length ? `${caudalPlayersWithNotes.length} notas del equipo propio` : null,
     ].filter(Boolean);
     const score = filledInputs.length + rivalPlayersWithNotes.length + caudalPlayersWithNotes.length;
     const confidence = score >= 12 ? 'Alta' : score >= 7 ? 'Media' : 'Baja';
@@ -15368,7 +15368,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     const dominantMoment = momentumSegments[0]?.state
       ? momentumSegments[0].state
       : quick.recoveries > quick.rivalRecoveries
-        ? 'presión alta Caudal'
+        ? 'presión alta propia'
         : quick.rivalBoxEntries > quick.boxEntries
           ? 'empuje rival'
           : 'partido igualado';
@@ -15378,9 +15378,9 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       ? Math.round((caudalActivity / Math.max(1, caudalActivity + rivalActivity)) * 100)
       : 50;
     const tendency = quick.losses >= 3
-      ? `Caudal tuvo volumen, pero el partido se abrió por pérdidas.`
+      ? `Nuestro equipo tuvo volumen, pero el partido se abrió por pérdidas.`
       : quick.recoveries >= quick.rivalRecoveries + 2
-        ? `Caudal sostuvo el partido desde presión y recuperación alta.`
+        ? `Nuestro equipo sostuvo el partido desde presión y recuperación alta.`
         : quick.rivalShotsOnTarget > quick.shotsOnTarget
           ? `El rival generó menos volumen, pero encontró más amenaza real.`
           : goals.some((goal) => goal.type === 'Gol en contra')
@@ -15919,7 +15919,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
         tone: meta.tone,
         icon: meta.icon,
         badgeIcon: meta.badgeIcon,
-        title: ownGoalLabel || (isGoalFor ? getGoalScorerDisplayName(event, 'Gol Caudal') : selectedMatch?.opponent || 'Gol rival'),
+        title: ownGoalLabel || (isGoalFor ? getGoalScorerDisplayName(event, 'Gol a favor') : selectedMatch?.opponent || 'Gol rival'),
         playerName: ownGoalLabel || (isGoalFor ? getGoalScorerDisplayName(event, 'Sin goleador') : selectedMatch?.opponent || 'Rival'),
         playerId: isGoalFor && !ownGoalLabel ? event.scorerId : null,
         secondaryPlayerName: isGoalFor && !ownGoalLabel ? getReferencedPlayerDisplayName(event.assistantId, event.assistant, '') : '',
@@ -16754,7 +16754,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     };
     const caudalGoalText = goals
       .filter((event) => event.type === 'Gol a favor')
-      .map((event) => `${event.minute ? `${event.minute}': ` : ''}${isGoalOwnGoal(event) ? `${getGoalOwnGoalLabel(event)} tras ${describeGoalContext(event)}` : `${getGoalScorerDisplayName(event, 'Caudal')} marca tras ${describeGoalContext(event)}${event.assistant ? `. Asistencia de ${getReferencedPlayerDisplayName(event.assistantId, event.assistant)}` : ''}`}`);
+      .map((event) => `${event.minute ? `${event.minute}': ` : ''}${isGoalOwnGoal(event) ? `${getGoalOwnGoalLabel(event)} tras ${describeGoalContext(event)}` : `${getGoalScorerDisplayName(event, 'Jugador propio')} marca tras ${describeGoalContext(event)}${event.assistant ? `. Asistencia de ${getReferencedPlayerDisplayName(event.assistantId, event.assistant)}` : ''}`}`);
     const againstGoalText = goals
       .filter((event) => event.type === 'Gol en contra')
       .map((event) => `${event.minute ? `${event.minute}': ` : ''}${isGoalOwnGoal(event) ? getGoalOwnGoalLabel(event).toLowerCase() : 'gol encajado'} tras ${describeGoalContext(event)}`);
@@ -18033,7 +18033,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     if (draft.type === 'Gol en contra') {
       return `${minute}gol rival en una ${action} iniciada ${originSide} y terminada desde ${finish}.${goal}`;
     }
-    const scorer = draft.scorer || 'Jugador Caudal';
+    const scorer = draft.scorer || 'Jugador propio';
     const assist = draft.assistant
       ? ` Asistencia de ${draft.assistant}.`
       : draft.assistantStatus === GOAL_ASSISTANCE_STATUS.none ? ' Sin asistencia.' : '';
@@ -18553,7 +18553,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
         {showDelegatedCompactBar ? (
           <div className="sticky top-2 z-30 flex min-h-12 items-center justify-between gap-2 rounded-2xl border border-white/10 bg-[#071225]/95 px-3 py-2 shadow-glow backdrop-blur-md">
             <span className="font-mono text-lg font-black text-white">{clockMinutes}:{clockSeconds}</span>
-            <span className="truncate text-xs font-black uppercase text-slate-200">CAU {liveCaudalScore}-{liveRivalScore} RIV</span>
+            <span className="truncate text-xs font-black uppercase text-slate-200">ALM {liveCaudalScore}-{liveRivalScore} RIV</span>
             <button type="button" onClick={delegatedTimerRunning ? () => setDelegatedTimerRunning(false) : startDelegatedMatch} disabled={delegatedMatchState === 'FINALIZADO'} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black text-slate-950 disabled:opacity-40">
               {delegatedTimerRunning ? 'Pausa' : 'Reanudar'}
             </button>
@@ -18580,7 +18580,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             <div className="space-y-3">
               <div className="rounded-3xl border border-white/10 bg-black/25 px-5 py-4 text-center">
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Marcador</p>
-                <p className="mt-1 text-2xl font-black uppercase text-white">Caudal {liveCaudalScore} - {liveRivalScore} {selectedMatch?.opponent || 'Rival'}</p>
+                <p className="mt-1 text-2xl font-black uppercase text-white">{OWN_CLUB_IDENTITY.shortName} {liveCaudalScore} - {liveRivalScore} {selectedMatch?.opponent || 'Rival'}</p>
               </div>
               <div className="grid w-full grid-cols-2 items-stretch gap-2">
                 <button type="button" onClick={delegatedTimerRunning ? () => setDelegatedTimerRunning(false) : startDelegatedMatch} disabled={delegatedMatchState === 'FINALIZADO'} className={`${delegatedTimerControlClass} bg-emerald-300 text-slate-950`}>{delegatedTimerRunning ? 'Pausar' : Number(delegatedElapsedSeconds) > 0 ? 'Reanudar' : 'Iniciar'}</button>
@@ -18614,7 +18614,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             </div>
             <section className="rounded-3xl border border-white/5 bg-[#091428]/90 p-4 shadow-glow">
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setDelegatedSide('caudal')} className={`min-h-11 rounded-2xl border px-4 py-2 text-sm font-black uppercase ${delegatedSide === 'caudal' ? 'border-caudal-electric bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/5 text-caudal-electric'}`}>Caudal</button>
+                <button type="button" onClick={() => setDelegatedSide('caudal')} className={`min-h-11 rounded-2xl border px-4 py-2 text-sm font-black uppercase ${delegatedSide === 'caudal' ? 'border-caudal-electric bg-caudal-electric text-slate-950' : 'border-white/10 bg-white/5 text-caudal-electric'}`}>Equipo propio</button>
                 <button type="button" onClick={() => setDelegatedSide('rival')} className={`min-h-11 rounded-2xl border px-4 py-2 text-sm font-black uppercase ${delegatedSide === 'rival' ? 'border-red-300 bg-red-300 text-slate-950' : 'border-white/10 bg-white/5 text-red-200'}`}>Rival</button>
               </div>
               <div className="mt-3 grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">
@@ -18648,7 +18648,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                       </div>
                       <div className="space-y-1.5">
                         <div className="flex items-center gap-2">
-                          <span className="w-7 text-[9px] font-black text-caudal-electric">CAU</span>
+                          <span className="w-7 text-[9px] font-black text-caudal-electric">ALM</span>
                           <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
                             <div className="h-full rounded-full bg-[#5EA8FF]" style={{ width: `${Math.max(6, (Number(caudal || 0) / maxValue) * 100)}%` }} />
                           </div>
@@ -18747,7 +18747,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                         <span className="font-mono text-xs font-black text-caudal-electric">{getDelegatedTimeLabel(event)}</span>
                         <div className="min-w-0">
                           <p className="truncate text-sm font-black text-white">
-                            <span className="text-slate-500">{eventSide === 'rival' ? 'Rival' : 'Caudal'} · </span>{playerName ? `${playerName} · ` : ''}{getQuickEventLabel(event.tipoEvento)}
+                            <span className="text-slate-500">{eventSide === 'rival' ? 'Rival' : 'Equipo propio'} · </span>{playerName ? `${playerName} · ` : ''}{getQuickEventLabel(event.tipoEvento)}
                           </p>
                           {!playerName && definition?.requiresPlayer ? <p className="truncate text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Sin identificar</p> : null}
                         </div>
@@ -18843,7 +18843,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{delegatedEventDraft.eventId ? 'Editar evento' : 'Registrar evento'}</p>
                   <h3 className="mt-1 text-2xl font-black text-white">
                     {delegatedEventDraft.tipoEvento === 'corner'
-                      ? `Córner para ${delegatedEventDraft.side === 'rival' ? 'Rival' : 'Caudal'}`
+                      ? `Córner para ${delegatedEventDraft.side === 'rival' ? 'Rival' : 'Equipo propio'}`
                       : delegatedEventDraft.label}
                   </h3>
                 </div>
@@ -18867,7 +18867,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                     {delegatedActiveStatEventCatalog.filter((item) => item.tipoEvento !== 'gol').map((item) => <option key={item.tipoEvento} value={item.tipoEvento}>{item.label}</option>)}
                   </select>
                   <select value={delegatedEventDraft.side} onChange={(event) => setDelegatedEventDraft((current) => ({ ...current, side: event.target.value, jugadorId: event.target.value === 'rival' ? '' : current.jugadorId }))} className="rounded-xl bg-white px-3 py-3 text-sm font-black text-slate-950">
-                    <option value="caudal">Caudal</option>
+                    <option value="caudal">Equipo propio</option>
                     <option value="rival">Rival</option>
                   </select>
                 </div>
@@ -20667,7 +20667,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       ].filter(Boolean),
       postNotFulfilled: [
         getQuickEventSummary(selectedMatch.quickEvents || []).losses >= 2 ? 'Problemas tras pérdida: revisar apoyos cercanos.' : null,
-        getQuickEventSummary(selectedMatch.quickEvents || []).rivalBoxEntries > getQuickEventSummary(selectedMatch.quickEvents || []).boxEntries ? 'El rival pisó más área que Caudal.' : null,
+        getQuickEventSummary(selectedMatch.quickEvents || []).rivalBoxEntries > getQuickEventSummary(selectedMatch.quickEvents || []).boxEntries ? 'El rival pisó más área que nuestro equipo.' : null,
       ].filter(Boolean),
       postNextAdjustment: [
         'Convertir los clips clave en tareas de entrenamiento.',
@@ -20835,7 +20835,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                               <p className="text-lg font-black text-white">{event.minute || 0}'</p>
                               <p className="text-sm font-black text-slate-100">{definition?.label || getQuickEventLabel(event.tipoEvento)}</p>
                               <span className={`rounded-xl px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${isRival ? 'bg-red-500/15 text-red-200' : 'bg-caudal-electric/15 text-caudal-electric'}`}>
-                                {isRival ? 'Rival' : 'Caudal'}
+                                {isRival ? 'Rival' : 'Equipo propio'}
                               </span>
                               <span className={`rounded-xl px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${event.reviewed ? 'bg-emerald-300 text-slate-950' : 'bg-yellow-300 text-slate-950'}`}>
                                 {event.reviewed ? 'Validado' : 'Pendiente'}
@@ -20870,7 +20870,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                           disabled={isSaving}
                           className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white"
                         >
-                          <option value="caudal">Caudal</option>
+                          <option value="caudal">Equipo propio</option>
                           <option value="rival">Rival</option>
                         </select>
                         <select
@@ -22007,7 +22007,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     });
     const trend = recentResults.length
       ? recentResults.filter((result) => result === 'V').length >= 2
-        ? 'Caudal domina el cruce reciente'
+        ? 'Nuestro equipo domina el cruce reciente'
         : recentResults.filter((result) => result === 'D').length >= 2
           ? 'Rival llega con tendencia favorable'
           : 'Cruce equilibrado'
@@ -22992,7 +22992,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     if (highRecoveryPattern?.frequency) push('Mejor rendimiento tras recuperación alta.', 'positive', `${highRecoveryPattern.frequency} secuencias · ${highRecoveryPattern.efficiency}% eficacia`);
     if (lossPattern?.frequency) push('Problemas recurrentes en transición defensiva.', 'risk', `${lossPattern.frequency} secuencias detectadas`);
     if (directPattern?.frequency || /juego directo/i.test(topAlert?.text || '')) push('El juego directo rival aparece como foco de corrección.', 'risk', directPattern ? `${directPattern.frequency} patrones` : topAlert.text);
-    if ((quickSummary?.boxEntries || 0) > (quickSummary?.rivalBoxEntries || 0) && shotAccuracy < 35) push('Caudal llega, pero necesita convertir mejor el volumen ofensivo.', 'warning', `Precisión tiro ${quickSummary.shotAccuracy}`);
+    if ((quickSummary?.boxEntries || 0) > (quickSummary?.rivalBoxEntries || 0) && shotAccuracy < 35) push('Nuestro equipo llega, pero necesita convertir mejor el volumen ofensivo.', 'warning', `Precisión tiro ${quickSummary.shotAccuracy}`);
     if (concededDanger >= 45) push('El rival convierte demasiado sus ataques en amenaza real.', 'risk', `Peligro concedido ${quickSummary.concededDanger}`);
     if (temporal?.best?.range) push(`Equipo fuerte en el tramo ${temporal.best.range}.`, 'positive', 'Mejor balance de tiros, presión y entradas al área');
     if (temporal?.worst?.range) push(`Tramo crítico: ${temporal.worst.range}.`, 'warning', 'Más tiros rivales, pérdidas o presión negativa');
@@ -30134,7 +30134,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
               <img src="/branding/nexo-horizontal-dark.png" alt="NEXO CLUB" className="hidden h-14 w-auto max-w-full object-contain sm:block" />
             </div>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">{OWN_CLUB_IDENTITY.name}</h1>
-            <p className="mt-1 text-sm text-slate-400">Mieres, Asturias · Cuerpo técnico</p>
+            <p className="mt-1 text-sm text-slate-400">{OWN_CLUB_IDENTITY.location} · {OWN_CLUB_IDENTITY.description}</p>
           </div>
           <div className="flex w-full flex-col gap-3 xl:w-auto xl:items-end">
             <div className="flex w-full flex-col gap-3 rounded-2xl border border-white/10 bg-caudal-950/40 p-3 sm:flex-row sm:items-center sm:justify-end xl:w-auto xl:min-w-72">
@@ -30800,7 +30800,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                   age: formatPlayerReportAge(calculateAge(selectedPlayerProfile.dob)),
                   foot: pdfPlayerFoot,
                   team: getOwnClubDisplayName(pdfOwnTeam?.name),
-                  teamCrest: pdfOwnTeam?.crest || clubCrest,
+                  teamCrest: clubCrest,
                   season: pdfSeasonLabel,
                 },
                 filters: {
@@ -34237,7 +34237,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                           icon: meta.badgeIcon,
                           side: isGoalFor ? 'caudal' : 'rival',
                           label: isGoalFor
-                            ? (isGoalOwnGoal(event) ? getGoalOwnGoalLabel(event).toUpperCase() : getGoalScorerDisplayName(event, 'Caudal'))
+                            ? (isGoalOwnGoal(event) ? getGoalOwnGoalLabel(event).toUpperCase() : getGoalScorerDisplayName(event, 'Jugador propio'))
                             : rivalGoalPresentation.label,
                           typeLabel: meta.label,
                           assist: isGoalFor && !isGoalOwnGoal(event)
@@ -34941,7 +34941,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                             </div>
                             <div className="text-center">
                               <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Comparador</p>
-                              <p className="mt-1 text-xl font-black text-white">CAUDAL vs RIVAL</p>
+                              <p className="mt-1 text-xl font-black text-white">{OWN_CLUB_IDENTITY.shortName.toUpperCase()} vs RIVAL</p>
                             </div>
                             <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
                               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-100/80">Rival</p>
@@ -35012,7 +35012,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                           <div className={`rounded-3xl border border-white/5 bg-[#091428]/80 p-6 shadow-glow ${isPreTalkMode ? 'min-h-[78vh]' : ''}`}>
                             <div className="mb-5">
                               <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Pizarra táctica</h4>
-                              <p className="mt-2 text-sm text-slate-400">Un único campo con Caudal y rival enfrentados. Si hay alineaciones, aparecen los nombres; si no, los roles.</p>
+                              <p className="mt-2 text-sm text-slate-400">Un único campo con el equipo propio y el rival enfrentados. Si hay alineaciones, aparecen los nombres; si no, los roles.</p>
                             </div>
                             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
                               <div className="grid grid-cols-2 rounded-xl border border-white/10 bg-black/20 p-1">
@@ -35233,8 +35233,8 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                             </div>
                             <div className="mt-5 grid gap-3">
                               {[
-                                ['Ventajas para Caudal', selectedMatch.preSystemReading?.advantages, 'text-emerald-300'],
-                                ['Riesgos para Caudal', selectedMatch.preSystemReading?.risks, 'text-red-300'],
+                                ['Ventajas para nuestro equipo', selectedMatch.preSystemReading?.advantages, 'text-emerald-300'],
+                                ['Riesgos para nuestro equipo', selectedMatch.preSystemReading?.risks, 'text-red-300'],
                                 ['Zonas a atacar', selectedMatch.preSystemReading?.attackZones, 'text-caudal-electric'],
                                 ['Zonas a proteger', selectedMatch.preSystemReading?.protectZones, 'text-amber-200'],
                                 ['Ajustes recomendados', selectedMatch.preSystemReading?.adjustments, 'text-white'],
@@ -35367,7 +35367,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                               },
                               {
                                 id: 'caudalPlan',
-                                title: '5. Plan rápido Caudal',
+                                title: '5. Plan rápido propio',
                                 description: 'Qué queremos hacer y qué debemos evitar.',
                                 fields: [
                                   { label: 'Intención', field: 'preCaudalIntent', type: 'chips', options: ['Presionar alto', 'Bloque medio', 'Atacar espalda', 'Dominar balón', 'Ser directo', 'Proteger área'], multiple: true },
@@ -35400,7 +35400,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                           <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                             <div>
                               <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-white">Sistemas sobre campo</h4>
-                              <p className="mt-2 text-sm text-slate-400">Pincha un puesto del Caudal y asigna un jugador de la plantilla.</p>
+                              <p className="mt-2 text-sm text-slate-400">Pincha un puesto de nuestro equipo y asigna un jugador de la plantilla.</p>
                             </div>
                             <div className="flex flex-wrap gap-3">
                               <button
@@ -35408,14 +35408,14 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                                 onClick={loadSuggestedCaudalLineup}
                                 className="rounded-2xl bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white hover:bg-white/15"
                               >
-                                Once Caudal
+                                Once propio
                               </button>
                               <button
                                 type="button"
                                 onClick={() => clearCaudalLineupSlot(selectedTacticalPlayerIndex)}
                                 className="rounded-2xl bg-red-500/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-red-100 hover:bg-red-500/25"
                               >
-                                Limpiar Caudal
+                                Limpiar once propio
                               </button>
                               <button
                                 type="button"
@@ -35435,7 +35435,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                           </div>
                           <div className="grid min-w-0 gap-5 2xl:grid-cols-[240px_minmax(0,1fr)_240px]">
                             <div className="min-w-0 rounded-3xl bg-[#0f1e38]/80 p-4">
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Plantilla Caudal</p>
+                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Plantilla propia</p>
                               <p className="mt-2 text-sm text-slate-400">
                                 Puesto seleccionado: <span className="font-semibold text-white">{getFormationRoles(selectedMatch.preCaudalSystem || '4-4-2')[selectedTacticalPlayerIndex]}</span>
                               </p>
@@ -35534,12 +35534,12 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                           <div className="mt-4 overflow-hidden rounded-3xl border border-white/5 bg-[#0f1e38]/80">
                             <div className="border-b border-white/10 px-5 py-4">
                               <p className="text-xs font-black uppercase tracking-[0.18em] text-white">Aportaciones individuales seleccionadas</p>
-                              <p className="mt-1 text-sm text-slate-400">Compara al jugador del Caudal con su rival directo y separa acciones ofensivas y defensivas.</p>
+                              <p className="mt-1 text-sm text-slate-400">Compara al jugador de nuestro equipo con su rival directo y separa acciones ofensivas y defensivas.</p>
                             </div>
                             <div className="grid gap-4 p-5 xl:grid-cols-[minmax(0,0.85fr)_minmax(420px,1.15fr)]">
                               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
                               <label className="space-y-2 text-sm text-slate-300">
-                                <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Nota jugador Caudal</span>
+                                <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Nota jugador propio</span>
                                 <textarea
                                   value={(selectedMatch.prePlayerNotes || {})[getSelectedLineupName()] || ''}
                                   onChange={(event) => updateSelectedPlayerNote(event.target.value)}
@@ -35588,7 +35588,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                                 );
                               })()
                             ) : (
-                              <p className="mt-3 text-sm text-slate-400">Pulsa "Analizar sistemas" y después selecciona un jugador del Caudal en el campo.</p>
+                              <p className="mt-3 text-sm text-slate-400">Pulsa "Analizar sistemas" y después selecciona un jugador de nuestro equipo en el campo.</p>
                             )}
                               </div>
                             </div>
@@ -35761,7 +35761,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                       </div>
                       <div className="mt-6 grid gap-4 lg:grid-cols-3">
                         <div className="rounded-3xl bg-[#0f1e38]/80 p-5">
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Goles Caudal</p>
+                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Goles a favor</p>
                           <div className="mt-3 space-y-2 text-sm text-slate-300">
                             {getStatsGoalEvents().filter((event) => event.type === 'Gol a favor').length ? getStatsGoalEvents().filter((event) => event.type === 'Gol a favor').map((event) => (
                               <p key={event.id}>{event.minute}' ? {getGoalScorerDisplayName(event, 'Sin goleador')} · {event.subphase}{!isGoalOwnGoal(event) && event.assistant ? ` · ?? ${getReferencedPlayerDisplayName(event.assistantId, event.assistant)}` : ''}</p>

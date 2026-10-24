@@ -3,6 +3,7 @@ import {
   getMatchPlayerIdentityIds,
   resolveMatchPlayerCandidate,
 } from './matchPlayerIdentity.js';
+import { OWN_CLUB_IDENTITY } from '../constants/clubIdentity.js';
 
 const normalizeIdentityText = (value) => String(value || '')
   .normalize('NFD')
@@ -36,7 +37,7 @@ export const getGoalOwnGoalLabel = (event = {}) => {
   if (!isGoalOwnGoal(event)) return '';
   return event.type === 'Gol a favor'
     ? 'Gol en propia del rival'
-    : 'Gol en propia del Caudal';
+    : `Gol en propia de ${OWN_CLUB_IDENTITY.shortName}`;
 };
 
 export const createGoalOwnGoalDraftPatch = (enabled, type = 'Gol a favor') => ({

@@ -1,4 +1,5 @@
 import { getFootballRoleFamily } from './rivalTactics.js';
+import { OWN_CLUB_IDENTITY } from '../constants/clubIdentity.js';
 import {
   getVisualSlotForTacticalRole,
   orientFormationSlotsForTacticalBoard,
@@ -195,7 +196,7 @@ export const adaptSemanticPlayerPositions = ({
     };
     if (selected.tier === 4) {
       warnings.push(
-        `${team === 'rival' ? 'Rival' : 'Caudal'}: ${entry.role || entry.roleFamily || 'rol'} se asignó por proximidad estructural a ${selected.target.role}.`
+        `${team === 'rival' ? 'Rival' : OWN_CLUB_IDENTITY.shortName}: ${entry.role || entry.roleFamily || 'rol'} se asignó por proximidad estructural a ${selected.target.role}.`
       );
     }
   });
@@ -208,7 +209,7 @@ export const adaptSemanticPlayerPositions = ({
         y: target.baseY,
       };
       warnings.push(
-        `${team === 'rival' ? 'Rival' : 'Caudal'}: ${target.role} no tenía equivalencia y queda disponible para ajuste manual.`
+        `${team === 'rival' ? 'Rival' : OWN_CLUB_IDENTITY.shortName}: ${target.role} no tenía equivalencia y queda disponible para ajuste manual.`
       );
     });
   });
