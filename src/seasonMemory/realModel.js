@@ -2,6 +2,8 @@ import { getMatchStatus, isMatchScheduledInFuture, parseLocalMatchDate } from '.
 import { normalizeCompetitionKey } from '../utils/competitionFilters.js';
 import { OWN_CLUB_IDENTITY } from '../constants/clubIdentity.js';
 import { buildRealIndividualMemory } from './realIndividualModel.js';
+import { buildRealMatchCards } from './realMatchModel.js';
+import { SEASON_MEMORY_METRICS as METRICS } from './realModelMetrics.js';
 
 const trim = (value) => String(value ?? '').trim();
 const fold = (value) => trim(value).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -12,14 +14,6 @@ const KNOWN_LEGACY_TYPES = new Map([
 ]);
 const LABELS = { league: 'Liga', cup: 'Copa', copa_rfef: 'Copa RFEF',
   friendly: 'Amistosos', playoff: 'Playoff' };
-const METRICS = Object.freeze([
-  ['possession', 'Posesión', '%', 100],
-  ['shots', 'Tiros', '', null],
-  ['shots_on_target', 'Tiros a puerta', '', null],
-  ['corners', 'Córners', '', null],
-  ['yellow_cards', 'Tarjetas amarillas', '', null],
-  ['red_cards', 'Tarjetas rojas', '', null],
-]);
 export const SEASON_MEMORY_METRICS = METRICS;
 
 export function resolveSeasonMemoryContexts({ membership, links = [], seasons = [], teams = [], ownTeams = [] }) {
@@ -226,7 +220,10 @@ export function buildRealSeasonMemory({ context, matches = [], catalog = [], unl
   }, newTotals()));
   const individualMemory = individual
     ? buildRealIndividualMemory({ context, matches: selected, competitions, source: individual }) : null;
+  const matchCards = buildRealMatchCards({ context, matches: selected, individual: individualMemory,
+    source: individual });
   return { context, matches: selected, competitions, totals, individual: individualMemory,
+    matchCards,
     individualUnavailable: individualError !== null,
     metrics: aggregateMetrics(selected), verified: selected.length,
     allVerified: accepted.length, excluded,

@@ -131,7 +131,7 @@ const mock = { from(table) {
     const fixtures = { player_team_memberships: source.players.map((row) => row.stage),
       jugadores: source.players, partido_estadisticas_jugador: source.stats,
       partido_alineacion_slots: source.slots, partido_eventos_sustitucion: source.substitutions,
-      partido_eventos_gol: source.goals };
+      partido_eventos_gol: source.goals, match_quick_events: [], partido_eventos_post: [] };
     return Promise.resolve({ data: fixtures[table].filter((row) => this.filters.every((fn) => fn(row)))
       .slice(from, to + 1), error: null });
   } }; return query;

@@ -36,7 +36,7 @@ export async function loadRealSeasonMemoryContexts(client, membership) {
   return resolveSeasonMemoryContexts({ membership, links, seasons, teams, ownTeams });
 }
 
-const MATCH_COLUMNS = 'id,club_team_season_id,date,time,type,round,opponent,is_home,home_team,away_team,status,home_score,away_score,goals_for,goals_against,competition_id,competition_key,possession,shots,shots_on_target,corners,yellow_cards,red_cards';
+const MATCH_COLUMNS = 'id,club_team_season_id,date,time,type,round,opponent,opponent_crest,is_home,home_team,away_team,status,home_score,away_score,goals_for,goals_against,competition_id,competition_key,possession,shots,shots_on_target,corners,yellow_cards,red_cards,stats_system,post_video_link,post_notes,post_reality,post_fulfilled,post_not_fulfilled,post_why,post_next_adjustment,post_repeat,post_improve,post_train_week';
 
 export async function loadRealSeasonMemorySnapshot(client, context, { includeIndividual = false } = {}) {
   if (!context?.id || !context?.clubId) throw new Error('CTS no acreditado.');

@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import { PDF_THEME, competitionColor } from './pdfTheme.js';
 import { individualSectionCount, renderIndividualCompetition,
   renderIndividualGlobal } from './realIndividualPdf.js';
+import { renderRealMatchCards } from './realMatchPdf.js';
 
 const { page: P, colors: C } = PDF_THEME;
 const W = P.width;
@@ -315,7 +316,7 @@ function indexPage(pdf, sections, model, indexPages) {
   }
 }
 
-export function createRealSeasonMemoryPdf({ model, crestDataUrl }) {
+export function createRealSeasonMemoryPdf({ model, crestDataUrl, rivalCrests = {} }) {
   if (!model?.context?.id || !model?.matches?.length || !model?.competitions?.length) {
     throw new Error('No hay partidos acreditados para generar el informe.');
   }
@@ -324,7 +325,7 @@ export function createRealSeasonMemoryPdf({ model, crestDataUrl }) {
     subject: 'Informe deportivo de partidos acreditados', author: 'NEXO CLUB' });
   cover(pdf, model, crestDataUrl);
   summary(pdf, model);
-  const indexPages = Math.max(1, Math.ceil((model.competitions.length + 5
+  const indexPages = Math.max(1, Math.ceil((model.competitions.length + model.matchCards.length + 5
     + individualSectionCount(model.individual)) / 14));
   for (let i = 0; i < indexPages; i++) page(pdf, 'Índice');
   const sections = [{ name: 'Resumen ejecutivo', page: 2 }, { name: 'Índice', page: 3 }];
@@ -334,6 +335,7 @@ export function createRealSeasonMemoryPdf({ model, crestDataUrl }) {
   model.competitions.forEach((comp) => {
     competitionPages(pdf, comp, sections);
     renderIndividualCompetition(pdf, comp, model.individual, sections);
+    renderRealMatchCards(pdf, comp, model.matchCards, sections, crestDataUrl, rivalCrests);
   });
   finalPage(pdf, model, sections);
   indexPage(pdf, sections, model, indexPages);

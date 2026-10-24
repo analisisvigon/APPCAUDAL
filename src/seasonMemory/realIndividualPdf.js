@@ -114,18 +114,19 @@ function evolution(pdf, rows, sections) {
   sections.push({ name: 'Evolución individual', page: newPage(pdf, 'Evolución individual') });
   title(pdf, 'Evolución individual', 'Minutos registrados o derivados de sustituciones con minuto válido.');
   candidates.forEach((row, index) => {
-    const y = 72 + index * 47;
+    const chartHeight = candidates.length === 1 ? 62 : candidates.length === 2 ? 42 : 25;
+    const y = 72 + index * (chartHeight + 22);
     fit(pdf, row.name, M, y, 100, 9, C.navy, true);
     txt(pdf, `${row.points.length} partidos con minutos`, W - M, y, 7, C.slate, false, 'right');
-    line(pdf, M, y + 32, W - M, y + 32);
+    line(pdf, M, y + chartHeight + 7, W - M, y + chartHeight + 7);
     const shown = row.points.slice(-16);
     const step = (W - 2 * M) / shown.length;
     shown.forEach((point, i) => {
-      const height = Math.min(25, point.minutes / 120 * 25);
-      fill(pdf, M + i * step + 2, y + 31 - height, Math.max(2, step - 4), height,
+      const height = Math.min(chartHeight, point.minutes / 120 * chartHeight);
+      fill(pdf, M + i * step + 2, y + chartHeight + 6 - height, Math.max(2, step - 4), height,
         [C.blue, C.green, C.amber, C.violet][index], 1);
       if (shown.length <= 8) txt(pdf, point.date.slice(5), M + i * step + step / 2,
-        y + 39, 5.6, C.slate, false, 'center');
+        y + chartHeight + 14, 5.6, C.slate, false, 'center');
     });
   });
 }
@@ -148,7 +149,7 @@ export function renderIndividualGlobal(pdf, individual, sections) {
   fill(pdf, M, 63, W - 2 * M, 47, C.navy, 4);
   txt(pdf, 'JUGADORES CON PARTICIPACIÓN', M + 8, 76, 7, C.cyan, true);
   txt(pdf, individual.totals.players, M + 8, 99, 30, C.paper, true);
-  txt(pdf, `${individual.totals.starts} TITULARIDADES ACREDITADAS`, M + 80, 86, 10, C.paper, true);
+  txt(pdf, `AL MENOS ${individual.totals.starts} TITULARIDADES`, M + 80, 86, 10, C.paper, true);
   txt(pdf, `${individual.playedMatches} PARTIDOS DISPUTADOS`, M + 80, 99, 7, C.muted, true);
   const width = (W - 2 * M - 8) / 3;
   card(pdf, M, 120, width, 'Minutos acreditados', individual.totals.minutes.toLocaleString('es-ES'), C.blue);

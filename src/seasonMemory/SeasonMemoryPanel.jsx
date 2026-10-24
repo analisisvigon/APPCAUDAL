@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { loadRealSeasonMemoryContexts, loadRealSeasonMemorySnapshot } from './realData.js';
 import { buildRealSeasonMemory } from './realModel.js';
+import { persistentVideoUrl } from './realMatchLinks.js';
 
 const stateMessage = {
   loading: 'Comprobando equipo, temporada y partidos…',
@@ -21,6 +22,24 @@ async function loadCrest(url) {
     binary += String.fromCharCode(...bytes.subarray(i, i + 32768));
   }
   return `data:image/png;base64,${btoa(binary)}`;
+}
+
+async function loadRivalCrests(cards) {
+  const addresses = [...new Set(cards.map((card) => card.opponentCrest).filter(Boolean))];
+  const loaded = await Promise.allSettled(addresses.map(async (address) => {
+    const local = address.startsWith('/branding/') && !address.includes('..');
+    if (!local && !persistentVideoUrl(address)) return null;
+    const response = await fetch(local ? `${import.meta.env.BASE_URL}${address.slice(1)}` : address,
+      { signal: AbortSignal.timeout(5000) });
+    if (!response.ok || !response.headers.get('content-type')?.toLowerCase().includes('image/png')) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.length > 500_000) return null;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 32768) binary += String.fromCharCode(...bytes.subarray(i, i + 32768));
+    return [address, `data:image/png;base64,${btoa(binary)}`];
+  }));
+  return Object.fromEntries(loaded.filter((item) => item.status === 'fulfilled' && item.value)
+    .map((item) => item.value));
 }
 
 export default function SeasonMemoryPanel({ client, identity, sessionUserId }) {
@@ -110,8 +129,9 @@ export default function SeasonMemoryPanel({ client, identity, sessionUserId }) {
         competitionId, now: new Date() });
       if (!next.verified || !next.totals.played) throw new Error('Ya no hay partidos válidos para esta selección.');
       const crestDataUrl = await loadCrest(freshContext.crest);
+      const rivalCrests = await loadRivalCrests(next.matchCards);
       const { createRealSeasonMemoryPdf } = await import('./realPdf.js');
-      const pdf = createRealSeasonMemoryPdf({ model: next, crestDataUrl });
+      const pdf = createRealSeasonMemoryPdf({ model: next, crestDataUrl, rivalCrests });
       const blob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -173,6 +193,7 @@ export default function SeasonMemoryPanel({ client, identity, sessionUserId }) {
           : 'Informe de competición · selección parcial'} · {model.competitions.map((item) => item.name).join(', ') || 'Sin competiciones'}</p>
         <p className="text-xs text-slate-400">Indicadores disponibles: {model.metrics.filter((item) => item.covered).map((item) => `${item.label} (${item.covered}/${item.eligible})`).join(', ') || 'ninguno'}.</p>
         <p className="text-xs text-slate-400">Plantilla: {model.individualUnavailable ? 'lectura no verificada' : `${model.individual?.rows.length || 0} jugadores con participación acreditada`}. {model.totals.played && !model.individual?.rows.length && !model.individualUnavailable ? 'Aún no hay estadísticas individuales atribuibles por UUID.' : ''}</p>
+        <p className="text-xs text-amber-200">Los vídeos del PDF son enlaces externos: conserva los archivos y su acceso por separado antes de borrar datos o medios de una temporada. Su disponibilidad futura depende del alojamiento.</p>
         {model.individualUnavailable ? <p className="text-xs text-amber-200">Los datos individuales no pudieron verificarse. El PDF conservará las secciones colectivas y señalará esta limitación.</p> : null}
         {model.excludedTotal ? <p className="text-xs text-amber-200">Excluidos: {model.excluded.unlinked} sin vínculo CTS en la base, {model.excluded.teamContradiction} con identidad de equipo contradictoria, {model.excluded.invalidDate} fuera de temporada o sin fecha, {model.excluded.competitionConflict} con competición discrepante y {model.excluded.duplicate} duplicados.</p> : null}
         <p className="text-xs text-slate-400">Fecha prevista: {new Date().toLocaleDateString('es-ES')}. Lectura: {readAt?.toLocaleString('es-ES')}. El PDF reflejará los datos existentes al generarlo.</p>
