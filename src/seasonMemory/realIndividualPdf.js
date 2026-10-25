@@ -40,9 +40,25 @@ function title(pdf, value, sub) {
   fit(pdf, value, M, 42, W - 2 * M, 21, C.navy, true);
   if (sub) fit(pdf, sub, M, 51, W - 2 * M, 8, C.slate);
 }
+const selectedSeason = (label) => {
+  const text = String(label ?? '').trim();
+  const years = /^(\d{4})[/-](\d{2}|\d{4})$/.exec(text);
+  return years ? `${years[1]}/${years[2].slice(-2)}` : text;
+};
+const individualScope = (model) => {
+  if (model.selection === 'season') return 'Todas las competiciones incluidas';
+  const competitions = model.competitions.map((competition) => competition.name).join(' · ');
+  const season = selectedSeason(model.context.seasonLabel);
+  return `${competitions}${season ? ` · Temporada ${season}` : ''}`;
+};
 function metricText(metric) {
   if (metric.value !== null) return metric.value.toLocaleString('es-ES');
   return metric.known > 0 ? `${metric.known.toLocaleString('es-ES')}+` : '—';
+}
+function minuteText(metric) {
+  if (!metric.covered) return '—';
+  return metric.value === null ? `${metric.known.toLocaleString('es-ES')}+`
+    : metric.value.toLocaleString('es-ES');
 }
 function card(pdf, x, y, width, label, value, color = C.blue) {
   fill(pdf, x, y, width, 32, C.mist, 3);
@@ -57,19 +73,20 @@ function bars(pdf, rows, field, x, y, width, color, limit = 5) {
     const yy = y + i * 15;
     fit(pdf, `${row.number === null || row.number === undefined ? '' : `#${row.number}  `}${row.name}`,
       x, yy, width * .54, 8, C.ink, true);
-    txt(pdf, row[field].value, x + width, yy, 8, C.navy, true, 'right');
+    txt(pdf, row[field].display ?? row[field].value, x + width, yy, 8, C.navy, true, 'right');
     fill(pdf, x, yy + 3, width, 2.7, C.mist, 1);
     fill(pdf, x, yy + 3, width * row[field].value / top, 2.7, color, 1);
   });
   return ranked.length;
 }
-function ranking(pdf, rows, sections, sectionName, color = C.blue) {
+function ranking(pdf, rows, sections, sectionName, color = C.blue, scope = null) {
   const kinds = [['goals', 'Máximos goleadores', C.green],
     ['assists', 'Máximos asistentes', C.blue], ['minutes', 'Más minutos', C.amber]];
   const available = kinds.filter(([key]) => rankIndividuals(rows, key, 1).length);
   if (!available.length) return;
   sections.push({ name: sectionName, page: newPage(pdf, sectionName, color) });
-  title(pdf, sectionName, 'Clasificaciones solo con valores completos y acreditados.');
+  title(pdf, sectionName, scope || 'Clasificaciones solo con valores completos y acreditados.');
+  if (scope) txt(pdf, 'Clasificaciones solo con valores completos y acreditados.', M, 58, 6.4, C.slate);
   let y = 68;
   available.forEach(([key, label, metricColor]) => {
     txt(pdf, label.toUpperCase(), M, y, 9, C.navy, true);
@@ -95,24 +112,25 @@ function rosterTable(pdf, rows, sections, name, subtitle, color = C.blue) {
       txt(pdf, row.number ?? '—', M + 2, y, 6.5);
       fit(pdf, `${row.name}${row.retired ? ' *' : ''}`, M + 12, y, 42, 7.2, C.ink, true);
       fit(pdf, row.position || '—', M + 57, y, 22, 6.5, C.slate);
-      [[row.played, 82], [metricText(row.starts), 94], [metricText(row.bench), 105], [metricText(row.minutes), 118],
+      [[row.played, 82], [metricText(row.starts), 94], [metricText(row.bench), 105], [minuteText(row.minutes), 118],
         [metricText(row.goals), 138], [metricText(row.assists), 147],
         [metricText(row.yellow), 156], [metricText(row.red), 169]]
         .forEach(([value, dx]) => txt(pdf, value, M + dx, y, 6.9, C.ink));
     });
     txt(pdf, 'T Titular · S Participó desde el banquillo', M, 262, 6.2, C.slate);
-    txt(pdf, '* Baja en plantilla.  — Sin dato completo.  1+ Mínimo acreditado.',
+    txt(pdf, '* Baja en plantilla.  — Sin dato completo.  + Mínimo acreditado con cobertura parcial.',
       M, 270, 6.2, C.slate);
   }
 }
-function evolution(pdf, rows, sections) {
+function evolution(pdf, rows, sections, scope = null) {
   const candidates = rows.map((row) => ({ ...row,
     points: row.contributions.filter((item) => item.minutes !== null)
       .sort((a, b) => a.date.localeCompare(b.date) || a.matchId.localeCompare(b.matchId)) }))
     .filter((row) => row.points.length >= 3).slice(0, 4);
   if (!candidates.length) return;
   sections.push({ name: 'Evolución individual', page: newPage(pdf, 'Evolución individual') });
-  title(pdf, 'Evolución individual', 'Minutos registrados o derivados de sustituciones con minuto válido.');
+  title(pdf, 'Evolución individual', scope || 'Minutos registrados o derivados de sustituciones con minuto válido.');
+  if (scope) txt(pdf, 'Minutos registrados o derivados de sustituciones con minuto válido.', M, 58, 6.4, C.slate);
   candidates.forEach((row, index) => {
     const chartHeight = candidates.length === 1 ? 62 : candidates.length === 2 ? 42 : 25;
     const y = 72 + index * (chartHeight + 22);
@@ -142,43 +160,64 @@ export function individualSectionCount(individual) {
       && ['goals', 'assists', 'minutes'].some((key) => rankIndividuals(comp.rows, key, 1).length)).length;
 }
 
-export function renderIndividualGlobal(pdf, individual, sections) {
+export function renderIndividualGlobal(pdf, individual, sections, model) {
   if (!individual?.rows?.length) return;
+  const scope = individualScope(model);
+  const minuteCoverage = individual.rows.reduce((result, row) => ({
+    covered: result.covered + row.minutes.covered,
+    eligible: result.eligible + row.minutes.eligible,
+  }), { covered: 0, eligible: 0 });
   sections.push({ name: 'La plantilla en cifras', page: newPage(pdf, 'La plantilla en cifras') });
-  title(pdf, 'La plantilla en cifras', 'Participación individual verificada por UUID en partidos disputados.');
+  title(pdf, 'La plantilla en cifras', scope);
+  txt(pdf, 'Participación individual verificada por UUID en partidos disputados.', M, 58, 6.4, C.slate);
   fill(pdf, M, 63, W - 2 * M, 47, C.navy, 4);
   txt(pdf, 'JUGADORES CON PARTICIPACIÓN', M + 8, 76, 7, C.cyan, true);
   txt(pdf, individual.totals.players, M + 8, 99, 30, C.paper, true);
   txt(pdf, `AL MENOS ${individual.totals.starts} TITULARIDADES`, M + 80, 86, 10, C.paper, true);
   txt(pdf, `${individual.playedMatches} PARTIDOS DISPUTADOS`, M + 80, 99, 7, C.muted, true);
   const width = (W - 2 * M - 8) / 3;
-  card(pdf, M, 120, width, 'Minutos acreditados', individual.totals.minutes.toLocaleString('es-ES'), C.blue);
+  card(pdf, M, 120, width, 'Minutos acreditados', minuteCoverage.covered
+    ? individual.totals.minutes.toLocaleString('es-ES') : 'No disponibles', C.blue);
   card(pdf, M + width + 4, 120, width, 'Goles atribuidos', individual.totals.attributedGoals, C.green);
   card(pdf, M + 2 * (width + 4), 120, width, 'Asistencias atribuidas', individual.totals.attributedAssists, C.amber);
+  txt(pdf, minuteCoverage.covered === 0
+    ? `Sin minutos acreditados · 0/${minuteCoverage.eligible} participaciones con valor válido.`
+    : minuteCoverage.covered < minuteCoverage.eligible
+      ? `Cobertura parcial: ${minuteCoverage.covered}/${minuteCoverage.eligible} participaciones. Suma acreditada, no total disputado.`
+      : `Cobertura completa: ${minuteCoverage.covered}/${minuteCoverage.eligible} participaciones con minutos válidos.`,
+  M, 159, 6.4, C.slate);
   txt(pdf, 'DISTRIBUCIÓN DE MINUTOS ACREDITADOS', M, 169, 8, C.navy, true);
   const counted = bars(pdf, individual.rows.filter((row) => row.minutes.known > 0)
-    .map((row) => ({ ...row, minutes: { value: row.minutes.known } })),
+    .map((row) => ({ ...row, minutes: { value: row.minutes.known,
+      display: row.minutes.value === null ? `${row.minutes.known.toLocaleString('es-ES')}+`
+        : row.minutes.known.toLocaleString('es-ES') } })),
   'minutes', M, 181, W - 2 * M, C.blue);
-  if (!counted) txt(pdf, 'No hay minutos individuales verificables.', M, 190, 8, C.slate);
+  if (!counted) txt(pdf, minuteCoverage.covered
+    ? 'Minutos válidos registrados, todos con valor 0; sin barras positivas.'
+    : 'No hay minutos individuales verificables.', M, 190, 8, C.slate);
+  if (counted && minuteCoverage.covered < minuteCoverage.eligible) {
+    txt(pdf, '+ = mínimo acreditado con cobertura individual parcial.', M, 251, 6.4, C.slate);
+  }
   const c = individual.coverage;
   txt(pdf, `Cobertura: ${c.unattributedStats} stats sin UUID · ${c.conflictingStats} duplicadas · ${c.minuteConflicts} min. discrepantes`,
     M, 261, 6.4, C.slate);
   txt(pdf, `${c.incompleteGoalMatches} partidos con goles sin registro completo · ${c.unattributedGoals} contribuciones sin UUID`,
     M, 269, 6.4, C.slate);
-  ranking(pdf, individual.rows, sections, 'Rankings de plantilla');
+  ranking(pdf, individual.rows, sections, 'Rankings de plantilla', C.blue, scope);
   rosterTable(pdf, individual.rows, sections, 'Plantilla completa',
-    'Todas las competiciones incluidas');
-  evolution(pdf, individual.rows, sections);
+    scope);
+  evolution(pdf, individual.rows, sections, scope);
 }
 
-export function renderIndividualCompetition(pdf, competition, individual, sections) {
+export function renderIndividualCompetition(pdf, competition, individual, sections, model) {
   const group = individual?.byCompetition?.find((item) => item.id === competition.id);
   if (!group?.rows.length) return;
   const color = competitionColor(competition.kind);
+  const scope = `${competition.name} · Temporada ${selectedSeason(model.context.seasonLabel)}`;
   if (group.rows.length >= 3
     && new Set(group.rows.flatMap((row) => row.contributions.map((item) => item.matchId))).size >= 2) {
-    ranking(pdf, group.rows, sections, `Rankings · ${competition.name}`, color);
+    ranking(pdf, group.rows, sections, `Rankings · ${competition.name}`, color, scope);
   }
   rosterTable(pdf, group.rows, sections, `Plantilla · ${competition.name}`,
-    `${group.rows.length} jugadores con participación`, color);
+    `${scope} · ${group.rows.length} jugadores con participación`, color);
 }

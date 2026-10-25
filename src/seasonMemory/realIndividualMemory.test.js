@@ -147,7 +147,54 @@ const pdf = createRealSeasonMemoryPdf({ model, crestDataUrl });
 assert.ok(pdf.getNumberOfPages() > 10);
 const text = pdf.internal.pages.flat().join(' ');
 assert.ok(text.includes('Plantilla completa') && text.includes('Copa Sub-23'));
+assert.ok(text.includes('Todas las competiciones incluidas'));
 assert.ok(!text.includes('DEMOSTRACIÓN') && !text.includes('DATOS FICTICIOS'));
+const leaguePdf = createRealSeasonMemoryPdf({ model: build(matches, source, `catalog:${ligaId}`), crestDataUrl });
+const leagueText = leaguePdf.internal.pages.flat().join(' ');
+assert.ok(leagueText.includes('Liga Sub-23') && leagueText.includes('Temporada 2026/27'));
+assert.ok(!leagueText.includes('Todas las competiciones incluidas'));
+const cupPdf = createRealSeasonMemoryPdf({ model: build(matches, source, `catalog:${copaId}`), crestDataUrl });
+const cupText = cupPdf.internal.pages.flat().join(' ');
+assert.ok(cupText.includes('Copa Sub-23') && cupText.includes('Temporada 2026/27'));
+assert.ok(!cupText.includes('Todas las competiciones incluidas'));
+assert.throws(() => build(matches, source, [`catalog:${ligaId}`, `catalog:${copaId}`]),
+  /Competición no disponible/); // La selección parcial múltiple aún no está admitida.
+
+const minuteMatch = match(950, ligaId, [0, 0]);
+const minuteSource = (minutes) => ({ players: [player(pA, 'Jugador de minutos', 8)],
+  stats: [{ id: id(951), partido_id: minuteMatch.id, jugador_id: pA,
+    role: 'Titular', minutes }], slots: [], substitutions: [], goals: [] });
+const absentModel = build([minuteMatch], minuteSource(''), `catalog:${ligaId}`);
+const absentPdf = createRealSeasonMemoryPdf({ model: absentModel, crestDataUrl });
+const absentText = absentPdf.internal.pages.flat().join(' ');
+assert.equal(absentModel.individual.rows[0].minutes.covered, 0);
+assert.ok(absentText.includes('No disponibles') && absentText.includes('Sin minutos acreditados'));
+assert.ok(absentText.includes('No hay minutos individuales verificables.'));
+
+const partialPdf = createRealSeasonMemoryPdf({ model: conflictingMinutes, crestDataUrl });
+const partialText = partialPdf.internal.pages.flat().join(' ');
+const partialPlayer = conflictingMinutes.individual.rows.find((row) => row.id === pA);
+assert.ok(partialPlayer.minutes.covered > 0 && partialPlayer.minutes.covered < partialPlayer.minutes.eligible);
+assert.ok(partialText.includes('Cobertura parcial') && partialText.includes('Suma acreditada, no total disputado'));
+assert.ok(partialText.includes(`${partialPlayer.minutes.known}+`));
+
+const zeroModel = build([minuteMatch], minuteSource('0'), `catalog:${ligaId}`);
+const zeroPdf = createRealSeasonMemoryPdf({ model: zeroModel, crestDataUrl });
+const zeroText = zeroPdf.internal.pages.flat().join(' ');
+assert.equal(zeroModel.individual.rows[0].minutes.value, 0);
+assert.equal(zeroModel.individual.rows[0].minutes.covered, 1);
+assert.ok(zeroText.includes('Cobertura completa') && zeroText.includes('todos con valor 0'));
+assert.ok(!zeroText.includes('No disponibles'));
+const secondMinuteMatch = match(952, ligaId, [0, 0], '2026-10-08');
+const partlyZeroSource = minuteSource('0');
+partlyZeroSource.stats.push({ id: id(953), partido_id: secondMinuteMatch.id,
+  jugador_id: pA, role: 'Titular', minutes: '' });
+const partlyZeroModel = build([minuteMatch, secondMinuteMatch], partlyZeroSource, `catalog:${ligaId}`);
+const partlyZeroText = createRealSeasonMemoryPdf({ model: partlyZeroModel, crestDataUrl })
+  .internal.pages.flat().join(' ');
+assert.equal(partlyZeroModel.individual.rows[0].minutes.known, 0);
+assert.equal(partlyZeroModel.individual.rows[0].minutes.covered, 1);
+assert.ok(partlyZeroText.includes('Cobertura parcial') && partlyZeroText.includes('0+'));
 // 16: 53 jugadores, tabla con varias páginas e índice suficiente.
 const extra = Array.from({ length: 50 }, (_, index) => {
   const pid = id(4000 + index);
@@ -178,4 +225,4 @@ if (process.env.SEASON_MEMORY_INDIVIDUAL_FIXTURE_PDF) {
   writeFileSync(process.env.SEASON_MEMORY_INDIVIDUAL_FIXTURE_PDF,
     Buffer.from(longPdf.output('arraybuffer')));
 }
-console.log('Memoria 2B.2: 17 escenarios de identidad, cobertura, competiciones, paginación y PDF OK');
+console.log('Memoria 2B.2: identidad, cobertura, competiciones, paginación y presentación PDF OK');

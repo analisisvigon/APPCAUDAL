@@ -383,12 +383,12 @@ export function createRealSeasonMemoryPdf({ model, crestDataUrl, rivalCrests = {
   const sections = [{ name: 'Resumen ejecutivo', page: 2 }, { name: 'Índice', page: 3 }];
   evolution(pdf, model, sections);
   statistics(pdf, model, sections);
-  renderIndividualGlobal(pdf, model.individual, sections);
+  renderIndividualGlobal(pdf, model.individual, sections, model);
   renderRealPhysical(pdf, model.physical, sections);
   renderRealGroup(pdf, model.groupAnalysis, sections);
   model.competitions.forEach((comp) => {
     competitionPages(pdf, comp, sections);
-    renderIndividualCompetition(pdf, comp, model.individual, sections);
+    renderIndividualCompetition(pdf, comp, model.individual, sections, model);
     renderRealMatchCards(pdf, comp, model.matchCards, sections, crestDataUrl, rivalCrests);
   });
   finalPage(pdf, model, sections);
