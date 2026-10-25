@@ -5,6 +5,8 @@ import { createRealSeasonMemoryPdf } from './realPdf.js';
 import { seasonMemoryDownloadName } from './downloadName.js';
 import { buildRealGroupMemory } from './realPerformanceModel.js';
 import { fieldZone, goalZone, goalBucket } from './realGroupDetails.js';
+import { groupSectionCount, renderRealGroup } from './realPerformancePdf.js';
+import { jsPDF } from 'jspdf';
 
 const id = (n) => `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
 const clubId = id(1), teamId = id(2), ctsId = id(3), leagueId = id(4), cupId = id(5);
@@ -33,6 +35,7 @@ const matches = dates.map((date, i) => {
     home_score: '1', away_score: against ? '1' : '0', goals_for: '1',
     goals_against: against ? '1' : '0', stats_system: i === 0 ? '4-3-3' : '4-4-2',
     possession: i % 3 ? '55' : null, shots: i % 3 ? '11' : null,
+    shots_on_target: '5', corners: '4', yellow_cards: '2', red_cards: '0',
     post_video_link: i === 0 ? 'https://videos.example.org/match/1.mp4' : null };
 });
 const goals = matches.flatMap((match, i) => {
@@ -119,8 +122,43 @@ check('37 nombre Windows', () => assert.equal(seasonMemoryDownloadName(season),
   'NEXO_CLUB_Almadina_SC_Sub_23_2026_27_Memoria_Temporada.pdf'));
 check('38 nombre parcial', () => assert.notEqual(seasonMemoryDownloadName(season), seasonMemoryDownloadName(league)));
 
+const manySystems = { ...season.groupAnalysis, details: { ...season.groupAnalysis.details,
+  systems: Array.from({ length: 18 }, (_, i) => ({ system: `SISTEMA_${i + 1}`,
+    played: 1, wins: 1, draws: 0, losses: 0 })) } };
+const systemsPdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+const systemSections = [];
+renderRealGroup(systemsPdf, manySystems, systemSections);
+check('39 todos los sistemas se paginan', () => {
+  assert.equal(systemSections.length, groupSectionCount(manySystems, systemsPdf));
+  const content = systemsPdf.internal.pages.flat().join(' ');
+  for (let i = 1; i <= 18; i++) assert.ok(content.includes(`SISTEMA_${i}`));
+});
+
+const longSetPieces = { ...season.groupAnalysis, details: { ...season.groupAnalysis.details,
+  setPieces: ['for', 'against'].map((side) => ({ side, total: 26,
+    rows: Array.from({ length: 26 }, (_, i) => ({ label: `SUBTIPO_${side}_${i + 1} con descripción acreditada`, count: 1 })) })) } };
+const setPiecePdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+const setPieceSections = [];
+renderRealGroup(setPiecePdf, longSetPieces, setPieceSections);
+check('40 ABP ofensiva y defensiva sin recortes', () => {
+  assert.equal(setPieceSections.length, groupSectionCount(longSetPieces, setPiecePdf));
+  const content = setPiecePdf.internal.pages.flat().join(' ');
+  assert.ok(content.includes('SUBTIPO_for_26') && content.includes('SUBTIPO_against_26'));
+});
+
+const trendsOnly = { ...season.groupAnalysis, details: { ...season.groupAnalysis.details,
+  systems: [], mouth: { for: { withZone: 0 }, against: { withZone: 0 } } } };
+const trendsPdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+renderRealGroup(trendsPdf, trendsOnly, []);
+check('41 tendencias independientes del sistema', () => assert.ok(
+  trendsPdf.internal.pages.flat().join(' ').includes('TRAMOS CON')));
+
 const qaDir = new URL('../../local-exports/season-memory-qa/', import.meta.url);
 mkdirSync(qaDir, { recursive: true });
+writeFileSync(new URL('group-systems-overflow-fixture.pdf', qaDir),
+  Buffer.from(systemsPdf.output('arraybuffer')));
+writeFileSync(new URL('group-abp-overflow-fixture.pdf', qaDir),
+  Buffer.from(setPiecePdf.output('arraybuffer')));
 for (const [name, model] of [['phase-2b5-season', season], ['phase-2b5-competition', league]]) {
   const pdf = createRealSeasonMemoryPdf({ model, crestDataUrl, syntheticQa: true });
   const data = Buffer.from(pdf.output('arraybuffer'));
@@ -128,6 +166,23 @@ for (const [name, model] of [['phase-2b5-season', season], ['phase-2b5-competiti
   check(`${name}: paginación`, () => assert.ok(pdf.getNumberOfPages() > 25));
   check(`${name}: enlace interno`, () => assert.match(data.toString('latin1'), /\/Dest\s*\[/));
   check(`${name}: vídeo clicable`, () => assert.match(data.toString('latin1'), /\/URI\s*\(/));
+  check(`${name}: destinos internos existentes`, () => {
+    const pageObjects = new Set(Array.from({ length: pdf.getNumberOfPages() }, (_, i) =>
+      pdf.internal.getPageInfo(i + 1).objId));
+    const destinations = [...data.toString('latin1').matchAll(/\/Dest\s*\[\s*(\d+)\s+0\s+R/g)]
+      .map((match) => Number(match[1]));
+    assert.ok(destinations.length > 0);
+    assert.ok(destinations.every((objectId) => pageObjects.has(objectId)));
+  });
+  check(`${name}: destinos externos seguros`, () => {
+    const urls = [...data.toString('latin1').matchAll(/\/URI\s*\(([^)]*)\)/g)]
+      .map((match) => match[1]);
+    assert.ok(urls.length > 0);
+    assert.ok(urls.every((url) => url.startsWith('https://')
+      && !/localhost|token=|expires=|signature=/i.test(url)));
+  });
+  check(`${name}: cobertura por competición completa`, () => assert.ok(
+    pdf.internal.pages.flat().join(' ').toLowerCase().includes('cobertura por competici')));
   console.log(`${name}: ${pdf.getNumberOfPages()} páginas`);
 }
 console.log(`Memoria 2B.5: ${checks.length} escenarios locales OK`);

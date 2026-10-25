@@ -189,10 +189,23 @@ function evolution(pdf, model, sections) {
   });
 }
 
+function statisticsCoverageLayout(model) {
+  const available = model.metrics.filter((metric) => metric.covered > 0);
+  const y = Math.max(105, 69 + available.length * 27);
+  const roomForRows = Math.max(0, Math.floor((260 - (y + 10)) / 10) + 1);
+  const onFirstPage = Math.min(5, roomForRows, model.competitions.length);
+  return { available, y, onFirstPage };
+}
+
+function statisticsSectionCount(model) {
+  const { onFirstPage } = statisticsCoverageLayout(model);
+  return 1 + Math.ceil((model.competitions.length - onFirstPage) / 7);
+}
+
 function statistics(pdf, model, sections) {
   sections.push({ name: 'Estadísticas colectivas', page: page(pdf, 'Estadísticas colectivas') });
   heading(pdf, 'Indicadores colectivos', 'Promedios solo entre partidos disputados con valor válido.');
-  const available = model.metrics.filter((metric) => metric.covered > 0);
+  const { available, y, onFirstPage } = statisticsCoverageLayout(model);
   if (!available.length) ink(pdf, 'No hay indicadores colectivos registrados para esta selección.', M, 78,
     { size: 9, color: C.slate });
   available.forEach((metric, index) => {
@@ -201,16 +214,31 @@ function statistics(pdf, model, sections) {
     ink(pdf, `${metric.covered}/${metric.eligible} partidos con dato`, M + 93, y + 14,
       { size: 8, color: C.slate });
   });
-  const y = Math.max(105, 69 + available.length * 27);
-  if (y < 215) {
+  if (onFirstPage) {
     ink(pdf, 'COBERTURA POR COMPETICIÓN', M, y, { size: 8, color: C.navy, bold: true });
-    model.competitions.slice(0, 5).forEach((comp, index) => {
+    model.competitions.slice(0, onFirstPage).forEach((comp, index) => {
       const yy = y + 10 + index * 10;
       fitting(pdf, comp.name, M, yy, 65, { size: 7.5, bold: true });
       const labels = comp.metrics.filter((metric) => metric.covered).map((metric) =>
         `${metric.label}: ${metric.covered}/${metric.eligible}`);
       fitting(pdf, labels.join(' · ') || 'Sin indicadores', M + 65, yy, 110,
         { size: 6.5, color: C.slate });
+    });
+  }
+  for (let offset = onFirstPage; offset < model.competitions.length; offset += 7) {
+    const rows = model.competitions.slice(offset, offset + 7);
+    sections.push({ name: `Estadísticas colectivas · cobertura${offset ? ` · continuación ${Math.floor(offset / 7) + 1}` : ''}`,
+      page: page(pdf, 'Estadísticas colectivas') });
+    heading(pdf, 'Cobertura por competición', 'Partidos disputados con un valor válido por indicador.');
+    rows.forEach((comp, index) => {
+      const yy = 70 + index * 28;
+      block(pdf, M, yy - 5, W - 2 * M, 25, index % 2 ? C.paper : C.mist, 2);
+      fitting(pdf, comp.name, M + 4, yy + 2, W - 2 * M - 8,
+        { size: 8, color: C.navy, bold: true });
+      const labels = comp.metrics.filter((metric) => metric.covered).map((metric) =>
+        `${metric.label}: ${metric.covered}/${metric.eligible}`);
+      wrapped(pdf, labels.join(' · ') || 'Sin indicadores', M + 4, yy + 10, W - 2 * M - 8,
+        { size: 6.5, color: C.slate, leading: 4 });
     });
   }
 }
@@ -347,9 +375,10 @@ export function createRealSeasonMemoryPdf({ model, crestDataUrl, rivalCrests = {
     subject: 'Informe deportivo de partidos acreditados', author: 'NEXO CLUB' });
   cover(pdf, model, crestDataUrl);
   summary(pdf, model);
-  const indexPages = Math.max(1, Math.ceil((model.competitions.length + model.matchCards.length + 5
+  const indexPages = Math.max(1, Math.ceil((model.competitions.length + model.matchCards.length + 4
+    + statisticsSectionCount(model)
     + individualSectionCount(model.individual) + physicalSectionCount(model.physical)
-    + groupSectionCount(model.groupAnalysis)) / 16));
+    + groupSectionCount(model.groupAnalysis, pdf)) / 16));
   for (let i = 0; i < indexPages; i++) page(pdf, 'Índice');
   const sections = [{ name: 'Resumen ejecutivo', page: 2 }, { name: 'Índice', page: 3 }];
   evolution(pdf, model, sections);

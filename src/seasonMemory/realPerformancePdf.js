@@ -149,13 +149,46 @@ function zoneGrid(pdf, title, area, catalog, x, y, color) {
     fit(pdf, zoneLabel(key).split(' ').slice(-1)[0], cx + 2, cy + 14, cellW - 4, 5.6, C.slate);
   });
 }
-export function groupSectionCount(group) {
+function setPiecePages(pdf, pieces) {
+  if (!pieces.some((piece) => piece.total)) return [];
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(7.4);
+  const pages = [[]];
+  let y = 70;
+  const nextPage = () => { pages.push([]); y = 70; };
+  for (const piece of pieces) {
+    const side = piece.side === 'for' ? 'A favor' : 'En contra';
+    const heading = (continued = false) => {
+      if (y + 14 > 260) nextPage();
+      pages.at(-1).push({ kind: 'heading', side, total: piece.total, continued, y });
+      y += 14;
+    };
+    heading();
+    const rows = piece.rows.length ? piece.rows : [{ label: 'Sin goles ABP registrados', count: 0 }];
+    for (const row of rows) {
+      const lines = pdf.splitTextToSize(String(row.label), W - 2 * M - 44);
+      for (let offset = 0; offset < lines.length; offset += 32) {
+        const part = lines.slice(offset, offset + 32);
+        const height = Math.max(10, 5 + part.length * 4.2);
+        if (y + height > 260) { nextPage(); heading(true); }
+        pages.at(-1).push({ kind: 'row', lines: part, count: offset ? null : row.count, y, height });
+        y += height;
+      }
+    }
+    y += 6;
+  }
+  return pages;
+}
+
+export function groupSectionCount(group, pdf) {
   if (!group) return 0;
   const d = group.details;
   const field = d.assist.for.withZone || d.assist.against.withZone
     || d.finish.for.withZone || d.finish.against.withZone;
-  const mouthOrSystem = d.mouth.for.withZone || d.mouth.against.withZone || d.systems.length;
-  return 1 + Number(Boolean(field)) + Number(Boolean(mouthOrSystem));
+  const mouth = d.mouth.for.withZone || d.mouth.against.withZone;
+  return 1 + setPiecePages(pdf, d.setPieces).length + Number(Boolean(field))
+    + Number(Boolean(mouth))
+    + Math.ceil(Math.max(0, d.systems.length - (mouth ? 7 : 0)) / 15);
 }
 export function renderRealGroup(pdf, group, sections) {
   if (!group) return;
@@ -199,18 +232,36 @@ export function renderRealGroup(pdf, group, sections) {
     text(pdf, 'Verde: a favor · Rojo: en contra · % sobre goles de cada lado con minuto registrado.',
       M, 233, 6.4, C.slate);
   }
-  if (d.setPieces.some((item) => item.total)) {
-    text(pdf, 'ABP · GOLES REGISTRADOS', M, 244, 8, C.navy, true);
-    d.setPieces.forEach((item, i) => {
-      const label = item.rows.map((row) => `${row.label} ${row.count}`).join(' · ');
-      fit(pdf, item.total
-        ? `${i ? 'Contra' : 'A favor'} ${item.total}: ${label}`
-        : `${i ? 'Contra' : 'A favor'}: ningún gol ABP registrado`,
-        M, 253 + i * 8, W - 2 * M, 7, i ? C.red : C.green, true);
+  if (d.trends.length) {
+    text(pdf, 'TRAMOS CON MÁS GOLES REGISTRADOS', M, 244, 8, C.navy, true);
+    ['for', 'against'].forEach((side, i) => {
+      const top = d.trends.filter((row) => row.side === side);
+      if (top.length) fit(pdf, `${side === 'for' ? 'A favor' : 'En contra'}: ${top.map((row) => row.range).join(', ')} (${top[0].count} goles por tramo)`,
+        M, 253 + i * 8, W - 2 * M, 7, i ? C.red : C.green);
     });
   }
   fit(pdf, `Cobertura: ${group.completeMatches}/${group.verifiedMatches} partidos con goles concordantes. Sin contexto = dato ausente.`,
-    M, 268, W - 2 * M, 6.5, C.slate);
+    M, 271, W - 2 * M, 6.5, C.slate);
+
+  setPiecePages(pdf, d.setPieces).forEach((entries, index) => {
+    sections.push({ name: `Análisis Grupal · ABP${index ? ` · continuación ${index + 1}` : ''}`,
+      page: page(pdf, 'Análisis Grupal', 'ABP ofensiva y defensiva',
+        'Subtipos acreditados en goles concordantes con el marcador.', C.amber) });
+    entries.forEach((entry) => {
+      if (entry.kind === 'heading') {
+        fill(pdf, M, entry.y - 5, W - 2 * M, 9, C.mist, 2);
+        text(pdf, `${entry.side.toUpperCase()} · ${entry.total} GOLES ABP${entry.continued ? ' · CONTINUACIÓN' : ''}`,
+          M + 4, entry.y + 1, 8, entry.side === 'A favor' ? C.green : C.red, true);
+      } else {
+        entry.lines.forEach((line, lineIndex) => text(pdf, line, M + 6,
+          entry.y + 5 + lineIndex * 4.2, 7.4, C.ink));
+        if (entry.count !== null) text(pdf, entry.count, W - M - 5, entry.y + 5,
+          8, C.navy, true, 'right');
+        pdf.setDrawColor(...C.line);
+        pdf.line(M, entry.y + entry.height, W - M, entry.y + entry.height);
+      }
+    });
+  });
 
   const field = d.assist.for.withZone || d.assist.against.withZone
     || d.finish.for.withZone || d.finish.against.withZone;
@@ -225,32 +276,38 @@ export function renderRealGroup(pdf, group, sections) {
       M, 251, 6.5, C.slate);
     text(pdf, 'Un espacio sin registro no representa cero acciones en esa zona.', M, 260, 6.5, C.slate);
   }
-  if (d.mouth.for.withZone || d.mouth.against.withZone || d.systems.length) {
+  if (d.mouth.for.withZone || d.mouth.against.withZone) {
     sections.push({ name: 'Análisis Grupal · portería y sistemas', page: page(pdf, 'Análisis Grupal',
       'Portería y sistemas', 'Solo zonas y formaciones acreditadas.', C.violet) });
-    if (d.mouth.for.withZone || d.mouth.against.withZone) {
-      zoneGrid(pdf, 'Portería 3×3 · a favor', d.mouth.for, GOAL_ZONES, M, 68, C.green);
-      zoneGrid(pdf, 'Portería 3×3 · en contra', d.mouth.against, GOAL_ZONES, M + 95, 68, C.red);
-    }
+    zoneGrid(pdf, 'Portería 3×3 · a favor', d.mouth.for, GOAL_ZONES, M, 68, C.green);
+    zoneGrid(pdf, 'Portería 3×3 · en contra', d.mouth.against, GOAL_ZONES, M + 95, 68, C.red);
     if (d.systems.length) {
       text(pdf, 'SISTEMAS CONFIRMADOS', M, 162, 8, C.navy, true);
       d.systems.slice(0, 7).forEach((row, i) => {
         const y = 173 + i * 11;
         fill(pdf, M, y - 6, W - 2 * M, 9, i % 2 ? C.paper : C.mist, 1);
-        fit(pdf, row.system, M + 4, y, 54, 8, C.navy, true);
+        fit(pdf, row.system, M + 4, y, 70, 8, C.navy, true);
         text(pdf, `${row.played} PJ  ·  ${row.wins} V  ${row.draws} E  ${row.losses} D`,
           M + 89, y, 7.2, C.ink);
       });
       text(pdf, `${d.systemCoverage.verified}/${d.systemCoverage.eligible} partidos disputados con sistema y once acreditados.`,
         M, 263, 6.5, C.slate);
     }
-    if (d.trends.length && d.systems.length <= 3) {
-      text(pdf, 'TRAMOS CON MÁS GOLES REGISTRADOS', M, 222, 8, C.navy, true);
-      ['for', 'against'].forEach((side, i) => {
-        const top = d.trends.filter((row) => row.side === side);
-        if (top.length) fit(pdf, `${side === 'for' ? 'A favor' : 'En contra'}: ${top.map((row) => row.range).join(', ')} (${top[0].count} goles por tramo)`,
-          M, 233 + i * 9, W - 2 * M, 7, i ? C.red : C.green);
-      });
-    }
+  }
+  const firstSystemPage = d.mouth.for.withZone || d.mouth.against.withZone ? 7 : 0;
+  for (let offset = firstSystemPage; offset < d.systems.length; offset += 15) {
+    const rows = d.systems.slice(offset, offset + 15);
+    sections.push({ name: `Análisis Grupal · sistemas${offset ? ` · continuación ${offset / 15 + 1}` : ''}`,
+      page: page(pdf, 'Análisis Grupal', 'Sistemas acreditados',
+        `${offset + 1}–${offset + rows.length} de ${d.systems.length} formaciones distintas.`, C.violet) });
+    rows.forEach((row, i) => {
+      const y = 79 + i * 11;
+      fill(pdf, M, y - 6, W - 2 * M, 9, i % 2 ? C.paper : C.mist, 1);
+      fit(pdf, row.system, M + 4, y, 70, 8, C.navy, true);
+      text(pdf, `${row.played} PJ  ·  ${row.wins} V  ${row.draws} E  ${row.losses} D`,
+        M + 89, y, 7.2, C.ink);
+    });
+    text(pdf, `${d.systemCoverage.verified}/${d.systemCoverage.eligible} partidos disputados con sistema y once acreditados.`,
+      M, 263, 6.5, C.slate);
   }
 }

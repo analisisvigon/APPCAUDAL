@@ -118,6 +118,7 @@ const longNotes = matches.map((row, i) => i === 0 ? { ...row,
   post_notes: 'Observación deportiva extensa registrada para comprobar paginación. '.repeat(90) } : row);
 const longPdf = createRealSeasonMemoryPdf({ model: build(longNotes, 'all', busy), crestDataUrl });
 assert.ok(longPdf.getNumberOfPages() > pdf.getNumberOfPages());
+assert.ok(longPdf.internal.pages.some((row) => row.join(' ').includes('CONTINUACI')));
 const pages = pdf.internal.pages.map((row) => row.join(' '));
 const pdfBytes = Buffer.from(pdf.output('arraybuffer'));
 assert.ok(pdf.getNumberOfPages() > 10);
@@ -131,4 +132,6 @@ assert.ok(!pdfBytes.toString('latin1').includes('localhost'));
 const output = new URL('../../local-exports/season-memory-qa/match-cards-fixture.pdf', import.meta.url);
 mkdirSync(new URL('../../local-exports/season-memory-qa/', import.meta.url), { recursive: true });
 writeFileSync(output, pdfBytes);
+writeFileSync(new URL('../../local-exports/season-memory-qa/match-cards-continuation-fixture.pdf', import.meta.url),
+  Buffer.from(longPdf.output('arraybuffer')));
 console.log(`Memoria 2B.3: 23 escenarios, paginación y PDF sintético OK (${pdf.getNumberOfPages()} páginas)`);
