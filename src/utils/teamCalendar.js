@@ -1,5 +1,6 @@
 import { normalizeCompetitionKey } from './competitionFilters.js';
 import { isPlannedMicrocycle } from './plannedSessions.js';
+import { getMatchOutcome, getMatchScore, getMatchStatus } from './matchStatus.js';
 
 export const calendarDateKey = (value) => {
   const text = String(value || '').slice(0, 10);
@@ -30,10 +31,10 @@ export const buildTeamCalendarEvents = (sessions = [], matches = [], teams = [])
     const date = calendarDateKey(session.session_date);
     if (!id || !date || seenSessions.has(id)) continue;
     seenSessions.add(id);
-    events.push({ id, kind: 'training', date, time: calendarTime(session.starts_at),
-      title: (session.planning_state === 'confirmed' && session.session_number != null
-        ? `Sesión nº ${session.session_number}` : 'Borrador de sesión') +
-        (isPlannedMicrocycle(session.morphology_pattern) ? ` · ${session.morphology_pattern}` : ''),
+    const title = session.planning_state === 'confirmed' && session.session_number != null
+      ? `Sesión nº ${session.session_number}` : 'Borrador de sesión';
+    events.push({ id, kind: 'training', date, time: calendarTime(session.starts_at), title,
+      microcycle: isPlannedMicrocycle(session.morphology_pattern) ? session.morphology_pattern : '',
       contextId: session.club_team_season_id, label: 'Entrenamiento' });
   }
   for (const match of matches) {
@@ -43,10 +44,20 @@ export const buildTeamCalendarEvents = (sessions = [], matches = [], teams = [])
     const team = teams.find((row) => row.id === (match.equipoRivalId || match.equipo_rival_id));
     const kind = calendarMatchKind(match);
     const label = { league: 'Liga', cup: 'Copa', friendly: 'Amistoso', other: 'Otro partido' }[kind];
+    const status = getMatchStatus(match);
+    const venue = match.isHome ?? match.is_home;
+    const candidateScore = status === 'played' ? getMatchScore(match) : null;
+    const explicitlyFinished = ['finalizado', 'jugado', 'played', 'finished', 'cerrado', 'closed', 'revisado', 'reviewed']
+      .includes(String(match.status || '').trim().toLocaleLowerCase('es'));
+    const score = candidateScore && (candidateScore.source !== 'official_goal_events' || explicitlyFinished) &&
+      (typeof venue === 'boolean' ||
+      ['home_away_score', 'stored_result'].includes(candidateScore.source)) ? candidateScore : null;
+    const outcome = score && typeof venue === 'boolean' ? getMatchOutcome(match) : null;
     events.push({ id, kind, date, time: calendarTime(match.time), label,
       title: match.opponent || 'Rival pendiente', opponent: match.opponent || 'Rival pendiente',
       crest: team?.crest || match.opponentCrest || match.opponent_crest || '',
-      venue: match.isHome ?? match.is_home, match });
+      venue, status, outcome,
+      score: score ? `${score.home}–${score.away}` : '', match });
   }
   return events.sort((a, b) => a.date.localeCompare(b.date)
     || (a.time || '99:99').localeCompare(b.time || '99:99')

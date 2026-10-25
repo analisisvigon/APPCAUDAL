@@ -18,19 +18,43 @@ const dateLabel = (key) => new Date(`${key}T12:00:00`).toLocaleDateString('es-ES
   weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
 });
 
-function EventButton({ event, onOpen }) {
+const outcomeLabel = { win: 'VICTORIA', draw: 'EMPATE', loss: 'DERROTA' };
+const outcomeTone = { win: 'text-emerald-200', draw: 'text-amber-100', loss: 'text-rose-200' };
+const statusLabel = {
+  scheduled: 'Próximo partido', pending_result: 'Resultado pendiente',
+  postponed: 'Aplazado', suspended: 'Suspendido', cancelled: 'Cancelado',
+  played: 'Resultado pendiente',
+};
+
+export function EventButton({ event, onOpen, variant = 'month' }) {
   const [imageFailed, setImageFailed] = useState(false);
+  useEffect(() => setImageFailed(false), [event.crest]);
   const isMatch = event.kind !== 'training';
+  const isList = variant === 'list';
+  const description = isMatch
+    ? `${event.opponent}, ${event.label}${event.score ? `, ${event.score}${event.outcome ? ` ${outcomeLabel[event.outcome]}` : ''}` : ''}`
+    : `${event.title}${event.microcycle ? `, ${event.microcycle}` : ''}`;
   return <button type="button" onClick={() => onOpen(event)}
-    className={`flex min-w-0 w-full items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric ${tone[event.kind]}`}
-    aria-label={`Abrir ${event.label.toLowerCase()} ${event.title}, ${dateLabel(event.date)}`}>
-    {isMatch ? <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/90 text-slate-900">
-      {event.crest && !imageFailed ? <img src={event.crest} alt={`Escudo de ${event.opponent}`} onError={() => setImageFailed(true)} className="h-full w-full object-contain p-0.5" />
-        : <span aria-hidden="true" className="text-base">⚽</span>}
-    </span> : <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-300/15 text-sm">●</span>}
-    <span className="min-w-0 flex-1">
-      <span className="block truncate text-xs font-black">{event.title}</span>
-      <span className="block truncate text-[11px] opacity-85">{event.label} · {event.time || (isMatch ? 'Hora pendiente' : 'Sin hora')}{isMatch && event.venue != null ? ` · ${event.venue ? 'Local' : 'Visitante'}` : ''}</span>
+    className={`group flex min-w-0 w-full items-start gap-2 rounded-xl border text-left shadow-sm transition hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric ${isList ? 'p-3' : 'p-2'} ${isMatch ? 'border-l-[3px]' : ''} ${tone[event.kind]}`}
+    aria-label={`Abrir ${event.label.toLowerCase()} ${description}, ${dateLabel(event.date)}`}>
+    {isMatch ? <span className={`flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/95 text-slate-700 ${isList ? 'h-12 w-12' : 'h-9 w-9'}`}>
+      {event.crest && !imageFailed ? <img src={event.crest} alt={`Escudo de ${event.opponent}`} onError={() => setImageFailed(true)} className="h-full w-full object-contain p-1" />
+        : <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-6 w-6"><path d="M12 2.5 20 5v6.5c0 5-3.1 8-8 10-4.9-2-8-5-8-10V5l8-2.5Z" /><path d="M8 10h8m-8 4h8" /></svg>}
+    </span> : null}
+    <span className="min-w-0 flex-1 space-y-1">
+      <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <strong className={`${isList ? 'text-sm' : 'text-xs'} min-w-0 font-black ${isMatch ? 'truncate' : 'whitespace-normal'}`} title={event.title}>{event.title}</strong>
+        {!isMatch && event.microcycle ? <span className="shrink-0 rounded-md border border-sky-300/45 bg-sky-300/20 px-1.5 py-0.5 text-[11px] font-black leading-none text-sky-50">{event.microcycle}</span> : null}
+      </span>
+      {isMatch ? <>
+        {event.score ? <span className={`block text-sm font-black tabular-nums ${outcomeTone[event.outcome] || ''}`}>
+          {event.score} {event.outcome ? <span className="text-[10px] tracking-wide">{outcomeLabel[event.outcome]}</span> : null}
+        </span> : <span className="block text-[11px] font-semibold opacity-85">{statusLabel[event.status] || 'Partido pendiente'}</span>}
+        <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] font-semibold uppercase tracking-wide opacity-85">
+          <span>{event.label}</span>{event.venue != null ? <span>· {event.venue ? 'Local' : 'Visitante'}</span> : null}
+          <span>· {event.time || 'Hora pendiente'}</span>
+        </span>
+      </> : <span className="block text-[11px] opacity-85">{event.time || 'Hora pendiente'} · Entrenamiento</span>}
     </span>
   </button>;
 }
@@ -119,18 +143,18 @@ export default function TeamCalendarSection({ client, clubId, matches, teams, on
         <div className="mt-4 space-y-2">
           <h4 className="text-sm font-bold text-slate-300">{selectedDay && days.includes(selectedDay) ? dateLabel(selectedDay) : 'Eventos del mes'}</h4>
           {(selectedDay && days.includes(selectedDay) ? (grouped.get(selectedDay) || []) : events.filter((event) => days.includes(event.date)))
-            .map((event) => <div key={`${event.kind}-${event.id}`}><p className="mb-1 text-[11px] text-slate-500">{dateLabel(event.date)}</p><EventButton event={event} onOpen={open} /></div>)}
+            .map((event) => <div key={`${event.kind}-${event.id}`}><p className="mb-1 text-[11px] text-slate-500">{dateLabel(event.date)}</p><EventButton event={event} onOpen={open} variant="list" /></div>)}
         </div>
       </div><div className="mt-4 hidden sm:block">
         <div>
           <div className="grid grid-cols-7 gap-1 text-center text-xs font-black uppercase text-slate-400">{['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day) => <span key={day} className="py-2">{day}</span>)}</div>
           <div className="grid grid-cols-7 gap-1">{days.map((key, index) => <div key={key || `blank-${index}`} className={`min-h-32 min-w-0 rounded-xl border p-1.5 sm:p-2 ${key === today ? 'border-caudal-electric/50 bg-caudal-electric/[0.06]' : 'border-white/[0.07] bg-white/[0.025]'}`}>
-            {key ? <><span className={`block text-xs font-black ${key === today ? 'text-caudal-electric' : 'text-slate-300'}`}>{Number(key.slice(-2))}</span><div className="mt-1 space-y-1">{(grouped.get(key) || []).map((event) => <EventButton key={`${event.kind}-${event.id}`} event={event} onOpen={open} />)}</div></> : null}
+            {key ? <><span className={`block text-xs font-black ${key === today ? 'text-caudal-electric' : 'text-slate-300'}`}>{Number(key.slice(-2))}</span><div className="mt-1 max-h-56 space-y-1 overflow-y-auto overscroll-contain">{(grouped.get(key) || []).map((event) => <EventButton key={`${event.kind}-${event.id}`} event={event} onOpen={open} />)}</div></> : null}
           </div>)}</div>
         </div>
       </div></> : <div className="mt-4 space-y-3">{[...grouped].map(([key, rows]) => <section key={key} className="rounded-xl border border-white/10 bg-white/[0.025] p-3">
         <h4 className="mb-2 text-sm font-black capitalize text-slate-300">{dateLabel(key)}</h4>
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{rows.map((event) => <EventButton key={`${event.kind}-${event.id}`} event={event} onOpen={open} />)}</div>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{rows.map((event) => <EventButton key={`${event.kind}-${event.id}`} event={event} onOpen={open} variant="list" />)}</div>
       </section>)}</div>}
       {!loading && !error && !events.length ? <p className="mt-5 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">No hay eventos para los filtros seleccionados.</p> : null}
       {!loading && !error && view === 'month' && events.length > 0 && !days.some((key) => grouped.has(key)) ? <p className="mt-4 text-sm text-slate-400">No hay eventos en este mes.</p> : null}
