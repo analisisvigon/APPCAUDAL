@@ -3,10 +3,11 @@ import { readFileSync } from 'node:fs';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
+import { calendarWeekDays } from '../src/utils/teamCalendar.js';
 
 const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' });
 try {
-  const { EventButton } = await vite.ssrLoadModule('/src/components/calendar/TeamCalendarSection.jsx');
+  const { EventButton, CalendarWeekView } = await vite.ssrLoadModule('/src/components/calendar/TeamCalendarSection.jsx');
   const render = (event, variant = 'month') => renderToStaticMarkup(
     React.createElement(EventButton, { event, variant, onOpen: () => {} }));
   const session = { id: 'session-1', kind: 'training', title: 'Sesión nº 1',
@@ -52,6 +53,39 @@ try {
     'la vista mensual utiliza las tarjetas nuevas');
   assert.match(calendarSource, /rows\.map\(\(event\) => <EventButton[^>]*variant="list"/,
     'la vista lista utiliza las tarjetas ampliadas');
+  assert.match(calendarSource, /\['week', 'Microciclo'\]/);
+  assert.match(calendarSource, /changeView\(key\)/);
+  assert.match(calendarSource, /shiftCalendarWeek\(current, step\)/);
+  assert.match(calendarSource, /setSelectedWeekDay\(today\)/);
+  const days = calendarWeekDays('2026-10-28');
+  const weekSession = { ...session, date: '2026-10-26', contextId: 'cts-1',
+    durationKnown: true, durationMinutes: 85, objective: 'Organización defensiva' };
+  const weekMatch = { ...match, date: '2026-11-01', id: 'match-2' };
+  const weekly = (events, selectedDay = '', options = {}) => {
+    const grouped = new Map();
+    for (const event of events) grouped.set(event.date, [...(grouped.get(event.date) || []), event]);
+    return renderToStaticMarkup(React.createElement(CalendarWeekView, {
+      days, grouped, events, selectedDay, onSelectDay: () => {}, onOpen: () => {},
+      today: '2026-10-28', loading: false, error: false, ...options,
+    }));
+  };
+  const week = weekly([weekSession, weekMatch, { ...weekMatch, id: 'match-3', kind: 'cup', label: 'Copa' }], '2026-10-26');
+  assert.equal((week.match(/aria-label="Ver detalle del /g) || []).length, 7);
+  assert.match(week, /26 de octubre/);
+  assert.match(week, /1 de noviembre/);
+  assert.match(week, /1 sesiones · 2 partidos · 2 días con actividad/);
+  assert.match(week, /85 min planificados/);
+  assert.match(week, /Organización defensiva/);
+  assert.match(week, /Abrir sesión/);
+  assert.match(week, /grid-cols-1[^"']*sm:grid-cols-2[^"']*2xl:grid-cols-7/,
+    'móvil vertical, tablet adaptativa y siete columnas en pantallas amplias');
+  assert.match(weekly([]), /No hay actividades registradas esta semana/);
+  assert.match(weekly([weekSession, { ...weekSession, id: 'session-2', durationKnown: false, date: '2026-10-27' }]),
+    /Duración parcial/);
+  assert.match(weekly([{ ...weekSession, durationKnown: false, durationMinutes: null }]),
+    /Duración no acreditada · Duración parcial/);
+  assert.doesNotMatch(weekly([weekSession], '', { error: true }), /Sesión nº 1/,
+    'ante un error no se exhiben eventos anteriores');
   console.log('team calendar cards: OK (renderizado local con fixtures)');
 } finally {
   await vite.close();

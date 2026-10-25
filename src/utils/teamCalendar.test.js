@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { buildTeamCalendarEvents, calendarDateKey, calendarMatchKind, calendarMonthDays, calendarTime } from './teamCalendar.js';
+import { buildTeamCalendarEvents, calendarDateKey, calendarMatchKind, calendarMonthDays, calendarTime,
+  calendarWeekDays, calendarWeekSummary, shiftCalendarWeek } from './teamCalendar.js';
 
 assert.equal(calendarDateKey('2026-02-28'), '2026-02-28');
 assert.equal(calendarDateKey('2026-02-29'), '');
@@ -83,4 +84,51 @@ assert.equal(buildTeamCalendarEvents([], [{ ...matches[0], date: '2025-10-20', e
 assert.equal(calendarMonthDays(2026, 0)[0], null); // January 1 was Thursday.
 assert.equal(calendarMonthDays(2026, 0)[3], '2026-01-01');
 assert.equal(calendarMonthDays(2026, 0).at(-1), '2026-01-31');
+assert.deepEqual(calendarWeekDays('2026-10-28'), [
+  '2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29',
+  '2026-10-30', '2026-10-31', '2026-11-01',
+], 'la semana empieza el lunes y cruza de mes sin UTC');
+assert.deepEqual(calendarWeekDays('2026-12-31'), [
+  '2026-12-28', '2026-12-29', '2026-12-30', '2026-12-31',
+  '2027-01-01', '2027-01-02', '2027-01-03',
+], 'el cruce de año conserva siete días locales');
+assert.deepEqual(calendarWeekDays('2026-03-29'), [
+  '2026-03-23', '2026-03-24', '2026-03-25', '2026-03-26',
+  '2026-03-27', '2026-03-28', '2026-03-29',
+], 'la semana del cambio horario no desplaza los eventos');
+assert.equal(shiftCalendarWeek('2026-12-31', 1), '2027-01-07');
+assert.equal(shiftCalendarWeek('2027-01-07', -1), '2026-12-31');
+assert.deepEqual(calendarWeekDays('2026-02-30'), []);
+const weekDays = calendarWeekDays('2026-10-28');
+const weekEvents = buildTeamCalendarEvents([
+  { id: 'wk-1', club_team_season_id: 'cts', session_date: '2026-10-26',
+    planning_state: 'confirmed', session_number: 1, morphology_pattern: 'MD-3',
+    durationKnown: true, total_minutes: 80, objectives: 'Defensa organizada' },
+  { id: 'wk-2', club_team_season_id: 'cts', session_date: '2026-10-26',
+    planning_state: 'confirmed', session_number: 2, morphology_pattern: '',
+    durationKnown: false, total_minutes: 0 },
+  { id: 'wk-3', club_team_season_id: 'cts', session_date: '2026-10-27',
+    planning_state: 'draft', morphology_pattern: 'Texto legacy', durationKnown: true, total_minutes: 55 },
+], [
+  { id: 'wk-match-1', date: '2026-10-28', opponent: 'Liga', competitionKey: 'league' },
+  { id: 'wk-match-2', date: '2026-11-01', opponent: 'Copa', competitionKey: 'copa_rfef' },
+  { id: 'outside', date: '2026-11-02', opponent: 'Amistoso', competitionKey: 'friendly' },
+]);
+assert.deepEqual(calendarWeekSummary(weekEvents, weekDays), {
+  sessions: 3, matches: 2, activeDays: 4, durationMinutes: 135, durationCoverage: 'partial',
+});
+assert.equal(weekEvents.find((event) => event.id === 'wk-1').objective, 'Defensa organizada');
+assert.equal(buildTeamCalendarEvents([{ id: 'unknown-duration', session_date: '2026-10-26',
+  durationKnown: true, total_minutes: null }])[0].durationKnown, false,
+  'una señal de duración sin minutos válidos no acredita un total');
+assert.equal(weekEvents.find((event) => event.id === 'wk-3').microcycle, '');
+assert.equal(weekEvents.find((event) => event.id === 'wk-1').contextId, 'cts');
+assert.deepEqual(calendarWeekSummary([weekEvents[0], weekEvents[0]], weekDays), {
+  sessions: 1, matches: 0, activeDays: 1, durationMinutes: 80, durationCoverage: 'complete',
+}, 'una sesión repetida no duplica los indicadores');
+assert.equal(buildTeamCalendarEvents([], [matches[0], matches[0]]).length, 1,
+  'el mismo partido no aparece dos veces si se repite en la lectura');
+assert.deepEqual(calendarWeekSummary([], weekDays), {
+  sessions: 0, matches: 0, activeDays: 0, durationMinutes: 0, durationCoverage: 'none',
+});
 console.log('teamCalendar: OK');

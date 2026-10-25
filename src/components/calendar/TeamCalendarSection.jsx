@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { listPlannedSessions, loadPlannedContexts } from '../../data/plannedSessionsStore.js';
-import { buildTeamCalendarEvents, calendarDateKey, calendarMonthDays } from '../../utils/teamCalendar.js';
+import { buildTeamCalendarEvents, calendarLocalDateKey, calendarMonthDays,
+  calendarWeekDays, calendarWeekSummary, shiftCalendarWeek } from '../../utils/teamCalendar.js';
 
 const FILTERS = [
   ['training', 'Entrenamientos'], ['league', 'Liga'], ['cup', 'Copa'],
@@ -54,13 +55,79 @@ export function EventButton({ event, onOpen, variant = 'month' }) {
           <span>{event.label}</span>{event.venue != null ? <span>· {event.venue ? 'Local' : 'Visitante'}</span> : null}
           <span>· {event.time || 'Hora pendiente'}</span>
         </span>
-      </> : <span className="block text-[11px] opacity-85">{event.time || 'Hora pendiente'} · Entrenamiento</span>}
+      </> : <span className="block text-[11px] opacity-85">{event.time || 'Hora pendiente'}
+        {variant === 'week' && event.durationKnown ? ` · ${event.durationMinutes} min` : ' · Entrenamiento'}</span>}
     </span>
   </button>;
 }
 
+const weekRangeLabel = (days) => {
+  if (days.length !== 7) return '';
+  const start = new Date(`${days[0]}T12:00:00`);
+  const end = new Date(`${days[6]}T12:00:00`);
+  const first = start.toLocaleDateString('es-ES', { day: 'numeric', month: 'long',
+    ...(start.getFullYear() !== end.getFullYear() ? { year: 'numeric' } : {}) });
+  const last = end.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+  return `${first} – ${last}`;
+};
+
+export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectDay, onOpen, today, loading, error }) {
+  const summary = calendarWeekSummary(events, days);
+  const chosenDay = days.includes(selectedDay) ? selectedDay : '';
+  const chosenEvents = chosenDay ? grouped.get(chosenDay) || [] : [];
+  return <section className="mt-5 space-y-4" aria-label="Microciclo semanal">
+    <div className="flex flex-wrap items-end justify-between gap-3 border-b border-white/10 pb-3">
+      <div><p className="text-[11px] font-black uppercase tracking-[0.2em] text-sky-300">Microciclo semanal</p>
+        <h3 className="mt-1 text-lg font-bold capitalize text-white">{weekRangeLabel(days)}</h3></div>
+      {!loading && !error ? <p className="text-xs text-slate-300">{summary.sessions} sesiones · {summary.matches} partidos · {summary.activeDays} días con actividad</p> : null}
+    </div>
+    {!loading && !error && summary.durationCoverage !== 'none' ? <p className="text-xs font-semibold text-slate-300">
+      {summary.durationCoverage === 'complete'
+        ? `${summary.durationMinutes} min planificados`
+        : summary.durationMinutes > 0
+          ? `${summary.durationMinutes} min acreditados · Duración parcial`
+          : 'Duración no acreditada · Duración parcial'}</p> : null}
+    {!loading && !error ? <>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+        {days.map((key) => {
+          const rows = grouped.get(key) || [];
+          const day = new Date(`${key}T12:00:00`);
+          return <article key={key} className={`min-w-0 rounded-2xl border p-3 ${key === today
+            ? 'border-sky-400/55 bg-sky-400/[0.08]' : 'border-white/10 bg-white/[0.025]'}`}>
+            <button type="button" onClick={() => onSelectDay(key)} aria-pressed={chosenDay === key}
+              className={`mb-3 flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${chosenDay === key ? 'bg-sky-400/15 text-white' : 'text-slate-200'}`}
+              aria-label={`Ver detalle del ${dateLabel(key)}`}>
+              <span className="text-xs font-black uppercase tracking-wide">{day.toLocaleDateString('es-ES', { weekday: 'long' })}</span>
+              <span className="text-lg font-black tabular-nums">{day.getDate()}</span>
+            </button>
+            {rows.length ? <div className="space-y-2">{rows.map((event) =>
+              <EventButton key={`${event.kind}-${event.id}`} event={event} onOpen={onOpen} variant="week" />)}</div>
+              : <p className="px-2 py-3 text-xs text-slate-500">Sin actividad registrada</p>}
+          </article>;
+        })}
+      </div>
+      {summary.activeDays === 0 ? <p className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-300">
+        No hay actividades registradas esta semana.</p> : null}
+      {chosenDay ? <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4" aria-label="Detalle del día">
+        <h4 className="text-base font-black capitalize text-white">{dateLabel(chosenDay)}</h4>
+        {chosenEvents.length ? <div className="mt-3 grid gap-3 md:grid-cols-2">
+          {chosenEvents.map((event) => <div key={`${event.kind}-${event.id}`} className="min-w-0 rounded-xl border border-white/10 p-3">
+            <EventButton event={event} onOpen={onOpen} variant="list" />
+            {event.kind === 'training' && event.durationKnown ? <p className="mt-2 text-xs text-slate-300">Duración: {event.durationMinutes} min</p> : null}
+            {event.kind === 'training' && event.objective ? <p className="mt-2 whitespace-pre-wrap break-words text-xs text-slate-300">Objetivo: {event.objective}</p> : null}
+            <button type="button" onClick={() => onOpen(event)}
+              className="mt-3 min-h-10 rounded-lg border border-white/20 px-3 py-2 text-xs font-bold text-white hover:bg-white/10">
+              {event.kind === 'training' ? 'Abrir sesión' : 'Abrir partido'}</button>
+          </div>)}</div> : <p className="mt-2 text-sm text-slate-400">Sin actividad registrada.</p>}
+      </section> : null}
+    </> : null}
+  </section>;
+}
+
 export default function TeamCalendarSection({ client, clubId, matches, teams, onRefreshMatches, onOpenSession, onOpenMatch }) {
   const [month, setMonth] = useState(() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); });
+  const [weekAnchor, setWeekAnchor] = useState(() => calendarLocalDateKey());
+  const [selectedWeekDay, setSelectedWeekDay] = useState('');
   const [view, setView] = useState('month');
   const [selectedDay, setSelectedDay] = useState('');
   const [enabled, setEnabled] = useState(() => Object.fromEntries(FILTERS.map(([key]) => [key, true])));
@@ -90,19 +157,40 @@ export default function TeamCalendarSection({ client, clubId, matches, teams, on
     setMatchError('');
     await Promise.all([refresh(), onRefreshMatches?.().catch(() => setMatchError('No se pudieron actualizar los partidos.'))]);
   };
-  const events = useMemo(() => buildTeamCalendarEvents(sessions, matches, teams)
-    .filter((event) => enabled[event.kind]), [sessions, matches, teams, enabled]);
+  const events = useMemo(() => buildTeamCalendarEvents(error ? [] : sessions, matchError ? [] : matches, teams)
+    .filter((event) => enabled[event.kind]), [sessions, matches, teams, enabled, error, matchError]);
   const grouped = useMemo(() => {
     const byDate = new Map();
     for (const event of events) byDate.set(event.date, [...(byDate.get(event.date) || []), event]);
     return byDate;
   }, [events]);
   const days = useMemo(() => calendarMonthDays(month.getFullYear(), month.getMonth()), [month]);
+  const weekDays = useMemo(() => calendarWeekDays(weekAnchor), [weekAnchor]);
   const now = new Date();
-  const today = calendarDateKey(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
+  const today = calendarLocalDateKey(now);
   const open = (event) => event.kind === 'training'
     ? onOpenSession({ id: event.id, contextId: event.contextId }) : onOpenMatch(event.match);
   const moveMonth = (step) => { setSelectedDay(''); setMonth((current) => new Date(current.getFullYear(), current.getMonth() + step, 1)); };
+  const moveWeek = (step) => { setSelectedWeekDay(''); setWeekAnchor((current) => shiftCalendarWeek(current, step)); };
+  const changeView = (next) => {
+    if (next === 'week' && view !== 'week') {
+      const day = selectedDay && days.includes(selectedDay) ? selectedDay :
+        calendarLocalDateKey(new Date(month.getFullYear(), month.getMonth(),
+          Math.min(now.getDate(), new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()), 12));
+      setWeekAnchor(day);
+      setSelectedWeekDay(selectedDay && days.includes(selectedDay) ? selectedDay : '');
+    } else if (view === 'week' && next !== 'week') {
+      const reference = selectedWeekDay || weekAnchor;
+      const [year, monthNumber] = reference.split('-').map(Number);
+      setMonth(new Date(year, monthNumber - 1, 1));
+      setSelectedDay(reference);
+    }
+    setView(next);
+  };
+  const goToday = () => {
+    setSelectedDay(today); setSelectedWeekDay(today); setWeekAnchor(today);
+    setMonth(new Date(now.getFullYear(), now.getMonth(), 1));
+  };
 
   return <main className="space-y-4 pb-8 text-slate-100">
     <section className="rounded-[1.6rem] border border-white/10 bg-[#091428]/[0.72] p-4 shadow-[0_18px_55px_rgba(0,0,0,0.20)] sm:p-5">
@@ -116,13 +204,13 @@ export default function TeamCalendarSection({ client, clubId, matches, teams, on
     <section className="rounded-[1.35rem] border border-white/10 bg-[#0b1a2d]/85 p-3 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => moveMonth(-1)} aria-label="Mes anterior" className="rounded-xl border border-white/15 px-3 py-2 hover:bg-white/10">‹</button>
-          <h3 className="min-w-40 text-center text-lg font-black capitalize sm:min-w-52">{monthLabel(month)}</h3>
-          <button type="button" onClick={() => moveMonth(1)} aria-label="Mes siguiente" className="rounded-xl border border-white/15 px-3 py-2 hover:bg-white/10">›</button>
-          <button type="button" onClick={() => { const current = new Date(); setSelectedDay(today); setMonth(new Date(current.getFullYear(), current.getMonth(), 1)); }} className="rounded-xl border border-white/15 px-3 py-2 text-sm hover:bg-white/10">Hoy</button>
+          <button type="button" onClick={() => view === 'week' ? moveWeek(-1) : moveMonth(-1)} aria-label={view === 'week' ? 'Semana anterior' : 'Mes anterior'} className="rounded-xl border border-white/15 px-3 py-2 hover:bg-white/10">‹</button>
+          <h3 className="min-w-40 text-center text-lg font-black capitalize sm:min-w-52">{view === 'week' ? weekRangeLabel(weekDays) : monthLabel(month)}</h3>
+          <button type="button" onClick={() => view === 'week' ? moveWeek(1) : moveMonth(1)} aria-label={view === 'week' ? 'Semana siguiente' : 'Mes siguiente'} className="rounded-xl border border-white/15 px-3 py-2 hover:bg-white/10">›</button>
+          <button type="button" onClick={goToday} className="rounded-xl border border-white/15 px-3 py-2 text-sm hover:bg-white/10">Hoy</button>
         </div>
         <div className="flex rounded-xl border border-white/15 p-1" aria-label="Vista del calendario">
-          {[['month', 'Mes'], ['list', 'Lista']].map(([key, label]) => <button key={key} type="button" onClick={() => setView(key)} aria-pressed={view === key} className={`rounded-lg px-3 py-1.5 text-sm font-bold ${view === key ? 'bg-caudal-electric text-slate-950' : 'text-slate-300'}`}>{label}</button>)}
+          {[['month', 'Mes'], ['list', 'Lista'], ['week', 'Microciclo']].map(([key, label]) => <button key={key} type="button" onClick={() => changeView(key)} aria-pressed={view === key} className={`rounded-lg px-3 py-1.5 text-sm font-bold ${view === key ? 'bg-caudal-electric text-slate-950' : 'text-slate-300'}`}>{label}</button>)}
         </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-2" aria-label="Filtros del calendario">
@@ -152,11 +240,13 @@ export default function TeamCalendarSection({ client, clubId, matches, teams, on
             {key ? <><span className={`block text-xs font-black ${key === today ? 'text-caudal-electric' : 'text-slate-300'}`}>{Number(key.slice(-2))}</span><div className="mt-1 max-h-56 space-y-1 overflow-y-auto overscroll-contain">{(grouped.get(key) || []).map((event) => <EventButton key={`${event.kind}-${event.id}`} event={event} onOpen={open} />)}</div></> : null}
           </div>)}</div>
         </div>
-      </div></> : <div className="mt-4 space-y-3">{[...grouped].map(([key, rows]) => <section key={key} className="rounded-xl border border-white/10 bg-white/[0.025] p-3">
+      </div></> : view === 'list' ? <div className="mt-4 space-y-3">{[...grouped].map(([key, rows]) => <section key={key} className="rounded-xl border border-white/10 bg-white/[0.025] p-3">
         <h4 className="mb-2 text-sm font-black capitalize text-slate-300">{dateLabel(key)}</h4>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{rows.map((event) => <EventButton key={`${event.kind}-${event.id}`} event={event} onOpen={open} variant="list" />)}</div>
-      </section>)}</div>}
-      {!loading && !error && !events.length ? <p className="mt-5 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">No hay eventos para los filtros seleccionados.</p> : null}
+      </section>)}</div> : <CalendarWeekView days={weekDays} grouped={grouped} events={events}
+        selectedDay={selectedWeekDay} onSelectDay={setSelectedWeekDay} onOpen={open}
+        today={today} loading={loading} error={Boolean(error || matchError)} />}
+      {!loading && !error && !matchError && view !== 'week' && !events.length ? <p className="mt-5 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">No hay eventos para los filtros seleccionados.</p> : null}
       {!loading && !error && view === 'month' && events.length > 0 && !days.some((key) => grouped.has(key)) ? <p className="mt-4 text-sm text-slate-400">No hay eventos en este mes.</p> : null}
     </section>
   </main>;

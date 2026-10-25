@@ -44,6 +44,10 @@ assert.equal(contexts[0].label, '2026/2027');
 const listed = await listPlannedSessions(client, 'cts-id');
 assert.equal(listed[0].morphology_pattern, 'MD-3');
 assert.equal(listed[0].total_minutes, 15);
+assert.equal(listed[0].durationKnown, true);
+rows.planned_session_slots = [];
+assert.equal((await listPlannedSessions(client, 'cts-id'))[0].durationKnown, false,
+  'sin franjas cargadas el cero del listado no se acredita como duración real');
 assert.ok(selects.find(([table, columns]) => table === 'planned_training_sessions' &&
   columns.split(',').includes('morphology_pattern')), 'el listado y calendario consultan el MD persistido');
 assert.equal(await createPlannedDraft(client, 'cts-id', '2026-10-18'), 'session-id');

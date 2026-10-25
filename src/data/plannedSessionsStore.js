@@ -52,18 +52,23 @@ export const loadPlannedContexts = async (client, clubId) => {
 
 export const listPlannedSessions = async (client, clubTeamSeasonId) => {
   const sessions = unwrap(await client.from('planned_training_sessions')
-    .select('id,club_team_season_id,session_date,starts_at,planning_state,session_number,revision,morphology_pattern')
+    .select('id,club_team_season_id,session_date,starts_at,planning_state,session_number,revision,morphology_pattern,objectives')
     .eq('club_team_season_id', clubTeamSeasonId)
     .order('session_date', { ascending: false })) || [];
   if (!sessions.length) return [];
   const slots = unwrap(await client.from('planned_session_slots')
     .select('session_id,duration_minutes').in('session_id', sessions.map((row) => row.id))) || [];
   const durationBySession = new Map();
+  const slotsBySession = new Map();
   for (const slot of slots) {
+    slotsBySession.set(slot.session_id, [...(slotsBySession.get(slot.session_id) || []), slot]);
     durationBySession.set(slot.session_id,
       (durationBySession.get(slot.session_id) || 0) + Number(slot.duration_minutes || 0));
   }
-  return sessions.map((row) => ({ ...row, total_minutes: durationBySession.get(row.id) || 0 }));
+  return sessions.map((row) => ({ ...row, total_minutes: durationBySession.get(row.id) || 0,
+    durationKnown: Boolean(slotsBySession.get(row.id)?.length) &&
+      slotsBySession.get(row.id).every((slot) => Number.isInteger(Number(slot.duration_minutes)) &&
+        Number(slot.duration_minutes) > 0) }));
 };
 
 export const loadPlannedSession = async (client, sessionId, clubTeamSeasonId) => {
