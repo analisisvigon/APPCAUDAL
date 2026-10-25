@@ -226,7 +226,7 @@ export function buildRealSeasonMemory({ context, matches = [], catalog = [], unl
     source: individual });
   const physical = competitionId === 'all'
     ? buildRealPerformanceMemory({ context, source: performance }) : null;
-  const groupAnalysis = buildRealGroupMemory({ matches: selected, source: individual });
+  const groupAnalysis = buildRealGroupMemory({ matches: selected, source: individual, matchCards });
   return { context, matches: selected, competitions, totals, individual: individualMemory,
     matchCards, physical, groupAnalysis,
     performanceUnavailable: performanceError !== null,

@@ -72,7 +72,8 @@ function pitch(pdf, card, y) {
     pdf.setFillColor(...C.paper);
     pdf.circle(cx, cy, 2.6, 'F');
     text(pdf, player.number ?? '•', cx, cy + .9, 5, C.navy, true, 'center');
-    fit(pdf, player.name, cx - 10, cy + 5.8, 20, 5.3, C.paper, true);
+    fit(pdf, player.name.split(/\s+/).slice(-2).join(' '), cx - 7.5, cy + 5.8,
+      15, 5.3, C.paper, true);
   });
   text(pdf, `SISTEMA ${card.formation}`, x + 5, y + h - 4, 6, C.paper, true);
 }
@@ -111,6 +112,7 @@ function detailLabel(item) {
 function detailRows(card) {
   const rows = [];
   card.timeline.forEach((item) => rows.push({ kind: 'event', minute: item.minute,
+    minuteText: item.minuteText,
     label: detailLabel(item) }));
   (card.quickTotals || []).forEach((item) => rows.push({ kind: 'quick',
     label: `${item.team === 'own' ? 'Equipo propio' : 'Rival'} · ${item.type} · ${item.count}` }));
@@ -142,7 +144,7 @@ function renderDetails(pdf, card, startY) {
   if (!rows.length) text(pdf, 'Sin más datos de partido registrados.', M, y + 8, 8, C.slate);
   expanded.forEach((row) => {
     const parts = row.parts;
-    const rowHeight = Math.max(7, parts.length * 4.2 + 2.5);
+    const rowHeight = Math.max(6.2, parts.length * 4 + 2.2);
     const height = rowHeight + (row.kind !== lastKind ? 7 : 0);
     if (y + height > 268) {
       pdf.addPage();
@@ -157,18 +159,18 @@ function renderDetails(pdf, card, startY) {
       section(pdf, label, y + 5, row.kind === 'video' ? C.violet : C.blue);
       y += 7;
     }
-    fill(pdf, M, y + .4, W - 2 * M, Math.max(6.8, parts.length * 4.2 + 2), C.mist, 1);
-    if (row.kind === 'event') text(pdf, row.minute === null ? '—' : `${row.minute}'`, M + 3, y + 6.2,
+    fill(pdf, M, y + .4, W - 2 * M, Math.max(6.1, parts.length * 4 + 2), C.mist, 1);
+    if (row.kind === 'event') text(pdf, row.minute === null ? '—' : `${row.minuteText || row.minute}'`, M + 3, y + 5.6,
       7.2, C.blue, true);
     else if (row.kind === 'video') {
       pdf.setFillColor(...C.violet);
       pdf.triangle(M + 3, y + 2.1, M + 3, y + 6.1, M + 6.8, y + 4.1, 'F');
-    } else text(pdf, '•', M + 3, y + 6.2, 7.2, C.blue, true);
-    parts.forEach((part, i) => text(pdf, part, M + 16, y + 6.2 + i * 4.2, 7.2, C.ink));
+    } else text(pdf, '•', M + 3, y + 5.6, 7.2, C.blue, true);
+    parts.forEach((part, i) => text(pdf, part, M + 16, y + 5.6 + i * 4, 7.2, C.ink));
     if (row.url) {
-      fill(pdf, W - M - 35, y + .4, 34, 6.8, C.violet, 1);
-      text(pdf, 'Ver vídeo', W - M - 4, y + 6.1, 7, C.paper, true, 'right');
-      pdf.link(W - M - 35, y + .4, 34, 6.8, { url: row.url });
+      fill(pdf, W - M - 35, y + .4, 34, 6.1, C.violet, 1);
+      text(pdf, 'Ver vídeo', W - M - 4, y + 5.5, 7, C.paper, true, 'right');
+      pdf.link(W - M - 35, y + .4, 34, 6.1, { url: row.url });
     }
     y += rowHeight;
     lastKind = row.kind;
@@ -179,7 +181,10 @@ export function renderRealMatchCards(pdf, competition, cards, sections, crestDat
   const selected = cards.filter((card) => card.match.competition.id === competition.id);
   selected.forEach((card) => {
     pdf.addPage();
-    sections.push({ name: `Ficha · ${card.match.opponent} · ${card.match.date}`, page: pdf.getNumberOfPages() });
+    sections.push({ name: `Ficha · ${card.match.opponent} · ${card.match.date}`,
+      matchData: { competition: card.match.competition.name,
+        opponent: card.match.opponent, date: card.match.date },
+      page: pdf.getNumberOfPages() });
     header(pdf, card);
     crest(pdf, crestDataUrl, card.match.isHome ? M + 7 : W - M - 32, 40, 24, 25);
     crest(pdf, rivalCrests[card.opponentCrest], card.match.isHome ? W - M - 32 : M + 7, 40, 24, 25);

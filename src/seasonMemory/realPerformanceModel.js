@@ -1,6 +1,7 @@
 import { getValidRpeValue, summarizeRpeEntries } from '../utils/performanceRpe.js';
 import { buildGroupGoalCoverage, buildGroupGoalTypeRows,
   buildGroupSetPieceSummary } from '../utils/groupAnalysisStats.js';
+import { buildRealGroupDetails } from './realGroupDetails.js';
 
 // La interfaz original no define anonimización para exportaciones. Exigir al
 // menos cinco personas distintas por indicador y periodo evita publicar medias
@@ -96,7 +97,7 @@ export function buildRealPerformanceMemory({ context, source } = {}) {
       'Carga diaria de equipo omitida: training_sessions carece de vínculo CTS/equipo.'] };
 }
 
-export function buildRealGroupMemory({ matches = [], source } = {}) {
+export function buildRealGroupMemory({ matches = [], source, matchCards = [] } = {}) {
   const complete = [];
   let completeMatches = 0;
   const scoringMatches = matches.filter((row) => row.result
@@ -112,12 +113,15 @@ export function buildRealGroupMemory({ matches = [], source } = {}) {
       .map((row) => ({ teamSide: row.type === 'Gol a favor' ? 'for' : 'against',
         goalContext: ['Juego combinativo', 'Juego directo', 'Transición', 'ABP']
           .includes(row.phase) ? row.phase : null,
-        subphase: row.subphase || null })));
+        subphase: row.subphase || null, minute: row.minute,
+        assistant: row.type === 'Gol a favor' && Boolean(row.assistant_id || row.assistant),
+        creationZone: row.assist_zone || null, finishZone: row.shot_zone || null,
+        goalMouthZone: row.goal_zone || null })));
   }
   const coverage = buildGroupGoalCoverage(complete);
-  if (!coverage.withContext) return null;
+  if (!complete.length && !matchCards.some((card) => card.formation && card.match.result)) return null;
   return { coverage, rows: buildGroupGoalTypeRows(complete),
     setPieces: buildGroupSetPieceSummary(complete),
     verifiedMatches: scoringMatches.length,
-    completeMatches };
+    completeMatches, details: buildRealGroupDetails(complete, matchCards, completeMatches) };
 }
