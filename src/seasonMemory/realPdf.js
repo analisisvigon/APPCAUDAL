@@ -3,7 +3,7 @@ import { PDF_THEME, competitionColor } from './pdfTheme.js';
 import { individualSectionCount, renderIndividualCompetition,
   renderIndividualGlobal } from './realIndividualPdf.js';
 import { renderRealMatchCards } from './realMatchPdf.js';
-import { physicalSectionCount, renderRealPhysical, renderRealGroup } from './realPerformancePdf.js';
+import { physicalSectionCount, groupSectionCount, renderRealPhysical, renderRealGroup } from './realPerformancePdf.js';
 
 const { page: P, colors: C } = PDF_THEME;
 const W = P.width;
@@ -319,11 +319,20 @@ function indexPage(pdf, sections, model, indexPages) {
       : `Selección parcial · ${model.competitions[0].name}`);
     let y = 69;
     sections.slice(index * capacity, (index + 1) * capacity).forEach((section) => {
-      fitting(pdf, section.name, M, y, 146, { size: 8.5, color: C.ink, bold: true });
+      if (section.matchData) {
+        fitting(pdf, `Ficha · ${section.matchData.competition}`,
+          M, y - 1.5, 102, { size: 7, color: C.slate, bold: true });
+        ink(pdf, section.matchData.date, M + 108, y - 1.5,
+          { size: 7, color: C.slate, bold: true });
+        fitting(pdf, section.matchData.opponent, M, y + 3.2, 146,
+          { size: 7.5, color: C.ink, bold: true });
+      } else fitting(pdf, section.name, M, y, 146,
+        { size: 8.5, color: C.ink, bold: true });
       ink(pdf, String(section.page).padStart(2, '0'), W - M, y,
         { size: 8.5, color: C.blue, bold: true, align: 'right' });
       pdf.setDrawColor(...C.line);
-      pdf.line(M, y + 3, W - M, y + 3);
+      pdf.line(M, y + 5, W - M, y + 5);
+      pdf.link(M, y - 5, W - 2 * M, 10, { pageNumber: section.page });
       y += 12;
     });
   }
@@ -340,7 +349,7 @@ export function createRealSeasonMemoryPdf({ model, crestDataUrl, rivalCrests = {
   summary(pdf, model);
   const indexPages = Math.max(1, Math.ceil((model.competitions.length + model.matchCards.length + 5
     + individualSectionCount(model.individual) + physicalSectionCount(model.physical)
-    + Number(Boolean(model.groupAnalysis))) / 16));
+    + groupSectionCount(model.groupAnalysis)) / 16));
   for (let i = 0; i < indexPages; i++) page(pdf, 'Índice');
   const sections = [{ name: 'Resumen ejecutivo', page: 2 }, { name: 'Índice', page: 3 }];
   evolution(pdf, model, sections);
@@ -354,6 +363,7 @@ export function createRealSeasonMemoryPdf({ model, crestDataUrl, rivalCrests = {
     renderRealMatchCards(pdf, comp, model.matchCards, sections, crestDataUrl, rivalCrests);
   });
   finalPage(pdf, model, sections);
+  if (sections.length > indexPages * 16) throw new Error('Índice sin espacio suficiente.');
   indexPage(pdf, sections, model, indexPages);
   const total = pdf.getNumberOfPages();
   for (let i = 1; i <= total; i++) {

@@ -5,8 +5,10 @@ import { persistentVideoUrl, videoAtSeconds } from './realMatchLinks.js';
 const clean = (value) => String(value ?? '').trim();
 const uuid = (value) => /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(clean(value));
 const unique = (rows) => [...new Map((rows || []).filter((row) => row?.id).map((row) => [row.id, row])).values()];
-const minute = (value) => Number.isInteger(Number(value)) && clean(value) !== '' && Number(value) >= 0
-  ? Number(value) : null;
+const minute = (value) => {
+  const parts = clean(value).match(/^(\d+)(?:\+(\d+))?$/);
+  return parts ? Number(parts[1]) + Number(parts[2] || 0) : null;
+};
 const ownMetric = (value, max) => {
   const text = clean(value).replace(',', '.').replace(/%$/, '');
   if (!/^\d+(?:\.\d+)?$/.test(text)) return null;
@@ -44,7 +46,9 @@ export function buildRealMatchCards({ context, matches = [], individual, source 
     const goals = forMatch(source.goals, match.id).filter((row) =>
       ['Gol a favor', 'Gol en contra'].includes(row.type)).map((row) => {
       const scorer = valid(row.scorer_id), assistant = valid(row.assistant_id);
-      return { id: row.id, minute: minute(row.minute), team: row.type === 'Gol a favor' ? 'own' : 'rival',
+      return { id: row.id, minute: minute(row.minute),
+        minuteText: minute(row.minute) === null ? null : clean(row.minute),
+        team: row.type === 'Gol a favor' ? 'own' : 'rival',
         scorer: scorer?.name || null, assistant: assistant?.name || null,
         ownGoal: row.is_own_goal === true,
         video: persistentVideoUrl(row.video_url) };
@@ -89,7 +93,7 @@ export function buildRealMatchCards({ context, matches = [], individual, source 
       raw.post_train_week].map(clean).filter(Boolean);
     const videos = goals.filter((row) => row.video).map((row) => ({ url: row.video,
       label: row.scorer ? `Gol ${row.scorer}` : row.team === 'own' ? 'Gol a favor' : 'Gol del rival',
-      minute: row.minute }));
+      minute: row.minuteText || row.minute }));
     const postVideo = persistentVideoUrl(raw.post_video_link);
     if (postVideo) {
       videos.push({ url: postVideo, label: 'Vídeo del partido (POST)', minute: null });

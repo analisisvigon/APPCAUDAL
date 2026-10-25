@@ -1,4 +1,5 @@
 import { PDF_THEME } from './pdfTheme.js';
+import { FIELD_ZONES, GOAL_ZONES } from './realGroupDetails.js';
 
 const { page: P, colors: C } = PDF_THEME;
 const M = P.margin;
@@ -128,33 +129,128 @@ export function renderRealPhysical(pdf, physical, sections) {
   }
 }
 
+const zoneLabel = (key) => key.replaceAll('_', ' ').replace(/^finalizacion/, 'Finaliz.').replace(/^creacion/, 'Creación');
+function zoneGrid(pdf, title, area, catalog, x, y, color) {
+  text(pdf, title, x, y, 8, C.navy, true);
+  text(pdf, `${area.withZone}/${area.total} goles con zona`, x, y + 8, 6.5, C.slate);
+  if (!area.withZone) {
+    fill(pdf, x, y + 16, 79, 60, C.mist, 2);
+    text(pdf, 'Sin zonas registradas', x + 7, y + 47, 7, C.slate);
+    return;
+  }
+  const cellW = 25, cellH = 18;
+  const max = Math.max(1, ...Object.values(area.counts));
+  catalog.forEach((key, i) => {
+    const cx = x + (i % 3) * (cellW + 2), cy = y + 13 + Math.floor(i / 3) * (cellH + 2);
+    fill(pdf, cx, cy, cellW, cellH, C.mist, 2);
+    const count = area.counts[key] || 0;
+    if (count) fill(pdf, cx, cy, Math.max(2, count / max * cellW), 2, color, 1);
+    text(pdf, count, cx + cellW / 2, cy + 8, 9, C.navy, true, 'center');
+    fit(pdf, zoneLabel(key).split(' ').slice(-1)[0], cx + 2, cy + 14, cellW - 4, 5.6, C.slate);
+  });
+}
+export function groupSectionCount(group) {
+  if (!group) return 0;
+  const d = group.details;
+  const field = d.assist.for.withZone || d.assist.against.withZone
+    || d.finish.for.withZone || d.finish.against.withZone;
+  const mouthOrSystem = d.mouth.for.withZone || d.mouth.against.withZone || d.systems.length;
+  return 1 + Number(Boolean(field)) + Number(Boolean(mouthOrSystem));
+}
 export function renderRealGroup(pdf, group, sections) {
   if (!group) return;
-  sections.push({ name: 'Análisis Grupal · contextos de gol', page: page(pdf, 'Análisis Grupal',
-    'Cómo llegaron los goles', 'Solo eventos que cuadran con el marcador del partido.', C.amber) });
-  kpi(pdf, M, 67, 55, 'Goles a favor', group.coverage.forGoals,
-    'Con evento completo', C.green);
-  kpi(pdf, M + 62, 67, 55, 'Goles en contra', group.coverage.againstGoals,
-    'Con evento completo', C.red);
-  kpi(pdf, M + 124, 67, 55, 'Contexto registrado', group.coverage.withContext,
+  const d = group.details;
+  sections.push({ name: 'Análisis Grupal · goles y tramos', page: page(pdf, 'Análisis Grupal',
+    'Goles y momentos', 'Eventos oficiales concordantes con el marcador.', C.amber) });
+  kpi(pdf, M, 63, 55, 'Goles a favor', group.coverage.forGoals,
+    'Eventos acreditados', C.green);
+  kpi(pdf, M + 62, 63, 55, 'Goles en contra', group.coverage.againstGoals,
+    'Eventos acreditados', C.red);
+  kpi(pdf, M + 124, 63, 55, 'Contexto conocido', group.coverage.withContext,
     `de ${group.coverage.total} goles`, C.amber);
-  text(pdf, 'DISTRIBUCIÓN POR CONTEXTO', M, 122, 8, C.navy, true);
-  text(pdf, 'A FAVOR', M + 115, 122, 7, C.green, true);
-  text(pdf, 'EN CONTRA', M + 149, 122, 7, C.red, true);
+  text(pdf, 'CONTEXTOS DE GOL', M, 113, 8, C.navy, true);
+  text(pdf, 'A FAVOR', M + 126, 113, 6.5, C.green, true);
+  text(pdf, 'EN CONTRA', M + 158, 113, 6.5, C.red, true);
   group.rows.forEach((row, i) => {
-    const y = 137 + i * 18;
-    fill(pdf, M, y - 7, W - 2 * M, 15, i % 2 ? C.paper : C.mist, 2);
-    fit(pdf, row.context, M + 5, y + 2, 88, 8, C.ink, true);
-    text(pdf, row.forCount, M + 122, y + 2, 10, C.green, true);
-    text(pdf, row.againstCount, M + 156, y + 2, 10, C.red, true);
+    const y = 122 + i * 10;
+    fill(pdf, M, y - 6, W - 2 * M, 9, i % 2 ? C.paper : C.mist, 1);
+    fit(pdf, row.context, M + 4, y, 91, 7, C.ink, true);
+    text(pdf, row.forCount, M + 126, y, 8, C.green, true);
+    text(pdf, row.againstCount, M + 158, y, 8, C.red, true);
   });
-  if (group.setPieces.total) {
-    const details = group.setPieces.subtypeRows.filter((row) => row.count)
-      .map((row) => `${row.label}: ${row.count}`).join(' · ');
-    fit(pdf, `ABP registradas · ${details}`, M, 235, W - 2 * M, 7, C.navy, true);
+  if (d.withMinute) {
+    text(pdf, 'GOLES POR TRAMOS', M, 182, 8, C.navy, true);
+    text(pdf, `Minuto acreditado: ${d.withMinute}/${group.coverage.total}`, W - M, 182,
+      6.5, C.slate, false, 'right');
+    const max = Math.max(1, ...d.intervals.flatMap((row) => [row.forCount, row.againstCount]));
+    const knownFor = d.intervals.reduce((sum, row) => sum + row.forCount, 0);
+    const knownAgainst = d.intervals.reduce((sum, row) => sum + row.againstCount, 0);
+    d.intervals.forEach((row, i) => {
+      const x = M + i * 30;
+      text(pdf, row.range, x, 194, 6.5, C.slate, true);
+      fill(pdf, x, 199, 24, 3, C.mist, 1);
+      if (row.forCount) fill(pdf, x, 199, 24 * row.forCount / max, 3, C.green, 1);
+      fill(pdf, x, 205, 24, 3, C.mist, 1);
+      if (row.againstCount) fill(pdf, x, 205, 24 * row.againstCount / max, 3, C.red, 1);
+      text(pdf, `${row.forCount} / ${row.againstCount}`, x, 218, 7, C.navy, true);
+      text(pdf, `${knownFor ? Math.round(row.forCount / knownFor * 100) : '—'}% / ${knownAgainst ? Math.round(row.againstCount / knownAgainst * 100) : '—'}%`,
+        x, 225, 5.8, C.slate);
+    });
+    text(pdf, 'Verde: a favor · Rojo: en contra · % sobre goles de cada lado con minuto registrado.',
+      M, 233, 6.4, C.slate);
   }
-  text(pdf, `Cobertura: ${group.completeMatches}/${group.verifiedMatches} partidos con goles y eventos concordantes.`,
-    M, 251, 7, C.slate);
-  text(pdf, 'Sin clasificar = evento sin contexto registrado. No representa una táctica inferida.',
-    M, 259, 7, C.slate);
+  if (d.setPieces.some((item) => item.total)) {
+    text(pdf, 'ABP · GOLES REGISTRADOS', M, 244, 8, C.navy, true);
+    d.setPieces.forEach((item, i) => {
+      const label = item.rows.map((row) => `${row.label} ${row.count}`).join(' · ');
+      fit(pdf, item.total
+        ? `${i ? 'Contra' : 'A favor'} ${item.total}: ${label}`
+        : `${i ? 'Contra' : 'A favor'}: ningún gol ABP registrado`,
+        M, 253 + i * 8, W - 2 * M, 7, i ? C.red : C.green, true);
+    });
+  }
+  fit(pdf, `Cobertura: ${group.completeMatches}/${group.verifiedMatches} partidos con goles concordantes. Sin contexto = dato ausente.`,
+    M, 268, W - 2 * M, 6.5, C.slate);
+
+  const field = d.assist.for.withZone || d.assist.against.withZone
+    || d.finish.for.withZone || d.finish.against.withZone;
+  if (field) {
+    sections.push({ name: 'Análisis Grupal · zonas de gol', page: page(pdf, 'Análisis Grupal',
+      'Dónde se crearon y finalizaron', 'Zonas registradas en el evento, sin inferir posiciones.', C.green) });
+    zoneGrid(pdf, 'Origen · asistencias propias', d.assist.for, FIELD_ZONES, M, 67, C.green);
+    zoneGrid(pdf, 'Origen · goles rivales', d.assist.against, FIELD_ZONES, M + 95, 67, C.red);
+    zoneGrid(pdf, 'Finalización · a favor', d.finish.for, FIELD_ZONES, M, 154, C.green);
+    zoneGrid(pdf, 'Finalización · en contra', d.finish.against, FIELD_ZONES, M + 95, 154, C.red);
+    text(pdf, 'Filas: finalización, creación e inicio; columnas: izquierda, centro y derecha.',
+      M, 251, 6.5, C.slate);
+    text(pdf, 'Un espacio sin registro no representa cero acciones en esa zona.', M, 260, 6.5, C.slate);
+  }
+  if (d.mouth.for.withZone || d.mouth.against.withZone || d.systems.length) {
+    sections.push({ name: 'Análisis Grupal · portería y sistemas', page: page(pdf, 'Análisis Grupal',
+      'Portería y sistemas', 'Solo zonas y formaciones acreditadas.', C.violet) });
+    if (d.mouth.for.withZone || d.mouth.against.withZone) {
+      zoneGrid(pdf, 'Portería 3×3 · a favor', d.mouth.for, GOAL_ZONES, M, 68, C.green);
+      zoneGrid(pdf, 'Portería 3×3 · en contra', d.mouth.against, GOAL_ZONES, M + 95, 68, C.red);
+    }
+    if (d.systems.length) {
+      text(pdf, 'SISTEMAS CONFIRMADOS', M, 162, 8, C.navy, true);
+      d.systems.slice(0, 7).forEach((row, i) => {
+        const y = 173 + i * 11;
+        fill(pdf, M, y - 6, W - 2 * M, 9, i % 2 ? C.paper : C.mist, 1);
+        fit(pdf, row.system, M + 4, y, 54, 8, C.navy, true);
+        text(pdf, `${row.played} PJ  ·  ${row.wins} V  ${row.draws} E  ${row.losses} D`,
+          M + 89, y, 7.2, C.ink);
+      });
+      text(pdf, `${d.systemCoverage.verified}/${d.systemCoverage.eligible} partidos disputados con sistema y once acreditados.`,
+        M, 263, 6.5, C.slate);
+    }
+    if (d.trends.length && d.systems.length <= 3) {
+      text(pdf, 'TRAMOS CON MÁS GOLES REGISTRADOS', M, 222, 8, C.navy, true);
+      ['for', 'against'].forEach((side, i) => {
+        const top = d.trends.filter((row) => row.side === side);
+        if (top.length) fit(pdf, `${side === 'for' ? 'A favor' : 'En contra'}: ${top.map((row) => row.range).join(', ')} (${top[0].count} goles por tramo)`,
+          M, 233 + i * 9, W - 2 * M, 7, i ? C.red : C.green);
+      });
+    }
+  }
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { loadRealSeasonMemoryContexts, loadRealSeasonMemorySnapshot } from './realData.js';
 import { buildRealSeasonMemory } from './realModel.js';
 import { persistentVideoUrl } from './realMatchLinks.js';
+import { seasonMemoryDownloadName } from './downloadName.js';
 
 const stateMessage = {
   loading: 'Comprobando equipo, temporada y partidos…',
@@ -97,7 +98,8 @@ export default function SeasonMemoryPanel({ client, identity, sessionUserId }) {
     ? buildRealSeasonMemory({ context, ...snapshot, now: readAt || new Date() }) : null,
   [context, snapshot, readAt]);
   const model = useMemo(() => whole && context && snapshot
-    ? buildRealSeasonMemory({ context, ...snapshot, competitionId, now: readAt || new Date() }) : null,
+    ? competitionId === 'all' ? whole
+      : buildRealSeasonMemory({ context, ...snapshot, competitionId, now: readAt || new Date() }) : null,
   [whole, context, snapshot, competitionId, readAt]);
   const canExport = (state === 'ready' || state === 'generationError')
     && model?.verified > 0 && model?.totals.played > 0;
@@ -136,7 +138,7 @@ export default function SeasonMemoryPanel({ client, identity, sessionUserId }) {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `NEXO_CLUB_Memoria_${freshContext.seasonLabel.replace(/[^a-zA-Z0-9]+/g, '_')}${competitionId === 'all' ? '' : '_Competicion'}.pdf`;
+      link.download = seasonMemoryDownloadName(next);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -189,10 +191,11 @@ export default function SeasonMemoryPanel({ client, identity, sessionUserId }) {
           <div className="rounded-lg bg-white/5 p-2">Excluidos<br /><strong>{model.excludedTotal}</strong></div>
         </div>
         <p className="text-xs text-slate-300">{model.selection === 'season'
-          ? model.excludedTotal ? 'Informe del CTS con registros excluidos' : 'Memoria completa del CTS seleccionado'
-          : 'Informe de competición · selección parcial'} · {model.competitions.map((item) => item.name).join(', ') || 'Sin competiciones'}</p>
+          ? model.excludedTotal ? 'Memoria de temporada con registros excluidos' : 'Memoria de temporada del equipo seleccionado'
+          : 'Informe parcial de una competición'} · {model.competitions.map((item) => item.name).join(', ') || 'Sin competiciones'}</p>
         <p className="text-xs text-slate-400">Indicadores disponibles: {model.metrics.filter((item) => item.covered).map((item) => `${item.label} (${item.covered}/${item.eligible})`).join(', ') || 'ninguno'}.</p>
         <p className="text-xs text-slate-400">Plantilla: {model.individualUnavailable ? 'lectura no verificada' : `${model.individual?.rows.length || 0} jugadores con participación acreditada`}. {model.totals.played && !model.individual?.rows.length && !model.individualUnavailable ? 'Aún no hay estadísticas individuales atribuibles por UUID.' : ''}</p>
+        <p className="text-xs text-slate-400">Se incluirán resultados, estadísticas colectivas y fichas de los partidos acreditados. {model.groupAnalysis ? 'Análisis Grupal disponible. ' : 'Análisis Grupal sin cobertura suficiente. '}{model.physical ? 'Rendimiento grupal disponible.' : model.selection === 'competition' ? 'Rendimiento grupal solo en la memoria de temporada.' : 'Rendimiento grupal sin cobertura suficiente.'}</p>
         <p className="text-xs text-amber-200">Los vídeos del PDF son enlaces externos: conserva los archivos y su acceso por separado antes de borrar datos o medios de una temporada. Su disponibilidad futura depende del alojamiento.</p>
         {model.individualUnavailable ? <p className="text-xs text-amber-200">Los datos individuales no pudieron verificarse. El PDF conservará las secciones colectivas y señalará esta limitación.</p> : null}
         {model.excludedTotal ? <p className="text-xs text-amber-200">Excluidos: {model.excluded.unlinked} sin vínculo CTS en la base, {model.excluded.teamContradiction} con identidad de equipo contradictoria, {model.excluded.invalidDate} fuera de temporada o sin fecha, {model.excluded.competitionConflict} con competición discrepante y {model.excluded.duplicate} duplicados.</p> : null}

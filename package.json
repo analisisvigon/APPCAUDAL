@@ -12,7 +12,7 @@
     "dev:staging": "node scripts/checkStagingEnv.mjs",
     "dev:libya": "node scripts/checkLibyaEnv.mjs",
     "build": "vite build",
-    "test:season-memory": "node src/seasonMemory/seasonMemory.test.js && node src/seasonMemory/realSeasonMemory.test.js && node src/seasonMemory/realIndividualMemory.test.js && node src/seasonMemory/realMatchMemory.test.js && node src/seasonMemory/realPerformanceMemory.test.js",
+    "test:season-memory": "node src/seasonMemory/seasonMemory.test.js && node src/seasonMemory/realSeasonMemory.test.js && node src/seasonMemory/realIndividualMemory.test.js && node src/seasonMemory/realMatchMemory.test.js && node src/seasonMemory/realPerformanceMemory.test.js && node src/seasonMemory/realFinalMemory.test.js",
     "build:libya": "node scripts/checkLibyaEnv.mjs --build",
     "build:preview": "node scripts/localPreview.mjs --build",
     "test:player-position-timeline": "node src/utils/matchPlayerIdentity.test.js && node src/utils/tacticalSnapshotAudit.test.js && node src/utils/playerPositionTimeline.test.js && node src/utils/playerPositionTimelinePresentation.test.js && node scripts/playerPositionTimelineUiAudit.test.mjs",
