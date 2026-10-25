@@ -3,6 +3,7 @@ import { normalizeCompetitionKey } from '../utils/competitionFilters.js';
 import { OWN_CLUB_IDENTITY } from '../constants/clubIdentity.js';
 import { buildRealIndividualMemory } from './realIndividualModel.js';
 import { buildRealMatchCards } from './realMatchModel.js';
+import { buildRealPerformanceMemory, buildRealGroupMemory } from './realPerformanceModel.js';
 import { SEASON_MEMORY_METRICS as METRICS } from './realModelMetrics.js';
 
 const trim = (value) => String(value ?? '').trim();
@@ -165,7 +166,8 @@ function aggregateMetrics(matches) {
 }
 
 export function buildRealSeasonMemory({ context, matches = [], catalog = [], unlinkedCount = 0,
-  individual, individualError = null, competitionId = 'all', now = new Date() }) {
+  individual, individualError = null, performance = null, performanceError = null,
+  competitionId = 'all', now = new Date() }) {
   if (!context?.id || !context?.teamId || !context?.clubId || !context?.seasonId) {
     throw new Error('Temporada y equipo no acreditados.');
   }
@@ -222,8 +224,12 @@ export function buildRealSeasonMemory({ context, matches = [], catalog = [], unl
     ? buildRealIndividualMemory({ context, matches: selected, competitions, source: individual }) : null;
   const matchCards = buildRealMatchCards({ context, matches: selected, individual: individualMemory,
     source: individual });
+  const physical = competitionId === 'all'
+    ? buildRealPerformanceMemory({ context, source: performance }) : null;
+  const groupAnalysis = buildRealGroupMemory({ matches: selected, source: individual });
   return { context, matches: selected, competitions, totals, individual: individualMemory,
-    matchCards,
+    matchCards, physical, groupAnalysis,
+    performanceUnavailable: performanceError !== null,
     individualUnavailable: individualError !== null,
     metrics: aggregateMetrics(selected), verified: selected.length,
     allVerified: accepted.length, excluded,

@@ -1,5 +1,6 @@
 import { resolveSeasonMemoryContexts } from './realModel.js';
 import { loadRealIndividualSnapshot } from './realIndividualData.js';
+import { loadRealPerformanceSnapshot } from './realPerformanceData.js';
 
 const unwrap = (response, label) => {
   if (response?.error) throw new Error(`No se pudieron leer ${label}.`);
@@ -55,12 +56,23 @@ export async function loadRealSeasonMemorySnapshot(client, context, { includeInd
   }
   let individual;
   let individualError = null;
+  let performance = null;
+  let performanceError = null;
   if (includeIndividual) {
     try {
       individual = await loadRealIndividualSnapshot(client, context, matches);
     } catch {
       individualError = 'No se pudieron verificar los datos individuales.';
+      performanceError = 'No se pudo acreditar el equipo de las respuestas de Rendimiento.';
+    }
+    if (individual) {
+      try {
+        performance = await loadRealPerformanceSnapshot(client, context, individual.players);
+      } catch {
+        performanceError = 'No se pudieron verificar los datos de Rendimiento.';
+      }
     }
   }
-  return { matches, catalog, unlinkedCount: unlinked.count, individual, individualError };
+  return { matches, catalog, unlinkedCount: unlinked.count, individual, individualError,
+    performance, performanceError };
 }

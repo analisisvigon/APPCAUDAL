@@ -3,6 +3,7 @@ import { PDF_THEME, competitionColor } from './pdfTheme.js';
 import { individualSectionCount, renderIndividualCompetition,
   renderIndividualGlobal } from './realIndividualPdf.js';
 import { renderRealMatchCards } from './realMatchPdf.js';
+import { physicalSectionCount, renderRealPhysical, renderRealGroup } from './realPerformancePdf.js';
 
 const { page: P, colors: C } = PDF_THEME;
 const W = P.width;
@@ -221,7 +222,7 @@ function competitionPages(pdf, comp, sections) {
   block(pdf, M, 37, 3, 49, color);
   fitting(pdf, comp.name.toUpperCase(), M + 10, 58, W - 2 * M - 20,
     { size: 17, color: C.paper, bold: true });
-  ink(pdf, `${comp.verified} PARTIDOS ACREDITADOS`, M + 10, 74,
+  ink(pdf, `${comp.verified} ${comp.verified === 1 ? 'PARTIDO ACREDITADO' : 'PARTIDOS ACREDITADOS'}`, M + 10, 74,
     { size: 7.5, color: C.muted, bold: true });
   const t = comp.totals;
   const cw = (W - 2 * M - 12) / 4;
@@ -246,6 +247,15 @@ function competitionPages(pdf, comp, sections) {
     M, 241, { size: 7, color: C.slate });
 
   const rows = comp.matches;
+  if (rows.length === 1) {
+    const match = rows[0];
+    block(pdf, M, 252, W - 2 * M, 13, C.mist, 2);
+    ink(pdf, match.date.slice(5), M + 4, 260, { size: 7, color: C.slate });
+    fitting(pdf, match.opponent, M + 30, 260, 105, { size: 7.5, bold: true });
+    ink(pdf, match.result ? `${match.result.goalsFor}-${match.result.goalsAgainst}` : 'Pendiente',
+      W - M - 4, 260, { size: 8, color: C.navy, bold: true, align: 'right' });
+    return;
+  }
   for (let offset = 0; offset < rows.length; offset += 21) {
     page(pdf, `${comp.name} · partidos`, color);
     heading(pdf, 'Partidos', `${comp.name} · ${offset + 1}-${Math.min(offset + 21, rows.length)} de ${rows.length}`);
@@ -284,20 +294,23 @@ function finalPage(pdf, model, sections) {
     ink(pdf, `${comp.totals.played} PJ · ${comp.totals.wins} V`, W - M, y,
       { size: 7.5, color: C.slate, align: 'right' });
   });
-  wrapped(pdf, `${model.allVerified} partidos acreditados para el CTS seleccionado. `
-    + `${model.excludedTotal} excluidos: ${model.excluded.unlinked} sin vínculo CTS en la base, `
-    + `${model.excluded.teamContradiction} con identidad contradictoria, `
-    + `${model.excluded.invalidDate} sin fecha válida o fuera de temporada, `
-    + `${model.excluded.competitionConflict} con competición discrepante y `
-    + `${model.excluded.duplicate} duplicados. `
-    + 'Los promedios se calculan solo con indicadores válidos; un campo vacío no equivale a cero.',
-    M, 246, W - 2 * M, { size: 7, color: C.slate, leading: 5 });
+  const coverageNote = `${model.allVerified} partidos del CTS; ${model.excludedTotal} excluidos `
+    + `(${model.excluded.unlinked} sin CTS, ${model.excluded.teamContradiction} identidad, `
+    + `${model.excluded.invalidDate} fecha, ${model.excluded.competitionConflict} competición, `
+    + `${model.excluded.duplicate} duplicados). Un dato ausente no equivale a cero. `
+    + (model.selection !== 'season' ? 'Rendimiento físico global sin asignación a competición. '
+      : model.physical ? '' : model.performanceUnavailable
+        ? 'Rendimiento físico omitido: lectura no verificable. '
+        : 'Rendimiento físico omitido: cobertura grupal insuficiente. ')
+    + (model.groupAnalysis ? '' : 'Análisis Grupal omitido: contextos de gol sin cobertura completa.');
+  wrapped(pdf, coverageNote, M, 239, W - 2 * M,
+    { size: 6.7, color: C.slate, leading: 4.5 });
   if (model.individualUnavailable) ink(pdf, 'DATOS INDIVIDUALES NO VERIFICADOS EN ESTA LECTURA',
-    M, 236, { size: 7, color: C.amber, bold: true });
+    M, 230, { size: 7, color: C.amber, bold: true });
 }
 
 function indexPage(pdf, sections, model, indexPages) {
-  const capacity = 14;
+  const capacity = 16;
   for (let index = 0; index < indexPages; index++) {
     pdf.setPage(3 + index);
     chrome(pdf, 'Índice');
@@ -311,12 +324,12 @@ function indexPage(pdf, sections, model, indexPages) {
         { size: 8.5, color: C.blue, bold: true, align: 'right' });
       pdf.setDrawColor(...C.line);
       pdf.line(M, y + 3, W - M, y + 3);
-      y += 13;
+      y += 12;
     });
   }
 }
 
-export function createRealSeasonMemoryPdf({ model, crestDataUrl, rivalCrests = {} }) {
+export function createRealSeasonMemoryPdf({ model, crestDataUrl, rivalCrests = {}, syntheticQa = false }) {
   if (!model?.context?.id || !model?.matches?.length || !model?.competitions?.length) {
     throw new Error('No hay partidos acreditados para generar el informe.');
   }
@@ -326,12 +339,15 @@ export function createRealSeasonMemoryPdf({ model, crestDataUrl, rivalCrests = {
   cover(pdf, model, crestDataUrl);
   summary(pdf, model);
   const indexPages = Math.max(1, Math.ceil((model.competitions.length + model.matchCards.length + 5
-    + individualSectionCount(model.individual)) / 14));
+    + individualSectionCount(model.individual) + physicalSectionCount(model.physical)
+    + Number(Boolean(model.groupAnalysis))) / 16));
   for (let i = 0; i < indexPages; i++) page(pdf, 'Índice');
   const sections = [{ name: 'Resumen ejecutivo', page: 2 }, { name: 'Índice', page: 3 }];
   evolution(pdf, model, sections);
   statistics(pdf, model, sections);
   renderIndividualGlobal(pdf, model.individual, sections);
+  renderRealPhysical(pdf, model.physical, sections);
+  renderRealGroup(pdf, model.groupAnalysis, sections);
   model.competitions.forEach((comp) => {
     competitionPages(pdf, comp, sections);
     renderIndividualCompetition(pdf, comp, model.individual, sections);
@@ -342,6 +358,17 @@ export function createRealSeasonMemoryPdf({ model, crestDataUrl, rivalCrests = {
   const total = pdf.getNumberOfPages();
   for (let i = 1; i <= total; i++) {
     pdf.setPage(i);
+    if (syntheticQa) {
+      if (i === 1) {
+        block(pdf, 18, 208, 174, 20, C.amber, 3);
+        ink(pdf, 'DATOS FICTICIOS / PRUEBA', W / 2, 221,
+          { size: 17, color: C.navy, bold: true, align: 'center' });
+      } else {
+        block(pdf, 61, 274, 88, 4.5, C.amber, 1);
+        ink(pdf, 'DATOS FICTICIOS / PRUEBA', W / 2, 277.4,
+          { size: 7, color: C.navy, bold: true, align: 'center' });
+      }
+    }
     if (i > 1) {
       pdf.setDrawColor(...C.line);
       pdf.line(M, 279, W - M, 279);

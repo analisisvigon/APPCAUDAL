@@ -50,22 +50,36 @@ export function buildRealMatchCards({ context, matches = [], individual, source 
         video: persistentVideoUrl(row.video_url) };
     });
     const quick = forMatch(source.quickEvents, match.id).filter((row) => row.reviewed === true
+      && ['caudal', 'rival'].includes(row.equipo)
       && row.tipo_evento !== 'gol' && row.tipo_evento !== 'corner'
       && row.tipo_evento !== 'corner_rival').map((row) => ({ id: row.id,
       minute: Number(row.minuto) > 0 ? minute(row.minuto) : null,
       team: row.equipo === 'rival' ? 'rival' : 'own',
       type: clean(row.tipo_evento).replaceAll('_', ' '), player: valid(row.jugador_id)?.name || null }));
-    const timeline = [
-      ...goals.map((row) => ({ ...row, kind: 'goal' })),
-      ...substitutions.map((row) => ({ ...row, kind: 'substitution' })),
-      ...quick.map((row) => ({ ...row, kind: 'incident' })),
-    ].sort((a, b) => (a.minute ?? Infinity) - (b.minute ?? Infinity)
-      || a.id.localeCompare(b.id));
+    const quickTotals = [...quick.reduce((counts, row) => {
+      const key = `${row.team}|${row.type}`;
+      counts.set(key, { team: row.team, type: row.type,
+        count: (counts.get(key)?.count || 0) + 1 });
+      return counts;
+    }, new Map()).values()].sort((a, b) => b.count - a.count
+      || a.type.localeCompare(b.type, 'es'));
     const stats = (individual?.rows || []).flatMap((row) => {
       const detail = row.contributions.find((item) => item.matchId === match.id);
       return detail ? [{ player: row.name, number: row.number, ...detail }] : [];
     }).sort((a, b) => (b.knownGoals + b.knownAssists) - (a.knownGoals + a.knownAssists)
       || (b.minutes ?? -1) - (a.minutes ?? -1) || a.player.localeCompare(b.player, 'es'));
+    const cards = stats.flatMap((row, index) => [
+      ...(row.yellow > 0 ? [{ id: `${match.id}-yellow-${index}`, kind: 'card',
+        minute: null, card: 'yellow', count: row.yellow, player: row.player }] : []),
+      ...(row.red > 0 ? [{ id: `${match.id}-red-${index}`, kind: 'card',
+        minute: null, card: 'red', count: row.red, player: row.player }] : []),
+    ]);
+    const timeline = [
+      ...goals.map((row) => ({ ...row, kind: 'goal' })),
+      ...substitutions.map((row) => ({ ...row, kind: 'substitution' })),
+      ...cards,
+    ].sort((a, b) => (a.minute ?? Infinity) - (b.minute ?? Infinity)
+      || a.id.localeCompare(b.id));
     const metrics = SEASON_MEMORY_METRICS.flatMap(([key, label, unit, max]) => {
       const value = ownMetric(raw[key], max);
       return value === null ? [] : [{ label, value: `${value}${unit}` }];
@@ -91,7 +105,7 @@ export function buildRealMatchCards({ context, matches = [], individual, source 
     return { id: match.id, match, context, lineup: distinct ? lineup : [],
       lineupCoverage: distinct ? lineup.length : 0, formation: positioned ? formation : null,
       positions: positioned ? lineup.map((row) => ({ ...row, ...formationSlots[row.slot] })) : [],
-      substitutions, goals, timeline, stats, metrics, notes, videos,
+      substitutions, goals, timeline, quickTotals, stats, metrics, notes, videos,
       rejectedVideos: forMatch(source.goals, match.id).filter((row) => clean(row.video_url)
         && !persistentVideoUrl(row.video_url)).length
         + Number(Boolean(clean(raw.post_video_link) && !postVideo)),

@@ -127,7 +127,7 @@ assert.ok(pageText.includes('Liga Sub-23') && pageText.includes('Copa A'));
 const long = build(Array.from({ length: 50 }, (_, i) => match(`long-${i}`, {
   date: `2026-10-${String(i % 28 + 1).padStart(2, '0')}`,
 })));
-const longPdf = createRealSeasonMemoryPdf({ model: long, crestDataUrl });
+const longPdf = createRealSeasonMemoryPdf({ model: long, crestDataUrl, syntheticQa: true });
 assert.ok(longPdf.getNumberOfPages() > pdf.getNumberOfPages());
 if (process.env.SEASON_MEMORY_FIXTURE_PDF) {
   writeFileSync(process.env.SEASON_MEMORY_FIXTURE_PDF, Buffer.from(longPdf.output('arraybuffer')));

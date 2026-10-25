@@ -100,17 +100,20 @@ assert.equal(persistentVideoUrl('http://videos.example.org/clip'), null);
 assert.equal(persistentVideoUrl('https://videos.example.org/clip'), 'https://videos.example.org/clip');
 // 20-23: muchos eventos, nombres largos, sin duplicados, coherencia con 2B.2.
 const busy = { ...source, quickEvents: [...source.quickEvents,
-  ...Array.from({ length: 48 }, (_, i) => ({ id: id(900 + i), partido_id: id(10),
+  ...Array.from({ length: 120 }, (_, i) => ({ id: id(900 + i), partido_id: id(10),
     jugador_id: players[0].id, equipo: 'caudal', tipo_evento: 'recuperacion',
     minuto: i + 1, reviewed: true }))] };
-assert.equal(build(matches, 'all', busy).matchCards[0].timeline.length, 52);
+assert.equal(build(matches, 'all', busy).matchCards[0].timeline.length, 4);
+assert.ok(build(matches, 'all', busy).matchCards[0].quickTotals.some((row) =>
+  row.type === 'recuperacion' && row.count === 120));
 assert.ok(first.match.opponent.length > 30 && players[0].name.length > 30);
 assert.equal(build([matches[0], matches[0]]).matchCards.length, 1);
 assert.equal(first.stats.find((row) => row.player === players[0].name).knownGoals,
   model.individual.rows.find((row) => row.id === players[0].id).contributions[0].knownGoals);
 const crest = readFileSync(new URL('../../public/branding/almadina-sc-crest.png', import.meta.url));
 const crestDataUrl = `data:image/png;base64,${crest.toString('base64')}`;
-const pdf = createRealSeasonMemoryPdf({ model: build(matches, 'all', busy), crestDataUrl });
+const pdf = createRealSeasonMemoryPdf({ model: build(matches, 'all', busy), crestDataUrl,
+  syntheticQa: true });
 const longNotes = matches.map((row, i) => i === 0 ? { ...row,
   post_notes: 'Observación deportiva extensa registrada para comprobar paginación. '.repeat(90) } : row);
 const longPdf = createRealSeasonMemoryPdf({ model: build(longNotes, 'all', busy), crestDataUrl });
@@ -118,7 +121,8 @@ assert.ok(longPdf.getNumberOfPages() > pdf.getNumberOfPages());
 const pages = pdf.internal.pages.map((row) => row.join(' '));
 const pdfBytes = Buffer.from(pdf.output('arraybuffer'));
 assert.ok(pdf.getNumberOfPages() > 10);
-assert.ok(pages.some((row) => row.includes('CONTINUACI')));
+assert.ok(pages.join(' ').includes('DATOS FICTICIOS / PRUEBA'));
+assert.ok(pages.filter((row) => row.includes('CONTINUACI')).length <= 1);
 assert.ok(pages.join(' ').includes('Ficha'));
 assert.ok(pages.join(' ').includes('Ver v'));
 assert.ok(pdfBytes.toString('latin1').includes('https://videos.example.org/goals/701.mp4'));

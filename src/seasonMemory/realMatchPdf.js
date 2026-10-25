@@ -103,6 +103,7 @@ function lineups(pdf, card, y) {
 }
 function detailLabel(item) {
   if (item.kind === 'substitution') return `Sale ${item.outgoing} / Entra ${item.incoming}`;
+  if (item.kind === 'card') return `${item.card === 'red' ? 'Tarjeta roja' : 'Tarjeta amarilla'}${item.count > 1 ? ` ×${item.count}` : ''} · ${item.player} (minuto no registrado)`;
   if (item.kind === 'incident') return `${item.team === 'rival' ? 'Rival' : 'Equipo propio'} · ${item.type}${item.player ? ` · ${item.player}` : ''}`;
   return `${item.team === 'own' ? 'Gol a favor' : 'Gol del rival'}${item.ownGoal ? ' (propia puerta)' : ''}`
     + `${item.scorer ? ` · ${item.scorer}` : ''}${item.assistant ? ` · Asist. ${item.assistant}` : ''}`;
@@ -111,8 +112,10 @@ function detailRows(card) {
   const rows = [];
   card.timeline.forEach((item) => rows.push({ kind: 'event', minute: item.minute,
     label: detailLabel(item) }));
-  card.stats.filter((row) => row.knownGoals || row.knownAssists || row.yellow || row.red
-    || row.bench === 1).forEach((row) => rows.push({ kind: 'stat', label: `${row.player} · ${row.minutes === null ? 'min —' : `${row.minutes} min`}`
+  (card.quickTotals || []).forEach((item) => rows.push({ kind: 'quick',
+    label: `${item.team === 'own' ? 'Equipo propio' : 'Rival'} · ${item.type} · ${item.count}` }));
+  card.stats.filter((row) => row.bench === 1)
+    .forEach((row) => rows.push({ kind: 'stat', label: `${row.player} · ${row.minutes === null ? 'min —' : `${row.minutes} min`}`
     + `${row.knownGoals ? ` · ${row.knownGoals} G${row.goals === null ? '+' : ''}` : ''}${row.knownAssists ? ` · ${row.knownAssists} A${row.assists === null ? '+' : ''}` : ''}`
     + `${row.yellow ? ` · ${row.yellow} TA` : ''}${row.red ? ' · TR' : ''}` }));
   card.videos.forEach((item) => rows.push({ kind: 'video', label: `${item.label}${item.minute === null ? '' : ` · ${item.minute}'`}`, url: item.url }));
@@ -139,8 +142,8 @@ function renderDetails(pdf, card, startY) {
   if (!rows.length) text(pdf, 'Sin más datos de partido registrados.', M, y + 8, 8, C.slate);
   expanded.forEach((row) => {
     const parts = row.parts;
-    const rowHeight = Math.max(8, parts.length * 4.5 + 2.5);
-    const height = rowHeight + (row.kind !== lastKind ? 9 : 0);
+    const rowHeight = Math.max(7, parts.length * 4.2 + 2.5);
+    const height = rowHeight + (row.kind !== lastKind ? 7 : 0);
     if (y + height > 268) {
       pdf.addPage();
       overflow++;
@@ -148,19 +151,24 @@ function renderDetails(pdf, card, startY) {
       lastKind = '';
     }
     if (row.kind !== lastKind) {
-      const label = { event: 'Cronología acreditada', stat: 'Participación individual',
-        video: 'Vídeos vinculados', note: 'Observaciones registradas' }[row.kind];
-      section(pdf, label, y + 6, row.kind === 'video' ? C.violet : C.blue);
-      y += 9;
+      const label = { event: 'Cronología destacada', quick: 'Acciones frecuentes · totales',
+        stat: 'Participación individual', video: 'Vídeos y acciones destacadas',
+        note: 'Observaciones registradas' }[row.kind];
+      section(pdf, label, y + 5, row.kind === 'video' ? C.violet : C.blue);
+      y += 7;
     }
-    fill(pdf, M, y + 1, W - 2 * M, Math.max(7, parts.length * 4.5 + 2), C.mist, 1);
-    if (row.kind === 'event') text(pdf, row.minute === null ? '—' : `${row.minute}'`, M + 3, y + 7,
+    fill(pdf, M, y + .4, W - 2 * M, Math.max(6.8, parts.length * 4.2 + 2), C.mist, 1);
+    if (row.kind === 'event') text(pdf, row.minute === null ? '—' : `${row.minute}'`, M + 3, y + 6.2,
       7.2, C.blue, true);
-    else text(pdf, row.kind === 'video' ? '>' : '•', M + 3, y + 7, 7.2, C.blue, true);
-    parts.forEach((part, i) => text(pdf, part, M + 16, y + 7 + i * 4.5, 7.2, C.ink));
+    else if (row.kind === 'video') {
+      pdf.setFillColor(...C.violet);
+      pdf.triangle(M + 3, y + 2.1, M + 3, y + 6.1, M + 6.8, y + 4.1, 'F');
+    } else text(pdf, '•', M + 3, y + 6.2, 7.2, C.blue, true);
+    parts.forEach((part, i) => text(pdf, part, M + 16, y + 6.2 + i * 4.2, 7.2, C.ink));
     if (row.url) {
-      text(pdf, 'Ver vídeo', W - M - 4, y + 7, 7, C.blue, true, 'right');
-      pdf.link(W - M - 31, y + 1, 30, 8, { url: row.url });
+      fill(pdf, W - M - 35, y + .4, 34, 6.8, C.violet, 1);
+      text(pdf, 'Ver vídeo', W - M - 4, y + 6.1, 7, C.paper, true, 'right');
+      pdf.link(W - M - 35, y + .4, 34, 6.8, { url: row.url });
     }
     y += rowHeight;
     lastKind = row.kind;

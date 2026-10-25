@@ -33,7 +33,7 @@ export async function loadRealIndividualSnapshot(client, context, matches) {
     .map((row) => row.id).filter(Boolean))];
   if (!matchIds.length) return { players: [], stats: [], slots: [], substitutions: [], goals: [], quickEvents: [], postEvents: [] };
   const stages = await readPages(() => client.from('player_team_memberships')
-    .select('id,player_id,team_id').eq('team_id', context.teamId).order('id', { ascending: true }),
+    .select('id,player_id,team_id,start_date,end_date').eq('team_id', context.teamId).order('id', { ascending: true }),
   'pertenencias del equipo');
   const stageById = new Map(stages.map((stage) => [stage.id, stage]));
   const [players, stats, slots, substitutions, goals, quickEvents, postEvents] = await Promise.all([
@@ -49,7 +49,7 @@ export async function loadRealIndividualSnapshot(client, context, matches) {
       'id,partido_id,minute,outgoing_jugador_id,incoming_jugador_id', 'partido_id', matchIds,
       'sustituciones'),
     readByIds(client, 'partido_eventos_gol',
-      'id,partido_id,type,minute,scorer,scorer_id,assistant,assistant_id,is_own_goal,video_url', 'partido_id', matchIds,
+      'id,partido_id,type,minute,scorer,scorer_id,assistant,assistant_id,is_own_goal,video_url,phase,subphase', 'partido_id', matchIds,
       'eventos de gol'),
     readByIds(client, 'match_quick_events',
       'id,partido_id,jugador_id,equipo,tipo_evento,minuto,reviewed', 'partido_id', matchIds,

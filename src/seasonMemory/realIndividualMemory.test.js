@@ -157,7 +157,8 @@ const longSource = { ...source, players: [...source.players, ...extra],
   stats: [...source.stats, ...extra.map((row, index) => ({ id: id(5000 + index),
     partido_id: id(201), jugador_id: row.id, role: 'Suplente', minutes: '1',
     yellow_count: 0, red: false }))] };
-const longPdf = createRealSeasonMemoryPdf({ model: build(matches, longSource), crestDataUrl });
+const longPdf = createRealSeasonMemoryPdf({ model: build(matches, longSource), crestDataUrl,
+  syntheticQa: true });
 assert.ok(longPdf.getNumberOfPages() > pdf.getNumberOfPages() + 2);
 const manyCatalog = Array.from({ length: 8 }, (_, index) => ({ id: id(6000 + index),
   club_id: clubId, key: 'cup', name: `Copa ${index + 1}` }));
