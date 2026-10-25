@@ -9,6 +9,16 @@ export const PLANNED_HEADER_FIELDS = [
   'next_opponent_label', 'objectives', 'notes', 'material', 'staff_observations',
 ];
 
+export const PLANNED_MICROCYCLE_OPTIONS = [
+  ['', 'Sin asignar'], ['MD+2', 'MD+2'], ['MD+1', 'MD+1'], ['MD', 'MD'],
+  ['MD-5', 'MD-5'], ['MD-4', 'MD-4'], ['MD-3', 'MD-3'],
+  ['MD-2', 'MD-2'], ['MD-1', 'MD-1'],
+];
+export const isPlannedMicrocycle = (value) =>
+  Boolean(value) && PLANNED_MICROCYCLE_OPTIONS.some(([option]) => option === value);
+export const plannedMicrocycleDisplay = (value) =>
+  !value ? '' : isPlannedMicrocycle(value) ? value : `Valor anterior: ${value}`;
+
 const text = (value) => value == null ? '' : String(value);
 const timeInput = (value) => text(value).slice(0, 5);
 const positiveInteger = (value) => {

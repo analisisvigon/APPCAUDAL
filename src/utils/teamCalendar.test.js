@@ -12,7 +12,7 @@ const sessions = [
   { id: 's1', club_team_season_id: 'cts-old', session_date: '2025-12-31',
     planning_state: 'confirmed', session_number: 12 },
   { id: 's2', club_team_season_id: 'cts-new', session_date: '2026-01-02', starts_at: '10:15:00',
-    planning_state: 'draft', session_number: null },
+    planning_state: 'draft', session_number: null, morphology_pattern: 'MD-3' },
 ];
 const matches = [
   { id: 'm1', date: '2026-01-01', time: '', opponent: 'Rival A', competitionKey: 'league',
@@ -29,7 +29,13 @@ assert.equal(events[0].time, '');
 assert.equal(events[0].contextId, 'cts-old');
 assert.equal(events[1].crest, '/rival-a.png');
 assert.equal(events[1].time, '');
-assert.equal(events[2].title, 'Borrador de sesión');
+assert.equal(events[2].title, 'Borrador de sesión · MD-3');
+assert.equal(buildTeamCalendarEvents([{ ...sessions[0], morphology_pattern: 'MD+1' }])[0].title,
+  'Sesión nº 12 · MD+1', 'la sesión confirmada mantiene su número');
+assert.equal(buildTeamCalendarEvents([{ ...sessions[0], morphology_pattern: 'Texto libre antiguo' }])[0].title,
+  'Sesión nº 12', 'el calendario no interpreta un valor histórico como MD');
+assert.equal(buildTeamCalendarEvents([{ ...sessions[0], morphology_pattern: 'MD' }])[0].title,
+  'Sesión nº 12 · MD', 'una lectura nueva refleja el MD guardado');
 assert.equal(events[2].time, '10:15');
 assert.deepEqual(['league', 'cup', 'friendly', 'other'], matches.map(calendarMatchKind));
 assert.equal(events[1].match, matches[0]);

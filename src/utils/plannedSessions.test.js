@@ -6,6 +6,9 @@ import {
   getPlannedDuration,
   hydratePlannedEditor,
   getPlannedEditorIssues,
+  isPlannedMicrocycle,
+  plannedMicrocycleDisplay,
+  PLANNED_MICROCYCLE_OPTIONS,
   validatePlannedEditor,
 } from './plannedSessions.js';
 
@@ -28,6 +31,21 @@ const items = [
     kind: 'free', free_title: 'Actividad 3', activity_minutes: 10 },
 ];
 const original = hydratePlannedEditor(session, slots, items);
+assert.deepEqual(PLANNED_MICROCYCLE_OPTIONS.map(([value]) => value),
+  ['', 'MD+2', 'MD+1', 'MD', 'MD-5', 'MD-4', 'MD-3', 'MD-2', 'MD-1']);
+assert.equal(isPlannedMicrocycle('MD-3'), true);
+assert.equal(isPlannedMicrocycle('MD-6'), false);
+assert.equal(plannedMicrocycleDisplay('Patrón anterior'), 'Valor anterior: Patrón anterior');
+const legacy = hydratePlannedEditor({ ...session, morphology_pattern: 'Patrón anterior' }, slots, items);
+assert.equal(legacy.header.morphology_pattern, 'Patrón anterior');
+assert.deepEqual(buildPlannedSavePayload({ ...legacy, header: { ...legacy.header, objectives: 'Nuevo' } }, legacy).p_header,
+  { objectives: 'Nuevo' }, 'editar otra cabecera no reescribe el valor histórico');
+assert.deepEqual(buildPlannedSavePayload({ ...legacy, header: { ...legacy.header, morphology_pattern: 'MD-3' } }, legacy).p_header,
+  { morphology_pattern: 'MD-3' }, 'un MD elegido reemplaza expresamente el texto anterior');
+assert.deepEqual(buildPlannedSavePayload({ ...legacy, header: { ...legacy.header, morphology_pattern: '' } }, legacy).p_header,
+  { morphology_pattern: null }, 'Sin asignar borra expresamente el valor anterior');
+const reloaded = hydratePlannedEditor({ ...session, morphology_pattern: 'MD-3' }, slots, items);
+assert.equal(reloaded.header.morphology_pattern, 'MD-3', 'el MD persiste tras la lectura del modelo');
 assert.equal(deriveSessionMaterial([{ items: [
   { kind: 'library_task', snapshot: { source: { material: 'Conos, Petos' } }, working: {} },
   { kind: 'library_task', snapshot: { source: { material: 'balones' } }, working: { material: 'petos; Picas' } },

@@ -9,6 +9,7 @@ import {
   getPlannedEditorIssues,
   hydratePlannedEditor,
   hasPlannedLibraryItems,
+  isPlannedMicrocycle,
   PLANNED_PHASES,
 } from '../../utils/plannedSessions';
 import {
@@ -733,7 +734,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
                 {row.planning_state === 'confirmed' ? `Confirmada · Nº ${row.session_number}` : 'Borrador'}
               </span>
             </div>
-            <p className="mt-2 text-xs text-slate-400">{row.total_minutes} min planificados · Abrir sesión</p>
+            <p className="mt-2 text-xs text-slate-400">{row.total_minutes} min planificados
+              {isPlannedMicrocycle(row.morphology_pattern) ? ` · ${row.morphology_pattern}` : ''} · Abrir sesión</p>
           </button>)}
         </div>
       </section> : null}

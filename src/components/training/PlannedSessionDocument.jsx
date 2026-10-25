@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   deriveSessionMaterial, getPlannedDuration, getPlannedLibrarySource, getPlannedLibraryValue, PLANNED_PHASES,
+  PLANNED_MICROCYCLE_OPTIONS, isPlannedMicrocycle, plannedMicrocycleDisplay,
 } from '../../utils/plannedSessions';
 import { needsPlannedTextFragmentation, needsPlannedWideSheet, planPlannedSessionPrintSheets, planPlannedSessionSheets } from '../../utils/plannedSessionSheetPages';
 import { getPlannedSessionBoardTeams } from '../../utils/plannedSessionBoardTeams';
@@ -328,7 +329,23 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
               {field('Lugar', editor.header.location, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, location: value } })), fieldIssue('location'))}
               <div className="planned-sheet-roster-metric"><b>Nº jugadores</b><span>{frozen ? playerCounts.participants : '—'}</span></div>
               {field('Periodo', editor.header.period_label, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, period_label: value } })), fieldIssue('period_label'))}
-              {field('Morf. patrón', editor.header.morphology_pattern, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, morphology_pattern: value } })), fieldIssue('morphology_pattern'))}
+              <label className="planned-sheet-field planned-sheet-microcycle">
+                <span>Microciclo</span>
+                <select value={editor.header.morphology_pattern || ''}
+                  disabled={!canEdit || busy} aria-invalid={Boolean(fieldIssue('morphology_pattern'))}
+                  onChange={(event) => updateEditor((current) => ({ ...current,
+                    header: { ...current.header, morphology_pattern: event.target.value } }))}>
+                  {editor.header.morphology_pattern && !isPlannedMicrocycle(editor.header.morphology_pattern)
+                    ? <option value={editor.header.morphology_pattern}>
+                      {plannedMicrocycleDisplay(editor.header.morphology_pattern)}</option> : null}
+                  {PLANNED_MICROCYCLE_OPTIONS.map(([value, label]) =>
+                    <option key={value} value={value}>{label}</option>)}
+                </select>
+                <span className="planned-sheet-microcycle-print" aria-hidden="true">
+                  {plannedMicrocycleDisplay(editor.header.morphology_pattern)}
+                </span>
+                {fieldIssue('morphology_pattern') ? <small role="alert">{fieldIssue('morphology_pattern')}</small> : null}
+              </label>
               {field('Rival', editor.header.next_opponent_label, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, next_opponent_label: value } })), fieldIssue('next_opponent_label'))}
               <div className="planned-sheet-roster-metric"><b>Lesionados</b><span>{frozen ? playerCounts.injured : '—'}</span></div>
             </div>

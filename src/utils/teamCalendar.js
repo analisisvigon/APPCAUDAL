@@ -1,4 +1,5 @@
 import { normalizeCompetitionKey } from './competitionFilters.js';
+import { isPlannedMicrocycle } from './plannedSessions.js';
 
 export const calendarDateKey = (value) => {
   const text = String(value || '').slice(0, 10);
@@ -30,8 +31,9 @@ export const buildTeamCalendarEvents = (sessions = [], matches = [], teams = [])
     if (!id || !date || seenSessions.has(id)) continue;
     seenSessions.add(id);
     events.push({ id, kind: 'training', date, time: calendarTime(session.starts_at),
-      title: session.planning_state === 'confirmed' && session.session_number != null
-        ? `Sesión nº ${session.session_number}` : 'Borrador de sesión',
+      title: (session.planning_state === 'confirmed' && session.session_number != null
+        ? `Sesión nº ${session.session_number}` : 'Borrador de sesión') +
+        (isPlannedMicrocycle(session.morphology_pattern) ? ` · ${session.morphology_pattern}` : ''),
       contextId: session.club_team_season_id, label: 'Entrenamiento' });
   }
   for (const match of matches) {

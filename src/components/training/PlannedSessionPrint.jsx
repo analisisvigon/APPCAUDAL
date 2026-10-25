@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { getPlannedDuration, getPlannedLibrarySource, getPlannedLibraryValue, PLANNED_PHASES } from '../../utils/plannedSessions';
+import { getPlannedDuration, getPlannedLibrarySource, getPlannedLibraryValue, PLANNED_PHASES, plannedMicrocycleDisplay } from '../../utils/plannedSessions';
 import { planPlannedSessionPrintSheets } from '../../utils/plannedSessionSheetPages';
 import { getPlannedSessionBoardTeams } from '../../utils/plannedSessionBoardTeams';
 import TrainingTaskBoardPreview from './TrainingTaskBoardPreview';
@@ -97,7 +97,7 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], availa
           <PrintField label="Lugar">{editor.header.location}</PrintField>
           <PrintField label="Nº jugadores">{roster.length ? counts.participants : '—'}</PrintField>
           <PrintField label="Periodo">{editor.header.period_label}</PrintField>
-          <PrintField label="Morf. patrón">{editor.header.morphology_pattern}</PrintField>
+          <PrintField label="Microciclo">{plannedMicrocycleDisplay(editor.header.morphology_pattern)}</PrintField>
           <PrintField label="Rival">{editor.header.next_opponent_label}</PrintField>
           <PrintField label="Lesionados">{roster.length ? counts.injured : '—'}</PrintField>
         </div>

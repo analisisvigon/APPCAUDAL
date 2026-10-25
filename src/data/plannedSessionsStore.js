@@ -52,7 +52,7 @@ export const loadPlannedContexts = async (client, clubId) => {
 
 export const listPlannedSessions = async (client, clubTeamSeasonId) => {
   const sessions = unwrap(await client.from('planned_training_sessions')
-    .select('id,club_team_season_id,session_date,starts_at,planning_state,session_number,revision')
+    .select('id,club_team_season_id,session_date,starts_at,planning_state,session_number,revision,morphology_pattern')
     .eq('club_team_season_id', clubTeamSeasonId)
     .order('session_date', { ascending: false })) || [];
   if (!sessions.length) return [];
