@@ -16,16 +16,66 @@ begin
      to_regprocedure('public.can_write_club_team_season(uuid)') is null then
     raise exception 'Sesiones ciclo de vida: faltan helpers de autorización o auditoría';
   end if;
+  if not exists (select 1 from pg_proc p where p.oid=
+      to_regprocedure('public.planned_session_04b_lock(uuid,integer)')
+      and p.prosecdef and p.provolatile='v' and pg_get_userbyid(p.proowner)='postgres'
+      and p.proconfig @> array['search_path=pg_catalog']::text[]
+      and obj_description(p.oid,'pg_proc')=
+        'APPCAUDAL Sesiones 04B: planned_session_04b_lock') or
+     not exists (select 1 from pg_proc p where p.oid=
+      to_regprocedure('public.can_write_club_team_season(uuid)')
+      and p.prosecdef and p.provolatile='s' and pg_get_userbyid(p.proowner)='postgres'
+      and p.proconfig @> array['search_path=pg_catalog']::text[]
+      and obj_description(p.oid,'pg_proc')=
+        'APPCAUDAL Change 39B: write authorization for an open club team-season.') then
+    raise exception 'Sesiones ciclo de vida: helpers de permiso o bloqueo incompatibles';
+  end if;
   if not exists (select 1 from pg_trigger where tgrelid='public.planned_training_sessions'::regclass
-      and tgname='planned_sessions_guard' and not tgisinternal and tgenabled='O') or
+      and tgname='planned_sessions_guard'
+      and tgfoid=to_regprocedure('public.guard_planned_session_row()')
+      and not tgisinternal and tgenabled='O') or
      not exists (select 1 from pg_trigger where tgrelid='public.planned_session_audit_events'::regclass
-      and tgname='planned_audit_guard' and not tgisinternal and tgenabled='O') then
+      and tgname='planned_audit_guard'
+      and tgfoid=to_regprocedure('public.guard_planned_session_audit()')
+      and not tgisinternal and tgenabled='O') then
     raise exception 'Sesiones ciclo de vida: faltan los guards actuales';
+  end if;
+  -- Los RPC 03A/03C/04B/05 revierten cualquier escritura hija al fallar el
+  -- UPDATE de revisión de la sesión retirada. No debe existir escritura directa.
+  foreach v_name in array array['planned_session_slots','planned_session_items',
+    'planned_session_player_roster','planned_session_player_availability',
+    'planned_session_distributions','planned_session_date_change_authorizations',
+    'planned_session_audit_events'] loop
+    if to_regclass('public.' || v_name) is null then
+      raise exception 'Sesiones ciclo de vida: falta tabla dependiente public.%',v_name;
+    end if;
+    if has_table_privilege('authenticated','public.' || v_name,'INSERT,UPDATE,DELETE,TRUNCATE') or
+       has_table_privilege('anon','public.' || v_name,'INSERT,UPDATE,DELETE,TRUNCATE') then
+      raise exception 'Sesiones ciclo de vida: escritura directa incompatible en public.%',v_name;
+    end if;
+  end loop;
+  if not exists (select 1 from pg_trigger where tgrelid='public.planned_session_slots'::regclass
+      and tgname='planned_slots_guard' and tgfoid=to_regprocedure('public.guard_planned_session_child()')
+      and not tgisinternal and tgenabled='O') or
+     not exists (select 1 from pg_trigger where tgrelid='public.planned_session_items'::regclass
+      and tgname='planned_items_guard' and tgfoid=to_regprocedure('public.guard_planned_session_child()')
+      and not tgisinternal and tgenabled='O') or
+     not exists (select 1 from pg_trigger where tgrelid='public.planned_session_player_roster'::regclass
+      and tgname='planned_session_player_roster_guard'
+      and tgfoid=to_regprocedure('public.guard_planned_session_player_roster()')
+      and not tgisinternal and tgenabled='O') or
+     not exists (select 1 from pg_trigger where tgrelid='public.planned_session_player_availability'::regclass
+      and tgname='planned_session_player_availability_guard'
+      and tgfoid=to_regprocedure('public.guard_planned_session_player_availability()')
+      and not tgisinternal and tgenabled='O') then
+    raise exception 'Sesiones ciclo de vida: guard hijo ausente o deshabilitado';
   end if;
   if has_table_privilege('authenticated','public.planned_training_sessions','UPDATE') or
      has_table_privilege('anon','public.planned_training_sessions','UPDATE') or
      has_table_privilege('authenticated','public.planned_training_sessions','DELETE') or
-     has_table_privilege('anon','public.planned_training_sessions','DELETE') then
+     has_table_privilege('anon','public.planned_training_sessions','DELETE') or
+     has_table_privilege('authenticated','public.planned_training_sessions','TRUNCATE') or
+     has_table_privilege('anon','public.planned_training_sessions','TRUNCATE') then
     raise exception 'Sesiones ciclo de vida: privilegios directos incompatibles';
   end if;
   if exists (select 1 from pg_constraint c where c.conrelid='public.planned_training_sessions'::regclass
