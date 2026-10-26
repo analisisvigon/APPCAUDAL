@@ -6,6 +6,7 @@ import {
   listPlannedSessions,
   savePlannedSession,
   SESSION_RETIREMENT_BACKEND_VERIFIED,
+  changePlannedSessionLifecycle,
 } from './plannedSessionsStore.js';
 
 const calls = [];
@@ -46,6 +47,8 @@ assert.equal(contexts[0].label, '2026/2027');
 const listed = await listPlannedSessions(client, 'cts-id');
 assert.equal(SESSION_RETIREMENT_BACKEND_VERIFIED, false,
   'no consultar una columna de retirada antes de instalar y verificar el backend');
+await assert.rejects(changePlannedSessionLifecycle(client, 'session-id', 2, 'retire'),
+  /aún no está verificado/, 'no se llama a la RPC antes de instalar y verificar el backend');
 assert.equal(listed[0].morphology_pattern, 'MD-3');
 assert.equal(listed[0].total_minutes, 15);
 assert.equal(listed[0].durationKnown, true);

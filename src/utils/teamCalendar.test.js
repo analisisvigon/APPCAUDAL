@@ -131,6 +131,24 @@ assert.equal(buildTeamCalendarEvents([], [matches[0], matches[0]]).length, 1,
 assert.deepEqual(calendarWeekSummary([], weekDays), {
   sessions: 0, matches: 0, activeDays: 0, durationMinutes: 0, durationCoverage: 'none',
 });
+const lifecycleEvents = buildTeamCalendarEvents([
+  { id: 'retired', session_date: '2026-10-26', retired_at: '2026-10-27T09:00:00Z',
+    durationKnown: true, total_minutes: 90 },
+  { id: 'cancelled', session_date: '2026-10-26', cancelled_at: '2026-10-26T09:00:00Z',
+    durationKnown: true, total_minutes: 80 },
+  { id: 'active', session_date: '2026-10-27', durationKnown: true, total_minutes: 70 },
+]);
+assert.deepEqual(lifecycleEvents.map((event) => event.id), ['cancelled', 'active'],
+  'una sesión retirada no alimenta Mes, Lista ni Microciclo');
+assert.equal(lifecycleEvents[0].cancelled, true, 'la anulación permanece visible');
+assert.deepEqual(calendarWeekSummary(lifecycleEvents, weekDays), {
+  sessions: 1, matches: 0, activeDays: 1, durationMinutes: 70, durationCoverage: 'complete',
+}, 'las sesiones anuladas no cuentan ni suman minutos activos');
+assert.deepEqual(calendarWeekSummary(buildTeamCalendarEvents([
+  { id: 'cancelled', session_date: '2026-10-26', cancelled_at: null,
+    durationKnown: true, total_minutes: 80 },
+]), weekDays), { sessions: 1, matches: 0, activeDays: 1, durationMinutes: 80,
+  durationCoverage: 'complete' }, 'reactivar restaura los contadores sin duplicar');
 assert.equal(calendarWeeklyCountLabel({ sessions: 1, matches: 0, activeDays: 1 }),
   '1 sesión · 0 partidos · 1 día con actividad');
 assert.equal(calendarWeeklyCountLabel({ sessions: 2, matches: 1, activeDays: 3 }),

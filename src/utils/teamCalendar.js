@@ -45,12 +45,12 @@ export const shiftCalendarWeek = (referenceKey, weeks) => {
 export const calendarWeekSummary = (events, days) => {
   const daySet = new Set(days);
   const weekly = events.filter((event) => daySet.has(event.date));
-  const sessions = [...new Map(weekly.filter((event) => event.kind === 'training')
+  const sessions = [...new Map(weekly.filter((event) => event.kind === 'training' && !event.cancelled)
     .map((event) => [event.id, event])).values()];
   const matches = [...new Set(weekly.filter((event) => event.kind !== 'training').map((event) => event.id))];
   const known = sessions.filter((event) => event.durationKnown);
   return { sessions: sessions.length, matches: matches.length,
-    activeDays: new Set(weekly.map((event) => event.date)).size,
+    activeDays: new Set(weekly.filter((event) => !event.cancelled).map((event) => event.date)).size,
     durationMinutes: known.reduce((sum, event) => sum + event.durationMinutes, 0),
     durationCoverage: !sessions.length ? 'none' : known.length === sessions.length ? 'complete' : 'partial' };
 };
@@ -72,6 +72,7 @@ export const buildTeamCalendarEvents = (sessions = [], matches = [], teams = [])
   const events = [];
   const seenSessions = new Set();
   for (const session of sessions) {
+    if (session.retired_at) continue;
     const id = String(session.id || '');
     const date = calendarDateKey(session.session_date);
     if (!id || !date || seenSessions.has(id)) continue;
@@ -81,6 +82,7 @@ export const buildTeamCalendarEvents = (sessions = [], matches = [], teams = [])
     const durationKnown = session.durationKnown === true &&
       Number.isFinite(Number(session.total_minutes)) && Number(session.total_minutes) > 0;
     events.push({ id, kind: 'training', date, time: calendarTime(session.starts_at), title,
+      cancelled: Boolean(session.cancelled_at),
       microcycle: isPlannedMicrocycle(session.morphology_pattern) ? session.morphology_pattern : '',
       durationKnown,
       durationMinutes: durationKnown ? Number(session.total_minutes) : null,

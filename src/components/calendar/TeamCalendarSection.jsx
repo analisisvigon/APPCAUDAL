@@ -38,7 +38,7 @@ export function EventButton({ event, onOpen, variant = 'month' }) {
   const isList = variant === 'list';
   const description = isMatch
     ? `${event.opponent}, ${event.label}${event.score ? `, ${event.score}${event.outcome ? ` ${outcomeLabel[event.outcome]}` : ''}` : ''}`
-    : `${event.title}${event.microcycle ? `, ${event.microcycle}` : ''}`;
+    : `${event.title}${event.cancelled ? ', ANULADA' : ''}${event.microcycle ? `, ${event.microcycle}` : ''}`;
   return <button type="button" onClick={() => onOpen(event)}
     className={`group flex min-w-0 w-full items-start gap-2 rounded-xl border text-left shadow-sm transition hover:brightness-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric ${isList ? 'p-3' : 'p-2'} ${isMatch ? 'border-l-[3px]' : ''} ${tone[event.kind]}`}
     aria-label={`Abrir ${event.label.toLowerCase()} ${description}, ${dateLabel(event.date)}`}>
@@ -49,6 +49,7 @@ export function EventButton({ event, onOpen, variant = 'month' }) {
     <span className="min-w-0 flex-1 space-y-1">
       <span className="flex min-w-0 flex-wrap items-center gap-1.5">
         <strong className={`${isList ? 'text-sm' : 'text-xs'} min-w-0 font-black ${isMatch ? 'truncate' : 'whitespace-normal'}`} title={event.title}>{event.title}</strong>
+        {!isMatch && event.cancelled ? <span className="rounded-md border border-amber-300/60 px-1.5 py-0.5 text-[10px] font-black text-amber-100">ANULADA</span> : null}
         {!isMatch && event.microcycle ? <span className="shrink-0 rounded-md border border-sky-300/45 bg-sky-300/20 px-1.5 py-0.5 text-[11px] font-black leading-none text-sky-50">{event.microcycle}</span> : null}
       </span>
       {isMatch ? <>
@@ -61,7 +62,7 @@ export function EventButton({ event, onOpen, variant = 'month' }) {
         </span>
       </> : <>
         <span className="block text-[11px] opacity-85">{event.time || 'Hora pendiente'}
-          {variant === 'week' && event.durationKnown ? ` · ${event.durationMinutes} min` : ' · Entrenamiento'}</span>
+          {event.cancelled ? ' · Sin minutos activos' : variant === 'week' && event.durationKnown ? ` · ${event.durationMinutes} min` : ' · Entrenamiento'}</span>
         {variant === 'week' && event.objective ? <span className="block break-words text-[11px] leading-snug opacity-80"
           title={event.objective} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
           {event.objective}</span> : null}
@@ -121,13 +122,13 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
         })}
       </div>
       {summary.activeDays === 0 ? <p className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-300">
-        No hay actividades registradas esta semana.</p> : null}
+        No hay actividades activas esta semana.</p> : null}
       {chosenDay ? <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4" aria-label="Detalle del día">
         <h4 className="text-base font-black capitalize text-white">{dateLabel(chosenDay)}</h4>
         {chosenEvents.length ? <div className="mt-3 grid gap-3 md:grid-cols-2">
           {chosenEvents.map((event) => <div key={`${event.kind}-${event.id}`} className="min-w-0 rounded-xl border border-white/10 p-3">
             <EventButton event={event} onOpen={onOpen} variant="list" />
-            {event.kind === 'training' && event.durationKnown ? <p className="mt-2 text-xs text-slate-300">Duración: {event.durationMinutes} min</p> : null}
+            {event.kind === 'training' && event.durationKnown && !event.cancelled ? <p className="mt-2 text-xs text-slate-300">Duración: {event.durationMinutes} min</p> : null}
             {event.kind === 'training' && event.objective ? <p className="mt-2 whitespace-pre-wrap break-words text-xs text-slate-300">Objetivo: {event.objective}</p> : null}
             <button type="button" onClick={() => onOpen(event)}
               className="mt-3 min-h-10 rounded-lg border border-white/20 px-3 py-2 text-xs font-bold text-white hover:bg-white/10">

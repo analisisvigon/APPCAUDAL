@@ -17,13 +17,14 @@ function PrintField({ label, children }) {
   return <div className="planned-print-field"><strong>{label}</strong><span>{children || '\u00a0'}</span></div>;
 }
 
-function PrintIdentity({ selected, page, leagueLogoUrl }) {
+function PrintIdentity({ selected, page, leagueLogoUrl, cancelled }) {
   return <header className="planned-print-identity">
     {(selected?.team_id === CAUDAL_TEAM_ID || [OWN_CLUB_IDENTITY.name, OWN_CLUB_IDENTITY.shortName].includes(selected?.team_name))
       && OWN_CLUB_IDENTITY.crest
       ? <img src={OWN_CLUB_IDENTITY.crest} alt={`Escudo de ${OWN_CLUB_IDENTITY.shortName}`} onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }} />
       : <div className="planned-print-crest-space" />}
-    <div><strong>{selected?.team_id === CAUDAL_TEAM_ID ? getOwnClubDisplayName(selected?.team_name) : selected?.team_name || ''}</strong><span>{selected?.label || ''} · Hoja {page}</span></div>
+    <div><strong>{selected?.team_id === CAUDAL_TEAM_ID ? getOwnClubDisplayName(selected?.team_name) : selected?.team_name || ''}</strong><span>{selected?.label || ''} · Hoja {page}</span>
+      {cancelled ? <span className="planned-print-cancelled">ANULADA</span> : null}</div>
     <div className={`planned-print-crest-space${leagueLogoUrl ? ' planned-print-league-crest' : ''}`} aria-label="Escudo de Liga">
       {leagueLogoUrl ? <img src={leagueLogoUrl} alt="Escudo de Liga" referrerPolicy="no-referrer" /> : null}
     </div>
@@ -89,7 +90,8 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], availa
   };
   return <div className="planned-print-pages" data-planned-print-pages>
     {pages.map((page, index) => <article className={`planned-print-sheet ${page.kind === 'cover' ? '' : 'planned-print-sheet-exercises'}`} key={index} data-print-page={index + 1}>
-      <PrintIdentity selected={selected} page={index + 1} leagueLogoUrl={leagueLogoUrl} />
+      <PrintIdentity selected={selected} page={index + 1} leagueLogoUrl={leagueLogoUrl}
+        cancelled={Boolean(editor.cancelled_at)} />
       {page.kind === 'cover' ? <>
         <div className="planned-print-meta">
           <PrintField label="Día">{editor.session_date}</PrintField>

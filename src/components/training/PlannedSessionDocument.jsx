@@ -42,13 +42,14 @@ function PendingArea({ label, children, className = '' }) {
   </div>;
 }
 
-function SheetIdentity({ selected, page, leagueLogoUrl }) {
+function SheetIdentity({ selected, page, leagueLogoUrl, cancelled }) {
   return <header className="planned-sheet-identity">
     {(selected.team_id === CAUDAL_TEAM_ID || [OWN_CLUB_IDENTITY.name, OWN_CLUB_IDENTITY.shortName].includes(selected.team_name))
       && OWN_CLUB_IDENTITY.crest
       ? <img src={OWN_CLUB_IDENTITY.crest} alt={`Escudo de ${OWN_CLUB_IDENTITY.shortName}`} onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }} />
       : <div className="planned-sheet-team-crest-pending" aria-label="Espacio reservado para el escudo del equipo"><span className="planned-sheet-reserved-hint">Escudo pendiente</span></div>}
-    <div><strong>{selected.team_id === CAUDAL_TEAM_ID ? getOwnClubDisplayName(selected.team_name) : selected.team_name}</strong><span>{selected.label} · Hoja {page}</span></div>
+    <div><strong>{selected.team_id === CAUDAL_TEAM_ID ? getOwnClubDisplayName(selected.team_name) : selected.team_name}</strong><span>{selected.label} · Hoja {page}</span>
+      {cancelled ? <span className="planned-sheet-cancelled">ANULADA</span> : null}</div>
     <div className={`planned-sheet-federation${leagueLogoUrl ? ' planned-sheet-federation-logo' : ''}`} aria-label="Escudo de Liga">
       {leagueLogoUrl ? <img src={leagueLogoUrl} alt="Escudo de Liga" referrerPolicy="no-referrer" /> : null}
     </div>
@@ -321,7 +322,8 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
       <div className="planned-document-pages" style={{ zoom: `${zoom === 'fit' ? fitZoom : zoom}%` }}>
         {sheets.map((sheet, index) => <article className="planned-session-sheet" key={`${sheet.kind}-${index}`}
           data-planned-sheet={sheet.kind}>
-          <SheetIdentity selected={selected} page={index + 1} leagueLogoUrl={leagueLogoUrl} />
+          <SheetIdentity selected={selected} page={index + 1} leagueLogoUrl={leagueLogoUrl}
+            cancelled={Boolean(editor.cancelled_at)} />
           {sheet.kind === 'cover' ? <>
             <div className="planned-sheet-cover-meta">
               {field('Día', editor.session_date, (value) => updateEditor((current) => ({ ...current, session_date: value })), fieldIssue('session_date'), { type: 'date' })}

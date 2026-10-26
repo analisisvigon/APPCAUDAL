@@ -29,6 +29,8 @@ import {
   loadPlannedSpecificPositions,
   savePlannedDistribution,
   savePlannedSessionValue,
+  SESSION_RETIREMENT_BACKEND_VERIFIED,
+  changePlannedSessionLifecycle,
 } from '../../data/plannedSessionsStore';
 import { availabilityChanges, eligibleRosterCandidates, hasUncertainRosterDate } from '../../utils/plannedSessionPlayers';
 import { autoPlayerLayout, distributionPayloadKey, emptyDistribution, movePlayerBoardLayout, normalizeDistribution,
@@ -67,6 +69,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsLoadError, setSessionsLoadError] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [lifecycleAction, setLifecycleAction] = useState('retire');
   const [retirementReason, setRetirementReason] = useState('');
   const [libraryTasks, setLibraryTasks] = useState([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
@@ -148,6 +151,43 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [deleteTarget]);
+
+  const performLifecycle = async () => {
+    if (!deleteTarget || !SESSION_RETIREMENT_BACKEND_VERIFIED || !canWriteContext || busy || operationRef.current) return;
+    if (editor?.id === deleteTarget.id && dirty) {
+      setError('Guarda o descarta los cambios pendientes de esta sesión antes de cambiar su estado.');
+      return;
+    }
+    operationRef.current = true; setBusy(true); setError(''); setNotice('');
+    try {
+      const revision = await changePlannedSessionLifecycle(client, deleteTarget.id,
+        deleteTarget.revision, lifecycleAction, retirementReason);
+      const fresh = await loadPlannedSession(client, deleteTarget.id, contextId);
+      if (fresh.session.revision !== revision ||
+          (lifecycleAction === 'retire' ? !fresh.session.retired_at
+            : lifecycleAction === 'cancel' ? !fresh.session.cancelled_at : Boolean(fresh.session.cancelled_at))) {
+        throw new Error('La lectura posterior no confirma el cambio. Actualiza la lista antes de repetirlo.');
+      }
+      const rows = await listPlannedSessions(client, contextId);
+      setSessions(rows); setSessionsLoadError(false);
+      if (editor?.id === deleteTarget.id) {
+        if (lifecycleAction === 'retire') {
+          setEditor(null); setBaseline(null); setRoster([]); setAvailability({}); setAvailabilityBaseline({});
+          setDistribution(null); setDistributionBaseline(null); setSessionValue(''); setBaselineSessionValue('');
+        } else {
+          const next = hydratePlannedEditor(fresh.session, fresh.slots, fresh.items);
+          setEditor(next); setBaseline(next);
+        }
+      }
+      setDeleteTarget(null);
+      setNotice(lifecycleAction === 'retire' ? 'Sesión retirada y verificada en el servidor.'
+        : lifecycleAction === 'cancel' ? 'Sesión anulada y verificada en el servidor.'
+          : 'Sesión reactivada y verificada en el servidor.');
+    } catch (cause) {
+      if (cause?.code === '40001') setConflict(true);
+      setError(`${errorKind(cause)}: no se pudo verificar el cambio de estado. ${readError(cause)}`);
+    } finally { operationRef.current = false; setBusy(false); }
+  };
   useEffect(() => {
     if (!expandedSlotId) return;
     document.querySelector(`[data-planned-slot-id="${expandedSlotId}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -746,6 +786,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
                   ? 'bg-caudal-electric/15 text-caudal-electric' : 'bg-white/10 text-slate-300'}`}>
                   {row.planning_state === 'confirmed' ? `Confirmada · Nº ${row.session_number}` : 'Borrador'}
                 </span>
+                {row.cancelled_at ? <span className="rounded-full border border-amber-300/50 px-2 py-1 text-[11px] font-black text-amber-200">ANULADA</span> : null}
               </div>
               <p className="mt-2 text-xs text-slate-400">{row.total_minutes} min planificados
                 {isPlannedMicrocycle(row.morphology_pattern) ? ` · ${row.morphology_pattern}` : ''} · Abrir sesión</p>
@@ -756,9 +797,14 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
               <div className="absolute right-0 top-full z-20 w-44 rounded-xl border border-white/15 bg-[#102239] p-1 shadow-xl">
                 <button type="button" disabled={busy} onClick={(event) => {
                   event.currentTarget.closest('details')?.removeAttribute('open');
-                  setDeleteTarget(row);
+                  setLifecycleAction('retire'); setDeleteTarget(row);
                 }} className="min-h-10 w-full rounded-lg px-3 text-left text-sm font-semibold text-red-200 hover:bg-red-400/10 disabled:opacity-50">
                   Eliminar sesión</button>
+                <button type="button" disabled={busy} onClick={(event) => {
+                  event.currentTarget.closest('details')?.removeAttribute('open');
+                  setLifecycleAction(row.cancelled_at ? 'reactivate' : 'cancel'); setDeleteTarget(row);
+                }} className="min-h-10 w-full rounded-lg px-3 text-left text-sm font-semibold text-amber-100 hover:bg-amber-300/10 disabled:opacity-50">
+                  {row.cancelled_at ? 'Reactivar sesión' : 'Anular sesión'}</button>
               </div>
             </details> : null}
           </div>)}
@@ -768,22 +814,32 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       {deleteTarget ? <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 p-4">
         <section role="dialog" aria-modal="true" aria-labelledby="planned-delete-title"
           className="w-full max-w-md rounded-2xl border border-red-300/25 bg-[#0b1a2d] p-5 shadow-2xl">
-          <h3 id="planned-delete-title" className="text-lg font-black text-white">¿Eliminar esta sesión?</h3>
+          <h3 id="planned-delete-title" className="text-lg font-black text-white">
+            {lifecycleAction === 'retire' ? '¿Eliminar esta sesión?'
+              : lifecycleAction === 'cancel' ? '¿Anular esta sesión?' : '¿Reactivar esta sesión?'}</h3>
           <p className="mt-2 font-semibold text-white">{deleteTarget.planning_state === 'confirmed'
             ? `Sesión nº ${deleteTarget.session_number}` : 'Borrador de sesión'}</p>
           <p className="mt-1 text-sm text-slate-300">{formatDate(deleteTarget.session_date)}
             {deleteTarget.starts_at ? ` · ${String(deleteTarget.starts_at).slice(0, 5)}` : ''}</p>
-          <p className="mt-4 text-sm text-slate-200">La sesión dejará de aparecer en Sesiones y Calendario, pero se conservará internamente para mantener el historial.</p>
-          <label className="mt-3 block text-xs text-slate-300">Motivo opcional
+          <p className="mt-4 text-sm text-slate-200">{lifecycleAction === 'retire'
+            ? 'La sesión dejará de aparecer en Sesiones y Calendario, pero se conservará internamente para mantener el historial.'
+            : lifecycleAction === 'cancel'
+              ? 'La sesión seguirá visible como ANULADA y no contará como entrenamiento activo.'
+              : 'La sesión volverá a contar como entrenamiento activo, sin crear otro registro.'}</p>
+          {lifecycleAction !== 'reactivate' ? <label className="mt-3 block text-xs text-slate-300">Motivo opcional
             <textarea value={retirementReason} onChange={(event) => setRetirementReason(event.target.value)}
               maxLength={1000} rows={2} className={`${input} mt-1`} />
-          </label>
-          <p role="status" className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-xs text-amber-100">
-            Eliminación pendiente: falta acreditar cómo detectar actividad ejecutada y referencias externas antes de activar la retirada lógica. No se borrará ningún dato.</p>
+          </label> : null}
+          {!SESSION_RETIREMENT_BACKEND_VERIFIED ? <p role="status" className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-xs text-amber-100">
+            Acción pendiente: instala y verifica la migración antes de habilitarla. No se guardará ningún cambio.</p> : null}
           <div className="mt-5 flex flex-wrap justify-end gap-2">
-            <button type="button" autoFocus onClick={() => setDeleteTarget(null)}
+            <button type="button" autoFocus disabled={busy} onClick={() => setDeleteTarget(null)}
               className={`${button} border border-white/20 text-white`}>Cancelar</button>
-            <button type="button" disabled className={`${button} bg-red-700 text-white`}>Eliminar sesión</button>
+            <button type="button" onClick={performLifecycle}
+              disabled={!SESSION_RETIREMENT_BACKEND_VERIFIED || busy || !canWriteContext}
+              className={`${button} ${lifecycleAction === 'retire' ? 'bg-red-700' : 'bg-amber-700'} text-white`}>
+              {busy ? 'Procesando…' : lifecycleAction === 'retire' ? 'Eliminar sesión'
+                : lifecycleAction === 'cancel' ? 'Anular sesión' : 'Reactivar sesión'}</button>
           </div>
         </section>
       </div> : null}
@@ -795,6 +851,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
             <h3 className="text-lg font-bold text-white">{editor.id
               ? editor.planning_state === 'confirmed' ? `Sesión nº ${editor.session_number ?? '—'}` : 'Borrador de sesión'
               : 'Nueva sesión'}</h3>
+            {editor.cancelled_at ? <span className="text-xs font-black text-amber-200">ANULADA</span> : null}
             <p className="text-xs text-slate-400">{selected.team_name} · {selected.label} ·
               {editor.id ? ` Revisión ${editor.revision}` : ' Se creará al guardar'} ·
               {getPlannedDuration(editor.slots)} min</p>

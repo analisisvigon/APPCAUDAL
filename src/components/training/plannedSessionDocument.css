@@ -7,6 +7,7 @@
 .planned-document-viewport { overflow-x: auto; padding: 8px 8px 24px; scrollbar-color: #4885c2 #102033; }
 .planned-document-pages { display: grid; justify-items: center; gap: 18px; width: max-content; min-width: 100%; transform-origin: top left; }
 .planned-session-sheet { box-sizing: border-box; width: 297mm; min-height: 210mm; padding: 5mm; background: #fff; color: #111; font-family: Arial, Helvetica, sans-serif; box-shadow: 0 15px 42px #0005; }
+.planned-sheet-identity .planned-sheet-cancelled { display: inline-block; margin-top: .5mm; border: 1px solid #92400e; color: #92400e; padding: .2mm 2mm; font-size: 8pt; font-weight: 800; letter-spacing: .12em; }
 .planned-sheet-identity { display: grid; grid-template-columns: 22mm minmax(0, 1fr) 25mm; align-items: center; gap: 4mm; min-height: 22mm; text-align: center; }
 .planned-sheet-identity img { width: 20mm; height: 20mm; object-fit: contain; }
 .planned-sheet-team-crest-pending { display: grid; place-items: center; width: 20mm; height: 20mm; border: 1px dashed #bbb; color: #777; font-size: 6pt; }

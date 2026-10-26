@@ -31,6 +31,9 @@ const items = [
     kind: 'free', free_title: 'Actividad 3', activity_minutes: 10 },
 ];
 const original = hydratePlannedEditor(session, slots, items);
+assert.equal(hydratePlannedEditor({ ...session, cancelled_at: '2026-10-26T10:00:00Z' }, slots, items).cancelled_at,
+  '2026-10-26T10:00:00Z', 'la ficha y la impresión conservan la marca de anulación');
+assert.equal(original.cancelled_at, null, 'una sesión antigua sin columnas nuevas sigue siendo legible');
 assert.deepEqual(PLANNED_MICROCYCLE_OPTIONS.map(([value]) => value),
   ['', 'MD+2', 'MD+1', 'MD', 'MD-5', 'MD-4', 'MD-3', 'MD-2', 'MD-1']);
 assert.equal(isPlannedMicrocycle('MD-3'), true);

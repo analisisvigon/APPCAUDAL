@@ -1,6 +1,6 @@
 import { parsePlannedSessionValue } from '../utils/plannedSessionValue.js';
 
-// Activar solo después de instalar y verificar el backend de retirada con identidades reales.
+// Activar solo después de instalar y verificar el backend de ciclo de vida con identidades reales.
 export const SESSION_RETIREMENT_BACKEND_VERIFIED = false;
 
 const unwrap = (response) => {
@@ -55,7 +55,7 @@ export const loadPlannedContexts = async (client, clubId) => {
 
 export const listPlannedSessions = async (client, clubTeamSeasonId) => {
   let query = client.from('planned_training_sessions')
-    .select('id,club_team_season_id,session_date,starts_at,planning_state,session_number,revision,morphology_pattern,objectives')
+    .select(`id,club_team_season_id,session_date,starts_at,planning_state,session_number,revision,morphology_pattern,objectives${SESSION_RETIREMENT_BACKEND_VERIFIED ? ',cancelled_at' : ''}`)
     .eq('club_team_season_id', clubTeamSeasonId);
   if (SESSION_RETIREMENT_BACKEND_VERIFIED) query = query.is('retired_at', null);
   const sessions = unwrap(await query.order('session_date', { ascending: false })) || [];
@@ -108,6 +108,17 @@ export const confirmPlannedSession = async (client, sessionId, revision, use03c 
     p_session_id: sessionId,
     p_expected_revision: revision,
   }));
+
+export const changePlannedSessionLifecycle = async (client, sessionId, revision, action, reason = null) => {
+  if (!SESSION_RETIREMENT_BACKEND_VERIFIED) throw new Error('El backend de eliminación y anulación aún no está verificado.');
+  if (!['retire', 'cancel', 'reactivate'].includes(action)) throw new Error('Acción de sesión no admitida.');
+  return unwrap(await client.rpc('change_planned_session_lifecycle_2c', {
+    p_session_id: sessionId,
+    p_expected_revision: revision,
+    p_action: action,
+    p_reason: action === 'reactivate' ? null : reason?.trim() || null,
+  }));
+};
 
 export const loadPlannedRosterCandidates = async (client, clubTeamSeasonId) => {
   const memberships = unwrap(await client.from('club_team_season_players')
