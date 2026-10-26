@@ -66,6 +66,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsLoadError, setSessionsLoadError] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [libraryTasks, setLibraryTasks] = useState([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryError, setLibraryError] = useState('');
@@ -126,6 +127,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   useEffect(() => {
     setEditor(null); setBaseline(null); setSessions([]); setSessionsLoadError(false);
+    setDeleteTarget(null);
     setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
     setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
     setDistribution(null); setDistributionBaseline(null); setSpecificPositions([]); setBoardsError('');
@@ -138,6 +140,12 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
+  useEffect(() => {
+    if (!deleteTarget) return undefined;
+    const closeOnEscape = (event) => { if (event.key === 'Escape') setDeleteTarget(null); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [deleteTarget]);
   useEffect(() => {
     if (!expandedSlotId) return;
     document.querySelector(`[data-planned-slot-id="${expandedSlotId}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -211,6 +219,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const requestDiscard = () => !dirty || window.confirm('Hay cambios sin guardar. ¿Descartarlos?');
   const changeContext = (nextId) => {
     if (busy || !requestDiscard()) return;
+    setDeleteTarget(null);
     setEditor(null); setBaseline(null); setUnsupportedItems(false); setValidationIssues([]); setExpandedSlotId(null);
     setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
     setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
@@ -725,20 +734,53 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         {sessionsLoading ? <p className="mt-3 text-sm text-slate-400">Cargando sesiones…</p> : null}
         {!sessionsLoading && !sessionsLoadError && !sessions.length ? <p className="mt-3 text-sm text-slate-400">Todavía no hay sesiones planificadas para este equipo-temporada.</p> : null}
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {sessions.map((row) => <button type="button" key={row.id} onClick={() => openSession(row.id)}
-            disabled={busy} className="rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left transition hover:border-caudal-electric/50 disabled:opacity-60">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-semibold text-white">{formatDate(row.session_date)}{row.starts_at ? ` · ${String(row.starts_at).slice(0, 5)}` : ''}</span>
-              <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${row.planning_state === 'confirmed'
-                ? 'bg-caudal-electric/15 text-caudal-electric' : 'bg-white/10 text-slate-300'}`}>
-                {row.planning_state === 'confirmed' ? `Confirmada · Nº ${row.session_number}` : 'Borrador'}
-              </span>
-            </div>
-            <p className="mt-2 text-xs text-slate-400">{row.total_minutes} min planificados
-              {isPlannedMicrocycle(row.morphology_pattern) ? ` · ${row.morphology_pattern}` : ''} · Abrir sesión</p>
-          </button>)}
+          {sessions.map((row) => <div key={row.id}
+            className="flex min-w-0 items-start rounded-xl border border-white/10 bg-white/[0.04] transition hover:border-caudal-electric/50">
+            <button type="button" onClick={() => openSession(row.id)} disabled={busy}
+              className="min-w-0 flex-1 rounded-xl p-3 text-left disabled:opacity-60">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold text-white">{formatDate(row.session_date)}{row.starts_at ? ` · ${String(row.starts_at).slice(0, 5)}` : ''}</span>
+                <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${row.planning_state === 'confirmed'
+                  ? 'bg-caudal-electric/15 text-caudal-electric' : 'bg-white/10 text-slate-300'}`}>
+                  {row.planning_state === 'confirmed' ? `Confirmada · Nº ${row.session_number}` : 'Borrador'}
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-slate-400">{row.total_minutes} min planificados
+                {isPlannedMicrocycle(row.morphology_pattern) ? ` · ${row.morphology_pattern}` : ''} · Abrir sesión</p>
+            </button>
+            {canWriteContext ? <details className="relative z-10 mt-2 mr-2 shrink-0">
+              <summary aria-label={`Acciones de ${row.planning_state === 'confirmed' ? `sesión nº ${row.session_number}` : 'borrador'} del ${formatDate(row.session_date)}`}
+                className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-lg text-xl text-slate-300 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric">⋯</summary>
+              <div className="absolute right-0 top-full z-20 w-44 rounded-xl border border-white/15 bg-[#102239] p-1 shadow-xl">
+                <button type="button" disabled={busy} onClick={(event) => {
+                  event.currentTarget.closest('details')?.removeAttribute('open');
+                  setDeleteTarget(row);
+                }} className="min-h-10 w-full rounded-lg px-3 text-left text-sm font-semibold text-red-200 hover:bg-red-400/10 disabled:opacity-50">
+                  Eliminar sesión</button>
+              </div>
+            </details> : null}
+          </div>)}
         </div>
       </section> : null}
+
+      {deleteTarget ? <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 p-4">
+        <section role="dialog" aria-modal="true" aria-labelledby="planned-delete-title"
+          className="w-full max-w-md rounded-2xl border border-red-300/25 bg-[#0b1a2d] p-5 shadow-2xl">
+          <h3 id="planned-delete-title" className="text-lg font-black text-white">¿Eliminar esta sesión?</h3>
+          <p className="mt-2 font-semibold text-white">{deleteTarget.planning_state === 'confirmed'
+            ? `Sesión nº ${deleteTarget.session_number}` : 'Borrador de sesión'}</p>
+          <p className="mt-1 text-sm text-slate-300">{formatDate(deleteTarget.session_date)}
+            {deleteTarget.starts_at ? ` · ${String(deleteTarget.starts_at).slice(0, 5)}` : ''}</p>
+          <p className="mt-4 text-sm text-slate-200">Esta acción retiraría la sesión del listado y del Calendario.</p>
+          <p role="status" className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-xs text-amber-100">
+            Eliminación pendiente: el backend actual la prohíbe y conserva dependencias históricas. No se borrará ningún dato.</p>
+          <div className="mt-5 flex flex-wrap justify-end gap-2">
+            <button type="button" autoFocus onClick={() => setDeleteTarget(null)}
+              className={`${button} border border-white/20 text-white`}>Cancelar</button>
+            <button type="button" disabled className={`${button} bg-red-700 text-white`}>Eliminar sesión</button>
+          </div>
+        </section>
+      </div> : null}
 
       {editor && selected ? <section className="space-y-3" aria-label="Ficha de sesión">
         <div className={`${panel} flex flex-wrap items-center justify-between gap-3`}>
