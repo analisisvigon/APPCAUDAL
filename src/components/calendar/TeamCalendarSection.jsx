@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listPlannedSessions, loadPlannedContexts } from '../../data/plannedSessionsStore.js';
 import { chooseCalendarContext, scopeCalendarMatches } from '../../utils/teamCalendarContext.js';
 import { MICROCYCLES_2B_BACKEND_VERIFIED, hydrateMicrocycleDraft,
-  loadMicrocycle2b, saveMicrocycle2b } from '../../data/microcycles2bStore.js';
+  loadMicrocycle2b, saveMicrocycle2b, verifyMicrocycleSave } from '../../data/microcycles2bStore.js';
 import { buildTeamCalendarEvents, calendarLocalDateKey, calendarMonthDays,
   calendarWeekDays, calendarWeekSummary, calendarWeeklyCountLabel, shiftCalendarWeek } from '../../utils/teamCalendar.js';
 import MicrocyclePlanningPreview from './MicrocyclePlanningPreview.jsx';
@@ -82,7 +82,8 @@ const weekRangeLabel = (days) => {
 };
 
 export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectDay, onOpen, today, loading, error,
-  onPreviewEditingChange, plan, planLoading, planError, planSaving, canWritePlan, previewAllowed, onSavePlan }) {
+  onPreviewEditingChange, plan, planLoading, planError, planSaving, canWritePlan, previewAllowed,
+  onSavePlan, onReloadPlan }) {
   const summary = calendarWeekSummary(events, days);
   const chosenDay = days.includes(selectedDay) ? selectedDay : '';
   const chosenEvents = chosenDay ? grouped.get(chosenDay) || [] : [];
@@ -101,7 +102,7 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
       onSelectDay={onSelectDay} onEditingChange={onPreviewEditingChange}
       plan={plan} loading={planLoading} error={planError} saving={planSaving}
       backendReady={MICROCYCLES_2B_BACKEND_VERIFIED} canWrite={canWritePlan}
-      previewAllowed={previewAllowed} onSave={onSavePlan} />
+      previewAllowed={previewAllowed} onSave={onSavePlan} onReload={onReloadPlan} />
     {!loading && !error ? <>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
         {days.map((key) => {
@@ -170,6 +171,8 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
   const selectedContext = contexts.find((row) => row.id === contextId) || null;
   const weekDays = useMemo(() => calendarWeekDays(weekAnchor), [weekAnchor]);
   const monday = weekDays[0];
+  const planScopeRef = useRef('');
+  planScopeRef.current = `${contextId}:${monday}`;
   const currentPlan = plan?.club_team_season_id === contextId && plan?.week_starts_on === monday ? plan : null;
   const planReady = loadedPlanKey === `${contextId}:${monday}:${planLoadVersion}`;
   const canWritePlan = verifiedWriteContextId === contextId && Boolean(contextId) &&
@@ -250,13 +253,16 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
     }
     planSaveRef.current = true; setPlanSaving(true);
     try {
-      const reply = await saveMicrocycle2b(client, contextId, monday, currentPlan?.revision || 0, draft, weekDays);
-      const fresh = await loadMicrocycle2b(client, contextId, monday);
-      const confirmedDraft = hydrateMicrocycleDraft(fresh, weekDays);
-      if (!fresh || fresh.id !== reply?.id || fresh.revision !== reply?.revision ||
-        JSON.stringify(confirmedDraft) !== JSON.stringify(draft))
-        throw new Error('El servidor no confirmó la revisión guardada. Recarga antes de continuar.');
-      setPlan(fresh);
+      const targetContextId = contextId;
+      const targetMonday = monday;
+      const expectedRevision = currentPlan?.revision ?? 0;
+      const reply = await saveMicrocycle2b(client, targetContextId, targetMonday,
+        expectedRevision, draft, weekDays);
+      const fresh = await loadMicrocycle2b(client, targetContextId, targetMonday);
+      if (planScopeRef.current !== `${targetContextId}:${targetMonday}`)
+        throw new Error('El equipo o la semana cambiaron durante el guardado. Recarga la planificación.');
+      setPlan(verifyMicrocycleSave(reply, fresh, targetContextId, targetMonday,
+        expectedRevision, draft, weekDays));
     } finally { planSaveRef.current = false; setPlanSaving(false); }
   };
   const refreshAll = async () => {
@@ -284,6 +290,10 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
     setPreviewEditing(false);
     setPreviewEpoch((current) => current + 1);
     return true;
+  };
+  const reloadPlan = () => {
+    if (planSaveRef.current || !discardPreview()) return;
+    setPlanLoadVersion((current) => current + 1);
   };
   const open = (event) => {
     if (view === 'week' && !discardPreview()) return;
@@ -393,7 +403,7 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
         planLoading={planLoading || (MICROCYCLES_2B_BACKEND_VERIFIED && Boolean(contextId) && !planReady)}
         planError={planError} planSaving={planSaving} onSavePlan={savePlan}
         previewAllowed={Boolean(selectedContext && selectedContext.status === 'open')}
-        canWritePlan={canWritePlan && planReady} />}
+        canWritePlan={canWritePlan && planReady} onReloadPlan={reloadPlan} />}
       {!loading && !error && !matchError && view !== 'week' && !events.length ? <p className="mt-5 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">No hay eventos para los filtros seleccionados.</p> : null}
       {!loading && !error && view === 'month' && events.length > 0 && !days.some((key) => grouped.has(key)) ? <p className="mt-4 text-sm text-slate-400">No hay eventos en este mes.</p> : null}
     </section>

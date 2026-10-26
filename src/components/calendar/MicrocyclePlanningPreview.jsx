@@ -21,10 +21,10 @@ const dateLabel = (key) => new Date(`${key}T12:00:00`).toLocaleDateString('es-ES
 
 export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectDay, onEditingChange,
   plan = null, backendReady = false, previewAllowed = true, canWrite = false,
-  loading = false, error = '', saving = false, onSave }) {
+  loading = false, error = '', saving = false, onSave, onReload }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(() => hydrateMicrocycleDraft(plan, days));
-  const [saveError, setSaveError] = useState('');
+  const [saveError, setSaveError] = useState(null);
   const baseline = hydrateMicrocycleDraft(plan, days);
   const dirty = JSON.stringify(draft) !== JSON.stringify(baseline);
   useEffect(() => { if (!editing) setDraft(hydrateMicrocycleDraft(plan, days)); }, [plan, days, editing]);
@@ -35,38 +35,39 @@ export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectD
     days: { ...current.days, [day]: { ...current.days[day], [field]: value } },
   }));
   const cancel = () => {
-    setDraft(hydrateMicrocycleDraft(plan, days)); setEditing(false); setSaveError('');
+    if (saving) return;
+    setDraft(hydrateMicrocycleDraft(plan, days)); setEditing(false); setSaveError(null);
     onEditingChange?.(false);
   };
   const save = async () => {
     if (!backendReady || !canWrite || !dirty || saving || !onSave) return;
-    setSaveError('');
+    setSaveError(null);
     try {
       await onSave(draft);
       setEditing(false);
       onEditingChange?.(false);
     } catch (cause) {
-      setSaveError(cause?.code === '40001'
-        ? 'Otra edición cambió esta semana. Tus cambios siguen en pantalla; cancela y recarga antes de reintentarlo.'
-        : `No se pudo verificar el guardado. Tus cambios siguen en pantalla. ${cause?.message || ''}`);
+      setSaveError({ conflict: cause?.code === '40001', message: cause?.code === '40001'
+        ? 'Otra edición cambió esta semana. Tus cambios siguen en pantalla; recarga antes de volver a guardar.'
+        : `No se pudo verificar el guardado. Tus cambios siguen en pantalla. ${cause?.message || ''}` });
     }
   };
   return <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4" aria-label="Planificación semanal">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h4 className="text-sm font-black uppercase tracking-wide text-white">Planificación semanal</h4>
         <p className="mt-1 text-xs text-slate-400">{!backendReady
-          ? 'Vista previa local: aún no se consulta ni guarda la planificación semanal.'
+          ? 'Guardado pendiente de pruebas reales de permisos y concurrencia.'
           : loading ? 'Cargando planificación semanal…'
             : error ? 'No se pudo consultar esta planificación.'
-              : plan ? `Planificación guardada · revisión ${plan.revision}` : 'Semana sin planificación guardada.'}</p></div>
+              : plan ? `Planificación guardada · revisión ${plan.revision}` : 'Esta semana todavía no tiene planificación registrada.'}</p></div>
       {!editing && !loading && !error && (backendReady ? canWrite : previewAllowed) ? <button type="button" onClick={() => { setDraft(baseline); setEditing(true); }}
         className="min-h-10 rounded-lg border border-sky-300/35 px-3 py-2 text-xs font-bold text-sky-100 hover:bg-sky-300/10">
-        Editar planificación</button> : null}
+        {!backendReady ? 'Ver formulario (sin guardar)' : plan ? 'Editar planificación' : 'Planificar semana'}</button> : null}
     </div>
     {error ? <p role="alert" className="mt-3 text-sm text-red-200">{error}</p> : null}
     {backendReady && !loading && !error && !canWrite ? <p role="status" className="mt-2 text-xs text-amber-200">
       Solo lectura: falta un equipo-temporada abierto o permiso de escritura.</p> : null}
-    {!editing && plan && !error ? <div className="mt-3 space-y-2 text-xs text-slate-200">
+    {!editing && plan && !error ? <div className="mt-3 space-y-2 text-sm text-slate-200">
       {baseline.objective ? <p><strong>Objetivo:</strong> {baseline.objective}</p> : null}
       {baseline.priorities.length ? <p><strong>Prioridades:</strong> {baseline.priorities.join(' · ')}</p> : null}
       {baseline.responsible ? <p><strong>Responsable:</strong> {baseline.responsible}</p> : null}
@@ -82,6 +83,8 @@ export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectD
     {editing ? <div className="mt-4 space-y-4">
       {!backendReady ? <p role="status" className="rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-xs text-amber-100">
         Vista previa local: estos datos no se guardan. La persistencia segura está pendiente de aprobación.</p> : null}
+      <fieldset disabled={saving} className="space-y-4 disabled:opacity-70">
+      <h5 className="border-b border-white/10 pb-2 text-xs font-black uppercase tracking-wide text-sky-200">Planificación general</h5>
       <div className="grid gap-3 md:grid-cols-2">
         <label className="text-xs text-slate-200">Objetivo principal
           <textarea value={draft.objective} onChange={(event) => setDraft((current) => ({ ...current, objective: event.target.value }))}
@@ -102,16 +105,7 @@ export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectD
         <input value={draft.responsible} onChange={(event) => setDraft((current) => ({ ...current, responsible: event.target.value }))}
           className="mt-1 w-full rounded-lg border border-white/20 bg-[#091428] p-2 text-sm text-white" /></label>
       <div className="border-t border-white/10 pt-4">
-        <h5 className="text-xs font-black uppercase tracking-wide text-sky-200">Planificación del día</h5>
-        <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4 xl:grid-cols-7" aria-label="Vista previa de intensidad semanal no guardada">
-          {days.map((key) => {
-            const intensity = draft.days[key]?.intensity || '';
-            return <div key={key} className={`rounded-md border px-2 py-1.5 text-[11px] ${INTENSITY_STYLE[intensity] || 'border-white/15 text-slate-400'}`}>
-              <span className="block font-bold capitalize">{new Date(`${key}T12:00:00`).toLocaleDateString('es-ES', { weekday: 'short' })}</span>
-              <span>{intensity || 'Sin asignar'}</span>
-            </div>;
-          })}
-        </div>
+        <h5 className="text-xs font-black uppercase tracking-wide text-sky-200">Planificación diaria</h5>
         <div className="mt-2 flex flex-wrap gap-1">{days.map((key) => <button type="button" key={key}
           onClick={() => onSelectDay(key)} aria-pressed={day === key}
           className={`min-h-9 rounded-lg border px-2 text-xs ${day === key ? 'border-sky-300 bg-sky-300/15 text-white' : 'border-white/15 text-slate-300'}`}>
@@ -145,13 +139,19 @@ export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectD
               className="mt-1 min-h-10 w-full rounded-lg border border-white/20 bg-[#091428] p-2 text-sm text-white" /></label>
         </div>
       </div>
+      </fieldset>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={save} disabled={!backendReady || !canWrite || saving || !dirty}
           className="rounded-lg bg-sky-500 px-4 py-2 text-xs font-bold text-slate-950 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-200 disabled:opacity-60">
           {saving ? 'Guardando…' : backendReady ? 'Guardar' : 'Guardar (pendiente de backend)'}</button>
-        <button type="button" onClick={cancel} className="rounded-lg border border-white/20 px-4 py-2 text-xs font-bold text-white">Cancelar</button>
+        <button type="button" onClick={cancel} disabled={saving}
+          className="rounded-lg border border-white/20 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">Cancelar</button>
       </div>
-      {saveError ? <p role="alert" className="text-xs text-red-200">{saveError}</p> : null}
+      {saveError ? <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-red-200">
+        <span>{saveError.message}</span>
+        {saveError.conflict && onReload ? <button type="button" onClick={onReload}
+          className="rounded-lg border border-red-300/40 px-3 py-2 font-bold text-red-100">Recargar planificación</button> : null}
+      </div> : null}
     </div> : null}
   </section>;
 }

@@ -81,7 +81,7 @@ try {
   assert.match(week, /Abrir sesión/);
   assert.match(week, /grid-cols-1[^"']*sm:grid-cols-2[^"']*2xl:grid-cols-7/,
     'móvil vertical, tablet adaptativa y siete columnas en pantallas amplias');
-  assert.match(weekly([]), /No hay actividades registradas esta semana/);
+  assert.match(weekly([]), /No hay actividades activas esta semana/);
   assert.match(weekly([weekSession, { ...weekSession, id: 'session-2', durationKnown: false, date: '2026-10-27' }]),
     /Duración parcial/);
   assert.match(weekly([{ ...weekSession, durationKnown: false, durationMinutes: null }]),
@@ -98,8 +98,8 @@ try {
   const planPreview = renderToStaticMarkup(React.createElement(MicrocyclePlanningPreview, {
     days, selectedDay: days[0], onSelectDay: () => {}, onEditingChange: () => {},
   }));
-  assert.match(planPreview, /Vista previa local: aún no se consulta ni guarda la planificación semanal/);
-  assert.match(planPreview, /Editar planificación/);
+  assert.match(planPreview, /Guardado pendiente de pruebas reales de permisos y concurrencia/);
+  assert.match(planPreview, /Ver formulario \(sin guardar\)/);
   assert.doesNotMatch(planPreview, /Guardado correctamente|Planificación guardada/);
   const savedPlan = { revision: 2, weekly: { objective: 'Presión tras pérdida',
     priorities: ['Táctica'], responsible: '', observations: '' },

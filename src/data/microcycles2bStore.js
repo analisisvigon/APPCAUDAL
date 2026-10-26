@@ -69,16 +69,32 @@ export const loadMicrocycle2b = async (client, contextId, monday) => {
   return row || null;
 };
 
-export const saveMicrocycle2b = async (client, contextId, monday, expectedRevision, draft, days) => {
-  if (!MICROCYCLES_2B_BACKEND_VERIFIED) throw new Error('Backend de microciclos pendiente de verificación.');
+export const buildMicrocycleSaveArgs = (contextId, monday, expectedRevision, draft, days) => {
   if (!contextId || monday !== days[0] || !Number.isInteger(expectedRevision) || expectedRevision < 0)
     throw new Error('Contexto o revisión de planificación inválidos.');
   const payload = serializeMicrocycleDraft(draft, days);
-  return unwrap(await client.rpc('save_planned_microcycle_2b', {
+  return {
     p_club_team_season_id: contextId,
     p_week_starts_on: monday,
     p_expected_revision: expectedRevision,
     p_weekly: payload.weekly,
     p_days: payload.days,
-  }));
+  };
+};
+
+export const verifyMicrocycleSave = (reply, fresh, contextId, monday, expectedRevision, draft, days) => {
+  if (!fresh || typeof fresh.id !== 'string' || !fresh.id || fresh.id !== reply?.id ||
+    fresh.club_team_season_id !== contextId ||
+    fresh.week_starts_on !== monday || fresh.revision !== expectedRevision + 1 ||
+    fresh.revision !== reply?.revision ||
+    JSON.stringify(hydrateMicrocycleDraft(fresh, days)) !== JSON.stringify(draft)) {
+    throw new Error('El servidor no confirmó la revisión guardada. Recarga antes de continuar.');
+  }
+  return fresh;
+};
+
+export const saveMicrocycle2b = async (client, contextId, monday, expectedRevision, draft, days) => {
+  if (!MICROCYCLES_2B_BACKEND_VERIFIED) throw new Error('Backend de microciclos pendiente de verificación.');
+  return unwrap(await client.rpc('save_planned_microcycle_2b',
+    buildMicrocycleSaveArgs(contextId, monday, expectedRevision, draft, days)));
 };
