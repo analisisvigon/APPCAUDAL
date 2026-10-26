@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { buildTeamCalendarEvents, calendarDateKey, calendarMatchKind, calendarMonthDays, calendarTime,
-  calendarWeekDays, calendarWeekSummary, shiftCalendarWeek } from './teamCalendar.js';
+  calendarWeekDays, calendarWeekSummary, calendarWeeklyCountLabel, shiftCalendarWeek } from './teamCalendar.js';
 
 assert.equal(calendarDateKey('2026-02-28'), '2026-02-28');
 assert.equal(calendarDateKey('2026-02-29'), '');
@@ -131,4 +131,8 @@ assert.equal(buildTeamCalendarEvents([], [matches[0], matches[0]]).length, 1,
 assert.deepEqual(calendarWeekSummary([], weekDays), {
   sessions: 0, matches: 0, activeDays: 0, durationMinutes: 0, durationCoverage: 'none',
 });
+assert.equal(calendarWeeklyCountLabel({ sessions: 1, matches: 0, activeDays: 1 }),
+  '1 sesión · 0 partidos · 1 día con actividad');
+assert.equal(calendarWeeklyCountLabel({ sessions: 2, matches: 1, activeDays: 3 }),
+  '2 sesiones · 1 partido · 3 días con actividad');
 console.log('teamCalendar: OK');

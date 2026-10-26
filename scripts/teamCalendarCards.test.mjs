@@ -73,7 +73,9 @@ try {
   assert.equal((week.match(/aria-label="Ver detalle del /g) || []).length, 7);
   assert.match(week, /26 de octubre/);
   assert.match(week, /1 de noviembre/);
-  assert.match(week, /1 sesiones · 2 partidos · 2 días con actividad/);
+  assert.match(week, /1 sesión · 2 partidos · 2 días con actividad/);
+  assert.doesNotMatch(week, /<h3[^>]*>[^<]*(?:26 de octubre|1 de noviembre)[^<]*<\/h3>/,
+    'el encabezado semanal no duplica el rango que ya muestra la cabecera del calendario');
   assert.match(week, /85 min planificados/);
   assert.match(week, /Organización defensiva/);
   assert.match(week, /Abrir sesión/);
@@ -86,6 +88,26 @@ try {
     /Duración no acreditada · Duración parcial/);
   assert.doesNotMatch(weekly([weekSession], '', { error: true }), /Sesión nº 1/,
     'ante un error no se exhiben eventos anteriores');
+  const { default: MicrocyclePlanningPreview, emptyMicrocyclePreview, WEEK_PRIORITIES,
+    DAY_TYPES, DAY_FOCUS, DAY_INTENSITIES } = await vite.ssrLoadModule('/src/components/calendar/MicrocyclePlanningPreview.jsx');
+  assert.equal(emptyMicrocyclePreview(days).days[days[0]].intensity, '');
+  assert.equal(Object.keys(emptyMicrocyclePreview(days).days).length, 7);
+  assert.deepEqual(WEEK_PRIORITIES, ['Táctica', 'Técnica', 'Física', 'Estratégica / ABP', 'Recuperación', 'Otros']);
+  assert.ok(DAY_TYPES.includes('Descanso') && DAY_TYPES.includes('Recuperación') && DAY_TYPES.includes('Partido'));
+  assert.ok(DAY_FOCUS.includes('Mixto') && DAY_INTENSITIES.includes('Muy baja') && DAY_INTENSITIES.includes('Muy alta'));
+  const planPreview = renderToStaticMarkup(React.createElement(MicrocyclePlanningPreview, {
+    days, selectedDay: days[0], onSelectDay: () => {}, onEditingChange: () => {},
+  }));
+  assert.match(planPreview, /Vista previa local: aún no se consulta ni guarda la planificación semanal/);
+  assert.match(planPreview, /Editar planificación/);
+  assert.doesNotMatch(planPreview, /Guardado correctamente|Planificación guardada/);
+  const planSource = readFileSync(new URL('../src/components/calendar/MicrocyclePlanningPreview.jsx', import.meta.url), 'utf8');
+  assert.match(planSource, /Guardar \(pendiente de backend\)/);
+  assert.match(planSource, /button type="button" disabled/);
+  assert.match(planSource, /setDraft\(emptyMicrocyclePreview\(days\)\)/,
+    'Cancelar elimina el borrador de vista previa');
+  assert.doesNotMatch(planSource, /localStorage|\.rpc\(|\.from\(/,
+    'la vista previa no persiste datos por una vía no autorizada');
   console.log('team calendar cards: OK (renderizado local con fixtures)');
 } finally {
   await vite.close();

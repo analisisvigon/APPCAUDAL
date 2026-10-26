@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { listPlannedSessions, loadPlannedContexts } from '../../data/plannedSessionsStore.js';
 import { buildTeamCalendarEvents, calendarLocalDateKey, calendarMonthDays,
-  calendarWeekDays, calendarWeekSummary, shiftCalendarWeek } from '../../utils/teamCalendar.js';
+  calendarWeekDays, calendarWeekSummary, calendarWeeklyCountLabel, shiftCalendarWeek } from '../../utils/teamCalendar.js';
+import MicrocyclePlanningPreview from './MicrocyclePlanningPreview.jsx';
 
 const FILTERS = [
   ['training', 'Entrenamientos'], ['league', 'Liga'], ['cup', 'Copa'],
@@ -55,8 +56,13 @@ export function EventButton({ event, onOpen, variant = 'month' }) {
           <span>{event.label}</span>{event.venue != null ? <span>· {event.venue ? 'Local' : 'Visitante'}</span> : null}
           <span>· {event.time || 'Hora pendiente'}</span>
         </span>
-      </> : <span className="block text-[11px] opacity-85">{event.time || 'Hora pendiente'}
-        {variant === 'week' && event.durationKnown ? ` · ${event.durationMinutes} min` : ' · Entrenamiento'}</span>}
+      </> : <>
+        <span className="block text-[11px] opacity-85">{event.time || 'Hora pendiente'}
+          {variant === 'week' && event.durationKnown ? ` · ${event.durationMinutes} min` : ' · Entrenamiento'}</span>
+        {variant === 'week' && event.objective ? <span className="block break-words text-[11px] leading-snug opacity-80"
+          title={event.objective} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+          {event.objective}</span> : null}
+      </>}
     </span>
   </button>;
 }
@@ -71,15 +77,15 @@ const weekRangeLabel = (days) => {
   return `${first} – ${last}`;
 };
 
-export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectDay, onOpen, today, loading, error }) {
+export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectDay, onOpen, today, loading, error,
+  onPreviewEditingChange }) {
   const summary = calendarWeekSummary(events, days);
   const chosenDay = days.includes(selectedDay) ? selectedDay : '';
   const chosenEvents = chosenDay ? grouped.get(chosenDay) || [] : [];
   return <section className="mt-5 space-y-4" aria-label="Microciclo semanal">
     <div className="flex flex-wrap items-end justify-between gap-3 border-b border-white/10 pb-3">
-      <div><p className="text-[11px] font-black uppercase tracking-[0.2em] text-sky-300">Microciclo semanal</p>
-        <h3 className="mt-1 text-lg font-bold capitalize text-white">{weekRangeLabel(days)}</h3></div>
-      {!loading && !error ? <p className="text-xs text-slate-300">{summary.sessions} sesiones · {summary.matches} partidos · {summary.activeDays} días con actividad</p> : null}
+      <h3 className="text-sm font-black uppercase tracking-[0.2em] text-sky-300">Microciclo semanal</h3>
+      {!loading && !error ? <p className="text-xs text-slate-300">{calendarWeeklyCountLabel(summary)}</p> : null}
     </div>
     {!loading && !error && summary.durationCoverage !== 'none' ? <p className="text-xs font-semibold text-slate-300">
       {summary.durationCoverage === 'complete'
@@ -88,6 +94,8 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
           ? `${summary.durationMinutes} min acreditados · Duración parcial`
           : 'Duración no acreditada · Duración parcial'}</p> : null}
     {!loading && !error ? <>
+      <MicrocyclePlanningPreview key={days[0]} days={days} selectedDay={selectedDay}
+        onSelectDay={onSelectDay} onEditingChange={onPreviewEditingChange} />
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
         {days.map((key) => {
           const rows = grouped.get(key) || [];
@@ -128,6 +136,7 @@ export default function TeamCalendarSection({ client, clubId, matches, teams, on
   const [month, setMonth] = useState(() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); });
   const [weekAnchor, setWeekAnchor] = useState(() => calendarLocalDateKey());
   const [selectedWeekDay, setSelectedWeekDay] = useState('');
+  const [previewEditing, setPreviewEditing] = useState(false);
   const [view, setView] = useState('month');
   const [selectedDay, setSelectedDay] = useState('');
   const [enabled, setEnabled] = useState(() => Object.fromEntries(FILTERS.map(([key]) => [key, true])));
@@ -154,6 +163,8 @@ export default function TeamCalendarSection({ client, clubId, matches, teams, on
     return () => { signal.cancelled = true; };
   }, [refresh]);
   const refreshAll = async () => {
+    if (previewEditing && !window.confirm('La vista previa no se guarda. ¿Descartar los cambios locales?')) return;
+    setPreviewEditing(false);
     setMatchError('');
     await Promise.all([refresh(), onRefreshMatches?.().catch(() => setMatchError('No se pudieron actualizar los partidos.'))]);
   };
@@ -168,11 +179,23 @@ export default function TeamCalendarSection({ client, clubId, matches, teams, on
   const weekDays = useMemo(() => calendarWeekDays(weekAnchor), [weekAnchor]);
   const now = new Date();
   const today = calendarLocalDateKey(now);
-  const open = (event) => event.kind === 'training'
-    ? onOpenSession({ id: event.id, contextId: event.contextId }) : onOpenMatch(event.match);
   const moveMonth = (step) => { setSelectedDay(''); setMonth((current) => new Date(current.getFullYear(), current.getMonth() + step, 1)); };
-  const moveWeek = (step) => { setSelectedWeekDay(''); setWeekAnchor((current) => shiftCalendarWeek(current, step)); };
+  const discardPreview = () => {
+    if (previewEditing && !window.confirm('La vista previa no se guarda. ¿Descartar los cambios locales?')) return false;
+    setPreviewEditing(false);
+    return true;
+  };
+  const open = (event) => {
+    if (view === 'week' && !discardPreview()) return;
+    if (event.kind === 'training') onOpenSession({ id: event.id, contextId: event.contextId });
+    else onOpenMatch(event.match);
+  };
+  const moveWeek = (step) => {
+    if (!discardPreview()) return;
+    setSelectedWeekDay(''); setWeekAnchor((current) => shiftCalendarWeek(current, step));
+  };
   const changeView = (next) => {
+    if (view === 'week' && next !== 'week' && !discardPreview()) return;
     if (next === 'week' && view !== 'week') {
       const day = selectedDay && days.includes(selectedDay) ? selectedDay :
         calendarLocalDateKey(new Date(month.getFullYear(), month.getMonth(),
@@ -188,11 +211,12 @@ export default function TeamCalendarSection({ client, clubId, matches, teams, on
     setView(next);
   };
   const goToday = () => {
+    if (view === 'week' && !discardPreview()) return;
     setSelectedDay(today); setSelectedWeekDay(today); setWeekAnchor(today);
     setMonth(new Date(now.getFullYear(), now.getMonth(), 1));
   };
 
-  return <main className="space-y-4 pb-8 text-slate-100">
+  return <main className="space-y-4 pb-8 text-slate-100 xl:pb-32">
     <section className="rounded-[1.6rem] border border-white/10 bg-[#091428]/[0.72] p-4 shadow-[0_18px_55px_rgba(0,0,0,0.20)] sm:p-5">
       <p className="text-xs font-black uppercase tracking-[0.28em] text-caudal-electric/75">Calendario</p>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
@@ -245,7 +269,8 @@ export default function TeamCalendarSection({ client, clubId, matches, teams, on
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{rows.map((event) => <EventButton key={`${event.kind}-${event.id}`} event={event} onOpen={open} variant="list" />)}</div>
       </section>)}</div> : <CalendarWeekView days={weekDays} grouped={grouped} events={events}
         selectedDay={selectedWeekDay} onSelectDay={setSelectedWeekDay} onOpen={open}
-        today={today} loading={loading} error={Boolean(error || matchError)} />}
+        today={today} loading={loading} error={Boolean(error || matchError)}
+        onPreviewEditingChange={setPreviewEditing} />}
       {!loading && !error && !matchError && view !== 'week' && !events.length ? <p className="mt-5 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">No hay eventos para los filtros seleccionados.</p> : null}
       {!loading && !error && view === 'month' && events.length > 0 && !days.some((key) => grouped.has(key)) ? <p className="mt-4 text-sm text-slate-400">No hay eventos en este mes.</p> : null}
     </section>

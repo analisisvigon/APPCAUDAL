@@ -55,6 +55,11 @@ export const calendarWeekSummary = (events, days) => {
     durationCoverage: !sessions.length ? 'none' : known.length === sessions.length ? 'complete' : 'partial' };
 };
 
+export const calendarWeeklyCountLabel = ({ sessions, matches, activeDays }) =>
+  `${sessions} ${sessions === 1 ? 'sesión' : 'sesiones'} · ` +
+  `${matches} ${matches === 1 ? 'partido' : 'partidos'} · ` +
+  `${activeDays} ${activeDays === 1 ? 'día' : 'días'} con actividad`;
+
 export const calendarMatchKind = (match) => {
   const key = normalizeCompetitionKey(match);
   if (key === 'league') return 'league';
