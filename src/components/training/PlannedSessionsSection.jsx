@@ -67,6 +67,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsLoadError, setSessionsLoadError] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [retirementReason, setRetirementReason] = useState('');
   const [libraryTasks, setLibraryTasks] = useState([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryError, setLibraryError] = useState('');
@@ -142,6 +143,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   }, [dirty]);
   useEffect(() => {
     if (!deleteTarget) return undefined;
+    setRetirementReason('');
     const closeOnEscape = (event) => { if (event.key === 'Escape') setDeleteTarget(null); };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
@@ -771,9 +773,13 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
             ? `Sesión nº ${deleteTarget.session_number}` : 'Borrador de sesión'}</p>
           <p className="mt-1 text-sm text-slate-300">{formatDate(deleteTarget.session_date)}
             {deleteTarget.starts_at ? ` · ${String(deleteTarget.starts_at).slice(0, 5)}` : ''}</p>
-          <p className="mt-4 text-sm text-slate-200">Esta acción retiraría la sesión del listado y del Calendario.</p>
+          <p className="mt-4 text-sm text-slate-200">La sesión dejará de aparecer en Sesiones y Calendario, pero se conservará internamente para mantener el historial.</p>
+          <label className="mt-3 block text-xs text-slate-300">Motivo opcional
+            <textarea value={retirementReason} onChange={(event) => setRetirementReason(event.target.value)}
+              maxLength={1000} rows={2} className={`${input} mt-1`} />
+          </label>
           <p role="status" className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-xs text-amber-100">
-            Eliminación pendiente: el backend actual la prohíbe y conserva dependencias históricas. No se borrará ningún dato.</p>
+            Eliminación pendiente: falta acreditar cómo detectar actividad ejecutada y referencias externas antes de activar la retirada lógica. No se borrará ningún dato.</p>
           <div className="mt-5 flex flex-wrap justify-end gap-2">
             <button type="button" autoFocus onClick={() => setDeleteTarget(null)}
               className={`${button} border border-white/20 text-white`}>Cancelar</button>

@@ -1,5 +1,8 @@
 import { parsePlannedSessionValue } from '../utils/plannedSessionValue.js';
 
+// Activar solo después de instalar y verificar el backend de retirada con identidades reales.
+export const SESSION_RETIREMENT_BACKEND_VERIFIED = false;
+
 const unwrap = (response) => {
   if (response?.error) throw response.error;
   return response?.data;
@@ -51,10 +54,11 @@ export const loadPlannedContexts = async (client, clubId) => {
 };
 
 export const listPlannedSessions = async (client, clubTeamSeasonId) => {
-  const sessions = unwrap(await client.from('planned_training_sessions')
+  let query = client.from('planned_training_sessions')
     .select('id,club_team_season_id,session_date,starts_at,planning_state,session_number,revision,morphology_pattern,objectives')
-    .eq('club_team_season_id', clubTeamSeasonId)
-    .order('session_date', { ascending: false })) || [];
+    .eq('club_team_season_id', clubTeamSeasonId);
+  if (SESSION_RETIREMENT_BACKEND_VERIFIED) query = query.is('retired_at', null);
+  const sessions = unwrap(await query.order('session_date', { ascending: false })) || [];
   if (!sessions.length) return [];
   const slots = unwrap(await client.from('planned_session_slots')
     .select('session_id,duration_minutes').in('session_id', sessions.map((row) => row.id))) || [];

@@ -33353,6 +33353,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
         ) : null}
         {activeTab === 'Calendario' ? (
           <TeamCalendarSection client={supabase} clubId={identity?.membership?.club_id || ''}
+            membership={identity?.membership} preferredContextId={selectedCtsId}
             matches={matches} teams={teams} onRefreshMatches={loadPartidos}
             onOpenSession={(target) => {
               setCalendarSessionTarget(target);

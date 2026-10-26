@@ -101,11 +101,23 @@ try {
   assert.match(planPreview, /Vista previa local: aún no se consulta ni guarda la planificación semanal/);
   assert.match(planPreview, /Editar planificación/);
   assert.doesNotMatch(planPreview, /Guardado correctamente|Planificación guardada/);
+  const savedPlan = { revision: 2, weekly: { objective: 'Presión tras pérdida',
+    priorities: ['Táctica'], responsible: '', observations: '' },
+  days: Object.fromEntries(days.map((key) => [key, { type: 'Entrenamiento',
+    objective: '', focus: '', intensity: 'Media', durationMinutes: 75, observations: '' }])) };
+  const savedPreview = renderToStaticMarkup(React.createElement(MicrocyclePlanningPreview, {
+    days, selectedDay: days[0], onSelectDay: () => {}, onEditingChange: () => {},
+    plan: savedPlan, backendReady: true, canWrite: false,
+  }));
+  assert.match(savedPreview, /Planificación guardada · revisión 2/);
+  assert.match(savedPreview, /Presión tras pérdida/);
+  assert.match(savedPreview, /Solo lectura/);
+  assert.doesNotMatch(savedPreview, /Editar planificación/);
   const planSource = readFileSync(new URL('../src/components/calendar/MicrocyclePlanningPreview.jsx', import.meta.url), 'utf8');
   assert.match(planSource, /Guardar \(pendiente de backend\)/);
-  assert.match(planSource, /button type="button" disabled/);
-  assert.match(planSource, /setDraft\(emptyMicrocyclePreview\(days\)\)/,
-    'Cancelar elimina el borrador de vista previa');
+  assert.match(planSource, /disabled=\{!backendReady \|\| !canWrite \|\| saving \|\| !dirty\}/);
+  assert.match(planSource, /setDraft\(hydrateMicrocycleDraft\(plan, days\)\)/,
+    'Cancelar restaura el último estado guardado');
   assert.doesNotMatch(planSource, /localStorage|\.rpc\(|\.from\(/,
     'la vista previa no persiste datos por una vía no autorizada');
   console.log('team calendar cards: OK (renderizado local con fixtures)');

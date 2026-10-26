@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listPlannedSessions, loadPlannedContexts } from '../../data/plannedSessionsStore.js';
+import { chooseCalendarContext, scopeCalendarMatches } from '../../utils/teamCalendarContext.js';
+import { MICROCYCLES_2B_BACKEND_VERIFIED, hydrateMicrocycleDraft,
+  loadMicrocycle2b, saveMicrocycle2b } from '../../data/microcycles2bStore.js';
 import { buildTeamCalendarEvents, calendarLocalDateKey, calendarMonthDays,
   calendarWeekDays, calendarWeekSummary, calendarWeeklyCountLabel, shiftCalendarWeek } from '../../utils/teamCalendar.js';
 import MicrocyclePlanningPreview from './MicrocyclePlanningPreview.jsx';
@@ -78,7 +81,7 @@ const weekRangeLabel = (days) => {
 };
 
 export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectDay, onOpen, today, loading, error,
-  onPreviewEditingChange }) {
+  onPreviewEditingChange, plan, planLoading, planError, planSaving, canWritePlan, previewAllowed, onSavePlan }) {
   const summary = calendarWeekSummary(events, days);
   const chosenDay = days.includes(selectedDay) ? selectedDay : '';
   const chosenEvents = chosenDay ? grouped.get(chosenDay) || [] : [];
@@ -93,9 +96,12 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
         : summary.durationMinutes > 0
           ? `${summary.durationMinutes} min acreditados · Duración parcial`
           : 'Duración no acreditada · Duración parcial'}</p> : null}
+    <MicrocyclePlanningPreview key={days[0]} days={days} selectedDay={selectedDay}
+      onSelectDay={onSelectDay} onEditingChange={onPreviewEditingChange}
+      plan={plan} loading={planLoading} error={planError} saving={planSaving}
+      backendReady={MICROCYCLES_2B_BACKEND_VERIFIED} canWrite={canWritePlan}
+      previewAllowed={previewAllowed} onSave={onSavePlan} />
     {!loading && !error ? <>
-      <MicrocyclePlanningPreview key={days[0]} days={days} selectedDay={selectedDay}
-        onSelectDay={onSelectDay} onEditingChange={onPreviewEditingChange} />
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
         {days.map((key) => {
           const rows = grouped.get(key) || [];
@@ -132,28 +138,80 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
   </section>;
 }
 
-export default function TeamCalendarSection({ client, clubId, matches, teams, onRefreshMatches, onOpenSession, onOpenMatch }) {
+export default function TeamCalendarSection({ client, clubId, membership, preferredContextId,
+  matches, teams, onRefreshMatches, onOpenSession, onOpenMatch }) {
   const [month, setMonth] = useState(() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); });
   const [weekAnchor, setWeekAnchor] = useState(() => calendarLocalDateKey());
   const [selectedWeekDay, setSelectedWeekDay] = useState('');
   const [previewEditing, setPreviewEditing] = useState(false);
+  const [previewEpoch, setPreviewEpoch] = useState(0);
   const [view, setView] = useState('month');
   const [selectedDay, setSelectedDay] = useState('');
   const [enabled, setEnabled] = useState(() => Object.fromEntries(FILTERS.map(([key]) => [key, true])));
   const [sessions, setSessions] = useState([]);
+  const [contexts, setContexts] = useState([]);
+  const [contextId, setContextId] = useState('');
+  const [contextsLoading, setContextsLoading] = useState(true);
+  const [contextsError, setContextsError] = useState('');
+  const [plan, setPlan] = useState(null);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [loadedPlanKey, setLoadedPlanKey] = useState('');
+  const [planError, setPlanError] = useState('');
+  const [planSaving, setPlanSaving] = useState(false);
+  const [verifiedWriteContextId, setVerifiedWriteContextId] = useState('');
+  const [permissionError, setPermissionError] = useState('');
+  const [planLoadVersion, setPlanLoadVersion] = useState(0);
+  const planSaveRef = useRef(false);
+  const sessionLoadSeq = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [matchError, setMatchError] = useState('');
+  const selectedContext = contexts.find((row) => row.id === contextId) || null;
+  const weekDays = useMemo(() => calendarWeekDays(weekAnchor), [weekAnchor]);
+  const monday = weekDays[0];
+  const currentPlan = plan?.club_team_season_id === contextId && plan?.week_starts_on === monday ? plan : null;
+  const planReady = loadedPlanKey === `${contextId}:${monday}:${planLoadVersion}`;
+  const canWritePlan = verifiedWriteContextId === contextId && Boolean(contextId) &&
+    selectedContext?.status === 'open';
+  useEffect(() => {
+    let cancelled = false;
+    setVerifiedWriteContextId(''); setPermissionError('');
+    if (!MICROCYCLES_2B_BACKEND_VERIFIED || !selectedContext ||
+      selectedContext.status !== 'open' || membership?.is_active !== true) return () => { cancelled = true; };
+    client.rpc('can_write_club_team_season', { target_club_team_season_id: contextId })
+      .then(({ data, error: permissionFailure }) => {
+        if (cancelled) return;
+        if (permissionFailure) throw permissionFailure;
+        if (data === true) setVerifiedWriteContextId(contextId);
+      }).catch(() => {
+        if (!cancelled) setPermissionError('No se pudieron comprobar tus permisos de escritura.');
+      });
+    return () => { cancelled = true; };
+  }, [client, contextId, selectedContext?.status, membership?.is_active]);
+  useEffect(() => {
+    let cancelled = false;
+    setContextsLoading(true); setContextsError(''); setContexts([]); setContextId(''); setSessions([]);
+    loadPlannedContexts(client, clubId).then((rows) => {
+      if (cancelled) return;
+      setContexts(rows);
+      setContextId(chooseCalendarContext(rows, preferredContextId));
+    }).catch(() => {
+      if (!cancelled) setContextsError('No se pudieron verificar los equipos y temporadas autorizados.');
+    }).finally(() => { if (!cancelled) setContextsLoading(false); });
+    return () => { cancelled = true; };
+  }, [client, clubId, preferredContextId]);
   const refresh = useCallback(async (signal) => {
+    const request = ++sessionLoadSeq.current;
     setLoading(true); setError('');
     try {
-      const contexts = await loadPlannedContexts(client, clubId);
-      const rows = await Promise.all(contexts.map((context) => listPlannedSessions(client, context.id)));
-      if (!signal?.cancelled) setSessions(rows.flat());
+      const rows = contextId ? await listPlannedSessions(client, contextId) : [];
+      if (!signal?.cancelled && request === sessionLoadSeq.current) setSessions(rows);
     } catch {
-      if (!signal?.cancelled) { setSessions([]); setError('No se pudieron cargar las sesiones. Reintenta la actualización.'); }
-    } finally { if (!signal?.cancelled) setLoading(false); }
-  }, [client, clubId]);
+      if (!signal?.cancelled && request === sessionLoadSeq.current) {
+        setSessions([]); setError('No se pudieron cargar las sesiones. Reintenta la actualización.');
+      }
+    } finally { if (!signal?.cancelled && request === sessionLoadSeq.current) setLoading(false); }
+  }, [client, contextId]);
   useEffect(() => {
     const signal = { cancelled: false };
     refresh(signal);
@@ -162,27 +220,68 @@ export default function TeamCalendarSection({ client, clubId, matches, teams, on
     });
     return () => { signal.cancelled = true; };
   }, [refresh]);
+  useEffect(() => {
+    const signal = { cancelled: false };
+    setPlan(null); setPlanError(''); setLoadedPlanKey('');
+    setPlanLoading(false);
+    if (!MICROCYCLES_2B_BACKEND_VERIFIED || !contextId || view !== 'week') return () => { signal.cancelled = true; };
+    setPlanLoading(true);
+    loadMicrocycle2b(client, contextId, monday).then((row) => {
+      if (signal.cancelled) return;
+      hydrateMicrocycleDraft(row, weekDays);
+      setPlan(row);
+      setLoadedPlanKey(`${contextId}:${monday}:${planLoadVersion}`);
+    }).catch(() => {
+      if (!signal.cancelled) setPlanError('No se pudo cargar esta semana. No se permite guardar hasta recuperar una revisión fiable.');
+    }).finally(() => { if (!signal.cancelled) setPlanLoading(false); });
+    return () => { signal.cancelled = true; };
+  }, [client, contextId, monday, view, weekDays, planLoadVersion]);
+  useEffect(() => {
+    if (!previewEditing) return undefined;
+    const warn = (event) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [previewEditing]);
+  const savePlan = async (draft) => {
+    if (planSaveRef.current || !MICROCYCLES_2B_BACKEND_VERIFIED || !selectedContext ||
+      !canWritePlan || !planReady || planLoading || planError) {
+      throw new Error('El guardado no está disponible para este equipo y temporada.');
+    }
+    planSaveRef.current = true; setPlanSaving(true);
+    try {
+      const reply = await saveMicrocycle2b(client, contextId, monday, currentPlan?.revision || 0, draft, weekDays);
+      const fresh = await loadMicrocycle2b(client, contextId, monday);
+      const confirmedDraft = hydrateMicrocycleDraft(fresh, weekDays);
+      if (!fresh || fresh.id !== reply?.id || fresh.revision !== reply?.revision ||
+        JSON.stringify(confirmedDraft) !== JSON.stringify(draft))
+        throw new Error('El servidor no confirmó la revisión guardada. Recarga antes de continuar.');
+      setPlan(fresh);
+    } finally { planSaveRef.current = false; setPlanSaving(false); }
+  };
   const refreshAll = async () => {
-    if (previewEditing && !window.confirm('La vista previa no se guarda. ¿Descartar los cambios locales?')) return;
-    setPreviewEditing(false);
+    if (planSaveRef.current) return;
+    if (!discardPreview()) return;
     setMatchError('');
+    setPlanLoadVersion((current) => current + 1);
     await Promise.all([refresh(), onRefreshMatches?.().catch(() => setMatchError('No se pudieron actualizar los partidos.'))]);
   };
-  const events = useMemo(() => buildTeamCalendarEvents(error ? [] : sessions, matchError ? [] : matches, teams)
-    .filter((event) => enabled[event.kind]), [sessions, matches, teams, enabled, error, matchError]);
+  const scopedMatches = useMemo(() => scopeCalendarMatches(matches, contextId), [matches, contextId]);
+  const events = useMemo(() => buildTeamCalendarEvents(error ? [] : sessions, matchError ? [] : scopedMatches, teams)
+    .filter((event) => enabled[event.kind]), [sessions, scopedMatches, teams, enabled, error, matchError]);
   const grouped = useMemo(() => {
     const byDate = new Map();
     for (const event of events) byDate.set(event.date, [...(byDate.get(event.date) || []), event]);
     return byDate;
   }, [events]);
   const days = useMemo(() => calendarMonthDays(month.getFullYear(), month.getMonth()), [month]);
-  const weekDays = useMemo(() => calendarWeekDays(weekAnchor), [weekAnchor]);
   const now = new Date();
   const today = calendarLocalDateKey(now);
   const moveMonth = (step) => { setSelectedDay(''); setMonth((current) => new Date(current.getFullYear(), current.getMonth() + step, 1)); };
   const discardPreview = () => {
-    if (previewEditing && !window.confirm('La vista previa no se guarda. ¿Descartar los cambios locales?')) return false;
+    if (planSaveRef.current) return false;
+    if (previewEditing && !window.confirm('Hay cambios sin guardar. ¿Descartarlos?')) return false;
     setPreviewEditing(false);
+    setPreviewEpoch((current) => current + 1);
     return true;
   };
   const open = (event) => {
@@ -215,6 +314,10 @@ export default function TeamCalendarSection({ client, clubId, matches, teams, on
     setSelectedDay(today); setSelectedWeekDay(today); setWeekAnchor(today);
     setMonth(new Date(now.getFullYear(), now.getMonth(), 1));
   };
+  const changeContext = (nextId) => {
+    if (!contexts.some((row) => row.id === nextId) || !discardPreview()) return;
+    setContextId(nextId); setSessions([]); setPlan(null);
+  };
 
   return <main className="space-y-4 pb-8 text-slate-100 xl:pb-32">
     <section className="rounded-[1.6rem] border border-white/10 bg-[#091428]/[0.72] p-4 shadow-[0_18px_55px_rgba(0,0,0,0.20)] sm:p-5">
@@ -222,8 +325,23 @@ export default function TeamCalendarSection({ client, clubId, matches, teams, on
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
         <div><h2 className="text-2xl font-semibold text-white">Entrenamientos y partidos</h2>
           <p className="mt-1 text-sm text-slate-400">Abre cada evento en su pestaña original.</p></div>
-        <button type="button" onClick={refreshAll} disabled={loading} className="rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-2 text-sm font-semibold hover:bg-white/10 disabled:opacity-50">Actualizar</button>
+        <button type="button" onClick={refreshAll} disabled={loading || planSaving} className="rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-2 text-sm font-semibold hover:bg-white/10 disabled:opacity-50">Actualizar</button>
       </div>
+    </section>
+    <section className="rounded-xl border border-white/10 bg-[#0b1a2d]/85 p-3">
+      <label className="block text-xs font-bold text-slate-200">Equipo y temporada
+        <select value={contextId} disabled={contextsLoading || planSaving}
+          onChange={(event) => changeContext(event.target.value)}
+          className="mt-1 block min-h-10 w-full max-w-md rounded-lg border border-white/15 bg-[#091428] px-2 text-sm text-white">
+          <option value="">{contextsLoading ? 'Cargando contextos…' : 'Selecciona un equipo y temporada'}</option>
+          {contexts.map((row) => <option key={row.id} value={row.id}>{row.team_name} · {row.label}{row.status === 'closed' ? ' · Cerrada' : ''}</option>)}
+        </select>
+      </label>
+      {contextsError ? <p role="alert" className="mt-2 text-xs text-red-200">{contextsError}</p> : null}
+      {!contextsLoading && !contextsError && !contextId ? <p role="status" className="mt-2 text-xs text-amber-200">
+        {contexts.length ? 'Selecciona un contexto autorizado para consultar o planificar.' : 'No hay equipos-temporadas autorizados.'}</p> : null}
+      {selectedContext?.status === 'closed' ? <p className="mt-2 text-xs text-amber-200">Temporada cerrada: consulta únicamente.</p> : null}
+      {permissionError ? <p role="alert" className="mt-2 text-xs text-red-200">{permissionError}</p> : null}
     </section>
     <section className="rounded-[1.35rem] border border-white/10 bg-[#0b1a2d]/85 p-3 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -267,10 +385,14 @@ export default function TeamCalendarSection({ client, clubId, matches, teams, on
       </div></> : view === 'list' ? <div className="mt-4 space-y-3">{[...grouped].map(([key, rows]) => <section key={key} className="rounded-xl border border-white/10 bg-white/[0.025] p-3">
         <h4 className="mb-2 text-sm font-black capitalize text-slate-300">{dateLabel(key)}</h4>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{rows.map((event) => <EventButton key={`${event.kind}-${event.id}`} event={event} onOpen={open} variant="list" />)}</div>
-      </section>)}</div> : <CalendarWeekView days={weekDays} grouped={grouped} events={events}
+      </section>)}</div> : <CalendarWeekView key={`${contextId}:${monday}:${previewEpoch}`} days={weekDays} grouped={grouped} events={events}
         selectedDay={selectedWeekDay} onSelectDay={setSelectedWeekDay} onOpen={open}
         today={today} loading={loading} error={Boolean(error || matchError)}
-        onPreviewEditingChange={setPreviewEditing} />}
+        onPreviewEditingChange={setPreviewEditing} plan={currentPlan}
+        planLoading={planLoading || (MICROCYCLES_2B_BACKEND_VERIFIED && Boolean(contextId) && !planReady)}
+        planError={planError} planSaving={planSaving} onSavePlan={savePlan}
+        previewAllowed={Boolean(selectedContext && selectedContext.status === 'open')}
+        canWritePlan={canWritePlan && planReady} />}
       {!loading && !error && !matchError && view !== 'week' && !events.length ? <p className="mt-5 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">No hay eventos para los filtros seleccionados.</p> : null}
       {!loading && !error && view === 'month' && events.length > 0 && !days.some((key) => grouped.has(key)) ? <p className="mt-4 text-sm text-slate-400">No hay eventos en este mes.</p> : null}
     </section>

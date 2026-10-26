@@ -1,0 +1,84 @@
+// Activación manual tras instalar la migración, verificar RLS/RPC y probar identidades reales.
+export const MICROCYCLES_2B_BACKEND_VERIFIED = false;
+
+const unwrap = (response) => {
+  if (response?.error) throw response.error;
+  return response?.data;
+};
+
+export const blankMicrocycleDraft = (days) => ({
+  objective: '', priorities: [], responsible: '', observations: '',
+  days: Object.fromEntries(days.map((day) => [day, {
+    type: '', objective: '', focus: '', intensity: '', durationMinutes: '', observations: '',
+  }])),
+});
+
+const text = (value) => typeof value === 'string' ? value : '';
+
+export const hydrateMicrocycleDraft = (record, days) => {
+  if (!record) return blankMicrocycleDraft(days);
+  if (!record.weekly || !record.days || !Number.isInteger(record.revision) || record.revision < 1 ||
+    days.some((day) => !record.days[day] || typeof record.days[day] !== 'object')) {
+    throw new Error('La planificación semanal guardada tiene una estructura incompatible.');
+  }
+  return {
+    objective: text(record.weekly.objective),
+    priorities: Array.isArray(record.weekly.priorities) ? [...record.weekly.priorities] : [],
+    responsible: text(record.weekly.responsible), observations: text(record.weekly.observations),
+    days: Object.fromEntries(days.map((day) => [day, {
+      type: text(record.days[day].type), objective: text(record.days[day].objective),
+      focus: text(record.days[day].focus), intensity: text(record.days[day].intensity),
+      durationMinutes: record.days[day].durationMinutes == null ? '' : String(record.days[day].durationMinutes),
+      observations: text(record.days[day].observations),
+    }])),
+  };
+};
+
+export const serializeMicrocycleDraft = (draft, days) => {
+  if (days.length !== 7 || new Date(`${days[0]}T12:00:00`).getDay() !== 1 ||
+    !days.every((day, index) => {
+    const expected = new Date(`${days[0]}T12:00:00`);
+    expected.setDate(expected.getDate() + index);
+    return !Number.isNaN(expected.getTime()) && day === [expected.getFullYear(),
+      String(expected.getMonth() + 1).padStart(2, '0'), String(expected.getDate()).padStart(2, '0')].join('-');
+  })) throw new Error('La semana debe contener siete fechas consecutivas.');
+  const weekly = { objective: text(draft.objective), priorities: [...draft.priorities],
+    responsible: text(draft.responsible), observations: text(draft.observations) };
+  const daily = Object.fromEntries(days.map((day) => {
+    const source = draft.days?.[day];
+    if (!source) throw new Error(`Falta la planificación del ${day}.`);
+    const rawMinutes = String(source.durationMinutes ?? '').trim();
+    if (rawMinutes && (!/^[1-9]\d{0,3}$/.test(rawMinutes) || Number(rawMinutes) > 9999))
+      throw new Error(`Duración prevista inválida para el ${day}.`);
+    return [day, {
+      type: text(source.type), objective: text(source.objective), focus: text(source.focus),
+      intensity: text(source.intensity), durationMinutes: rawMinutes ? Number(rawMinutes) : null,
+      observations: text(source.observations),
+    }];
+  }));
+  return { weekly, days: daily };
+};
+
+export const loadMicrocycle2b = async (client, contextId, monday) => {
+  if (!contextId || !monday) throw new Error('Falta equipo, temporada o semana.');
+  const row = unwrap(await client.from('planned_microcycles')
+    .select('id,club_team_season_id,week_starts_on,weekly,days,revision')
+    .eq('club_team_season_id', contextId).eq('week_starts_on', monday).maybeSingle());
+  if (row && (row.club_team_season_id !== contextId || row.week_starts_on !== monday))
+    throw new Error('La planificación devuelta no corresponde al contexto solicitado.');
+  return row || null;
+};
+
+export const saveMicrocycle2b = async (client, contextId, monday, expectedRevision, draft, days) => {
+  if (!MICROCYCLES_2B_BACKEND_VERIFIED) throw new Error('Backend de microciclos pendiente de verificación.');
+  if (!contextId || monday !== days[0] || !Number.isInteger(expectedRevision) || expectedRevision < 0)
+    throw new Error('Contexto o revisión de planificación inválidos.');
+  const payload = serializeMicrocycleDraft(draft, days);
+  return unwrap(await client.rpc('save_planned_microcycle_2b', {
+    p_club_team_season_id: contextId,
+    p_week_starts_on: monday,
+    p_expected_revision: expectedRevision,
+    p_weekly: payload.weekly,
+    p_days: payload.days,
+  }));
+};
