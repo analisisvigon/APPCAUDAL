@@ -1,5 +1,6 @@
-// Activación manual tras instalar la migración, verificar RLS/RPC y probar identidades reales.
-export const MICROCYCLES_2B_BACKEND_VERIFIED = false;
+// Migración 2B instalada y verificador estructural GLOBAL PASS, confirmado por el propietario.
+// Las pruebas conectadas con otras identidades siguen pendientes; la RPC/RLS son la autoridad final.
+export const MICROCYCLES_2B_BACKEND_VERIFIED = true;
 
 const unwrap = (response) => {
   if (response?.error) throw response.error;

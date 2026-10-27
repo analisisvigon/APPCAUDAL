@@ -9,7 +9,7 @@ const vite = await createServer({ server: { middlewareMode: true }, appType: 'cu
 try {
   const { default: Preview } = await vite.ssrLoadModule('/src/components/calendar/MicrocyclePlanningPreview.jsx');
   const render = (props = {}) => renderToStaticMarkup(React.createElement(Preview, {
-    days, selectedDay: days[0], onSelectDay: () => {}, backendReady: true,
+    days, selectedDay: days[0], onSelectDay: () => {},
     canWrite: true, ...props,
   }));
   const empty = render();
@@ -34,9 +34,12 @@ try {
   const closed = render({ plan, canWrite: false });
   assert.match(closed, /Solo lectura/);
   assert.doesNotMatch(closed, /Editar planificación|Planificar semana/);
-  const blocked = render({ backendReady: false });
-  assert.match(blocked, /Guardado pendiente de pruebas reales/);
-  assert.doesNotMatch(blocked, /<textarea|Guardar</);
+  const loading = render({ loading: true, canWrite: false });
+  assert.match(loading, /Cargando planificación semanal/);
+  assert.doesNotMatch(loading, /Planificar semana/);
+  const failed = render({ error: 'Error de conexión', canWrite: false });
+  assert.match(failed, /Error de conexión/);
+  assert.doesNotMatch(failed, /Planificar semana/);
   console.log('microcycles 2B UI: OK (render estático local; sin Supabase)');
 } finally {
   await vite.close();

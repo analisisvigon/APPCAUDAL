@@ -6,9 +6,9 @@ const preview = read('../src/components/calendar/MicrocyclePlanningPreview.jsx')
 const migration = read('../supabase_microcycles_2b.sql');
 const verification = read('../supabase_microcycles_2b_verify.sql');
 
-assert.match(preview, /Guardar \(pendiente de backend\)/);
-assert.match(preview, /disabled=\{!backendReady \|\| !canWrite \|\| saving \|\| !dirty\}/);
-assert.match(read('../src/data/microcycles2bStore.js'), /MICROCYCLES_2B_BACKEND_VERIFIED = false/);
+assert.doesNotMatch(preview, /Vista previa local|Guardar \(pendiente de backend\)/);
+assert.match(preview, /disabled=\{!canWrite \|\| saving \|\| !dirty\}/);
+assert.match(read('../src/data/microcycles2bStore.js'), /MICROCYCLES_2B_BACKEND_VERIFIED = true/);
 assert.doesNotMatch(preview, /\.rpc\(|\.from\(|localStorage/);
 assert.match(migration, /unique \(club_team_season_id,week_starts_on\)/);
 assert.match(migration, /can_write_club_team_season/);

@@ -50,6 +50,7 @@ draft.days[days[0]].durationMinutes = '75';
 
 const calls = [];
 let returned = record;
+let rpcReply = { data: { id: record.id, revision: 1 }, error: null };
 const client = {
   from(table) {
     assert.equal(table, 'planned_microcycles');
@@ -60,7 +61,10 @@ const client = {
     };
     return query;
   },
-  async rpc() { throw new Error('No debe llamarse una RPC antes de verificar el backend'); },
+  async rpc(name, args) {
+    calls.push(['rpc', name, args]);
+    return rpcReply;
+  },
 };
 assert.equal((await loadMicrocycle2b(client, 'cts-id', days[0])).revision, 2);
 assert.deepEqual(calls.slice(-2), [['eq', 'club_team_season_id', 'cts-id'], ['eq', 'week_starts_on', days[0]]]);
@@ -68,6 +72,18 @@ returned = null;
 assert.equal(await loadMicrocycle2b(client, 'cts-id', days[0]), null);
 returned = { ...record, club_team_season_id: 'otro-cts' };
 await assert.rejects(loadMicrocycle2b(client, 'cts-id', days[0]), /no corresponde al contexto/);
-assert.equal(MICROCYCLES_2B_BACKEND_VERIFIED, false);
-await assert.rejects(saveMicrocycle2b(client, 'cts-id', days[0], 0, draft, days), /pendiente de verificación/);
+assert.equal(MICROCYCLES_2B_BACKEND_VERIFIED, true);
+assert.deepEqual(await saveMicrocycle2b(client, 'cts-id', days[0], 0, draft, days),
+  { id: record.id, revision: 1 });
+assert.deepEqual(calls.at(-1), ['rpc', 'save_planned_microcycle_2b', initialArgs]);
+rpcReply = { data: { id: record.id, revision: 3 }, error: null };
+assert.deepEqual(await saveMicrocycle2b(client, 'cts-id', days[0], 2, draft, days),
+  { id: record.id, revision: 3 });
+assert.equal(calls.at(-1)[2].p_expected_revision, 2);
+rpcReply = { data: null, error: { code: '40001', message: 'Revisión semanal obsoleta' } };
+await assert.rejects(saveMicrocycle2b(client, 'cts-id', days[0], 2, draft, days),
+  (error) => error.code === '40001');
+rpcReply = { data: null, error: { code: '42501', message: 'Planificación no autorizada' } };
+await assert.rejects(saveMicrocycle2b(client, 'cts-id', days[0], 2, draft, days),
+  (error) => error.code === '42501');
 console.log('microcycles 2B store: OK (fixtures locales; sin Supabase)');

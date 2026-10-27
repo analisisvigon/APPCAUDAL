@@ -96,10 +96,10 @@ try {
   assert.ok(DAY_TYPES.includes('Descanso') && DAY_TYPES.includes('Recuperación') && DAY_TYPES.includes('Partido'));
   assert.ok(DAY_FOCUS.includes('Mixto') && DAY_INTENSITIES.includes('Muy baja') && DAY_INTENSITIES.includes('Muy alta'));
   const planPreview = renderToStaticMarkup(React.createElement(MicrocyclePlanningPreview, {
-    days, selectedDay: days[0], onSelectDay: () => {}, onEditingChange: () => {},
+    days, selectedDay: days[0], onSelectDay: () => {}, onEditingChange: () => {}, canWrite: true,
   }));
-  assert.match(planPreview, /Guardado pendiente de pruebas reales de permisos y concurrencia/);
-  assert.match(planPreview, /Ver formulario \(sin guardar\)/);
+  assert.match(planPreview, /Esta semana todavía no tiene planificación registrada/);
+  assert.match(planPreview, /Planificar semana/);
   assert.doesNotMatch(planPreview, /Guardado correctamente|Planificación guardada/);
   const savedPlan = { revision: 2, weekly: { objective: 'Presión tras pérdida',
     priorities: ['Táctica'], responsible: '', observations: '' },
@@ -107,15 +107,15 @@ try {
     objective: '', focus: '', intensity: 'Media', durationMinutes: 75, observations: '' }])) };
   const savedPreview = renderToStaticMarkup(React.createElement(MicrocyclePlanningPreview, {
     days, selectedDay: days[0], onSelectDay: () => {}, onEditingChange: () => {},
-    plan: savedPlan, backendReady: true, canWrite: false,
+    plan: savedPlan, canWrite: false,
   }));
   assert.match(savedPreview, /Planificación guardada · revisión 2/);
   assert.match(savedPreview, /Presión tras pérdida/);
   assert.match(savedPreview, /Solo lectura/);
   assert.doesNotMatch(savedPreview, /Editar planificación/);
   const planSource = readFileSync(new URL('../src/components/calendar/MicrocyclePlanningPreview.jsx', import.meta.url), 'utf8');
-  assert.match(planSource, /Guardar \(pendiente de backend\)/);
-  assert.match(planSource, /disabled=\{!backendReady \|\| !canWrite \|\| saving \|\| !dirty\}/);
+  assert.doesNotMatch(planSource, /Vista previa local|Guardar \(pendiente de backend\)/);
+  assert.match(planSource, /disabled=\{!canWrite \|\| saving \|\| !dirty\}/);
   assert.match(planSource, /setDraft\(hydrateMicrocycleDraft\(plan, days\)\)/,
     'Cancelar restaura el último estado guardado');
   assert.doesNotMatch(planSource, /localStorage|\.rpc\(|\.from\(/,

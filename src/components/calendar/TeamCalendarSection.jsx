@@ -82,7 +82,7 @@ const weekRangeLabel = (days) => {
 };
 
 export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectDay, onOpen, today, loading, error,
-  onPreviewEditingChange, plan, planLoading, planError, planSaving, canWritePlan, previewAllowed,
+  onPreviewEditingChange, plan, planLoading, planError, planSaving, canWritePlan,
   onSavePlan, onReloadPlan }) {
   const summary = calendarWeekSummary(events, days);
   const chosenDay = days.includes(selectedDay) ? selectedDay : '';
@@ -101,8 +101,7 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
     <MicrocyclePlanningPreview key={days[0]} days={days} selectedDay={selectedDay}
       onSelectDay={onSelectDay} onEditingChange={onPreviewEditingChange}
       plan={plan} loading={planLoading} error={planError} saving={planSaving}
-      backendReady={MICROCYCLES_2B_BACKEND_VERIFIED} canWrite={canWritePlan}
-      previewAllowed={previewAllowed} onSave={onSavePlan} onReload={onReloadPlan} />
+      canWrite={canWritePlan} onSave={onSavePlan} onReload={onReloadPlan} />
     {!loading && !error ? <>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
         {days.map((key) => {
@@ -261,8 +260,10 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
       const fresh = await loadMicrocycle2b(client, targetContextId, targetMonday);
       if (planScopeRef.current !== `${targetContextId}:${targetMonday}`)
         throw new Error('El equipo o la semana cambiaron durante el guardado. Recarga la planificación.');
-      setPlan(verifyMicrocycleSave(reply, fresh, targetContextId, targetMonday,
-        expectedRevision, draft, weekDays));
+      const confirmed = verifyMicrocycleSave(reply, fresh, targetContextId, targetMonday,
+        expectedRevision, draft, weekDays);
+      setPlan(confirmed);
+      return confirmed;
     } finally { planSaveRef.current = false; setPlanSaving(false); }
   };
   const refreshAll = async () => {
@@ -402,7 +403,6 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
         onPreviewEditingChange={setPreviewEditing} plan={currentPlan}
         planLoading={planLoading || (MICROCYCLES_2B_BACKEND_VERIFIED && Boolean(contextId) && !planReady)}
         planError={planError} planSaving={planSaving} onSavePlan={savePlan}
-        previewAllowed={Boolean(selectedContext && selectedContext.status === 'open')}
         canWritePlan={canWritePlan && planReady} onReloadPlan={reloadPlan} />}
       {!loading && !error && !matchError && view !== 'week' && !events.length ? <p className="mt-5 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">No hay eventos para los filtros seleccionados.</p> : null}
       {!loading && !error && view === 'month' && events.length > 0 && !days.some((key) => grouped.has(key)) ? <p className="mt-4 text-sm text-slate-400">No hay eventos en este mes.</p> : null}

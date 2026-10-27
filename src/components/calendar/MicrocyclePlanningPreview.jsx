@@ -20,11 +20,12 @@ const dateLabel = (key) => new Date(`${key}T12:00:00`).toLocaleDateString('es-ES
 });
 
 export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectDay, onEditingChange,
-  plan = null, backendReady = false, previewAllowed = true, canWrite = false,
+  plan = null, canWrite = false,
   loading = false, error = '', saving = false, onSave, onReload }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(() => hydrateMicrocycleDraft(plan, days));
   const [saveError, setSaveError] = useState(null);
+  const [savedRevision, setSavedRevision] = useState(null);
   const baseline = hydrateMicrocycleDraft(plan, days);
   const dirty = JSON.stringify(draft) !== JSON.stringify(baseline);
   useEffect(() => { if (!editing) setDraft(hydrateMicrocycleDraft(plan, days)); }, [plan, days, editing]);
@@ -36,15 +37,16 @@ export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectD
   }));
   const cancel = () => {
     if (saving) return;
-    setDraft(hydrateMicrocycleDraft(plan, days)); setEditing(false); setSaveError(null);
+    setDraft(hydrateMicrocycleDraft(plan, days)); setEditing(false); setSaveError(null); setSavedRevision(null);
     onEditingChange?.(false);
   };
   const save = async () => {
-    if (!backendReady || !canWrite || !dirty || saving || !onSave) return;
-    setSaveError(null);
+    if (!canWrite || !dirty || saving || !onSave) return;
+    setSaveError(null); setSavedRevision(null);
     try {
-      await onSave(draft);
+      const confirmed = await onSave(draft);
       setEditing(false);
+      setSavedRevision({ id: confirmed.id, revision: confirmed.revision });
       onEditingChange?.(false);
     } catch (cause) {
       setSaveError({ conflict: cause?.code === '40001', message: cause?.code === '40001'
@@ -55,17 +57,17 @@ export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectD
   return <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4" aria-label="Planificación semanal">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h4 className="text-sm font-black uppercase tracking-wide text-white">Planificación semanal</h4>
-        <p className="mt-1 text-xs text-slate-400">{!backendReady
-          ? 'Guardado pendiente de pruebas reales de permisos y concurrencia.'
-          : loading ? 'Cargando planificación semanal…'
-            : error ? 'No se pudo consultar esta planificación.'
-              : plan ? `Planificación guardada · revisión ${plan.revision}` : 'Esta semana todavía no tiene planificación registrada.'}</p></div>
-      {!editing && !loading && !error && (backendReady ? canWrite : previewAllowed) ? <button type="button" onClick={() => { setDraft(baseline); setEditing(true); }}
+        <p className="mt-1 text-xs text-slate-400">{loading ? 'Cargando planificación semanal…'
+          : error ? 'No se pudo consultar esta planificación.'
+            : plan ? `Planificación guardada · revisión ${plan.revision}` : 'Esta semana todavía no tiene planificación registrada.'}</p></div>
+      {!editing && !loading && !error && canWrite ? <button type="button" onClick={() => { setDraft(baseline); setEditing(true); setSavedRevision(null); }}
         className="min-h-10 rounded-lg border border-sky-300/35 px-3 py-2 text-xs font-bold text-sky-100 hover:bg-sky-300/10">
-        {!backendReady ? 'Ver formulario (sin guardar)' : plan ? 'Editar planificación' : 'Planificar semana'}</button> : null}
+        {plan ? 'Editar planificación' : 'Planificar semana'}</button> : null}
     </div>
     {error ? <p role="alert" className="mt-3 text-sm text-red-200">{error}</p> : null}
-    {backendReady && !loading && !error && !canWrite ? <p role="status" className="mt-2 text-xs text-amber-200">
+    {!editing && plan && savedRevision && plan.id === savedRevision.id && plan.revision === savedRevision.revision ?
+      <p role="status" className="mt-2 text-xs text-emerald-200">Planificación guardada y verificada.</p> : null}
+    {!loading && !error && !canWrite ? <p role="status" className="mt-2 text-xs text-amber-200">
       Solo lectura: falta un equipo-temporada abierto o permiso de escritura.</p> : null}
     {!editing && plan && !error ? <div className="mt-3 space-y-2 text-sm text-slate-200">
       {baseline.objective ? <p><strong>Objetivo:</strong> {baseline.objective}</p> : null}
@@ -81,8 +83,6 @@ export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectD
       </div>)}
     </div> : null}
     {editing ? <div className="mt-4 space-y-4">
-      {!backendReady ? <p role="status" className="rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-xs text-amber-100">
-        Vista previa local: estos datos no se guardan. La persistencia segura está pendiente de aprobación.</p> : null}
       <fieldset disabled={saving} className="space-y-4 disabled:opacity-70">
       <h5 className="border-b border-white/10 pb-2 text-xs font-black uppercase tracking-wide text-sky-200">Planificación general</h5>
       <div className="grid gap-3 md:grid-cols-2">
@@ -141,9 +141,9 @@ export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectD
       </div>
       </fieldset>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={save} disabled={!backendReady || !canWrite || saving || !dirty}
+        <button type="button" onClick={save} disabled={!canWrite || saving || !dirty}
           className="rounded-lg bg-sky-500 px-4 py-2 text-xs font-bold text-slate-950 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-200 disabled:opacity-60">
-          {saving ? 'Guardando…' : backendReady ? 'Guardar' : 'Guardar (pendiente de backend)'}</button>
+          {saving ? 'Guardando…' : 'Guardar'}</button>
         <button type="button" onClick={cancel} disabled={saving}
           className="rounded-lg border border-white/20 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">Cancelar</button>
       </div>
