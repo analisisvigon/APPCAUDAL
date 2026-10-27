@@ -6,6 +6,7 @@ import { MICROCYCLES_2B_BACKEND_VERIFIED, hydrateMicrocycleDraft,
 import { buildTeamCalendarEvents, calendarLocalDateKey, calendarMonthDays,
   calendarWeekDays, calendarWeekSummary, calendarWeeklyCountLabel, shiftCalendarWeek } from '../../utils/teamCalendar.js';
 import MicrocyclePlanningPreview from './MicrocyclePlanningPreview.jsx';
+import MicrocycleCopyDialog from './MicrocycleCopyDialog.jsx';
 
 const FILTERS = [
   ['training', 'Entrenamientos'], ['league', 'Liga'], ['cup', 'Copa'],
@@ -83,7 +84,7 @@ const weekRangeLabel = (days) => {
 
 export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectDay, onOpen, today, loading, error,
   onPreviewEditingChange, plan, planLoading, planError, planSaving, canWritePlan,
-  onSavePlan, onReloadPlan }) {
+  onSavePlan, onReloadPlan, onCopyPlan, copyAvailable = false }) {
   const summary = calendarWeekSummary(events, days);
   const chosenDay = days.includes(selectedDay) ? selectedDay : '';
   const chosenEvents = chosenDay ? grouped.get(chosenDay) || [] : [];
@@ -91,6 +92,18 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
     <div className="flex flex-wrap items-end justify-between gap-3 border-b border-white/10 pb-3">
       <h3 className="text-sm font-black uppercase tracking-[0.2em] text-sky-300">Microciclo semanal</h3>
       {!loading && !error ? <p className="text-xs text-slate-300">{calendarWeeklyCountLabel(summary)}</p> : null}
+    </div>
+    <div className="flex flex-wrap items-center gap-2">
+      <button type="button" onClick={onCopyPlan} disabled={!copyAvailable}
+        className="min-h-10 rounded-lg border border-sky-300/35 px-3 py-2 text-xs font-bold text-sky-100 disabled:opacity-50">
+        Copiar planificación</button>
+      <button type="button" disabled title="Pendiente de instalar y verificar la biblioteca de plantillas"
+        className="min-h-10 rounded-lg border border-white/15 px-3 py-2 text-xs text-slate-400 opacity-50">
+        Guardar como plantilla</button>
+      <button type="button" disabled title="Pendiente de instalar y verificar la biblioteca de plantillas"
+        className="min-h-10 rounded-lg border border-white/15 px-3 py-2 text-xs text-slate-400 opacity-50">
+        Utilizar plantilla</button>
+      <span className="text-[11px] text-slate-500">Plantillas del equipo pendientes de backend.</span>
     </div>
     {!loading && !error && summary.durationCoverage !== 'none' ? <p className="text-xs font-semibold text-slate-300">
       {summary.durationCoverage === 'complete'
@@ -162,6 +175,7 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
   const [verifiedWriteContextId, setVerifiedWriteContextId] = useState('');
   const [permissionError, setPermissionError] = useState('');
   const [planLoadVersion, setPlanLoadVersion] = useState(0);
+  const [copyOpen, setCopyOpen] = useState(false);
   const planSaveRef = useRef(false);
   const sessionLoadSeq = useRef(0);
   const [loading, setLoading] = useState(true);
@@ -296,6 +310,18 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
     if (planSaveRef.current || !discardPreview()) return;
     setPlanLoadVersion((current) => current + 1);
   };
+  const openCopy = () => {
+    if (!contextId || !discardPreview()) return;
+    setCopyOpen(true);
+  };
+  const openCopiedDestination = (nextContextId, nextMonday) => {
+    setCopyOpen(false);
+    setContextId(nextContextId);
+    setWeekAnchor(nextMonday);
+    setSelectedWeekDay('');
+    setPlanLoadVersion((current) => current + 1);
+    setPreviewEpoch((current) => current + 1);
+  };
   const open = (event) => {
     if (view === 'week' && !discardPreview()) return;
     if (event.kind === 'training') onOpenSession({ id: event.id, contextId: event.contextId });
@@ -403,9 +429,13 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
         onPreviewEditingChange={setPreviewEditing} plan={currentPlan}
         planLoading={planLoading || (MICROCYCLES_2B_BACKEND_VERIFIED && Boolean(contextId) && !planReady)}
         planError={planError} planSaving={planSaving} onSavePlan={savePlan}
-        canWritePlan={canWritePlan && planReady} onReloadPlan={reloadPlan} />}
+        canWritePlan={canWritePlan && planReady} onReloadPlan={reloadPlan}
+        onCopyPlan={openCopy} copyAvailable={Boolean(contextId && contexts.length && !planSaving)} />}
       {!loading && !error && !matchError && view !== 'week' && !events.length ? <p className="mt-5 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">No hay eventos para los filtros seleccionados.</p> : null}
       {!loading && !error && view === 'month' && events.length > 0 && !days.some((key) => grouped.has(key)) ? <p className="mt-4 text-sm text-slate-400">No hay eventos en este mes.</p> : null}
     </section>
+    {copyOpen ? <MicrocycleCopyDialog client={client} contexts={contexts}
+      initialContextId={contextId} initialMonday={monday} onClose={() => setCopyOpen(false)}
+      onOpenDestination={openCopiedDestination} /> : null}
   </main>;
 }

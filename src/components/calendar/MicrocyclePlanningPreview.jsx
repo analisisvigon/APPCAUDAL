@@ -69,13 +69,13 @@ export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectD
       <p role="status" className="mt-2 text-xs text-emerald-200">Planificación guardada y verificada.</p> : null}
     {!loading && !error && !canWrite ? <p role="status" className="mt-2 text-xs text-amber-200">
       Solo lectura: falta un equipo-temporada abierto o permiso de escritura.</p> : null}
-    {!editing && plan && !error ? <div className="mt-3 space-y-2 text-sm text-slate-200">
+    {!editing && !loading && plan && !error ? <div className="mt-3 space-y-2 text-sm text-slate-200">
       {baseline.objective ? <p><strong>Objetivo:</strong> {baseline.objective}</p> : null}
       {baseline.priorities.length ? <p><strong>Prioridades:</strong> {baseline.priorities.join(' · ')}</p> : null}
       {baseline.responsible ? <p><strong>Responsable:</strong> {baseline.responsible}</p> : null}
       {baseline.observations ? <p className="whitespace-pre-wrap"><strong>Observaciones:</strong> {baseline.observations}</p> : null}
     </div> : null}
-    {!editing && plan && !error ? <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4 xl:grid-cols-7" aria-label="Intensidad semanal prevista">
+    {!editing && !loading && plan && !error ? <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4 xl:grid-cols-7" aria-label="Intensidad semanal prevista">
       {days.map((key) => <div key={key} className={`rounded-md border px-2 py-1.5 text-[11px] ${INTENSITY_STYLE[baseline.days[key].intensity] || 'border-white/15 text-slate-400'}`}>
         <span className="block font-bold capitalize">{new Date(`${key}T12:00:00`).toLocaleDateString('es-ES', { weekday: 'short' })}</span>
         <span>{baseline.days[key].intensity || 'Sin asignar'}</span>
