@@ -6,6 +6,7 @@ import { MICROCYCLES_2B_BACKEND_VERIFIED, hydrateMicrocycleDraft,
 import { buildTeamCalendarEvents, calendarLocalDateKey, calendarMonthDays,
   calendarWeekDays, calendarWeekSummary, shiftCalendarWeek } from '../../utils/teamCalendar.js';
 import { clampMicrocycleDate, microcycleRangeLabel, seasonMicrocycleForDate, seasonMicrocycles } from '../../utils/microcycleIdentity.js';
+import { microcycleDayIntensity, plannedMicrocycleMinutes } from '../../utils/microcyclePresentation.js';
 import MicrocyclePlanningPreview from './MicrocyclePlanningPreview.jsx';
 import MicrocycleCopyDialog from './MicrocycleCopyDialog.jsx';
 
@@ -21,20 +22,55 @@ const tone = {
   other: 'border-slate-400/35 bg-slate-400/10 text-slate-100',
 };
 const plannedDayTone = (day, rows) => {
+  if (day?.type === 'Partido' || rows.some((row) => row.kind !== 'training')) return 'border-fuchsia-400/45 bg-fuchsia-400/[0.08]';
   if (day?.type === 'Descanso') return 'border-slate-400/35 bg-slate-400/[0.06]';
   if (day?.type === 'Recuperación') return 'border-teal-400/45 bg-teal-400/[0.07]';
-  if (day?.type === 'Partido' || rows.some((row) => row.kind !== 'training')) return 'border-violet-400/45 bg-violet-400/[0.07]';
-  if (['Alta', 'Muy alta'].includes(day?.intensity)) return 'border-amber-400/45 bg-amber-400/[0.07]';
+  if (day?.focus === 'Estratégico / ABP') return 'border-violet-400/45 bg-violet-400/[0.06]';
+  if (day?.focus === 'Físico' || ['Alta', 'Muy alta'].includes(day?.intensity)) return 'border-amber-400/45 bg-amber-400/[0.07]';
   if (day?.intensity === 'Media') return 'border-sky-400/45 bg-sky-400/[0.07]';
   if (['Baja', 'Muy baja'].includes(day?.intensity)) return 'border-emerald-400/45 bg-emerald-400/[0.07]';
   return 'border-white/10 bg-white/[0.025]';
 };
 const hasDailyPlan = (day) => Boolean(day && [day.type, day.objective, day.focus,
   day.intensity, day.durationMinutes, day.observations].some(Boolean));
+const intensityBarTone = (level, peak) => peak ? 'from-fuchsia-500 to-rose-400' : level >= 4
+  ? 'from-orange-500 to-amber-300' : level === 3 ? 'from-sky-500 to-cyan-300'
+    : level > 0 ? 'from-emerald-500 to-teal-300' : 'from-slate-700 to-slate-600';
 const monthLabel = (date) => date.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 const dateLabel = (key) => new Date(`${key}T12:00:00`).toLocaleDateString('es-ES', {
   weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
 });
+
+export function WeeklyIntensityChart({ days, dailyPlan, grouped }) {
+  return <section className="rounded-2xl border border-white/10 bg-[#071221]/70 p-3 sm:p-4"
+    aria-label="Intensidad semanal prevista">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div><h4 className="text-xs font-black uppercase tracking-[0.16em] text-slate-200">Intensidad prevista</h4>
+        <p className="mt-1 text-[11px] text-slate-500">Escala cualitativa de planificación · no representa RPE ni carga registrada</p></div>
+      <div className="flex items-center gap-2 text-[10px] text-slate-500"><span>Baja</span><span className="h-px w-8 bg-gradient-to-r from-emerald-400 to-amber-300" /><span>Alta</span></div>
+    </div>
+    <div className="mt-4 overflow-x-auto pb-1">
+      <div className="grid min-w-[34rem] grid-cols-7 gap-2">
+        {days.map((key) => {
+          const day = dailyPlan?.[key];
+          const hasMatch = (grouped.get(key) || []).some((event) => event.kind !== 'training');
+          const intensity = microcycleDayIntensity(day, hasMatch);
+          const date = new Date(`${key}T12:00:00`);
+          return <div key={key} className="flex min-w-0 flex-col items-center">
+            <div className="flex h-24 w-full items-end justify-center rounded-xl border border-white/[0.06] bg-white/[0.025] px-2 pt-2">
+              <div className={`w-full max-w-10 rounded-t-md bg-gradient-to-t ${intensityBarTone(intensity.level, intensity.peak)} transition-[height]`}
+                style={{ height: `${Math.max(intensity.level ? 24 : 5, intensity.level * 18)}%` }}
+                title={`${dateLabel(key)}: ${intensity.label}`} aria-label={`${dateLabel(key)}: ${intensity.label}`} />
+            </div>
+            <strong className="mt-2 text-[10px] uppercase tracking-wide text-slate-300">
+              {date.toLocaleDateString('es-ES', { weekday: 'short' })}</strong>
+            <span className={`mt-0.5 max-w-full truncate text-[10px] ${intensity.peak ? 'font-bold text-rose-200' : 'text-slate-500'}`}>{intensity.label}</span>
+          </div>;
+        })}
+      </div>
+    </div>
+  </section>;
+}
 
 const outcomeLabel = { win: 'VICTORIA', draw: 'EMPATE', loss: 'DERROTA' };
 const outcomeTone = { win: 'text-emerald-200', draw: 'text-amber-100', loss: 'text-rose-200' };
@@ -99,31 +135,63 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
   onSavePlan, onReloadPlan, onCopyPlan, onOpenPerformance,
   sessionStatusVerified = true, copyAvailable = false }) {
   const [editDayRequest, setEditDayRequest] = useState(0);
+  const [editWeekRequest, setEditWeekRequest] = useState(0);
   const editorRef = useRef(null);
   const summary = calendarWeekSummary(events, days);
   const chosenDay = days.includes(selectedDay) ? selectedDay : '';
-  const chosenEvents = chosenDay ? grouped.get(chosenDay) || [] : [];
-  const dailyPlan = plan && !planLoading && !planError ? hydrateMicrocycleDraft(plan, days).days : {};
+  const planDraft = plan && !planLoading && !planError ? hydrateMicrocycleDraft(plan, days) : null;
+  const dailyPlan = planDraft?.days || {};
   const plannedCount = days.filter((key) => hasDailyPlan(dailyPlan[key])).length;
-  const editDay = (key) => {
-    onSelectDay(key); setEditDayRequest((current) => current + 1);
+  const plannedMinutes = plannedMicrocycleMinutes(days, dailyPlan);
+  const openEditor = (request) => {
+    request();
     requestAnimationFrame(() => editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
+  const editDay = (key) => {
+    onSelectDay(key);
+    openEditor(() => setEditDayRequest((current) => current + 1));
+  };
   return <section className="space-y-4" aria-label="Microciclo semanal">
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2">
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-slate-300">
-        <span>{summary.sessions} {summary.sessions === 1 ? 'entrenamiento visible' : 'entrenamientos visibles'}</span><span>{summary.matches} {summary.matches === 1 ? 'partido' : 'partidos'}</span>
-        <span>{planLoading ? 'Consultando planificación…' : planError ? 'Planificación no verificable' : `${plannedCount} de 7 días planificados`}</span>
-        {!sessionStatusVerified ? <span title="El estado del ciclo de vida de las sesiones aún no está verificado">Estado de sesiones pendiente de verificar</span> : null}
+    <section className="overflow-hidden rounded-2xl border border-sky-300/15 bg-gradient-to-br from-sky-400/[0.08] via-white/[0.025] to-violet-400/[0.05] p-4 sm:p-5"
+      aria-label="Resumen semanal">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-300">Plan de la semana</p>
+          {planLoading ? <p className="mt-2 text-sm text-slate-400">Consultando planificación…</p>
+            : planError ? <p role="alert" className="mt-2 text-sm text-red-200">La planificación no se puede verificar ahora.</p>
+              : planDraft ? <>
+                <h3 className="mt-2 break-words text-xl font-black text-white sm:text-2xl">{planDraft.objective || 'Semana planificada'}</h3>
+                <p className="mt-1 text-[11px] font-semibold text-emerald-200">Plan guardado · revisión {plan.revision}</p>
+                {planDraft.priorities.length ? <div className="mt-3 flex flex-wrap gap-1.5">
+                  {planDraft.priorities.map((priority) => <span key={priority}
+                    className="rounded-full border border-sky-300/25 bg-sky-300/10 px-2.5 py-1 text-[11px] font-bold text-sky-100">{priority}</span>)}</div> : null}
+                {planDraft.responsible ? <p className="mt-3 text-xs text-slate-400">Responsable · <strong className="text-slate-200">{planDraft.responsible}</strong></p> : null}
+              </> : <><h3 className="mt-2 text-lg font-black text-white">Semana pendiente de planificar</h3>
+                <p className="mt-1 text-sm text-slate-400">Define el objetivo y la distribución prevista de los siete días.</p></>}
+        </div>
+        {!planLoading && !planError && canWritePlan ? <button type="button"
+          onClick={() => openEditor(() => setEditWeekRequest((current) => current + 1))}
+          className="min-h-10 rounded-xl bg-sky-400 px-4 py-2 text-xs font-black text-slate-950 hover:bg-sky-300">
+          {planDraft ? 'Editar planificación' : 'Planificar semana'}</button> : null}
       </div>
-      {!loading && !error && summary.durationCoverage !== 'none' ? <span className="text-xs text-slate-400">
-        {summary.durationCoverage === 'complete' ? `${summary.durationMinutes} min registrados` : 'Duración registrada parcial'}</span> : null}
-    </div>
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {[['Días planificados', `${plannedCount} / 7`],
+          ['Entrenamientos', String(summary.sessions)], ['Partidos', String(summary.matches)],
+          ['Minutos previstos', plannedMinutes ? `${plannedMinutes} min` : '—']].map(([label, value]) =>
+          <div key={label} className="rounded-xl border border-white/[0.07] bg-black/10 px-3 py-2">
+            <span className="block text-[10px] uppercase tracking-wide text-slate-500">{label}</span>
+            <strong className="mt-1 block text-base tabular-nums text-white">{value}</strong>
+          </div>)}
+      </div>
+      {!sessionStatusVerified ? <p className="mt-2 text-[10px] text-slate-500">Las sesiones mostradas son visibles; su ciclo de vida aún no está verificado en esta vista.</p> : null}
+      {planDraft || summary.matches > 0 ? <div className="mt-4"><WeeklyIntensityChart days={days} dailyPlan={dailyPlan} grouped={grouped} /></div> : null}
+    </section>
     <div ref={editorRef}><MicrocyclePlanningPreview key={days[0]} days={days} selectedDay={selectedDay}
       onSelectDay={onSelectDay} onEditingChange={onPreviewEditingChange}
       plan={plan} loading={planLoading} error={planError} saving={planSaving}
       canWrite={canWritePlan} onSave={onSavePlan} onReload={onReloadPlan}
-      showDailyOverview={false} editDayRequest={editDayRequest} /></div>
+      showDailyOverview={false} editDayRequest={editDayRequest} editWeekRequest={editWeekRequest}
+      hideReadView /></div>
     <details className="rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2">
       <summary className="cursor-pointer text-xs font-bold text-slate-300">Más acciones de planificación</summary>
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -143,8 +211,10 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
         {days.map((key) => {
           const rows = grouped.get(key) || [];
+          const orderedRows = [...rows].sort((left, right) => Number(left.kind === 'training') - Number(right.kind === 'training'));
           const day = new Date(`${key}T12:00:00`);
           const planned = dailyPlan[key];
+          const displayIntensity = microcycleDayIntensity(planned, rows.some((event) => event.kind !== 'training'));
           return <article key={key} className={`min-w-0 rounded-2xl border p-3 ${key === today
             ? 'ring-1 ring-sky-300/60 ' : ''}${plannedDayTone(planned, rows)}`}>
             <button type="button" onClick={() => onSelectDay(key)} aria-pressed={chosenDay === key}
@@ -153,17 +223,21 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
               <span className="text-xs font-black uppercase tracking-wide">{day.toLocaleDateString('es-ES', { weekday: 'long' })}</span>
               <span className="text-lg font-black tabular-nums">{day.getDate()}</span>
             </button>
-            {hasDailyPlan(planned) ? <div className="mb-3 min-w-0 space-y-1 border-b border-white/10 px-2 pb-3 text-xs">
+            {hasDailyPlan(planned) || displayIntensity.peak ? <div className="mb-3 min-w-0 space-y-1.5 border-b border-white/10 px-2 pb-3 text-xs">
               <div className="flex flex-wrap items-center gap-1.5">
-                {planned.type ? <span className="rounded-md bg-white/10 px-1.5 py-0.5 font-bold text-white">{planned.type}</span> : null}
-                {planned.intensity ? <span className="rounded-md border border-white/15 px-1.5 py-0.5 text-slate-200" title="Intensidad prevista; no es RPE ni carga física">{planned.intensity}</span> : null}
+                {planned?.type ? <span className="rounded-md bg-white/10 px-1.5 py-0.5 font-bold text-white">{planned.type}</span> : null}
+                {displayIntensity.label !== 'Sin asignar' ? <span className={`rounded-md border px-1.5 py-0.5 ${displayIntensity.peak ? 'border-rose-300/35 text-rose-100' : 'border-white/15 text-slate-200'}`}
+                  title="Intensidad prevista; no es RPE ni carga física">{displayIntensity.label}</span> : null}
               </div>
-              {planned.objective ? <p className="break-words font-semibold text-white">{planned.objective}</p> : null}
-              {planned.focus ? <p className="break-words text-slate-300">Foco: {planned.focus}</p> : null}
-              {planned.durationMinutes ? <p className="text-slate-400">Previsto: {planned.durationMinutes} min</p> : null}
-              {planned.observations && !planned.objective ? <p className="break-words text-slate-400">{planned.observations}</p> : null}
+              <div className="h-1 overflow-hidden rounded-full bg-white/[0.06]" aria-hidden="true"><span
+                className={`block h-full rounded-full bg-gradient-to-r ${intensityBarTone(displayIntensity.level, displayIntensity.peak)}`}
+                style={{ width: `${displayIntensity.level * 20}%` }} /></div>
+              {planned?.objective ? <p className="break-words font-semibold text-white">{planned.objective}</p> : null}
+              {planned?.focus ? <p className="break-words text-slate-300">Foco: {planned.focus}</p> : null}
+              {planned?.durationMinutes ? <p className="text-slate-400">Previsto: {planned.durationMinutes} min</p> : null}
+              {planned?.observations ? <p className="break-words text-slate-400" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{planned.observations}</p> : null}
             </div> : null}
-            {rows.length ? <div className="space-y-2">{rows.map((event) =>
+            {orderedRows.length ? <div className="space-y-2">{orderedRows.map((event) =>
               <EventButton key={`${event.kind}-${event.id}`} event={event} onOpen={onOpen} variant="week" />)}</div>
               : !hasDailyPlan(planned) ? <p className="px-2 py-1 text-xs text-slate-500">Sin planificar</p> : null}
             {canWritePlan ? <button type="button" onClick={() => editDay(key)}
@@ -173,18 +247,6 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
         })}
       </div>
       {summary.activeDays === 0 && plannedCount === 0 ? <p className="text-xs text-slate-500">Sin actividad ni planificación registrada esta semana.</p> : null}
-      {chosenDay ? <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4" aria-label="Detalle del día">
-        <h4 className="text-base font-black capitalize text-white">{dateLabel(chosenDay)}</h4>
-        {chosenEvents.length ? <div className="mt-3 grid gap-3 md:grid-cols-2">
-          {chosenEvents.map((event) => <div key={`${event.kind}-${event.id}`} className="min-w-0 rounded-xl border border-white/10 p-3">
-            <EventButton event={event} onOpen={onOpen} variant="list" />
-            {event.kind === 'training' && event.durationKnown && !event.cancelled ? <p className="mt-2 text-xs text-slate-300">Duración: {event.durationMinutes} min</p> : null}
-            {event.kind === 'training' && event.objective ? <p className="mt-2 whitespace-pre-wrap break-words text-xs text-slate-300">Objetivo: {event.objective}</p> : null}
-            <button type="button" onClick={() => onOpen(event)}
-              className="mt-3 min-h-10 rounded-lg border border-white/20 px-3 py-2 text-xs font-bold text-white hover:bg-white/10">
-              {event.kind === 'training' ? 'Abrir sesión' : 'Abrir partido'}</button>
-          </div>)}</div> : <p className="mt-2 text-sm text-slate-400">Sin actividad registrada.</p>}
-      </section> : null}
     </> : null}
     <details className="rounded-2xl border border-white/10 bg-[#0b1a2d]/85 p-4 sm:p-5">
       <summary className="cursor-pointer text-sm font-black uppercase tracking-[0.16em] text-sky-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400">

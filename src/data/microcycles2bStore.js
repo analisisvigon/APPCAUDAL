@@ -1,3 +1,5 @@
+import { normalizeMicrocycleDay } from '../utils/microcyclePresentation.js';
+
 // Migración 2B instalada y verificador estructural GLOBAL PASS, confirmado por el propietario.
 // Las pruebas conectadas con otras identidades siguen pendientes; la RPC/RLS son la autoridad final.
 export const MICROCYCLES_2B_BACKEND_VERIFIED = true;
@@ -46,7 +48,7 @@ export const serializeMicrocycleDraft = (draft, days) => {
   const weekly = { objective: text(draft.objective), priorities: [...draft.priorities],
     responsible: text(draft.responsible), observations: text(draft.observations) };
   const daily = Object.fromEntries(days.map((day) => {
-    const source = draft.days?.[day];
+    const source = normalizeMicrocycleDay(draft.days?.[day]);
     if (!source) throw new Error(`Falta la planificación del ${day}.`);
     const rawMinutes = String(source.durationMinutes ?? '').trim();
     if (rawMinutes && (!/^[1-9]\d{0,3}$/.test(rawMinutes) || Number(rawMinutes) > 9999))
@@ -94,11 +96,13 @@ export const buildMicrocycleSaveArgs = (contextId, monday, expectedRevision, dra
 };
 
 export const verifyMicrocycleSave = (reply, fresh, contextId, monday, expectedRevision, draft, days) => {
+  const expectedDraft = { ...draft, days: Object.fromEntries(days.map((day) =>
+    [day, normalizeMicrocycleDay(draft.days?.[day])])) };
   if (!fresh || typeof fresh.id !== 'string' || !fresh.id || fresh.id !== reply?.id ||
     fresh.club_team_season_id !== contextId ||
     fresh.week_starts_on !== monday || fresh.revision !== expectedRevision + 1 ||
     fresh.revision !== reply?.revision ||
-    JSON.stringify(hydrateMicrocycleDraft(fresh, days)) !== JSON.stringify(draft)) {
+    JSON.stringify(hydrateMicrocycleDraft(fresh, days)) !== JSON.stringify(expectedDraft)) {
     throw new Error('El servidor no confirmó la revisión guardada. Recarga antes de continuar.');
   }
   return fresh;

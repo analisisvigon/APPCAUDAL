@@ -62,7 +62,7 @@ try {
     mode: 'microcycles', client: {}, matches: [], teams: [], onRefreshMatches: async () => {},
   }));
   assert.match(microcycleModule, /MICROCICLOS/);
-  assert.match(microcycleModule, /Planificación semanal/);
+  assert.match(microcycleModule, /Plan de la semana/);
   assert.match(microcycleModule, /Seguimiento físico/);
   assert.doesNotMatch(microcycleModule, />Mes<|>Lista</);
   const calendarModule = renderToStaticMarkup(React.createElement(TeamCalendarSection, {
@@ -89,20 +89,18 @@ try {
   assert.equal((week.match(/aria-label="Ver detalle del /g) || []).length, 7);
   assert.match(week, /26 de octubre/);
   assert.match(week, /1 de noviembre/);
-  assert.match(week, /1 entrenamiento visible/);
-  assert.match(week, /2 partidos/);
+  assert.match(week, />Entrenamientos<\/span><strong[^>]*>1<\/strong>/);
+  assert.match(week, />Partidos<\/span><strong[^>]*>2<\/strong>/);
   assert.doesNotMatch(week, /<h3[^>]*>[^<]*(?:26 de octubre|1 de noviembre)[^<]*<\/h3>/,
     'el encabezado semanal no duplica el rango que ya muestra la cabecera del calendario');
-  assert.match(week, /85 min registrados/);
+  assert.match(week, /10:00 · 85 min/);
   assert.match(week, /Organización defensiva/);
-  assert.match(week, /Abrir sesión/);
+  assert.match(week, /aria-label="Abrir entrenamiento/);
   assert.match(week, /grid-cols-1[^"']*sm:grid-cols-2[^"']*2xl:grid-cols-7/,
     'móvil vertical, tablet adaptativa y siete columnas en pantallas amplias');
   assert.match(weekly([]), /Sin actividad ni planificación registrada esta semana/);
-  assert.match(weekly([weekSession, { ...weekSession, id: 'session-2', durationKnown: false, date: '2026-10-27' }]),
-    /Duración registrada parcial/);
-  assert.match(weekly([{ ...weekSession, durationKnown: false, durationMinutes: null }]),
-    /Duración registrada parcial/);
+  assert.doesNotMatch(weekly([{ ...weekSession, durationKnown: false, durationMinutes: null }]), /0 min/,
+    'una duración desconocida no se presenta como cero');
   assert.doesNotMatch(weekly([weekSession], '', { error: true }), /Sesión nº 1/,
     'ante un error no se exhiben eventos anteriores');
   const { default: MicrocyclePlanningPreview, emptyMicrocyclePreview, WEEK_PRIORITIES,
@@ -123,10 +121,13 @@ try {
   days: Object.fromEntries(days.map((key) => [key, { type: 'Entrenamiento',
     objective: '', focus: '', intensity: 'Media', durationMinutes: 75, observations: '' }])) };
   const plannedWeek = weekly([weekSession, weekMatch], '', { plan: savedPlan, canWritePlan: true });
-  assert.match(plannedWeek, /7 de 7 días planificados/);
+  assert.match(plannedWeek, /Días planificados/);
+  assert.match(plannedWeek, />7 \/ 7</);
   assert.match(plannedWeek, /Previsto: 75 min/);
   assert.match(plannedWeek, /Media/);
-  assert.match(plannedWeek, /Planificación semanal/);
+  assert.match(plannedWeek, /Intensidad prevista/);
+  assert.match(plannedWeek, /domingo, 1 de noviembre de 2026: Partido/,
+    'un partido real se representa como pico aunque el plan diario no lo declare');
   assert.doesNotMatch(weekly([]), /Descanso/, 'un día vacío no se interpreta como descanso');
   const savedPreview = renderToStaticMarkup(React.createElement(MicrocyclePlanningPreview, {
     days, selectedDay: days[0], onSelectDay: () => {}, onEditingChange: () => {},
@@ -141,6 +142,10 @@ try {
   assert.match(planSource, /disabled=\{!canWrite \|\| saving \|\| !dirty\}/);
   assert.match(planSource, /setDraft\(hydrateMicrocycleDraft\(plan, days\)\)/,
     'Cancelar restaura el último estado guardado');
+  assert.match(planSource, /value === 'Partido' \? \{ intensity: 'Muy alta' \}/,
+    'seleccionar Partido fuerza la intensidad cualitativa máxima');
+  assert.match(planSource, /disabled=\{daily\.type === 'Partido'\}/,
+    'la intensidad de Partido no puede rebajarse desde el editor');
   assert.doesNotMatch(planSource, /localStorage|\.rpc\(|\.from\(/,
     'la vista previa no persiste datos por una vía no autorizada');
   console.log('team calendar cards: OK (renderizado local con fixtures)');

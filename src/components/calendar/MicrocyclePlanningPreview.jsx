@@ -22,7 +22,7 @@ const dateLabel = (key) => new Date(`${key}T12:00:00`).toLocaleDateString('es-ES
 export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectDay, onEditingChange,
   plan = null, canWrite = false,
   loading = false, error = '', saving = false, onSave, onReload, showDailyOverview = true,
-  editDayRequest = 0 }) {
+  editDayRequest = 0, editWeekRequest = 0, hideReadView = false }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(() => hydrateMicrocycleDraft(plan, days));
   const [saveError, setSaveError] = useState(null);
@@ -35,11 +35,20 @@ export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectD
       setDraft(hydrateMicrocycleDraft(plan, days)); setEditing(true); setSavedRevision(null);
     }
   }, [editDayRequest]);
+  useEffect(() => {
+    if (editWeekRequest > 0 && canWrite && !loading && !error && !editing) {
+      setDraft(hydrateMicrocycleDraft(plan, days)); setEditing(true); setSavedRevision(null);
+    }
+  }, [editWeekRequest]);
   useEffect(() => { onEditingChange?.(editing && dirty); }, [editing, dirty, onEditingChange]);
   const day = days.includes(selectedDay) ? selectedDay : days[0];
   const daily = draft.days[day] || emptyMicrocyclePreview([day]).days[day];
   const updateDay = (field, value) => setDraft((current) => ({ ...current,
     days: { ...current.days, [day]: { ...current.days[day], [field]: value } },
+  }));
+  const updateDayType = (value) => setDraft((current) => ({ ...current,
+    days: { ...current.days, [day]: { ...current.days[day], type: value,
+      ...(value === 'Partido' ? { intensity: 'Muy alta' } : {}) } },
   }));
   const cancel = () => {
     if (saving) return;
@@ -60,6 +69,7 @@ export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectD
         : `No se pudo verificar el guardado. Tus cambios siguen en pantalla. ${cause?.message || ''}` });
     }
   };
+  if (!editing && hideReadView) return null;
   return <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4" aria-label="Planificación semanal">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h4 className="text-sm font-black uppercase tracking-wide text-white">Planificación semanal</h4>
@@ -119,7 +129,7 @@ export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectD
         <p className="mt-3 text-xs capitalize text-slate-300">{dateLabel(day)}</p>
         <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <label className="text-xs text-slate-200">Tipo de jornada
-            <select value={daily.type} onChange={(event) => updateDay('type', event.target.value)}
+            <select value={daily.type} onChange={(event) => updateDayType(event.target.value)}
               className="mt-1 w-full rounded-lg border border-white/20 bg-[#091428] p-2 text-sm text-white">
               {DAY_TYPES.map((value) => <option key={value} value={value}>{value || 'Sin asignar'}</option>)}</select></label>
           <label className="text-xs text-slate-200">Foco principal
@@ -127,7 +137,8 @@ export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectD
               className="mt-1 w-full rounded-lg border border-white/20 bg-[#091428] p-2 text-sm text-white">
               {DAY_FOCUS.map((value) => <option key={value} value={value}>{value || 'Sin asignar'}</option>)}</select></label>
           <label className="text-xs text-slate-200">Intensidad prevista (no es RPE)
-            <select value={daily.intensity} onChange={(event) => updateDay('intensity', event.target.value)}
+            <select value={daily.type === 'Partido' ? 'Muy alta' : daily.intensity}
+              disabled={daily.type === 'Partido'} onChange={(event) => updateDay('intensity', event.target.value)}
               className="mt-1 w-full rounded-lg border border-white/20 bg-[#091428] p-2 text-sm text-white">
               {DAY_INTENSITIES.map((value) => <option key={value} value={value}>{value || 'Sin asignar'}</option>)}</select></label>
           <label className="text-xs text-slate-200">Objetivo del día

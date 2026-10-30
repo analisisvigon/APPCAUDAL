@@ -15,6 +15,10 @@ draft.days[days[0]].intensity = 'Alta';
 const encoded = serializeMicrocycleDraft(draft, days);
 assert.equal(encoded.days[days[0]].durationMinutes, 75);
 assert.equal(encoded.days[days[1]].durationMinutes, null);
+const matchDraft = blankMicrocycleDraft(days);
+matchDraft.days[days[2]].type = 'Partido';
+matchDraft.days[days[2]].intensity = 'Baja';
+assert.equal(serializeMicrocycleDraft(matchDraft, days).days[days[2]].intensity, 'Muy alta');
 assert.deepEqual(hydrateMicrocycleDraft(null, days), blankMicrocycleDraft(days));
 const record = { id: 'plan-id', club_team_season_id: 'cts-id', week_starts_on: days[0],
   revision: 2, weekly: encoded.weekly, days: encoded.days };
