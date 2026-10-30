@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
 import { calendarWeekDays } from '../src/utils/teamCalendar.js';
+import { plannedMdReferences } from '../src/utils/microcycleMatchDays.js';
 
 const vite = await createServer({ configFile: false, plugins: [react()], optimizeDeps: { disabled: true },
   server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' });
@@ -128,6 +129,19 @@ try {
   assert.match(plannedWeek, /Intensidad prevista/);
   assert.match(plannedWeek, /domingo, 1 de noviembre de 2026: Partido/,
     'un partido real se representa como pico aunque el plan diario no lo declare');
+  const mdReferences = plannedMdReferences(days, [
+    { id: 'previous', date: '2026-10-28', club_team_season_id: 'cts-1', opponent: 'Rival anterior' },
+    { id: 'next', date: '2026-11-01', club_team_season_id: 'cts-1', opponent: 'Rival siguiente' },
+  ], 'cts-1', { starts_on: '2026-07-01', ends_on: '2027-06-30' });
+  const referencedWeek = weekly([weekSession, weekMatch], '', { mdReferences });
+  assert.match(referencedWeek, /MD\+1/);
+  assert.match(referencedWeek, /MD-3/);
+  assert.match(referencedWeek, /Partido mié 28 · Rival anterior/);
+  assert.match(referencedWeek, /Partido dom 1 · Rival siguiente/);
+  assert.match(referencedWeek, /Sesión nº 1/);
+  assert.match(referencedWeek, /MD-3/, 'el MD guardado de la sesión sigue visible');
+  assert.match(weekly([], '', { mdLoading: true }), /Consultando MD…/);
+  assert.doesNotMatch(weekly([], '', { mdLoading: true }), /MD sin asignar/);
   assert.doesNotMatch(weekly([]), /Descanso/, 'un día vacío no se interpreta como descanso');
   const savedPreview = renderToStaticMarkup(React.createElement(MicrocyclePlanningPreview, {
     days, selectedDay: days[0], onSelectDay: () => {}, onEditingChange: () => {},

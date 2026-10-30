@@ -7,6 +7,7 @@ import { buildTeamCalendarEvents, calendarLocalDateKey, calendarMonthDays,
   calendarWeekDays, calendarWeekSummary, shiftCalendarWeek } from '../../utils/teamCalendar.js';
 import { clampMicrocycleDate, microcycleRangeLabel, seasonMicrocycleForDate, seasonMicrocycles } from '../../utils/microcycleIdentity.js';
 import { microcycleDayIntensity, plannedMicrocycleMinutes } from '../../utils/microcyclePresentation.js';
+import { plannedMdReferences } from '../../utils/microcycleMatchDays.js';
 import MicrocyclePlanningPreview from './MicrocyclePlanningPreview.jsx';
 import MicrocycleCopyDialog from './MicrocycleCopyDialog.jsx';
 
@@ -133,7 +134,8 @@ const weekRangeLabel = (days) => {
 export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectDay, onOpen, today, loading, error,
   onPreviewEditingChange, plan, planLoading, planError, planSaving, canWritePlan,
   onSavePlan, onReloadPlan, onCopyPlan, onOpenPerformance,
-  sessionStatusVerified = true, copyAvailable = false }) {
+  sessionStatusVerified = true, copyAvailable = false, mdReferences = new Map(),
+  mdLoading = false, mdError = false }) {
   const [editDayRequest, setEditDayRequest] = useState(0);
   const [editWeekRequest, setEditWeekRequest] = useState(0);
   const editorRef = useRef(null);
@@ -214,6 +216,7 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
           const orderedRows = [...rows].sort((left, right) => Number(left.kind === 'training') - Number(right.kind === 'training'));
           const day = new Date(`${key}T12:00:00`);
           const planned = dailyPlan[key];
+          const references = mdReferences.get(key) || [];
           const displayIntensity = microcycleDayIntensity(planned, rows.some((event) => event.kind !== 'training'));
           return <article key={key} className={`min-w-0 rounded-2xl border p-3 ${key === today
             ? 'ring-1 ring-sky-300/60 ' : ''}${plannedDayTone(planned, rows)}`}>
@@ -223,6 +226,17 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
               <span className="text-xs font-black uppercase tracking-wide">{day.toLocaleDateString('es-ES', { weekday: 'long' })}</span>
               <span className="text-lg font-black tabular-nums">{day.getDate()}</span>
             </button>
+            <div className="mb-2 space-y-1 px-2" aria-label={`Referencias MD del ${dateLabel(key)}`}>
+              {references.length ? <p className="text-[9px] font-bold uppercase tracking-wide text-cyan-200/70">MD automático · calendario</p> : null}
+              {references.map((reference) => <div key={reference.matchId}
+                className="flex min-w-0 items-start gap-1.5 text-[10px] leading-tight">
+                <span className="shrink-0 rounded-md border border-cyan-300/35 bg-cyan-300/10 px-1.5 py-0.5 font-black text-cyan-100">{reference.label}</span>
+                <span className="min-w-0 break-words text-slate-400" title={`${dateLabel(reference.matchDate)} · ${reference.opponent}`}>
+                  Partido {new Date(`${reference.matchDate}T12:00:00`).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' })} · {reference.opponent}</span>
+              </div>)}
+              {!references.length ? <span className="text-[10px] text-slate-500">{mdError ? 'MD no disponible'
+                : mdLoading ? 'Consultando MD…' : 'MD sin asignar'}</span> : null}
+            </div>
             {hasDailyPlan(planned) || displayIntensity.peak ? <div className="mb-3 min-w-0 space-y-1.5 border-b border-white/10 px-2 pb-3 text-xs">
               <div className="flex flex-wrap items-center gap-1.5">
                 {planned?.type ? <span className="rounded-md bg-white/10 px-1.5 py-0.5 font-bold text-white">{planned.type}</span> : null}
@@ -295,7 +309,9 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
   const [weekSearch, setWeekSearch] = useState('');
   const planSaveRef = useRef(false);
   const sessionLoadSeq = useRef(0);
+  const matchLoadSeq = useRef(0);
   const [loading, setLoading] = useState(true);
+  const [matchesLoading, setMatchesLoading] = useState(false);
   const [error, setError] = useState('');
   const [matchError, setMatchError] = useState('');
   const selectedContext = contexts.find((row) => row.id === contextId) || null;
@@ -373,9 +389,15 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
   useEffect(() => {
     const signal = { cancelled: false };
     refresh(signal);
-    onRefreshMatches?.({ shouldApply: () => !signal.cancelled }).catch(() => {
-      if (!signal.cancelled) setMatchError('No se pudieron actualizar los partidos.');
-    });
+    const request = ++matchLoadSeq.current;
+    setMatchesLoading(Boolean(onRefreshMatches)); setMatchError('');
+    Promise.resolve().then(() => onRefreshMatches?.({ shouldApply: () => !signal.cancelled && request === matchLoadSeq.current }))
+      .catch(() => {
+        if (!signal.cancelled && request === matchLoadSeq.current)
+          setMatchError('No se pudieron actualizar los partidos.');
+      }).finally(() => {
+        if (!signal.cancelled && request === matchLoadSeq.current) setMatchesLoading(false);
+      });
     return () => { signal.cancelled = true; };
   }, [refresh]);
   useEffect(() => {
@@ -425,11 +447,22 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
   const refreshAll = async () => {
     if (planSaveRef.current) return;
     if (!discardPreview()) return;
-    setMatchError('');
+    const request = ++matchLoadSeq.current;
+    const targetContext = contextId;
+    setMatchError(''); setMatchesLoading(Boolean(onRefreshMatches));
     setPlanLoadVersion((current) => current + 1);
-    await Promise.all([refresh(), onRefreshMatches?.().catch(() => setMatchError('No se pudieron actualizar los partidos.'))]);
+    await Promise.all([refresh(), Promise.resolve().then(() => onRefreshMatches?.({
+      shouldApply: () => request === matchLoadSeq.current && planScopeRef.current.startsWith(`${targetContext}:`),
+    })).catch(() => {
+      if (request === matchLoadSeq.current) setMatchError('No se pudieron actualizar los partidos.');
+    }).finally(() => {
+      if (request === matchLoadSeq.current) setMatchesLoading(false);
+    })]);
   };
   const scopedMatches = useMemo(() => scopeCalendarMatches(matches, contextId), [matches, contextId]);
+  const mdReferences = useMemo(() => mode === 'microcycles' && selectedContext && !matchError && !matchesLoading
+    ? plannedMdReferences(weekDays, scopedMatches, contextId, selectedContext) : new Map(),
+  [mode, selectedContext, matchError, matchesLoading, weekDays, scopedMatches, contextId]);
   const allEvents = useMemo(() => buildTeamCalendarEvents(error ? [] : sessions, matchError ? [] : scopedMatches, teams),
     [sessions, scopedMatches, teams, error, matchError]);
   const events = useMemo(() => allEvents.filter((event) => enabled[event.kind]), [allEvents, enabled]);
@@ -661,6 +694,7 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
         planError={planError} planSaving={planSaving} onSavePlan={savePlan}
         canWritePlan={canWritePlan && planReady} onReloadPlan={reloadPlan}
         sessionStatusVerified={SESSION_RETIREMENT_BACKEND_VERIFIED}
+        mdReferences={mdReferences} mdLoading={matchesLoading} mdError={Boolean(matchError)}
         onCopyPlan={openCopy} onOpenPerformance={() => {
           if (discardPreview()) onOpenPerformance?.();
         }} copyAvailable={Boolean(contextId && contexts.length && !planSaving)} />}
