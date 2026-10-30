@@ -21,7 +21,7 @@ const dateLabel = (key) => new Date(`${key}T12:00:00`).toLocaleDateString('es-ES
 
 export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectDay, onEditingChange,
   plan = null, canWrite = false,
-  loading = false, error = '', saving = false, onSave, onReload }) {
+  loading = false, error = '', saving = false, onSave, onReload, showDailyOverview = true }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(() => hydrateMicrocycleDraft(plan, days));
   const [saveError, setSaveError] = useState(null);
@@ -75,7 +75,7 @@ export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectD
       {baseline.responsible ? <p><strong>Responsable:</strong> {baseline.responsible}</p> : null}
       {baseline.observations ? <p className="whitespace-pre-wrap"><strong>Observaciones:</strong> {baseline.observations}</p> : null}
     </div> : null}
-    {!editing && !loading && plan && !error ? <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4 xl:grid-cols-7" aria-label="Intensidad semanal prevista">
+    {!editing && !loading && plan && !error && showDailyOverview ? <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4 xl:grid-cols-7" aria-label="Intensidad semanal prevista">
       {days.map((key) => <div key={key} className={`rounded-md border px-2 py-1.5 text-[11px] ${INTENSITY_STYLE[baseline.days[key].intensity] || 'border-white/15 text-slate-400'}`}>
         <span className="block font-bold capitalize">{new Date(`${key}T12:00:00`).toLocaleDateString('es-ES', { weekday: 'short' })}</span>
         <span>{baseline.days[key].intensity || 'Sin asignar'}</span>

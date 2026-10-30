@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { microcycleRangeLabel, seasonMicrocycleForDate, seasonMicrocycles } from './microcycleIdentity.js';
+import { clampMicrocycleDate, microcycleRangeLabel, seasonMicrocycleForDate, seasonMicrocycles } from './microcycleIdentity.js';
 
 const season = { starts_on: '2026-07-01', ends_on: '2027-06-30' };
 const weeks = seasonMicrocycles(season);
@@ -21,4 +21,8 @@ assert.equal(seasonMicrocycleForDate({ ...season, starts_on: 'invalid' }, '2026-
 assert.deepEqual(seasonMicrocycles({ starts_on: '2026-12-31', ends_on: '2027-01-02' })
   .map((week) => week.label), ['MC 01']);
 assert.match(microcycleRangeLabel(weeks[0], true), /2026/);
+assert.equal(clampMicrocycleDate(season, '2026-06-20'), '2026-07-01');
+assert.equal(clampMicrocycleDate(season, '2026-10-30'), '2026-10-30');
+assert.equal(clampMicrocycleDate(season, '2027-07-10'), '2027-06-30');
+assert.equal(seasonMicrocycleForDate(season, clampMicrocycleDate(season, '2027-07-10'))?.label, 'MC 53');
 console.log('microcycle identity: OK');

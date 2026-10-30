@@ -5,7 +5,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
 import { calendarWeekDays } from '../src/utils/teamCalendar.js';
-import { seasonMicrocycleForDate } from '../src/utils/microcycleIdentity.js';
 
 const vite = await createServer({ configFile: false, plugins: [react()], optimizeDeps: { disabled: true },
   server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' });
@@ -62,7 +61,7 @@ try {
   const microcycleModule = renderToStaticMarkup(React.createElement(TeamCalendarSection, {
     mode: 'microcycles', client: {}, matches: [], teams: [], onRefreshMatches: async () => {},
   }));
-  assert.match(microcycleModule, /Microciclos/);
+  assert.match(microcycleModule, /MICROCICLOS/);
   assert.match(microcycleModule, /Planificación semanal/);
   assert.match(microcycleModule, /Seguimiento físico/);
   assert.doesNotMatch(microcycleModule, />Mes<|>Lista</);
@@ -73,7 +72,7 @@ try {
   assert.doesNotMatch(calendarModule, />Microciclo</);
   assert.match(calendarSource, /changeView\(key\)/);
   assert.match(calendarSource, /shiftCalendarWeek\(current, step\)/);
-  assert.match(calendarSource, /setSelectedWeekDay\(today\)/);
+  assert.match(calendarSource, /setSelectedWeekDay\(target\)/);
   const days = calendarWeekDays('2026-10-28');
   const weekSession = { ...session, date: '2026-10-26', contextId: 'cts-1',
     durationKnown: true, durationMinutes: 85, objective: 'Organización defensiva' };
@@ -87,25 +86,23 @@ try {
     }));
   };
   const week = weekly([weekSession, weekMatch, { ...weekMatch, id: 'match-3', kind: 'cup', label: 'Copa' }], '2026-10-26');
-  const numbered = weekly([weekSession], '', { microcycle: seasonMicrocycleForDate({
-    starts_on: '2026-07-01', ends_on: '2027-06-30' }, '2026-10-26') });
-  assert.match(numbered, /MC 18/);
   assert.equal((week.match(/aria-label="Ver detalle del /g) || []).length, 7);
   assert.match(week, /26 de octubre/);
   assert.match(week, /1 de noviembre/);
-  assert.match(week, /1 sesión · 2 partidos · 2 días con actividad/);
+  assert.match(week, /1 entrenamiento visible/);
+  assert.match(week, /2 partidos/);
   assert.doesNotMatch(week, /<h3[^>]*>[^<]*(?:26 de octubre|1 de noviembre)[^<]*<\/h3>/,
     'el encabezado semanal no duplica el rango que ya muestra la cabecera del calendario');
-  assert.match(week, /85 min planificados/);
+  assert.match(week, /85 min registrados/);
   assert.match(week, /Organización defensiva/);
   assert.match(week, /Abrir sesión/);
   assert.match(week, /grid-cols-1[^"']*sm:grid-cols-2[^"']*2xl:grid-cols-7/,
     'móvil vertical, tablet adaptativa y siete columnas en pantallas amplias');
-  assert.match(weekly([]), /No hay actividades activas esta semana/);
+  assert.match(weekly([]), /Sin actividad ni planificación registrada esta semana/);
   assert.match(weekly([weekSession, { ...weekSession, id: 'session-2', durationKnown: false, date: '2026-10-27' }]),
-    /Duración parcial/);
+    /Duración registrada parcial/);
   assert.match(weekly([{ ...weekSession, durationKnown: false, durationMinutes: null }]),
-    /Duración no acreditada · Duración parcial/);
+    /Duración registrada parcial/);
   assert.doesNotMatch(weekly([weekSession], '', { error: true }), /Sesión nº 1/,
     'ante un error no se exhiben eventos anteriores');
   const { default: MicrocyclePlanningPreview, emptyMicrocyclePreview, WEEK_PRIORITIES,
@@ -125,6 +122,12 @@ try {
     priorities: ['Táctica'], responsible: '', observations: '' },
   days: Object.fromEntries(days.map((key) => [key, { type: 'Entrenamiento',
     objective: '', focus: '', intensity: 'Media', durationMinutes: 75, observations: '' }])) };
+  const plannedWeek = weekly([weekSession, weekMatch], '', { plan: savedPlan, canWritePlan: true });
+  assert.match(plannedWeek, /7 de 7 días planificados/);
+  assert.match(plannedWeek, /Previsto: 75 min/);
+  assert.match(plannedWeek, /Media/);
+  assert.match(plannedWeek, /Planificación semanal/);
+  assert.doesNotMatch(weekly([]), /Descanso/, 'un día vacío no se interpreta como descanso');
   const savedPreview = renderToStaticMarkup(React.createElement(MicrocyclePlanningPreview, {
     days, selectedDay: days[0], onSelectDay: () => {}, onEditingChange: () => {},
     plan: savedPlan, canWrite: false,

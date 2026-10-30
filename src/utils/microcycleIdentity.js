@@ -32,6 +32,15 @@ export function seasonMicrocycles(season) {
   return weeks;
 }
 
+export function clampMicrocycleDate(season, date) {
+  const start = calendarDateKey(season?.starts_on);
+  const end = calendarDateKey(season?.ends_on);
+  const target = calendarDateKey(date);
+  if (!start || !end || start > end) return target;
+  if (!target || target < start) return start;
+  return target > end ? end : target;
+}
+
 export function microcycleRangeLabel(week, includeYear = false) {
   if (!week?.monday || !week?.sunday) return '';
   const start = new Date(`${week.monday}T12:00:00`);

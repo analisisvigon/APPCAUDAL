@@ -19,8 +19,8 @@ try {
   assert.match(week, /Copiar planificación/);
   assert.match(week, /Guardar como plantilla/);
   assert.match(week, /Utilizar plantilla/);
-  assert.match(week, /Plantillas del equipo pendientes de backend/);
-  assert.match(week, /No hay actividades activas esta semana/);
+  assert.match(week, /Plantillas pendientes de integración en esta interfaz/);
+  assert.match(week, /Sin actividad ni planificación registrada esta semana/);
   const dialog = renderToStaticMarkup(React.createElement(CopyDialog, {
     client: {}, contexts: [{ id: 'cts-1', team_name: 'Almadina SC Sub-23', label: '2026/2027',
       status: 'open', starts_on: '2026-07-01', ends_on: '2027-06-30' }],
