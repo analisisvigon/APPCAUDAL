@@ -33362,7 +33362,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             onOpenMatch={(match) => {
               setActiveTab('Partidos');
               openMatchPage(match, 'PRE');
-            }} />
+            }} onOpenPerformance={() => goToTab('Rendimiento')} />
         ) : null}
         {activeTab === 'Sesiones' ? (
           <PlannedSessionsSection key={`${session?.user?.id || ''}:${identity?.membership?.club_id || ''}`}

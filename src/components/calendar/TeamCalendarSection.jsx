@@ -84,7 +84,7 @@ const weekRangeLabel = (days) => {
 
 export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectDay, onOpen, today, loading, error,
   onPreviewEditingChange, plan, planLoading, planError, planSaving, canWritePlan,
-  onSavePlan, onReloadPlan, onCopyPlan, copyAvailable = false }) {
+  onSavePlan, onReloadPlan, onCopyPlan, onOpenPerformance, copyAvailable = false }) {
   const summary = calendarWeekSummary(events, days);
   const chosenDay = days.includes(selectedDay) ? selectedDay : '';
   const chosenEvents = chosenDay ? grouped.get(chosenDay) || [] : [];
@@ -149,11 +149,24 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
           </div>)}</div> : <p className="mt-2 text-sm text-slate-400">Sin actividad registrada.</p>}
       </section> : null}
     </> : null}
+    <details className="rounded-2xl border border-white/10 bg-[#0b1a2d]/85 p-4 sm:p-5">
+      <summary className="cursor-pointer text-sm font-black uppercase tracking-[0.16em] text-sky-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400">
+        Seguimiento físico
+      </summary>
+      <div className="mt-4 space-y-3 text-sm text-slate-300">
+        <p>El seguimiento físico de esta semana aún no puede mostrarse con seguridad: los registros de Rendimiento no identifican el equipo y la temporada de este microciclo.</p>
+        <p>La planificación permanece visible arriba. Puedes consultar los registros originales en Rendimiento; su fecha no acredita que pertenezcan a este equipo-temporada.</p>
+        {onOpenPerformance ? <button type="button" onClick={onOpenPerformance}
+          className="min-h-10 rounded-xl border border-sky-300/40 px-3 py-2 text-xs font-bold text-sky-100 hover:bg-sky-300/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400">
+          Ver análisis completo en Rendimiento
+        </button> : null}
+      </div>
+    </details>
   </section>;
 }
 
 export default function TeamCalendarSection({ client, clubId, membership, preferredContextId,
-  matches, teams, onRefreshMatches, onOpenSession, onOpenMatch }) {
+  matches, teams, onRefreshMatches, onOpenSession, onOpenMatch, onOpenPerformance }) {
   const [month, setMonth] = useState(() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); });
   const [weekAnchor, setWeekAnchor] = useState(() => calendarLocalDateKey());
   const [selectedWeekDay, setSelectedWeekDay] = useState('');
@@ -430,7 +443,9 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
         planLoading={planLoading || (MICROCYCLES_2B_BACKEND_VERIFIED && Boolean(contextId) && !planReady)}
         planError={planError} planSaving={planSaving} onSavePlan={savePlan}
         canWritePlan={canWritePlan && planReady} onReloadPlan={reloadPlan}
-        onCopyPlan={openCopy} copyAvailable={Boolean(contextId && contexts.length && !planSaving)} />}
+        onCopyPlan={openCopy} onOpenPerformance={() => {
+          if (discardPreview()) onOpenPerformance?.();
+        }} copyAvailable={Boolean(contextId && contexts.length && !planSaving)} />}
       {!loading && !error && !matchError && view !== 'week' && !events.length ? <p className="mt-5 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">No hay eventos para los filtros seleccionados.</p> : null}
       {!loading && !error && view === 'month' && events.length > 0 && !days.some((key) => grouped.has(key)) ? <p className="mt-4 text-sm text-slate-400">No hay eventos en este mes.</p> : null}
     </section>
