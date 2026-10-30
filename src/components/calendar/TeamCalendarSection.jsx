@@ -98,11 +98,17 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
   onPreviewEditingChange, plan, planLoading, planError, planSaving, canWritePlan,
   onSavePlan, onReloadPlan, onCopyPlan, onOpenPerformance,
   sessionStatusVerified = true, copyAvailable = false }) {
+  const [editDayRequest, setEditDayRequest] = useState(0);
+  const editorRef = useRef(null);
   const summary = calendarWeekSummary(events, days);
   const chosenDay = days.includes(selectedDay) ? selectedDay : '';
   const chosenEvents = chosenDay ? grouped.get(chosenDay) || [] : [];
   const dailyPlan = plan && !planLoading && !planError ? hydrateMicrocycleDraft(plan, days).days : {};
   const plannedCount = days.filter((key) => hasDailyPlan(dailyPlan[key])).length;
+  const editDay = (key) => {
+    onSelectDay(key); setEditDayRequest((current) => current + 1);
+    requestAnimationFrame(() => editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
   return <section className="space-y-4" aria-label="Microciclo semanal">
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2">
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-slate-300">
@@ -113,10 +119,11 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
       {!loading && !error && summary.durationCoverage !== 'none' ? <span className="text-xs text-slate-400">
         {summary.durationCoverage === 'complete' ? `${summary.durationMinutes} min registrados` : 'Duración registrada parcial'}</span> : null}
     </div>
-    <MicrocyclePlanningPreview key={days[0]} days={days} selectedDay={selectedDay}
+    <div ref={editorRef}><MicrocyclePlanningPreview key={days[0]} days={days} selectedDay={selectedDay}
       onSelectDay={onSelectDay} onEditingChange={onPreviewEditingChange}
       plan={plan} loading={planLoading} error={planError} saving={planSaving}
-      canWrite={canWritePlan} onSave={onSavePlan} onReload={onReloadPlan} showDailyOverview={false} />
+      canWrite={canWritePlan} onSave={onSavePlan} onReload={onReloadPlan}
+      showDailyOverview={false} editDayRequest={editDayRequest} /></div>
     <details className="rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2">
       <summary className="cursor-pointer text-xs font-bold text-slate-300">Más acciones de planificación</summary>
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -159,9 +166,9 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
             {rows.length ? <div className="space-y-2">{rows.map((event) =>
               <EventButton key={`${event.kind}-${event.id}`} event={event} onOpen={onOpen} variant="week" />)}</div>
               : !hasDailyPlan(planned) ? <p className="px-2 py-1 text-xs text-slate-500">Sin planificar</p> : null}
-            {canWritePlan ? <button type="button" onClick={() => onSelectDay(key)}
+            {canWritePlan ? <button type="button" onClick={() => editDay(key)}
               className="mt-3 rounded-lg border border-white/15 px-2 py-1.5 text-[11px] font-semibold text-sky-200 hover:bg-sky-300/10">
-              {hasDailyPlan(planned) ? 'Ver plan del día' : 'Planificar día'}</button> : null}
+              {hasDailyPlan(planned) ? 'Editar día' : 'Planificar día'}</button> : null}
           </article>;
         })}
       </div>

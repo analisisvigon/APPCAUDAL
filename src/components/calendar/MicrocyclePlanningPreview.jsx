@@ -21,7 +21,8 @@ const dateLabel = (key) => new Date(`${key}T12:00:00`).toLocaleDateString('es-ES
 
 export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectDay, onEditingChange,
   plan = null, canWrite = false,
-  loading = false, error = '', saving = false, onSave, onReload, showDailyOverview = true }) {
+  loading = false, error = '', saving = false, onSave, onReload, showDailyOverview = true,
+  editDayRequest = 0 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(() => hydrateMicrocycleDraft(plan, days));
   const [saveError, setSaveError] = useState(null);
@@ -29,6 +30,11 @@ export default function MicrocyclePlanningPreview({ days, selectedDay, onSelectD
   const baseline = hydrateMicrocycleDraft(plan, days);
   const dirty = JSON.stringify(draft) !== JSON.stringify(baseline);
   useEffect(() => { if (!editing) setDraft(hydrateMicrocycleDraft(plan, days)); }, [plan, days, editing]);
+  useEffect(() => {
+    if (editDayRequest > 0 && canWrite && !loading && !error && !editing) {
+      setDraft(hydrateMicrocycleDraft(plan, days)); setEditing(true); setSavedRevision(null);
+    }
+  }, [editDayRequest]);
   useEffect(() => { onEditingChange?.(editing && dirty); }, [editing, dirty, onEditingChange]);
   const day = days.includes(selectedDay) ? selectedDay : days[0];
   const daily = draft.days[day] || emptyMicrocyclePreview([day]).days[day];
