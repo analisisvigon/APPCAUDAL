@@ -3,11 +3,14 @@ import { readFileSync } from 'node:fs';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
+import react from '@vitejs/plugin-react';
 import { calendarWeekDays } from '../src/utils/teamCalendar.js';
+import { seasonMicrocycleForDate } from '../src/utils/microcycleIdentity.js';
 
-const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' });
+const vite = await createServer({ configFile: false, plugins: [react()], optimizeDeps: { disabled: true },
+  server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' });
 try {
-  const { EventButton, CalendarWeekView } = await vite.ssrLoadModule('/src/components/calendar/TeamCalendarSection.jsx');
+  const { EventButton, CalendarWeekView, default: TeamCalendarSection } = await vite.ssrLoadModule('/src/components/calendar/TeamCalendarSection.jsx');
   const render = (event, variant = 'month') => renderToStaticMarkup(
     React.createElement(EventButton, { event, variant, onOpen: () => {} }));
   const session = { id: 'session-1', kind: 'training', title: 'Sesión nº 1',
@@ -53,7 +56,21 @@ try {
     'la vista mensual utiliza las tarjetas nuevas');
   assert.match(calendarSource, /rows\.map\(\(event\) => <EventButton[^>]*variant="list"/,
     'la vista lista utiliza las tarjetas ampliadas');
-  assert.match(calendarSource, /\['week', 'Microciclo'\]/);
+  assert.match(calendarSource, /\['month', 'Mes'\], \['list', 'Lista'\]/);
+  assert.doesNotMatch(calendarSource, /\['week', 'Microciclo'\]/);
+  assert.match(calendarSource, /onOpenMicrocycle\(\{ date, contextId \}\)/);
+  const microcycleModule = renderToStaticMarkup(React.createElement(TeamCalendarSection, {
+    mode: 'microcycles', client: {}, matches: [], teams: [], onRefreshMatches: async () => {},
+  }));
+  assert.match(microcycleModule, /Microciclos/);
+  assert.match(microcycleModule, /Planificación semanal/);
+  assert.match(microcycleModule, /Seguimiento físico/);
+  assert.doesNotMatch(microcycleModule, />Mes<|>Lista</);
+  const calendarModule = renderToStaticMarkup(React.createElement(TeamCalendarSection, {
+    mode: 'calendar', client: {}, matches: [], teams: [], onRefreshMatches: async () => {},
+  }));
+  assert.match(calendarModule, />Mes<|>Lista</);
+  assert.doesNotMatch(calendarModule, />Microciclo</);
   assert.match(calendarSource, /changeView\(key\)/);
   assert.match(calendarSource, /shiftCalendarWeek\(current, step\)/);
   assert.match(calendarSource, /setSelectedWeekDay\(today\)/);
@@ -70,6 +87,9 @@ try {
     }));
   };
   const week = weekly([weekSession, weekMatch, { ...weekMatch, id: 'match-3', kind: 'cup', label: 'Copa' }], '2026-10-26');
+  const numbered = weekly([weekSession], '', { microcycle: seasonMicrocycleForDate({
+    starts_on: '2026-07-01', ends_on: '2027-06-30' }, '2026-10-26') });
+  assert.match(numbered, /MC 18/);
   assert.equal((week.match(/aria-label="Ver detalle del /g) || []).length, 7);
   assert.match(week, /26 de octubre/);
   assert.match(week, /1 de noviembre/);

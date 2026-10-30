@@ -50,12 +50,16 @@ try {
     '/src/components/training/PlannedSessionPrint.jsx');
   const printed = renderToStaticMarkup(React.createElement(PlannedSessionPrintPages, {
     editor: { session_date: '2026-10-25', session_number: 1, slots: [],
-      header: { staff_observations: 'Revisión posterior', material: 'Conos' } },
-    selected: { team_name: 'C.D. Caudal', label: '2026/2027' },
+      header: { staff_observations: 'Revisión posterior', material: 'Conos', morphology_pattern: 'MD-3' } },
+    selected: { team_name: 'C.D. Caudal', label: '2026/2027',
+      starts_on: '2026-07-01', ends_on: '2027-06-30' },
     leagueLogoUrl: 'https://assets.example/liga.png', sessionValue: '8.5',
     pages: [{ kind: 'cover', activation: null }],
   }));
   assert.match(printed, /Observaciones post/);
+  assert.match(printed, /MC 17/);
+  assert.match(printed, /Día respecto al partido/);
+  assert.match(printed, /MD-3/);
   assert.match(printed, /Revisión posterior/);
   assert.match(printed, /VALOR \(0–10\)/);
   assert.match(printed, /8\.5/);
@@ -84,8 +88,9 @@ try {
     '/src/components/training/PlannedSessionDocument.jsx');
   const documentProps = {
     editor: { id: 'session-1', revision: 4, session_date: '2026-10-25',
-      session_number: 1, header: {}, slots: [] },
-    selected: { team_name: 'C.D. Caudal', label: '2026/2027' },
+      session_number: 1, header: { morphology_pattern: 'MD-3' }, slots: [] },
+    selected: { team_name: 'C.D. Caudal', label: '2026/2027',
+      starts_on: '2026-07-01', ends_on: '2027-06-30' },
     canEdit: false, busy: false, fieldIssue: () => null,
     roster: [], frozen: true, selectedMembershipIds: [], availability: {},
     distribution: { formation_key: null, player_layout: [], space_zones: [] },
@@ -95,6 +100,12 @@ try {
   const closedMarkup = renderToStaticMarkup(React.createElement(PlannedSessionDocument, documentProps));
   assert.match(closedMarkup, /<label>VALOR \(0–10\)<input[^>]*disabled=""[^>]*value="9"/,
     'la temporada cerrada conserva el dato visible sin permitir editarlo');
+  assert.match(closedMarkup, /MC 17/, 'la sesión del 25 de octubre pertenece a la semana MC 17');
+  assert.match(closedMarkup, /Día respecto al partido/, 'la etiqueta MD sigue siendo independiente');
+  assert.match(closedMarkup, /MD-3/, 'la etiqueta MD almacenada se conserva');
+  assert.match(renderToStaticMarkup(React.createElement(PlannedSessionDocument, {
+    ...documentProps, editor: { ...documentProps.editor, session_date: '2026-10-26' },
+  })), /MC 18/, 'al cambiar la fecha se actualiza el microciclo calculado');
   console.log('planned session distribution boards rendering tests passed');
 } finally {
   await vite.close();

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { blankMicrocycleDraft, buildMicrocycleSaveArgs, hydrateMicrocycleDraft, loadMicrocycle2b,
+import { blankMicrocycleDraft, buildMicrocycleSaveArgs, hydrateMicrocycleDraft,
+  listSeasonMicrocyclePlans, loadMicrocycle2b,
   MICROCYCLES_2B_BACKEND_VERIFIED, saveMicrocycle2b, serializeMicrocycleDraft,
   verifyMicrocycleSave } from './microcycles2bStore.js';
 
@@ -57,6 +58,7 @@ const client = {
     const query = {
       select(columns) { calls.push(['select', columns]); return this; },
       eq(column, value) { calls.push(['eq', column, value]); return this; },
+      async order(column, options) { calls.push(['order', column, options]); return { data: returned, error: null }; },
       async maybeSingle() { return { data: returned, error: null }; },
     };
     return query;
@@ -68,6 +70,12 @@ const client = {
 };
 assert.equal((await loadMicrocycle2b(client, 'cts-id', days[0])).revision, 2);
 assert.deepEqual(calls.slice(-2), [['eq', 'club_team_season_id', 'cts-id'], ['eq', 'week_starts_on', days[0]]]);
+returned = [record];
+assert.deepEqual(await listSeasonMicrocyclePlans(client, 'cts-id'), [record]);
+assert.ok(calls.some((call) => call[0] === 'eq' && call[1] === 'club_team_season_id' && call[2] === 'cts-id'));
+returned = [{ ...record, club_team_season_id: 'otro-cts' }];
+await assert.rejects(listSeasonMicrocyclePlans(client, 'cts-id'), /incompatible/);
+returned = record;
 returned = null;
 assert.equal(await loadMicrocycle2b(client, 'cts-id', days[0]), null);
 returned = { ...record, club_team_season_id: 'otro-cts' };

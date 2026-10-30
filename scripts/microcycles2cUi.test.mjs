@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
+import react from '@vitejs/plugin-react';
 import { calendarWeekDays } from '../src/utils/teamCalendar.js';
 
-const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' });
+const vite = await createServer({ configFile: false, plugins: [react()], optimizeDeps: { disabled: true },
+  server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' });
 try {
   const { CalendarWeekView } = await vite.ssrLoadModule('/src/components/calendar/TeamCalendarSection.jsx');
   const { default: CopyDialog } = await vite.ssrLoadModule('/src/components/calendar/MicrocycleCopyDialog.jsx');

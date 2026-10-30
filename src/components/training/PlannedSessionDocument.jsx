@@ -13,6 +13,7 @@ import PlannedSessionRoster from './PlannedSessionRoster';
 import { SessionPlayerDistribution, SessionSpaceDistribution } from './PlannedSessionDistributionBoards';
 import { sessionPlayerCounts } from '../../utils/plannedSessionPlayers';
 import { OWN_CLUB_IDENTITY, getOwnClubDisplayName } from '../../constants/clubIdentity';
+import { microcycleRangeLabel, seasonMicrocycleForDate } from '../../utils/microcycleIdentity';
 import './plannedSessionDocument.css';
 
 const PhaseName = ({ phase }) => PLANNED_PHASES.find((entry) => entry.key === phase)?.label || phase;
@@ -249,6 +250,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   }, [zoom]);
   const sheets = planPlannedSessionSheets(editor.slots);
   const printSheets = planPlannedSessionPrintSheets(editor.slots);
+  const sessionMicrocycle = seasonMicrocycleForDate(selected, editor.session_date);
   useEffect(() => {
     let frame = 0;
     const measure = () => {
@@ -331,8 +333,12 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
               {field('Lugar', editor.header.location, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, location: value } })), fieldIssue('location'))}
               <div className="planned-sheet-roster-metric"><b>Nº jugadores</b><span>{frozen ? playerCounts.participants : '—'}</span></div>
               {field('Periodo', editor.header.period_label, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, period_label: value } })), fieldIssue('period_label'))}
-              <label className="planned-sheet-field planned-sheet-microcycle">
-                <span>Microciclo</span>
+              <div className="planned-sheet-field planned-sheet-microcycle-pair">
+                <div><span>Microciclo</span><strong title="Calculado desde la fecha y el equipo-temporada">
+                  {sessionMicrocycle ? `${sessionMicrocycle.label} · ${microcycleRangeLabel(sessionMicrocycle)}` : 'Sin microciclo válido'}
+                </strong></div>
+                <label className="planned-sheet-microcycle">
+                <span>Día respecto al partido</span>
                 <select value={editor.header.morphology_pattern || ''}
                   disabled={!canEdit || busy} aria-invalid={Boolean(fieldIssue('morphology_pattern'))}
                   onChange={(event) => updateEditor((current) => ({ ...current,
@@ -347,7 +353,8 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
                   {plannedMicrocycleDisplay(editor.header.morphology_pattern)}
                 </span>
                 {fieldIssue('morphology_pattern') ? <small role="alert">{fieldIssue('morphology_pattern')}</small> : null}
-              </label>
+                </label>
+              </div>
               {field('Rival', editor.header.next_opponent_label, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, next_opponent_label: value } })), fieldIssue('next_opponent_label'))}
               <div className="planned-sheet-roster-metric"><b>Lesionados</b><span>{frozen ? playerCounts.injured : '—'}</span></div>
             </div>

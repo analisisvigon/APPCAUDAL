@@ -16,6 +16,8 @@
 .planned-print-identity span { display: block; font-size: 7.5pt; }
 .planned-print-identity .planned-print-cancelled { display: inline-block; border: 1px solid #92400e; color: #92400e; padding: .2mm 1.5mm; font-size: 7pt; font-weight: 800; letter-spacing: .1em; }
 .planned-print-meta { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); border-top: 1px solid #111; border-left: 1px solid #111; }
+.planned-print-meta .planned-print-microcycle-pair { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 1mm; }
+.planned-print-microcycle-pair > div { min-width: 0; display: flex; flex-direction: column; overflow-wrap: anywhere; }
 .planned-print-field { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: start; gap: 2mm; min-width: 0; border-right: 1px solid #111; border-bottom: 1px solid #111; padding: 1mm 1.5mm; white-space: pre-wrap; overflow-wrap: anywhere; }
 .planned-print-field strong { font-size: 7pt; }
 .planned-print-field span { min-width: 0; }

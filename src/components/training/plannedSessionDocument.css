@@ -17,6 +17,9 @@
 .planned-sheet-federation-logo { border: 0; }
 .planned-sheet-federation img { width: 17mm; height: 17mm; object-fit: contain; }
 .planned-sheet-cover-meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid #222; border-left: 1px solid #222; }
+.planned-sheet-cover-meta .planned-sheet-microcycle-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1mm; }
+.planned-sheet-microcycle-pair > div, .planned-sheet-microcycle-pair > label { min-width: 0; display: flex; flex-direction: column; gap: 1mm; }
+.planned-sheet-microcycle-pair strong { font: 400 8pt Arial, Helvetica, sans-serif; overflow-wrap: anywhere; }
 .planned-sheet-field { display: flex; min-width: 0; flex-direction: column; gap: 2px; border-right: 1px solid #222; border-bottom: 1px solid #222; padding: 2mm; font-size: 8pt; font-weight: 700; }
 .planned-sheet-field > span { display: block; white-space: normal; }
 .planned-sheet-field input, .planned-sheet-field textarea, .planned-sheet-field select { width: 100%; min-width: 0; min-height: 7mm; resize: vertical; border: 1px solid transparent; border-radius: 0; background: transparent; color: #111; font: 400 9pt Arial, Helvetica, sans-serif; line-height: 1.2; padding: 1mm; box-sizing: border-box; }

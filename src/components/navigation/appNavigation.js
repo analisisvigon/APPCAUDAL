@@ -6,6 +6,7 @@ export const STAFF_NAV_GROUPS = Object.freeze([
   ] },
   { title: 'PLANIFICACIÓN', items: [
     { name: 'Calendario', icon: 'calendar' },
+    { name: 'Microciclos', icon: 'calendar' },
     { name: 'Sesiones', icon: 'training' },
     { name: 'Tareas', icon: 'tasks' },
     { name: 'Biblioteca', icon: 'library' },

@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
+import react from '@vitejs/plugin-react';
 
 const days = ['2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29',
   '2026-10-30', '2026-10-31', '2026-11-01'];
-const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' });
+const vite = await createServer({ configFile: false, plugins: [react()], optimizeDeps: { disabled: true },
+  server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' });
 try {
   const { default: Preview } = await vite.ssrLoadModule('/src/components/calendar/MicrocyclePlanningPreview.jsx');
   const render = (props = {}) => renderToStaticMarkup(React.createElement(Preview, {

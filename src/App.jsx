@@ -5298,6 +5298,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   const [activeTab, setActiveTab] = useState('Inicio');
   const [seasonMemoryDemoError, setSeasonMemoryDemoError] = useState('');
   const [plannedSessionsDirty, setPlannedSessionsDirty] = useState(false);
+  const [microcyclesDirty, setMicrocyclesDirty] = useState(false);
   const [players, setPlayers] = useState([]);
   const [playerRemovalNotice, setPlayerRemovalNotice] = useState('');
   const sportsContextCoordinatorRef = useRef(new SportsContextCoordinator());
@@ -5384,6 +5385,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   const [homePhraseStatus, setHomePhraseStatus] = useState('');
   const [matches, setMatches] = useState([]);
   const [calendarSessionTarget, setCalendarSessionTarget] = useState(null);
+  const [microcycleRequest, setMicrocycleRequest] = useState(null);
   const [competitions, setCompetitions] = useState(() => buildDefaultCompetitionCatalog());
   const [competitionCatalogError, setCompetitionCatalogError] = useState('');
   const [uploadingCompetitionKey, setUploadingCompetitionKey] = useState('');
@@ -30012,6 +30014,8 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     }
     if (activeTab === 'Sesiones' && plannedSessionsDirty &&
         !window.confirm('Hay cambios de sesión sin guardar. ¿Salir y descartarlos?')) return;
+    if (activeTab === 'Microciclos' && microcyclesDirty &&
+        !window.confirm('Hay cambios de microciclo sin guardar. ¿Salir y descartarlos?')) return;
     requestMatchPlanNavigation({
       type: 'change-module',
       execute: () => {
@@ -33352,7 +33356,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
           <TrainingTasksSection membership={identity?.membership} userId={session?.user?.id || ''} players={players} />
         ) : null}
         {activeTab === 'Calendario' ? (
-          <TeamCalendarSection client={supabase} clubId={identity?.membership?.club_id || ''}
+          <TeamCalendarSection mode="calendar" client={supabase} clubId={identity?.membership?.club_id || ''}
             membership={identity?.membership} preferredContextId={selectedCtsId}
             matches={matches} teams={teams} onRefreshMatches={loadPartidos}
             onOpenSession={(target) => {
@@ -33362,7 +33366,18 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             onOpenMatch={(match) => {
               setActiveTab('Partidos');
               openMatchPage(match, 'PRE');
-            }} onOpenPerformance={() => goToTab('Rendimiento')} />
+            }} onOpenPerformance={() => goToTab('Rendimiento')}
+            onOpenMicrocycle={(request) => { setMicrocycleRequest(request); setActiveTab('Microciclos'); }} />
+        ) : null}
+        {activeTab === 'Microciclos' ? (
+          <TeamCalendarSection mode="microcycles" key={microcycleRequest?.date || 'default'}
+            initialMicrocycleRequest={microcycleRequest} onDirtyChange={setMicrocyclesDirty}
+            client={supabase} clubId={identity?.membership?.club_id || ''}
+            membership={identity?.membership} preferredContextId={microcycleRequest?.contextId || selectedCtsId}
+            matches={matches} teams={teams} onRefreshMatches={loadPartidos}
+            onOpenSession={(target) => { setCalendarSessionTarget(target); setActiveTab('Sesiones'); }}
+            onOpenMatch={(match) => { setActiveTab('Partidos'); openMatchPage(match, 'PRE'); }}
+            onOpenPerformance={() => setActiveTab('Rendimiento')} />
         ) : null}
         {activeTab === 'Sesiones' ? (
           <PlannedSessionsSection key={`${session?.user?.id || ''}:${identity?.membership?.club_id || ''}`}

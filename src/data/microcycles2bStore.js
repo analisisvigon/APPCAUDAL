@@ -70,6 +70,16 @@ export const loadMicrocycle2b = async (client, contextId, monday) => {
   return row || null;
 };
 
+export const listSeasonMicrocyclePlans = async (client, contextId) => {
+  if (!contextId) return [];
+  const rows = unwrap(await client.from('planned_microcycles')
+    .select('id,club_team_season_id,week_starts_on,weekly,revision')
+    .eq('club_team_season_id', contextId).order('week_starts_on', { ascending: true })) || [];
+  if (rows.some((row) => row.club_team_season_id !== contextId))
+    throw new Error('La lista de microciclos contiene un equipo-temporada incompatible.');
+  return rows;
+};
+
 export const buildMicrocycleSaveArgs = (contextId, monday, expectedRevision, draft, days) => {
   if (!contextId || monday !== days[0] || !Number.isInteger(expectedRevision) || expectedRevision < 0)
     throw new Error('Contexto o revisión de planificación inválidos.');

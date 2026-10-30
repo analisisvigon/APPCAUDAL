@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { listPlannedSessions, loadPlannedContexts } from '../../data/plannedSessionsStore.js';
+import { listPlannedSessions, loadPlannedContexts, SESSION_RETIREMENT_BACKEND_VERIFIED } from '../../data/plannedSessionsStore.js';
 import { chooseCalendarContext, scopeCalendarMatches } from '../../utils/teamCalendarContext.js';
 import { MICROCYCLES_2B_BACKEND_VERIFIED, hydrateMicrocycleDraft,
-  loadMicrocycle2b, saveMicrocycle2b, verifyMicrocycleSave } from '../../data/microcycles2bStore.js';
+  listSeasonMicrocyclePlans, loadMicrocycle2b, saveMicrocycle2b, verifyMicrocycleSave } from '../../data/microcycles2bStore.js';
 import { buildTeamCalendarEvents, calendarLocalDateKey, calendarMonthDays,
   calendarWeekDays, calendarWeekSummary, calendarWeeklyCountLabel, shiftCalendarWeek } from '../../utils/teamCalendar.js';
+import { microcycleRangeLabel, seasonMicrocycleForDate, seasonMicrocycles } from '../../utils/microcycleIdentity.js';
 import MicrocyclePlanningPreview from './MicrocyclePlanningPreview.jsx';
 import MicrocycleCopyDialog from './MicrocycleCopyDialog.jsx';
 
@@ -84,14 +85,19 @@ const weekRangeLabel = (days) => {
 
 export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectDay, onOpen, today, loading, error,
   onPreviewEditingChange, plan, planLoading, planError, planSaving, canWritePlan,
-  onSavePlan, onReloadPlan, onCopyPlan, onOpenPerformance, copyAvailable = false }) {
+  onSavePlan, onReloadPlan, onCopyPlan, onOpenPerformance, microcycle,
+  sessionStatusVerified = true, copyAvailable = false }) {
   const summary = calendarWeekSummary(events, days);
   const chosenDay = days.includes(selectedDay) ? selectedDay : '';
   const chosenEvents = chosenDay ? grouped.get(chosenDay) || [] : [];
   return <section className="mt-5 space-y-4" aria-label="Microciclo semanal">
     <div className="flex flex-wrap items-end justify-between gap-3 border-b border-white/10 pb-3">
-      <h3 className="text-sm font-black uppercase tracking-[0.2em] text-sky-300">Microciclo semanal</h3>
-      {!loading && !error ? <p className="text-xs text-slate-300">{calendarWeeklyCountLabel(summary)}</p> : null}
+      <h3 className="text-sm font-black uppercase tracking-[0.2em] text-sky-300">
+        {microcycle ? `${microcycle.label} · ${microcycleRangeLabel(microcycle, true)}` : 'Semana fuera de la temporada seleccionada'}
+      </h3>
+      {!loading && !error ? <p className="text-xs text-slate-300">{sessionStatusVerified
+        ? calendarWeeklyCountLabel(summary)
+        : `${summary.sessions} sesiones visibles (estado sin verificar) · ${summary.matches} partidos`}</p> : null}
     </div>
     <div className="flex flex-wrap items-center gap-2">
       <button type="button" onClick={onCopyPlan} disabled={!copyAvailable}
@@ -166,13 +172,14 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
 }
 
 export default function TeamCalendarSection({ client, clubId, membership, preferredContextId,
-  matches, teams, onRefreshMatches, onOpenSession, onOpenMatch, onOpenPerformance }) {
+  matches, teams, onRefreshMatches, onOpenSession, onOpenMatch, onOpenPerformance,
+  onOpenMicrocycle, onDirtyChange, mode = 'calendar', initialMicrocycleRequest = null }) {
   const [month, setMonth] = useState(() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); });
-  const [weekAnchor, setWeekAnchor] = useState(() => calendarLocalDateKey());
-  const [selectedWeekDay, setSelectedWeekDay] = useState('');
+  const [weekAnchor, setWeekAnchor] = useState(() => initialMicrocycleRequest?.date || calendarLocalDateKey());
+  const [selectedWeekDay, setSelectedWeekDay] = useState(() => initialMicrocycleRequest?.date || '');
   const [previewEditing, setPreviewEditing] = useState(false);
   const [previewEpoch, setPreviewEpoch] = useState(0);
-  const [view, setView] = useState('month');
+  const [view, setView] = useState(mode === 'microcycles' ? 'week' : 'month');
   const [selectedDay, setSelectedDay] = useState('');
   const [enabled, setEnabled] = useState(() => Object.fromEntries(FILTERS.map(([key]) => [key, true])));
   const [sessions, setSessions] = useState([]);
@@ -188,6 +195,9 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
   const [verifiedWriteContextId, setVerifiedWriteContextId] = useState('');
   const [permissionError, setPermissionError] = useState('');
   const [planLoadVersion, setPlanLoadVersion] = useState(0);
+  const [seasonPlans, setSeasonPlans] = useState([]);
+  const [seasonPlansError, setSeasonPlansError] = useState('');
+  const [overviewVersion, setOverviewVersion] = useState(0);
   const [copyOpen, setCopyOpen] = useState(false);
   const planSaveRef = useRef(false);
   const sessionLoadSeq = useRef(0);
@@ -197,12 +207,28 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
   const selectedContext = contexts.find((row) => row.id === contextId) || null;
   const weekDays = useMemo(() => calendarWeekDays(weekAnchor), [weekAnchor]);
   const monday = weekDays[0];
+  const currentMicrocycle = seasonMicrocycleForDate(selectedContext,
+    monday < selectedContext?.starts_on ? selectedContext?.starts_on : monday);
+  const validWeek = currentMicrocycle?.monday === monday;
   const planScopeRef = useRef('');
   planScopeRef.current = `${contextId}:${monday}`;
   const currentPlan = plan?.club_team_season_id === contextId && plan?.week_starts_on === monday ? plan : null;
   const planReady = loadedPlanKey === `${contextId}:${monday}:${planLoadVersion}`;
   const canWritePlan = verifiedWriteContextId === contextId && Boolean(contextId) &&
-    selectedContext?.status === 'open';
+    selectedContext?.status === 'open' && validWeek;
+  useEffect(() => { onDirtyChange?.(previewEditing); }, [onDirtyChange, previewEditing]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+  useEffect(() => {
+    if (mode !== 'microcycles' || !contextId) { setSeasonPlans([]); setSeasonPlansError(''); return undefined; }
+    let cancelled = false;
+    setSeasonPlans([]); setSeasonPlansError('');
+    listSeasonMicrocyclePlans(client, contextId).then((rows) => {
+      if (!cancelled) setSeasonPlans(rows);
+    }).catch(() => {
+      if (!cancelled) setSeasonPlansError('No se pudo consultar la planificación de la temporada.');
+    });
+    return () => { cancelled = true; };
+  }, [client, contextId, mode, overviewVersion]);
   useEffect(() => {
     let cancelled = false;
     setVerifiedWriteContextId(''); setPermissionError('');
@@ -290,6 +316,7 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
       const confirmed = verifyMicrocycleSave(reply, fresh, targetContextId, targetMonday,
         expectedRevision, draft, weekDays);
       setPlan(confirmed);
+      setOverviewVersion((current) => current + 1);
       return confirmed;
     } finally { planSaveRef.current = false; setPlanSaving(false); }
   };
@@ -301,14 +328,19 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
     await Promise.all([refresh(), onRefreshMatches?.().catch(() => setMatchError('No se pudieron actualizar los partidos.'))]);
   };
   const scopedMatches = useMemo(() => scopeCalendarMatches(matches, contextId), [matches, contextId]);
-  const events = useMemo(() => buildTeamCalendarEvents(error ? [] : sessions, matchError ? [] : scopedMatches, teams)
-    .filter((event) => enabled[event.kind]), [sessions, scopedMatches, teams, enabled, error, matchError]);
+  const allEvents = useMemo(() => buildTeamCalendarEvents(error ? [] : sessions, matchError ? [] : scopedMatches, teams),
+    [sessions, scopedMatches, teams, error, matchError]);
+  const events = useMemo(() => allEvents.filter((event) => enabled[event.kind]), [allEvents, enabled]);
   const grouped = useMemo(() => {
     const byDate = new Map();
     for (const event of events) byDate.set(event.date, [...(byDate.get(event.date) || []), event]);
     return byDate;
   }, [events]);
   const days = useMemo(() => calendarMonthDays(month.getFullYear(), month.getMonth()), [month]);
+  const seasonWeeks = useMemo(() => seasonMicrocycles(selectedContext), [selectedContext]);
+  const planByMonday = useMemo(() => new Map(seasonPlans
+    .filter((row) => row.club_team_season_id === contextId)
+    .map((row) => [row.week_starts_on, row])), [seasonPlans, contextId]);
   const now = new Date();
   const today = calendarLocalDateKey(now);
   const moveMonth = (step) => { setSelectedDay(''); setMonth((current) => new Date(current.getFullYear(), current.getMonth() + step, 1)); };
@@ -369,13 +401,24 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
     if (!contexts.some((row) => row.id === nextId) || !discardPreview()) return;
     setContextId(nextId); setSessions([]); setPlan(null);
   };
+  const openMicrocycleFromCalendar = (date) => {
+    if (!contextId || !onOpenMicrocycle) return;
+    onOpenMicrocycle({ date, contextId });
+  };
+  const selectSeasonWeek = (week) => {
+    if (!discardPreview()) return;
+    setWeekAnchor(week.monday);
+    setSelectedWeekDay('');
+  };
 
   return <main className="space-y-4 pb-8 text-slate-100 xl:pb-32">
     <section className="rounded-[1.6rem] border border-white/10 bg-[#091428]/[0.72] p-4 shadow-[0_18px_55px_rgba(0,0,0,0.20)] sm:p-5">
-      <p className="text-xs font-black uppercase tracking-[0.28em] text-caudal-electric/75">Calendario</p>
+      <p className="text-xs font-black uppercase tracking-[0.28em] text-caudal-electric/75">{mode === 'microcycles' ? 'Planificación' : 'Calendario'}</p>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-        <div><h2 className="text-2xl font-semibold text-white">Entrenamientos y partidos</h2>
-          <p className="mt-1 text-sm text-slate-400">Abre cada evento en su pestaña original.</p></div>
+        <div><h2 className="text-2xl font-semibold text-white">{mode === 'microcycles' ? 'Microciclos' : 'Entrenamientos y partidos'}</h2>
+          <p className="mt-1 text-sm text-slate-400">{mode === 'microcycles'
+            ? 'Planifica la semana y abre sus sesiones y partidos en sus módulos originales.'
+            : 'Abre cada evento en su pestaña original.'}</p></div>
         <button type="button" onClick={refreshAll} disabled={loading || planSaving} className="rounded-2xl border border-white/15 bg-white/[0.06] px-4 py-2 text-sm font-semibold hover:bg-white/10 disabled:opacity-50">Actualizar</button>
       </div>
     </section>
@@ -394,18 +437,46 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
       {selectedContext?.status === 'closed' ? <p className="mt-2 text-xs text-amber-200">Temporada cerrada: consulta únicamente.</p> : null}
       {permissionError ? <p role="alert" className="mt-2 text-xs text-red-200">{permissionError}</p> : null}
     </section>
+    {mode === 'microcycles' && selectedContext ? <section className="rounded-2xl border border-white/10 bg-[#0b1a2d]/85 p-4 sm:p-5" aria-label="Microciclos de la temporada">
+      <h3 className="text-sm font-black uppercase tracking-[0.16em] text-sky-200">Microciclos de {selectedContext.label}</h3>
+      {seasonPlansError ? <p role="alert" className="mt-2 text-sm text-red-200">{seasonPlansError}</p> : null}
+      <div className="mt-3 grid max-h-52 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3">
+        {seasonWeeks.map((week) => {
+          const planRow = planByMonday.get(week.monday);
+          const summary = calendarWeekSummary(allEvents, week.days);
+          return <button key={week.monday} type="button" onClick={() => selectSeasonWeek(week)}
+            aria-current={week.monday === monday ? 'date' : undefined}
+            className={`min-w-0 rounded-xl border p-3 text-left transition hover:bg-white/10 ${week.monday === monday
+              ? 'border-sky-300/60 bg-sky-300/10' : 'border-white/10 bg-white/[0.025]'}`}>
+            <strong className="block text-sm text-white">{week.label} · {microcycleRangeLabel(week)}</strong>
+            <span className="mt-1 block truncate text-xs text-slate-300">{seasonPlansError ? 'Planificación no verificable'
+              : planRow ? planRow.weekly?.objective || 'Planificación guardada' : 'Sin planificación guardada'}</span>
+            <span className="mt-1 block text-[11px] text-slate-400">
+              {SESSION_RETIREMENT_BACKEND_VERIFIED ? `${summary.sessions} sesiones activas` : 'Sesiones activas sin verificar'} · {summary.matches} partidos
+            </span>
+          </button>;
+        })}
+      </div>
+    </section> : null}
     <section className="rounded-[1.35rem] border border-white/10 bg-[#0b1a2d]/85 p-3 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => view === 'week' ? moveWeek(-1) : moveMonth(-1)} aria-label={view === 'week' ? 'Semana anterior' : 'Mes anterior'} className="rounded-xl border border-white/15 px-3 py-2 hover:bg-white/10">‹</button>
-          <h3 className="min-w-40 text-center text-lg font-black capitalize sm:min-w-52">{view === 'week' ? weekRangeLabel(weekDays) : monthLabel(month)}</h3>
+          <h3 className="min-w-40 text-center text-lg font-black capitalize sm:min-w-52">{view === 'week'
+            ? currentMicrocycle && validWeek ? `${currentMicrocycle.label} · ${microcycleRangeLabel(currentMicrocycle, true)}` : weekRangeLabel(weekDays)
+            : monthLabel(month)}</h3>
           <button type="button" onClick={() => view === 'week' ? moveWeek(1) : moveMonth(1)} aria-label={view === 'week' ? 'Semana siguiente' : 'Mes siguiente'} className="rounded-xl border border-white/15 px-3 py-2 hover:bg-white/10">›</button>
           <button type="button" onClick={goToday} className="rounded-xl border border-white/15 px-3 py-2 text-sm hover:bg-white/10">Hoy</button>
         </div>
-        <div className="flex rounded-xl border border-white/15 p-1" aria-label="Vista del calendario">
-          {[['month', 'Mes'], ['list', 'Lista'], ['week', 'Microciclo']].map(([key, label]) => <button key={key} type="button" onClick={() => changeView(key)} aria-pressed={view === key} className={`rounded-lg px-3 py-1.5 text-sm font-bold ${view === key ? 'bg-caudal-electric text-slate-950' : 'text-slate-300'}`}>{label}</button>)}
-        </div>
+        {mode === 'calendar' ? <div className="flex rounded-xl border border-white/15 p-1" aria-label="Vista del calendario">
+          {[['month', 'Mes'], ['list', 'Lista']].map(([key, label]) => <button key={key} type="button" onClick={() => changeView(key)} aria-pressed={view === key} className={`rounded-lg px-3 py-1.5 text-sm font-bold ${view === key ? 'bg-caudal-electric text-slate-950' : 'text-slate-300'}`}>{label}</button>)}
+        </div> : null}
       </div>
+      {mode === 'calendar' && contextId && onOpenMicrocycle ? <button type="button"
+        onClick={() => openMicrocycleFromCalendar(selectedDay || today)}
+        className="mt-3 min-h-10 rounded-xl border border-sky-300/35 px-3 py-2 text-xs font-bold text-sky-100 hover:bg-sky-300/10">
+        Abrir microciclo de {selectedDay ? 'la fecha seleccionada' : 'esta semana'}
+      </button> : null}
       <div className="mt-4 flex flex-wrap gap-2" aria-label="Filtros del calendario">
         {FILTERS.map(([key, label]) => <button key={key} type="button" onClick={() => setEnabled((current) => ({ ...current, [key]: !current[key] }))} aria-pressed={enabled[key]} className={`rounded-xl border px-3 py-1.5 text-xs font-bold ${enabled[key] ? tone[key] : 'border-white/10 bg-white/[0.035] text-slate-500'}`}>{label}</button>)}
       </div>
@@ -430,11 +501,16 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
         <div>
           <div className="grid grid-cols-7 gap-1 text-center text-xs font-black uppercase text-slate-400">{['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day) => <span key={day} className="py-2">{day}</span>)}</div>
           <div className="grid grid-cols-7 gap-1">{days.map((key, index) => <div key={key || `blank-${index}`} className={`min-h-32 min-w-0 rounded-xl border p-1.5 sm:p-2 ${key === today ? 'border-caudal-electric/50 bg-caudal-electric/[0.06]' : 'border-white/[0.07] bg-white/[0.025]'}`}>
-            {key ? <><span className={`block text-xs font-black ${key === today ? 'text-caudal-electric' : 'text-slate-300'}`}>{Number(key.slice(-2))}</span><div className="mt-1 max-h-56 space-y-1 overflow-y-auto overscroll-contain">{(grouped.get(key) || []).map((event) => <EventButton key={`${event.kind}-${event.id}`} event={event} onOpen={open} />)}</div></> : null}
+            {key ? <><button type="button" onClick={() => setSelectedDay(key)} aria-pressed={selectedDay === key}
+              aria-label={`Seleccionar ${dateLabel(key)}`}
+              className={`rounded px-1 text-xs font-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${key === today ? 'text-caudal-electric' : 'text-slate-300'} ${selectedDay === key ? 'bg-sky-400/20' : ''}`}>
+              {Number(key.slice(-2))}</button><div className="mt-1 max-h-56 space-y-1 overflow-y-auto overscroll-contain">{(grouped.get(key) || []).map((event) => <EventButton key={`${event.kind}-${event.id}`} event={event} onOpen={open} />)}</div></> : null}
           </div>)}</div>
         </div>
       </div></> : view === 'list' ? <div className="mt-4 space-y-3">{[...grouped].map(([key, rows]) => <section key={key} className="rounded-xl border border-white/10 bg-white/[0.025] p-3">
-        <h4 className="mb-2 text-sm font-black capitalize text-slate-300">{dateLabel(key)}</h4>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><h4 className="text-sm font-black capitalize text-slate-300">{dateLabel(key)}</h4>
+          {contextId && onOpenMicrocycle ? <button type="button" onClick={() => openMicrocycleFromCalendar(key)}
+            className="min-h-9 rounded-lg border border-sky-300/30 px-2 text-xs font-bold text-sky-100">Abrir microciclo</button> : null}</div>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{rows.map((event) => <EventButton key={`${event.kind}-${event.id}`} event={event} onOpen={open} variant="list" />)}</div>
       </section>)}</div> : <CalendarWeekView key={`${contextId}:${monday}:${previewEpoch}`} days={weekDays} grouped={grouped} events={events}
         selectedDay={selectedWeekDay} onSelectDay={setSelectedWeekDay} onOpen={open}
@@ -443,6 +519,8 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
         planLoading={planLoading || (MICROCYCLES_2B_BACKEND_VERIFIED && Boolean(contextId) && !planReady)}
         planError={planError} planSaving={planSaving} onSavePlan={savePlan}
         canWritePlan={canWritePlan && planReady} onReloadPlan={reloadPlan}
+        microcycle={validWeek ? currentMicrocycle : null}
+        sessionStatusVerified={SESSION_RETIREMENT_BACKEND_VERIFIED}
         onCopyPlan={openCopy} onOpenPerformance={() => {
           if (discardPreview()) onOpenPerformance?.();
         }} copyAvailable={Boolean(contextId && contexts.length && !planSaving)} />}
