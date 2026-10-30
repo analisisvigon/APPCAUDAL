@@ -1,7 +1,7 @@
 // Datos inventados para la revisión visual de Fase 2A. Nunca leer de Supabase.
 export const SEASON_MEMORY_DEMO = Object.freeze({
-  club: 'Almadina SC',
-  team: 'Almadina SC Sub-23',
+  club: 'Al-Madina SC',
+  team: 'Al-Madina SC Sub-23',
   season: '2026/27',
   generatedAt: '30 junio 2027',
   competitions: [
@@ -11,7 +11,7 @@ export const SEASON_MEMORY_DEMO = Object.freeze({
   ],
   match: {
     competition: 'Liga', competitionKey: 'league', round: 'Jornada 7', date: '15 noviembre 2026',
-    home: 'Almadina SC Sub-23', away: 'Rival de demostración',
+    home: 'Al-Madina SC Sub-23', away: 'Rival de demostración',
     homeGoals: 2, awayGoals: 1,
     stats: [
       { label: 'Posesión', home: 56, away: 44, suffix: '%' },
@@ -21,9 +21,9 @@ export const SEASON_MEMORY_DEMO = Object.freeze({
       { label: 'Faltas', home: 12, away: 15, suffix: '' },
     ],
     events: [
-      { minute: "18'", label: 'Gol Almadina', side: 'home' },
+      { minute: "18'", label: 'Gol Al-Madina', side: 'home' },
       { minute: "34'", label: 'Gol rival', side: 'away' },
-      { minute: "76'", label: 'Gol Almadina', side: 'home' },
+      { minute: "76'", label: 'Gol Al-Madina', side: 'home' },
     ],
     formation: '4-3-3',
     context: 'Victoria en casa · Partido de demostración',
@@ -42,8 +42,8 @@ export const SEASON_MEMORY_DEMO = Object.freeze({
       { number: 11, name: 'Demo 11', role: 'EI', x: 20, y: 25 },
     ],
     videos: [
-      { minute: "18'", label: 'Gol Almadina', url: null },
-      { minute: "76'", label: 'Gol Almadina', url: null },
+      { minute: "18'", label: 'Gol Al-Madina', url: null },
+      { minute: "76'", label: 'Gol Al-Madina', url: null },
     ],
   },
 });

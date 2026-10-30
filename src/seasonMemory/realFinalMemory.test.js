@@ -10,8 +10,8 @@ import { jsPDF } from 'jspdf';
 
 const id = (n) => `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
 const clubId = id(1), teamId = id(2), ctsId = id(3), leagueId = id(4), cupId = id(5);
-const context = { id: ctsId, clubId, teamId, seasonId: id(6), teamName: 'Almadina SC',
-  displayName: 'Almadina SC Sub-23', seasonLabel: '2026-27',
+const context = { id: ctsId, clubId, teamId, seasonId: id(6), teamName: 'Al-Madina SC',
+  displayName: 'Al-Madina SC Sub-23', seasonLabel: '2026-27',
   startsOn: '2026-07-01', endsOn: '2027-06-30' };
 const catalog = [{ id: leagueId, club_id: clubId, key: 'league', name: 'Liga Sub-23' },
   { id: cupId, club_id: clubId, key: 'cup', name: 'Copa Sub-23' }];
@@ -31,7 +31,7 @@ const matches = dates.map((date, i) => {
     competition_key: cup ? 'cup' : 'league', type: cup ? 'Copa' : 'Liga',
     round: `Jornada ${i + 1}`, opponent: i === 0
       ? 'Olympique Sporting Club of Tripoli With a Very Long Full Official Name' : `Rival ${i + 1}`,
-    is_home: true, home_team: 'Almadina SC', away_team: `Rival ${i + 1}`,
+    is_home: true, home_team: 'Al-Madina SC', away_team: `Rival ${i + 1}`,
     home_score: '1', away_score: against ? '1' : '0', goals_for: '1',
     goals_against: against ? '1' : '0', stats_system: i === 0 ? '4-3-3' : '4-4-2',
     possession: i % 3 ? '55' : null, shots: i % 3 ? '11' : null,
@@ -119,7 +119,7 @@ check('34 suma por competición', () => assert.equal(season.totals.played,
 check('35 goles concordantes', () => assert.equal(season.groupAnalysis.coverage.forGoals, season.totals.goalsFor));
 check('36 goles rivales concordantes', () => assert.equal(season.groupAnalysis.coverage.againstGoals, season.totals.goalsAgainst));
 check('37 nombre Windows', () => assert.equal(seasonMemoryDownloadName(season),
-  'NEXO_CLUB_Almadina_SC_Sub_23_2026_27_Memoria_Temporada.pdf'));
+  'NEXO_CLUB_Al_Madina_SC_Sub_23_2026_27_Memoria_Temporada.pdf'));
 check('38 nombre parcial', () => assert.notEqual(seasonMemoryDownloadName(season), seasonMemoryDownloadName(league)));
 
 const manySystems = { ...season.groupAnalysis, details: { ...season.groupAnalysis.details,

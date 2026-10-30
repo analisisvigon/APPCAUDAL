@@ -43,6 +43,9 @@ const contexts = await loadPlannedContexts(client, 'club-id');
 assert.equal(contexts.length, 1);
 assert.equal(contexts[0].id, 'cts-id', 'la clave seleccionada es CTS, no season_id');
 assert.equal(contexts[0].team_name, 'C.D. Caudal');
+rows.equipos_rivales[0].name = 'Almadina SC';
+assert.equal((await loadPlannedContexts(client, 'club-id'))[0].team_name, 'Al-Madina SC');
+rows.equipos_rivales[0].name = 'C.D. Caudal';
 assert.equal(contexts[0].label, '2026/2027');
 const listed = await listPlannedSessions(client, 'cts-id');
 assert.equal(SESSION_RETIREMENT_BACKEND_VERIFIED, false,

@@ -1,4 +1,5 @@
 import { parsePlannedSessionValue } from '../utils/plannedSessionValue.js';
+import { normalizeOwnClubName } from '../constants/clubIdentity.js';
 
 // Activar solo después de instalar y verificar el backend de ciclo de vida con identidades reales.
 export const SESSION_RETIREMENT_BACKEND_VERIFIED = false;
@@ -47,7 +48,7 @@ export const loadPlannedContexts = async (client, clubId) => {
       club_id: clubId,
       team_id: link.team_id,
       season_id: link.season_id,
-      team_name: nameById.get(link.team_id) || team.code,
+      team_name: normalizeOwnClubName(nameById.get(link.team_id) || team.code),
       team_code: team.code,
     }];
   }).sort((a, b) => b.starts_on.localeCompare(a.starts_on) || a.team_name.localeCompare(b.team_name));

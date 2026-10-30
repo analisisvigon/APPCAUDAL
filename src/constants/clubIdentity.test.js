@@ -1,13 +1,18 @@
 import assert from 'node:assert/strict';
 import { OWN_CLUB_IDENTITY, getOwnClubDisplayName, resolveOwnClubIdentity } from './clubIdentity.js';
 
-assert.equal(getOwnClubDisplayName('C.D. Caudal'), 'Almadina SC Sub-23');
-assert.equal(getOwnClubDisplayName('C.D. Caudal de Mieres'), 'Almadina SC Sub-23');
-assert.equal(getOwnClubDisplayName(''), 'Almadina SC Sub-23');
+assert.equal(getOwnClubDisplayName('C.D. Caudal'), 'Al-Madina SC Sub-23');
+assert.equal(getOwnClubDisplayName('C.D. Caudal de Mieres'), 'Al-Madina SC Sub-23');
+assert.equal(getOwnClubDisplayName(''), 'Al-Madina SC Sub-23');
+assert.equal(getOwnClubDisplayName('Almadina SC'), 'Al-Madina SC');
+assert.equal(getOwnClubDisplayName('Almadina SC Sub-23'), 'Al-Madina SC Sub-23');
 assert.equal(getOwnClubDisplayName('Otro club'), 'Otro club', 'no se reescriben identidades de otros clubes');
 assert.equal(OWN_CLUB_IDENTITY.crest, '/branding/almadina-sc-crest.png');
-assert.equal(OWN_CLUB_IDENTITY.name, 'Almadina SC');
-assert.equal(OWN_CLUB_IDENTITY.shortName, 'Almadina SC Sub-23');
+assert.equal(OWN_CLUB_IDENTITY.name, 'Al-Madina SC');
+assert.equal(OWN_CLUB_IDENTITY.shortName, 'Al-Madina SC Sub-23');
+assert.deepEqual(resolveOwnClubIdentity({ VITE_DEPLOYMENT_ID: 'libya',
+  VITE_OWN_CLUB_NAME: 'Almadina SC', VITE_OWN_CLUB_SHORT_NAME: 'Almadina SC Sub-23',
+  VITE_OWN_CLUB_CREST: '' }), { name: 'Al-Madina SC', shortName: 'Al-Madina SC Sub-23', crest: '' });
 assert.deepEqual(resolveOwnClubIdentity({ VITE_DEPLOYMENT_ID: 'libya',
   VITE_OWN_CLUB_NAME: 'Equipo de Libia', VITE_OWN_CLUB_SHORT_NAME: 'Libia',
   VITE_OWN_CLUB_CREST: '' }), { name: 'Equipo de Libia', shortName: 'Libia', crest: '' });

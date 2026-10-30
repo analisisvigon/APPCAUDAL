@@ -51,7 +51,7 @@ function pageChrome(pdf, pageNumber, section) {
   line(pdf, M, 22, W - M, 22);
   line(pdf, M, 279, W - M, 279);
   text(pdf, 'DEMOSTRACIÓN · DATOS FICTICIOS', M, 287, { size: 6.4, color: C.slate, bold: true });
-  text(pdf, `ALMADINA SC SUB-23  ·  2026/27     ${String(pageNumber).padStart(2, '0')} / 03`,
+  text(pdf, `AL-MADINA SC SUB-23  ·  2026/27     ${String(pageNumber).padStart(2, '0')} / 03`,
     W - M, 287, { size: 6.3, color: C.slate, align: 'right' });
 }
 
@@ -268,7 +268,7 @@ function matchReport(pdf, data, crestDataUrl) {
   box(pdf, M + 6, 70, 25, 26, C.paper, 3);
   fitImage(pdf, crestDataUrl, M + 9, 72, 19, 22);
   text(pdf, 'LOCAL', M + 36, 76, { size: 5.7, color: C.muted, bold: true });
-  text(pdf, 'Almadina SC', M + 36, 86, { size: 10.5, color: C.paper, bold: true });
+  text(pdf, 'Al-Madina SC', M + 36, 86, { size: 10.5, color: C.paper, bold: true });
   text(pdf, 'SUB-23', M + 36, 93, { size: 6, color: C.muted });
   text(pdf, `${match.homeGoals}`, 102, 90, { size: 26, color: C.paper, bold: true, align: 'center' });
   text(pdf, '—', 112, 88, { size: 13, color: C.muted, align: 'center' });
@@ -285,7 +285,7 @@ function matchReport(pdf, data, crestDataUrl) {
   const rightWidth = W - M - rightX;
   sectionTitle(pdf, '02', 'Datos comparados', rightX, 112, rightWidth, accent);
   match.stats.forEach((stat, index) => statBar(pdf, stat, rightX, 124 + index * 11, rightWidth));
-  text(pdf, 'AZUL: ALMADINA  ·  GRIS: RIVAL', rightX, 180,
+  text(pdf, 'AZUL: AL-MADINA  ·  GRIS: RIVAL', rightX, 180,
     { size: 5.5, color: C.slate, bold: true });
 
   sectionTitle(pdf, '03', 'Cronología', rightX, 193, rightWidth, accent);

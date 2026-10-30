@@ -188,7 +188,7 @@ const matchActivity = buildRecentActivity({
 }, recentOptions);
 assert.equal(matchActivity[0].moduleKey, 'matches');
 assert.equal(matchActivity[0].latestEventType, 'Último partido creado');
-assert.equal(matchActivity[0].latestEntityLabel, 'Almadina SC vs CD Praviano');
+assert.equal(matchActivity[0].latestEntityLabel, 'Al-Madina SC Sub-23 vs CD Praviano');
 assert.equal(matchActivity[0].latestContextLabel, '02/08/2026');
 assert.equal(matchActivity[0].summary, '1 partido creado');
 

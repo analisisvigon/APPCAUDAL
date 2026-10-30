@@ -61,8 +61,8 @@ assert.ok(calls.some((item) => item[0] === 'partidos' && item[1] === 'is'
   && item[2] === 'club_team_season_id' && item[3] === null));
 
 // Contexto, autorización y atribución.
-assert.equal(context.teamName, 'Almadina SC');
-assert.equal(context.displayName, 'Almadina SC Sub-23');
+assert.equal(context.teamName, 'Al-Madina SC');
+assert.equal(context.displayName, 'Al-Madina SC Sub-23');
 assert.throws(() => resolveSeasonMemoryContexts({ membership, links, seasons: [], teams, ownTeams }), /temporada/);
 assert.throws(() => resolveSeasonMemoryContexts({ membership, links, seasons, teams, ownTeams: [...ownTeams, { ...ownTeams[0], id: 'other' }] }), /único/);
 assert.throws(() => resolveSeasonMemoryContexts({ membership: { ...membership, role: 'player' }, links, seasons, teams, ownTeams }), /acceso/);

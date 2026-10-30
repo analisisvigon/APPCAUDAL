@@ -1,6 +1,6 @@
 import { getMatchStatus, isMatchScheduledInFuture, parseLocalMatchDate } from '../utils/matchStatus.js';
 import { normalizeCompetitionKey } from '../utils/competitionFilters.js';
-import { OWN_CLUB_IDENTITY } from '../constants/clubIdentity.js';
+import { OWN_CLUB_IDENTITY, normalizeOwnClubName } from '../constants/clubIdentity.js';
 import { buildRealIndividualMemory } from './realIndividualModel.js';
 import { buildRealMatchCards } from './realMatchModel.js';
 import { buildRealPerformanceMemory, buildRealGroupMemory } from './realPerformanceModel.js';
@@ -34,9 +34,10 @@ export function resolveSeasonMemoryContexts({ membership, links = [], seasons = 
         || !parseLocalMatchDate(season.ends_on) || season.starts_on > season.ends_on) {
         throw new Error('Hay un CTS propio con temporada incompleta o incompatible.');
       }
-      return { id: row.id, clubId, teamId: team.id, teamName: own[0].name,
-        displayName: fold(own[0].name) === fold(OWN_CLUB_IDENTITY.name)
-          ? OWN_CLUB_IDENTITY.shortName : own[0].name,
+      const teamName = normalizeOwnClubName(own[0].name);
+      return { id: row.id, clubId, teamId: team.id, teamName,
+        displayName: fold(teamName) === fold(OWN_CLUB_IDENTITY.name)
+          ? OWN_CLUB_IDENTITY.shortName : teamName,
         crest: own[0].crest, seasonId: season.id, seasonLabel: season.label,
         startsOn: season.starts_on, endsOn: season.ends_on,
         active: season.is_active === true, status: season.status };
@@ -182,11 +183,11 @@ export function buildRealSeasonMemory({ context, matches = [], catalog = [], unl
     if (!parseLocalMatchDate(raw.date) || raw.date < context.startsOn || raw.date > context.endsOn) {
       excluded.invalidDate++; continue;
     }
-    // El vínculo CTS acredita pertenencia. Un nombre propio antiguo contradice
-    // la identidad actual y se excluye; el nombre jamás sirve como prueba positiva.
+    // El CTS acredita pertenencia; el nombre solo descarta contradicciones.
+    // Se admite el alias exacto anterior del mismo club sin renombrar el histórico.
     const storedOwnName = raw.is_home === true ? raw.home_team : raw.is_home === false ? raw.away_team : '';
     if (typeof raw.is_home !== 'boolean' || !trim(storedOwnName)
-      || fold(storedOwnName) !== fold(context.teamName)) {
+      || fold(normalizeOwnClubName(storedOwnName)) !== fold(normalizeOwnClubName(context.teamName))) {
       excluded.teamContradiction++; continue;
     }
     const competition = resolveSeasonMemoryCompetition(raw, catalog, context.clubId,
