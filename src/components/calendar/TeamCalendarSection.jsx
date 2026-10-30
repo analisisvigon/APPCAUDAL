@@ -8,8 +8,10 @@ import { buildTeamCalendarEvents, calendarLocalDateKey, calendarMonthDays,
 import { clampMicrocycleDate, microcycleRangeLabel, seasonMicrocycleForDate, seasonMicrocycles } from '../../utils/microcycleIdentity.js';
 import { microcycleDayIntensity, plannedMicrocycleMinutes } from '../../utils/microcyclePresentation.js';
 import { plannedMdReferences } from '../../utils/microcycleMatchDays.js';
+import { loadMicrocyclePhysicalLoads } from '../../data/microcyclePhysicalLoads.js';
 import MicrocyclePlanningPreview from './MicrocyclePlanningPreview.jsx';
 import MicrocycleCopyDialog from './MicrocycleCopyDialog.jsx';
+import MicrocyclePhysicalLoadChart from './MicrocyclePhysicalLoadChart.jsx';
 
 const FILTERS = [
   ['training', 'Entrenamientos'], ['league', 'Liga'], ['cup', 'Copa'],
@@ -135,7 +137,8 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
   onPreviewEditingChange, plan, planLoading, planError, planSaving, canWritePlan,
   onSavePlan, onReloadPlan, onCopyPlan, onOpenPerformance,
   sessionStatusVerified = true, copyAvailable = false, mdReferences = new Map(),
-  mdLoading = false, mdError = false }) {
+  mdLoading = false, mdError = false, showPhysical = false, physicalRows = [], physicalLoading = false,
+  physicalError = '' }) {
   const [editDayRequest, setEditDayRequest] = useState(0);
   const [editWeekRequest, setEditWeekRequest] = useState(0);
   const editorRef = useRef(null);
@@ -187,6 +190,8 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
       </div>
       {!sessionStatusVerified ? <p className="mt-2 text-[10px] text-slate-500">Las sesiones mostradas son visibles; su ciclo de vida aún no está verificado en esta vista.</p> : null}
       {planDraft || summary.matches > 0 ? <div className="mt-4"><WeeklyIntensityChart days={days} dailyPlan={dailyPlan} grouped={grouped} /></div> : null}
+      {showPhysical ? <div className="mt-4"><MicrocyclePhysicalLoadChart days={days} rows={physicalRows}
+        loading={physicalLoading} error={physicalError} /></div> : null}
     </section>
     <div ref={editorRef}><MicrocyclePlanningPreview key={days[0]} days={days} selectedDay={selectedDay}
       onSelectDay={onSelectDay} onEditingChange={onPreviewEditingChange}
@@ -301,6 +306,11 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
   const [verifiedWriteContextId, setVerifiedWriteContextId] = useState('');
   const [permissionError, setPermissionError] = useState('');
   const [planLoadVersion, setPlanLoadVersion] = useState(0);
+  const [physicalLoadVersion, setPhysicalLoadVersion] = useState(0);
+  const [physicalRows, setPhysicalRows] = useState([]);
+  const [physicalLoading, setPhysicalLoading] = useState(false);
+  const [physicalError, setPhysicalError] = useState('');
+  const [physicalLoadedKey, setPhysicalLoadedKey] = useState('');
   const [seasonPlans, setSeasonPlans] = useState([]);
   const [seasonPlansError, setSeasonPlansError] = useState('');
   const [overviewVersion, setOverviewVersion] = useState(0);
@@ -322,6 +332,9 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
   const validWeek = currentMicrocycle?.monday === monday;
   const planScopeRef = useRef('');
   planScopeRef.current = `${contextId}:${monday}`;
+  const physicalScopeKey = `${contextId}:${monday}`;
+  const physicalScopeRef = useRef('');
+  physicalScopeRef.current = physicalScopeKey;
   const currentPlan = plan?.club_team_season_id === contextId && plan?.week_starts_on === monday ? plan : null;
   const planReady = loadedPlanKey === `${contextId}:${monday}:${planLoadVersion}`;
   const canWritePlan = verifiedWriteContextId === contextId && Boolean(contextId) &&
@@ -417,6 +430,27 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
     return () => { signal.cancelled = true; };
   }, [client, contextId, monday, view, weekDays, planLoadVersion]);
   useEffect(() => {
+    const signal = { cancelled: false };
+    const key = `${contextId}:${monday}`;
+    setPhysicalRows([]); setPhysicalError(''); setPhysicalLoadedKey('');
+    setPhysicalLoading(false);
+    if (mode !== 'microcycles' || view !== 'week' || !contextId || !validWeek) {
+      return () => { signal.cancelled = true; };
+    }
+    setPhysicalLoading(true);
+    loadMicrocyclePhysicalLoads(client, contextId, weekDays).then((rows) => {
+      if (signal.cancelled || physicalScopeRef.current !== key) return;
+      setPhysicalRows(rows); setPhysicalLoadedKey(key);
+    }).catch(() => {
+      if (signal.cancelled || physicalScopeRef.current !== key) return;
+      setPhysicalError('No se pudieron verificar las cargas físicas de este microciclo.');
+      setPhysicalLoadedKey(key);
+    }).finally(() => {
+      if (!signal.cancelled && physicalScopeRef.current === key) setPhysicalLoading(false);
+    });
+    return () => { signal.cancelled = true; };
+  }, [client, contextId, monday, mode, view, validWeek, weekDays, physicalLoadVersion]);
+  useEffect(() => {
     if (!previewEditing) return undefined;
     const warn = (event) => { event.preventDefault(); event.returnValue = ''; };
     window.addEventListener('beforeunload', warn);
@@ -451,6 +485,7 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
     const targetContext = contextId;
     setMatchError(''); setMatchesLoading(Boolean(onRefreshMatches));
     setPlanLoadVersion((current) => current + 1);
+    setPhysicalLoadVersion((current) => current + 1);
     await Promise.all([refresh(), Promise.resolve().then(() => onRefreshMatches?.({
       shouldApply: () => request === matchLoadSeq.current && planScopeRef.current.startsWith(`${targetContext}:`),
     })).catch(() => {
@@ -695,6 +730,10 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
         canWritePlan={canWritePlan && planReady} onReloadPlan={reloadPlan}
         sessionStatusVerified={SESSION_RETIREMENT_BACKEND_VERIFIED}
         mdReferences={mdReferences} mdLoading={matchesLoading} mdError={Boolean(matchError)}
+        showPhysical={mode === 'microcycles' && validWeek}
+        physicalRows={physicalLoadedKey === physicalScopeKey ? physicalRows : []}
+        physicalLoading={physicalLoading || physicalLoadedKey !== physicalScopeKey}
+        physicalError={physicalLoadedKey === physicalScopeKey ? physicalError : ''}
         onCopyPlan={openCopy} onOpenPerformance={() => {
           if (discardPreview()) onOpenPerformance?.();
         }} copyAvailable={Boolean(contextId && contexts.length && !planSaving)} />}

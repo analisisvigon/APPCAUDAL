@@ -4,6 +4,7 @@ import {
   getTrainingLoadForDate,
   loadTrainingLoadsRange,
   replaceTrainingLoadByDate,
+  saveCtsDailyTeamLoad,
   saveDailyTeamLoad,
 } from './performanceLoadStore.js';
 
@@ -116,6 +117,23 @@ assert.equal(editedSave.metrics.distance_m, 5000);
 assert.equal(editedSave.metrics.load_units, 320);
 assert.equal(rpcCalls.length, 3);
 assert.ok(rpcCalls.every(([name]) => name === 'upsert_team_daily_training_load'));
+
+const ctsCalls = [];
+const ctsClient = { async rpc(name, params) {
+  ctsCalls.push([name, params]);
+  return { data: {
+    session: { ...firstSave.session, id: 'cts-session', session_date: params.p_session_date },
+    metrics: { ...firstSave.metrics, id: 'cts-metric', session_id: 'cts-session' },
+  }, error: null };
+} };
+const ctsSaved = await saveCtsDailyTeamLoad(ctsClient, 'cts-almadina', baseDraft);
+assert.equal(ctsSaved.session.id, 'cts-session');
+assert.equal(ctsCalls[0][0], 'save_cts_daily_training_load_4b');
+assert.equal(ctsCalls[0][1].p_club_team_season_id, 'cts-almadina');
+assert.equal(ctsCalls[0][1].p_existing_session_id, null);
+await saveCtsDailyTeamLoad(ctsClient, 'cts-almadina', baseDraft, 'cts-session');
+assert.equal(ctsCalls[1][1].p_existing_session_id, 'cts-session');
+await assert.rejects(saveCtsDailyTeamLoad(ctsClient, '', baseDraft), /equipo/);
 
 const replaced = replaceTrainingLoadByDate(loads, editedSave);
 assert.equal(replaced.length, 1);

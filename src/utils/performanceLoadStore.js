@@ -90,6 +90,24 @@ export async function saveDailyTeamLoad(client, draft) {
   return saved;
 }
 
+// Preparado para 4B. No se utiliza en la interfaz hasta instalar y verificar
+// la RPC; el flujo legacy sigue intacto para las sesiones historicas.
+export async function saveCtsDailyTeamLoad(client, contextId, draft, existingSessionId = null) {
+  if (!contextId) throw new Error('Selecciona un equipo y temporada antes de guardar.');
+  const params = buildDailyLoadRpcParams(draft);
+  const response = await client.rpc('save_cts_daily_training_load_4b', {
+    p_club_team_season_id: contextId,
+    ...params,
+    p_existing_session_id: existingSessionId,
+  });
+  if (response.error) throw response.error;
+  const saved = normalizeTrainingLoadRecord(response.data);
+  if (!saved || saved.session.id !== saved.metrics.session_id) {
+    throw new Error('El servidor no confirmó la carga física vinculada. Recarga antes de continuar.');
+  }
+  return saved;
+}
+
 export function replaceTrainingLoadByDate(loads, savedLoad) {
   const nextLoads = (Array.isArray(loads) ? loads : [])
     .filter((load) => load?.session?.session_date !== savedLoad?.session?.session_date);

@@ -143,6 +143,18 @@ try {
   assert.match(weekly([], '', { mdLoading: true }), /Consultando MD…/);
   assert.doesNotMatch(weekly([], '', { mdLoading: true }), /MD sin asignar/);
   assert.doesNotMatch(weekly([]), /Descanso/, 'un día vacío no se interpreta como descanso');
+  const emptyPhysical = weekly([], '', { showPhysical: true, physicalRows: [] });
+  assert.match(emptyPhysical, /Carga física registrada/);
+  assert.match(emptyPhysical, /Todavía no hay datos físicos registrados para este microciclo/);
+  assert.doesNotMatch(emptyPhysical, /RPE medio|Wellness medio/);
+  const physicalRows = [{ training_session_id: 'physical-1', session_date: days[0],
+    session_type: 'training', actual_duration_minutes: 60, load_units: 180,
+    distance_m: 4000, has_team_metrics: true }];
+  const physicalWeek = weekly([], '', { showPhysical: true, physicalRows });
+  assert.match(physicalWeek, /180 U\.C\./);
+  assert.match(physicalWeek, /1 de 1 sesiones/);
+  assert.doesNotMatch(weekly([]), /Carga física registrada/,
+    'Calendario no incorpora la gráfica exclusiva de Microciclos');
   const savedPreview = renderToStaticMarkup(React.createElement(MicrocyclePlanningPreview, {
     days, selectedDay: days[0], onSelectDay: () => {}, onEditingChange: () => {},
     plan: savedPlan, canWrite: false,
