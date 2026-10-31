@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { layoutPlayerBoardCards, playerCompactLabels, overlappingZonePairs,
   resolvePlayerBoardDrop, SESSION_SYSTEMS } from '../../utils/plannedSessionDistributions';
 import { PLANNED_PHASES } from '../../utils/plannedSessions';
+import { fieldIsMeasured, metresFromZone, validMetres } from '../../utils/plannedSessionFieldScale';
 
 function FieldLines() {
   return <svg className="planned-distribution-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
@@ -16,7 +17,7 @@ const statusClass = (status) => ['absent', 'injured'].includes(status)
     ? 'planned-distribution-player-adapted' : '';
 
 export function SessionPlayerDistribution({ distribution, roster, availability, positionById,
-  canEdit = false, onFormationChange, onPlayerMove }) {
+  canEdit = false, onFormationChange, onPlayerMove, onFixDefault, defaultButtonDisabled = false }) {
   const fieldRef = useRef(null);
   const unplacedRef = useRef(null);
   const dragRef = useRef(null);
@@ -111,6 +112,9 @@ export function SessionPlayerDistribution({ distribution, roster, availability, 
         {labels.get(player.player_id)}
       </span>)}</span>
     </div> : null}
+    {canEdit && onFixDefault ? <button type="button" className="planned-board-default-button"
+      disabled={defaultButtonDisabled || !distribution.formation_key || !roster.length}
+      onClick={onFixDefault}>Fijar distribución habitual</button> : null}
     {legacy.length ? <small role="alert">{legacy.length} jugadores tienen coordenadas anteriores sin demarcación. Asígnalos a un puesto o restablece la distribución; no se han cambiado sus datos guardados.</small> : null}
     {distribution.formation_key && distribution.player_layout.length !== roster.length ?
       <small role="alert">La distribución no contiene toda la plantilla congelada; recarga antes de guardar.</small> : null}
@@ -122,7 +126,9 @@ export function SessionPlayerDistribution({ distribution, roster, availability, 
 
 const phaseLabel = (key) => PLANNED_PHASES.find((phase) => phase.key === key)?.label || key;
 
-export function SessionSpaceDistribution({ zones = [], slots = [], canEdit = false, onZoneChange }) {
+export function SessionSpaceDistribution({ zones = [], slots = [], canEdit = false, onZoneChange,
+  fieldDimensions, onFieldDimensionsChange, onZoneMetresChange, onFixDefault,
+  defaultButtonDisabled = false }) {
   const fieldRef = useRef(null);
   const dragRef = useRef(null);
   const ordered = PLANNED_PHASES.flatMap((phase) => slots.filter((slot) => slot.phase === phase.key));
@@ -154,6 +160,16 @@ export function SessionSpaceDistribution({ zones = [], slots = [], canEdit = fal
     <div className="planned-distribution-meta"><span className="planned-distribution-space-summary">
       {visibleZones.length} {visibleZones.length === 1 ? 'ejercicio' : 'ejercicios'}
     </span></div>
+    {fieldDimensions && (canEdit ? <div className="planned-board-field-controls">
+      <label>Largo (m)<input type="number" min="0.01" max="500" step="0.1"
+        value={fieldDimensions.length_m} onChange={(event) => onFieldDimensionsChange?.('length_m', event.target.value)} /></label>
+      <label>Ancho (m)<input type="number" min="0.01" max="500" step="0.1"
+        value={fieldDimensions.width_m} onChange={(event) => onFieldDimensionsChange?.('width_m', event.target.value)} /></label>
+      {onFixDefault ? <button type="button" className="planned-board-default-button"
+        disabled={defaultButtonDisabled || !fieldIsMeasured(fieldDimensions)}
+        onClick={onFixDefault}>Fijar dimensiones habituales</button> : null}
+    </div> : fieldIsMeasured(fieldDimensions)
+      ? <small>{fieldDimensions.length_m} × {fieldDimensions.width_m} m</small> : null)}
     <div className="planned-distribution-field planned-distribution-space-field" ref={fieldRef}>
       <FieldLines />
       {visibleZones.map((zone) => <div key={zone.slot_id}
@@ -183,6 +199,22 @@ export function SessionSpaceDistribution({ zones = [], slots = [], canEdit = fal
         {slotById.get(zone.slot_id).label}{zone.provisional ? ' · provisional' : ''}
       </span>)}
     </div>
+    {canEdit && fieldIsMeasured(fieldDimensions) && onZoneMetresChange ? <div className="planned-board-zone-metres">
+      {visibleZones.map((zone) => {
+        const metres = metresFromZone(zone, fieldDimensions);
+        return <div key={zone.slot_id}>
+          <strong>{slotById.get(zone.slot_id).short}</strong>
+          <label>Largo (m)<input key={`${zone.slot_id}-length-${metres.length_m}`} type="number"
+            min="0.01" max={fieldDimensions.length_m} step="0.1" defaultValue={metres.length_m}
+            onBlur={(event) => { if (validMetres(event.target.value)) onZoneMetresChange(zone.slot_id,
+              { ...metres, length_m: Number(event.target.value) }); }} /></label>
+          <label>Ancho (m)<input key={`${zone.slot_id}-width-${metres.width_m}`} type="number"
+            min="0.01" max={fieldDimensions.width_m} step="0.1" defaultValue={metres.width_m}
+            onBlur={(event) => { if (validMetres(event.target.value)) onZoneMetresChange(zone.slot_id,
+              { ...metres, width_m: Number(event.target.value) }); }} /></label>
+        </div>;
+      })}
+    </div> : null}
     {overlaps.length ? <small>Zonas superpuestas: {overlaps.map(([left, right]) =>
       `${slotById.get(left).short} / ${slotById.get(right).short}`).join('; ')}. No implica conflicto temporal.</small> : null}
     {canEdit && visibleZones.length ? <small>Arrastra las zonas; usa la esquina para cambiar su tamaño. Las nuevas son propuestas provisionales.</small> : null}

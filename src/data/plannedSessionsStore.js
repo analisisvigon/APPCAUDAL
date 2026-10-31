@@ -179,6 +179,24 @@ export const savePlannedDistribution = async (client, sessionId, revision, distr
     p_space_zones: distribution.space_zones,
   }));
 
+export const loadPlannedBoardDefaultsV11 = async (client, ctsId) => unwrap(await client
+  .from('planned_cts_board_defaults_v11').select('formation_key,player_layout,field_length_m,field_width_m')
+  .eq('club_team_season_id', ctsId).maybeSingle());
+
+export const loadPlannedBoardSeedV11 = async (client, sessionId) => unwrap(await client
+  .from('planned_session_board_seed_v11').select('formation_key,player_layout,field_length_m,field_width_m')
+  .eq('session_id', sessionId).maybeSingle());
+
+export const savePlannedFieldDimensionsV11 = async (client, sessionId, revision, field) =>
+  unwrap(await client.rpc('save_planned_field_dimensions_v11', {
+    p_session_id: sessionId, p_expected_revision: revision,
+    p_length_m: field.length_m === '' ? null : Number(field.length_m),
+    p_width_m: field.width_m === '' ? null : Number(field.width_m),
+  }));
+
+export const fixPlannedBoardDefaultV11 = async (client, sessionId, kind) =>
+  unwrap(await client.rpc('fix_planned_board_default_v11', { p_session_id: sessionId, p_kind: kind }));
+
 export const savePlannedSessionValue = async (client, sessionId, revision, value) =>
   unwrap(await client.rpc('save_planned_session_value_06', {
     p_session_id: sessionId,

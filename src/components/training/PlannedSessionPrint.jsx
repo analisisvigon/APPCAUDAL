@@ -78,7 +78,7 @@ function PrintExercise({ slot, number }) {
 
 export function PlannedSessionPrintPages({ editor, selected, roster = [], availability = {},
   distribution = { formation_key: null, player_layout: [], space_zones: [] }, positionById = new Map(),
-  playerDistribution = distribution, leagueLogoUrl = '', sessionValue = '',
+  playerDistribution = distribution, leagueLogoUrl = '', sessionValue = '', fieldDimensions = null,
   pages = planPlannedSessionPrintSheets(editor.slots) }) {
   const sessionMicrocycle = seasonMicrocycleForDate(selected, editor.session_date);
   const ordered = ['activation', 'main', 'cooldown'].flatMap((phase) => editor.slots.filter((slot) => slot.phase === phase));
@@ -124,7 +124,8 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], availa
         <div className="planned-print-cover-lower">
           <SessionPlayerDistribution distribution={playerDistribution} roster={roster}
             availability={availability} positionById={positionById} />
-          <SessionSpaceDistribution zones={distribution.space_zones} slots={editor.slots} />
+          <SessionSpaceDistribution zones={distribution.space_zones} slots={editor.slots}
+            fieldDimensions={fieldDimensions} />
           <div className="planned-print-cover-activation">{page.activation
             ? <PrintExercise slot={page.activation} number={numberOf(page.activation.id)} />
             : <div className="planned-print-empty-activation">ACTIVACIÓN · ejercicio en la hoja siguiente o sin planificar</div>}</div>
@@ -139,13 +140,14 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], availa
 }
 
 export default function PlannedSessionPrint({ editor, selected, pages, printRef, roster, availability,
-  distribution, playerDistribution, positionById, leagueLogoUrl, sessionValue }) {
+  distribution, playerDistribution, positionById, leagueLogoUrl, sessionValue, fieldDimensions }) {
   if (typeof document === 'undefined') return null;
   return createPortal(<div className="planned-print-portal" ref={printRef}>
     <style media="print">{'@page { size: A4 landscape; margin: 0; }'}</style>
     <PlannedSessionPrintPages editor={editor} selected={selected} pages={pages}
       roster={roster} availability={availability} distribution={distribution}
       playerDistribution={playerDistribution}
-      positionById={positionById} leagueLogoUrl={leagueLogoUrl} sessionValue={sessionValue} />
+      positionById={positionById} leagueLogoUrl={leagueLogoUrl} sessionValue={sessionValue}
+      fieldDimensions={fieldDimensions} />
   </div>, document.body);
 }

@@ -225,7 +225,9 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   addExercise, addTask, removeTask, removeSlot, changePhase, libraryTasks, libraryLoading,
   libraryError, selectLibraryTask, switchToFreeTask, roster, frozen,
   selectedMembershipIds, availability, onSelectPlayer, onAvailability,
-  distribution, printedPlayerDistribution, boardsError, positionById, onFormationChange, onZoneChange, onPlayerMove,
+  distribution, printedPlayerDistribution, printedSpaceDistribution, fieldDimensions, printedFieldDimensions,
+  boardV11Enabled, onFieldDimensionsChange, onZoneMetresChange, onFixBoardDefault, boardDefaultBusy,
+  boardsError, positionById, onFormationChange, onZoneChange, onPlayerMove,
   leagueLogoUrl, sessionValue, printedSessionValue, valueSupported, onValueChange }) {
   const [zoom, setZoom] = useState(100);
   const [fitZoom, setFitZoom] = useState(100);
@@ -394,10 +396,15 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
               <SessionPlayerDistribution distribution={distribution} roster={frozen ? roster : []}
                 availability={availability} positionById={positionById}
                 canEdit={canEdit && !busy && !boardsError && frozen}
-                onFormationChange={onFormationChange} onPlayerMove={onPlayerMove} />
+                onFormationChange={onFormationChange} onPlayerMove={onPlayerMove}
+                onFixDefault={boardV11Enabled ? () => onFixBoardDefault('players') : null}
+                defaultButtonDisabled={boardDefaultBusy} />
               <SessionSpaceDistribution zones={distribution.space_zones} slots={editor.slots}
                 canEdit={canEdit && !busy && !boardsError && Boolean(editor.id)}
-                onZoneChange={onZoneChange} />
+                onZoneChange={onZoneChange} fieldDimensions={boardV11Enabled ? fieldDimensions : null}
+                onFieldDimensionsChange={onFieldDimensionsChange} onZoneMetresChange={onZoneMetresChange}
+                onFixDefault={boardV11Enabled ? () => onFixBoardDefault('field') : null}
+                defaultButtonDisabled={boardDefaultBusy} />
               <div className="planned-sheet-cover-activation">
                 {sheet.coverOverflow
                   ? <div className="planned-sheet-activation-reference">ACTIVACIÓN · ejercicio en la hoja siguiente</div>
@@ -434,7 +441,9 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
     <p className="planned-document-note">Vista editorial de 03B. La exportación PDF definitiva y las zonas marcadas como pendientes no están activadas.</p>
     <PlannedSessionPrint editor={editor} selected={selected} pages={printSheets} printRef={printRef}
       leagueLogoUrl={leagueLogoUrl} sessionValue={printedSessionValue}
-      roster={frozen ? roster : []} availability={availability} distribution={distribution}
+      roster={frozen ? roster : []} availability={availability}
+      distribution={printedSpaceDistribution || distribution}
+      fieldDimensions={boardV11Enabled ? printedFieldDimensions : null}
       playerDistribution={printedPlayerDistribution}
       positionById={positionById} />
     {boardLocation?.item.kind === 'library_task' ? <div className="planned-board-dialog-backdrop">
