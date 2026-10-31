@@ -9,9 +9,11 @@ import { clampMicrocycleDate, microcycleRangeLabel, seasonMicrocycleForDate, sea
 import { microcycleDayIntensity, plannedMicrocycleMinutes } from '../../utils/microcyclePresentation.js';
 import { plannedMdReferences } from '../../utils/microcycleMatchDays.js';
 import { loadMicrocyclePhysicalLoads } from '../../data/microcyclePhysicalLoads.js';
+import { loadMicrocycleCollectiveRecovery, MICROCYCLE_RECOVERY_4D_ENABLED } from '../../data/microcycleCollectiveRecovery.js';
 import MicrocyclePlanningPreview from './MicrocyclePlanningPreview.jsx';
 import MicrocycleCopyDialog from './MicrocycleCopyDialog.jsx';
 import MicrocyclePhysicalLoadChart from './MicrocyclePhysicalLoadChart.jsx';
+import MicrocycleCollectiveRecoveryChart from './MicrocycleCollectiveRecoveryChart.jsx';
 
 const FILTERS = [
   ['training', 'Entrenamientos'], ['league', 'Liga'], ['cup', 'Copa'],
@@ -138,7 +140,8 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
   onSavePlan, onReloadPlan, onCopyPlan, onOpenPerformance,
   sessionStatusVerified = true, copyAvailable = false, mdReferences = new Map(),
   mdLoading = false, mdError = false, showPhysical = false, physicalRows = [], physicalLoading = false,
-  physicalError = '' }) {
+  physicalError = '', recoveryEnabled = false, recoveryRows = [], recoveryLoading = false,
+  recoveryError = '' }) {
   const [editDayRequest, setEditDayRequest] = useState(0);
   const [editWeekRequest, setEditWeekRequest] = useState(0);
   const editorRef = useRef(null);
@@ -192,6 +195,8 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
       {planDraft || summary.matches > 0 ? <div className="mt-4"><WeeklyIntensityChart days={days} dailyPlan={dailyPlan} grouped={grouped} /></div> : null}
       {showPhysical ? <div className="mt-4"><MicrocyclePhysicalLoadChart days={days} rows={physicalRows}
         loading={physicalLoading} error={physicalError} /></div> : null}
+      {showPhysical && recoveryEnabled ? <div className="mt-3"><MicrocycleCollectiveRecoveryChart
+        days={days} rows={recoveryRows} loading={recoveryLoading} error={recoveryError} /></div> : null}
     </section>
     <div ref={editorRef}><MicrocyclePlanningPreview key={days[0]} days={days} selectedDay={selectedDay}
       onSelectDay={onSelectDay} onEditingChange={onPreviewEditingChange}
@@ -272,7 +277,9 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
         Seguimiento físico
       </summary>
       <div className="mt-4 space-y-3 text-sm text-slate-300">
-        <p>Los datos físicos todavía no están vinculados a este equipo y temporada. Consúltalos en Rendimiento sin atribuirlos a este microciclo.</p>
+        <p>{showPhysical
+          ? 'Consulta las cargas vinculadas a este equipo y temporada en los gráficos superiores. Los registros históricos sin CTS permanecen separados en Rendimiento.'
+          : 'Los datos físicos todavía no están vinculados a este equipo y temporada. Consúltalos en Rendimiento sin atribuirlos a este microciclo.'}</p>
         {onOpenPerformance ? <button type="button" onClick={onOpenPerformance}
           className="min-h-10 rounded-xl border border-sky-300/40 px-3 py-2 text-xs font-bold text-sky-100 hover:bg-sky-300/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400">
           Ver en Rendimiento
@@ -311,6 +318,10 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
   const [physicalLoading, setPhysicalLoading] = useState(false);
   const [physicalError, setPhysicalError] = useState('');
   const [physicalLoadedKey, setPhysicalLoadedKey] = useState('');
+  const [recoveryRows, setRecoveryRows] = useState([]);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoveryError, setRecoveryError] = useState('');
+  const [recoveryLoadedKey, setRecoveryLoadedKey] = useState('');
   const [seasonPlans, setSeasonPlans] = useState([]);
   const [seasonPlansError, setSeasonPlansError] = useState('');
   const [overviewVersion, setOverviewVersion] = useState(0);
@@ -447,6 +458,26 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
       setPhysicalLoadedKey(key);
     }).finally(() => {
       if (!signal.cancelled && physicalScopeRef.current === key) setPhysicalLoading(false);
+    });
+    return () => { signal.cancelled = true; };
+  }, [client, contextId, monday, mode, view, validWeek, weekDays, physicalLoadVersion]);
+  useEffect(() => {
+    const signal = { cancelled: false };
+    const key = `${contextId}:${monday}`;
+    setRecoveryRows([]); setRecoveryError(''); setRecoveryLoadedKey('');
+    setRecoveryLoading(false);
+    if (!MICROCYCLE_RECOVERY_4D_ENABLED || mode !== 'microcycles' || view !== 'week'
+      || !contextId || !validWeek) return () => { signal.cancelled = true; };
+    setRecoveryLoading(true);
+    loadMicrocycleCollectiveRecovery(client, contextId, weekDays).then((rows) => {
+      if (signal.cancelled || physicalScopeRef.current !== key) return;
+      setRecoveryRows(rows); setRecoveryLoadedKey(key);
+    }).catch(() => {
+      if (signal.cancelled || physicalScopeRef.current !== key) return;
+      setRecoveryError('No se pudo verificar el RPE y Wellness colectivos de este microciclo.');
+      setRecoveryLoadedKey(key);
+    }).finally(() => {
+      if (!signal.cancelled && physicalScopeRef.current === key) setRecoveryLoading(false);
     });
     return () => { signal.cancelled = true; };
   }, [client, contextId, monday, mode, view, validWeek, weekDays, physicalLoadVersion]);
@@ -734,6 +765,10 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
         physicalRows={physicalLoadedKey === physicalScopeKey ? physicalRows : []}
         physicalLoading={physicalLoading || physicalLoadedKey !== physicalScopeKey}
         physicalError={physicalLoadedKey === physicalScopeKey ? physicalError : ''}
+        recoveryEnabled={MICROCYCLE_RECOVERY_4D_ENABLED}
+        recoveryRows={recoveryLoadedKey === physicalScopeKey ? recoveryRows : []}
+        recoveryLoading={recoveryLoading || recoveryLoadedKey !== physicalScopeKey}
+        recoveryError={recoveryLoadedKey === physicalScopeKey ? recoveryError : ''}
         onCopyPlan={openCopy} onOpenPerformance={() => {
           if (discardPreview()) onOpenPerformance?.();
         }} copyAvailable={Boolean(contextId && contexts.length && !planSaving)} />}
