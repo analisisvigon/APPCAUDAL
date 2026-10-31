@@ -42,7 +42,7 @@ export default function MicrocyclePhysicalLoadChart({ days, rows = [], loading =
             </div>
             {summary.partial ? <p className="mt-1 text-[11px] font-semibold text-amber-200">Cobertura parcial: hay sesiones sin este indicador.</p> : null}
             <p className="mt-1 text-[11px] text-slate-500">
-              {summary.trainingCount} sesiones de entrenamiento o recuperación · {summary.matchCount} sesiones físicas de partido
+              {summary.trainingCount} sesiones físicas sin partido · {summary.matchCount} sesiones físicas de partido
             </p>
             <div className="mt-4 overflow-x-auto pb-1">
               <div className="grid min-w-[34rem] grid-cols-7 gap-2">

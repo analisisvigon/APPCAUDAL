@@ -12,6 +12,22 @@ with checks as (
       from pg_catalog.pg_proc p
       where p.oid = to_regprocedure('public.save_cts_daily_training_load_4b(uuid,date,text,integer,numeric,numeric,integer,integer,integer,numeric,numeric,text,uuid)')), false)
   union all
+  select 'guards SECURITY DEFINER, postgres y search_path fijo',
+    (select count(*) from pg_catalog.pg_proc p
+      where p.oid in (to_regprocedure('public.guard_cts_physical_session_4b()'),
+                      to_regprocedure('public.guard_cts_physical_metric_4b()'))
+        and p.prosecdef and p.proconfig = array['search_path=pg_catalog']::text[]
+        and p.proowner = (select oid from pg_catalog.pg_roles where rolname = 'postgres')) = 2
+  union all
+  select 'guards sin EXECUTE directo de clientes',
+    (select count(*) from pg_catalog.pg_proc p
+      where p.oid in (to_regprocedure('public.guard_cts_physical_session_4b()'),
+                      to_regprocedure('public.guard_cts_physical_metric_4b()'))
+        and not pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
+        and not pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
+        and not exists (select 1 from pg_catalog.aclexplode(p.proacl) acl
+          where acl.grantee = 0 and acl.privilege_type = 'EXECUTE')) = 2
+  union all
   select 'EXECUTE authenticated, sin anon ni PUBLIC',
     coalesce(pg_catalog.has_function_privilege('authenticated',
       to_regprocedure('public.save_cts_daily_training_load_4b(uuid,date,text,integer,numeric,numeric,integer,integer,integer,numeric,numeric,text,uuid)'), 'EXECUTE'), false)

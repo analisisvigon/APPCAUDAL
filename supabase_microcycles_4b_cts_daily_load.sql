@@ -3,6 +3,8 @@
 begin;
 
 do $preflight$
+declare
+  required_column record;
 begin
   if auth.uid() is not null then
     raise exception '4B requiere una sesion administrativa sin JWT';
@@ -37,6 +39,67 @@ begin
        is distinct from 'NEXO CLUB 4B: protect linked collective metric mutations' then
     raise exception '4B: guard de metricas preexistente incompatible';
   end if;
+  for required_column in
+    select * from (values
+      ('training_sessions','id','uuid'),
+      ('training_sessions','session_date','date'),
+      ('training_sessions','title','text'),
+      ('training_sessions','session_type','text'),
+      ('training_sessions','actual_duration_minutes','integer'),
+      ('training_sessions','notes','text'),
+      ('training_sessions','record_kind','text'),
+      ('training_sessions','updated_at','timestamp with time zone'),
+      ('training_session_load_metrics','session_id','uuid'),
+      ('training_session_load_metrics','scope','text'),
+      ('training_session_load_metrics','jugador_id','uuid'),
+      ('training_session_load_metrics','aggregation_method','text'),
+      ('training_session_load_metrics','distance_m','numeric'),
+      ('training_session_load_metrics','hsr_m','numeric'),
+      ('training_session_load_metrics','accelerations','integer'),
+      ('training_session_load_metrics','decelerations','integer'),
+      ('training_session_load_metrics','sprints','integer'),
+      ('training_session_load_metrics','meters_per_minute','numeric'),
+      ('training_session_load_metrics','load_units','numeric'),
+      ('club_team_seasons','id','uuid'),
+      ('club_team_seasons','season_id','uuid'),
+      ('club_team_seasons','club_id','uuid'),
+      ('club_seasons','id','uuid'),
+      ('club_seasons','club_id','uuid'),
+      ('club_seasons','starts_on','date'),
+      ('club_seasons','ends_on','date'),
+      ('club_seasons','status','text')
+    ) as required(table_name, column_name, type_name)
+  loop
+    if not exists (select 1 from pg_catalog.pg_attribute a
+      where a.attrelid = pg_catalog.to_regclass('public.' || required_column.table_name)
+        and a.attname = required_column.column_name and not a.attisdropped
+        and pg_catalog.format_type(a.atttypid, null) = required_column.type_name) then
+      raise exception '4B: columna incompatible %.%',
+        required_column.table_name, required_column.column_name;
+    end if;
+  end loop;
+  if exists (select 1 from pg_catalog.pg_attribute a
+    where a.attrelid = 'public.training_sessions'::regclass
+      and a.attname = 'record_kind' and a.attnotnull) then
+    raise exception '4B: record_kind debe admitir NULL para no colisionar con el indice legacy';
+  end if;
+  if pg_catalog.has_table_privilege('authenticated',
+       'public.microcycle_physical_session_links',
+       'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,MAINTAIN')
+     or pg_catalog.has_table_privilege('anon',
+       'public.microcycle_physical_session_links',
+       'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,MAINTAIN') then
+    raise exception '4B: vinculos 4A tienen escritura directa inesperada';
+  end if;
+  if exists (select 1 from pg_catalog.pg_trigger t
+    where (t.tgrelid = 'public.training_sessions'::regclass
+        and t.tgname = 'guard_cts_physical_session_4b'
+        and t.tgfoid <> coalesce(to_regprocedure('public.guard_cts_physical_session_4b()')::oid, 0))
+       or (t.tgrelid = 'public.training_session_load_metrics'::regclass
+        and t.tgname = 'guard_cts_physical_metric_4b'
+        and t.tgfoid <> coalesce(to_regprocedure('public.guard_cts_physical_metric_4b()')::oid, 0))) then
+    raise exception '4B: nombre de trigger preexistente utilizado por otra funcion';
+  end if;
   if not exists (select 1 from pg_catalog.pg_constraint c
     where c.conrelid = 'public.microcycle_physical_session_links'::regclass
       and c.contype = 'p' and c.convalidated)
@@ -48,7 +111,7 @@ begin
 end $preflight$;
 
 create or replace function public.guard_cts_physical_session_4b()
-returns trigger language plpgsql set search_path = pg_catalog
+returns trigger language plpgsql security definer set search_path = pg_catalog
 as $guard$
 declare v_cts uuid;
 begin
@@ -59,6 +122,10 @@ begin
     if tg_op = 'UPDATE' then return new; end if;
     return old;
   end if;
+  perform 1 from public.club_team_seasons cts
+    join public.club_seasons season on season.id = cts.season_id
+      and season.club_id = cts.club_id
+    where cts.id = v_cts for update of season;
   if auth.uid() is null or public.can_write_club_team_season(v_cts) is not true then
     raise exception 'Sesion fisica vinculada: escritura no autorizada'
       using errcode = '42501';
@@ -73,16 +140,24 @@ begin
       raise exception 'Identidad o fecha de sesion fisica incompatible'
         using errcode = '23514';
     end if;
+    if exists (select 1 from public.microcycle_physical_session_links l
+      join public.training_sessions s on s.id = l.training_session_id
+      where l.club_team_season_id = v_cts and s.id <> old.id
+        and s.session_date = new.session_date) then
+      raise exception 'Ya hay una carga fisica vinculada para este dia y CTS'
+        using errcode = '23505';
+    end if;
     return new;
   end if;
   return old;
 end $guard$;
 comment on function public.guard_cts_physical_session_4b() is
   'NEXO CLUB 4B: protect linked physical session mutations';
+alter function public.guard_cts_physical_session_4b() owner to postgres;
 revoke all on function public.guard_cts_physical_session_4b() from public, anon, authenticated, service_role;
 
 create or replace function public.guard_cts_physical_metric_4b()
-returns trigger language plpgsql set search_path = pg_catalog
+returns trigger language plpgsql security definer set search_path = pg_catalog
 as $guard$
 declare
   v_cts uuid;
@@ -104,6 +179,12 @@ begin
   select l.club_team_season_id into v_cts
   from public.microcycle_physical_session_links l
   where l.training_session_id = v_session_id;
+  if v_cts is not null then
+    perform 1 from public.club_team_seasons cts
+      join public.club_seasons season on season.id = cts.season_id
+        and season.club_id = cts.club_id
+      where cts.id = v_cts for update of season;
+  end if;
   if v_cts is not null and (auth.uid() is null
       or public.can_write_club_team_season(v_cts) is not true) then
     raise exception 'Metrica fisica vinculada: escritura no autorizada'
@@ -114,6 +195,7 @@ begin
 end $guard$;
 comment on function public.guard_cts_physical_metric_4b() is
   'NEXO CLUB 4B: protect linked collective metric mutations';
+alter function public.guard_cts_physical_metric_4b() owner to postgres;
 revoke all on function public.guard_cts_physical_metric_4b() from public, anon, authenticated, service_role;
 
 drop trigger if exists guard_cts_physical_session_4b on public.training_sessions;
@@ -157,7 +239,8 @@ begin
      or public.can_write_club_team_season(p_club_team_season_id) is not true then
     raise exception 'Temporada cerrada o acceso revocado' using errcode = '42501';
   end if;
-  if p_session_date is null or p_session_date not between v_starts and v_ends
+  if p_session_date is null or v_starts is null or v_ends is null
+     or p_session_date not between v_starts and v_ends
      or p_session_type is null
      or p_session_type not in ('training','match','recovery','activation','rest','other')
      or (p_session_type <> 'rest' and p_actual_duration_minutes is null)
@@ -177,12 +260,12 @@ begin
   end if;
   if p_existing_session_id is null then
     insert into public.training_sessions
-      (session_date,title,session_type,actual_duration_minutes,notes,updated_at)
+      (session_date,title,session_type,actual_duration_minutes,notes,record_kind,updated_at)
     values (p_session_date,
       case p_session_type when 'training' then 'Entrenamiento'
         when 'match' then 'Partido' when 'recovery' then 'Recuperacion'
         when 'activation' then 'Activacion' when 'rest' then 'Descanso' else 'Otro' end,
-      p_session_type,p_actual_duration_minutes,nullif(btrim(p_notes),''),now())
+      p_session_type,p_actual_duration_minutes,nullif(btrim(p_notes),''),null,now())
     returning * into v_session;
     insert into public.microcycle_physical_session_links
       (training_session_id,club_team_season_id)
@@ -227,20 +310,36 @@ grant execute on function public.save_cts_daily_training_load_4b(uuid,date,text,
 
 do $postflight$
 begin
-  if (select count(*) from pg_catalog.pg_trigger t
+  if not exists (select 1 from pg_catalog.pg_trigger t
       where t.tgrelid = 'public.training_sessions'::regclass
-        and t.tgname = 'guard_cts_physical_session_4b' and not t.tgisinternal) <> 1
-     or (select count(*) from pg_catalog.pg_trigger t
+        and t.tgname = 'guard_cts_physical_session_4b' and not t.tgisinternal
+        and t.tgtype = 27 and t.tgenabled = 'O'
+        and t.tgfoid = 'public.guard_cts_physical_session_4b()'::regprocedure)
+     or not exists (select 1 from pg_catalog.pg_trigger t
       where t.tgrelid = 'public.training_session_load_metrics'::regclass
-        and t.tgname = 'guard_cts_physical_metric_4b' and not t.tgisinternal) <> 1
+        and t.tgname = 'guard_cts_physical_metric_4b' and not t.tgisinternal
+        and t.tgtype = 31 and t.tgenabled = 'O'
+        and t.tgfoid = 'public.guard_cts_physical_metric_4b()'::regprocedure)
      or not exists (select 1 from pg_catalog.pg_proc p
       where p.oid = 'public.save_cts_daily_training_load_4b(uuid,date,text,integer,numeric,numeric,integer,integer,integer,numeric,numeric,text,uuid)'::regprocedure
         and p.prosecdef and p.proconfig = array['search_path=pg_catalog']::text[]
         and p.proowner = (select oid from pg_catalog.pg_roles where rolname='postgres'))
+     or (select count(*) from pg_catalog.pg_proc p
+       where p.oid in ('public.guard_cts_physical_session_4b()'::regprocedure,
+                       'public.guard_cts_physical_metric_4b()'::regprocedure)
+         and p.prosecdef and p.proconfig = array['search_path=pg_catalog']::text[]
+         and p.proowner = (select oid from pg_catalog.pg_roles where rolname='postgres')) <> 2
      or not pg_catalog.has_function_privilege('authenticated',
       'public.save_cts_daily_training_load_4b(uuid,date,text,integer,numeric,numeric,integer,integer,integer,numeric,numeric,text,uuid)', 'EXECUTE')
      or pg_catalog.has_function_privilege('anon',
-      'public.save_cts_daily_training_load_4b(uuid,date,text,integer,numeric,numeric,integer,integer,integer,numeric,numeric,text,uuid)', 'EXECUTE') then
+      'public.save_cts_daily_training_load_4b(uuid,date,text,integer,numeric,numeric,integer,integer,integer,numeric,numeric,text,uuid)', 'EXECUTE')
+     or exists (select 1 from pg_catalog.pg_proc p,
+        pg_catalog.aclexplode(p.proacl) acl
+       where p.oid = 'public.save_cts_daily_training_load_4b(uuid,date,text,integer,numeric,numeric,integer,integer,integer,numeric,numeric,text,uuid)'::regprocedure
+         and acl.grantee = 0 and acl.privilege_type = 'EXECUTE')
+     or pg_catalog.has_table_privilege('authenticated',
+       'public.microcycle_physical_session_links',
+       'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,MAINTAIN') then
     raise exception '4B: guard o privilegios incompletos';
   end if;
 end $postflight$;
