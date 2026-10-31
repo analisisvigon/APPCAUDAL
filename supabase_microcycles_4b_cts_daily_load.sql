@@ -39,6 +39,11 @@ begin
        is distinct from 'NEXO CLUB 4B: protect linked collective metric mutations' then
     raise exception '4B: guard de metricas preexistente incompatible';
   end if;
+  if to_regprocedure('public.is_unlinked_physical_session_4b(uuid)') is not null
+     and obj_description(to_regprocedure('public.is_unlinked_physical_session_4b(uuid)'), 'pg_proc')
+       is distinct from 'NEXO CLUB 4B: RLS write boundary for unlinked legacy physical sessions' then
+    raise exception '4B: helper RLS preexistente incompatible';
+  end if;
   for required_column in
     select * from (values
       ('training_sessions','id','uuid'),
@@ -83,12 +88,37 @@ begin
       and a.attname = 'record_kind' and a.attnotnull) then
     raise exception '4B: record_kind debe admitir NULL para no colisionar con el indice legacy';
   end if;
+  if (select count(*) from pg_catalog.pg_class c
+    where c.oid in ('public.training_sessions'::regclass,
+                    'public.training_session_load_metrics'::regclass)
+      and c.relrowsecurity) <> 2 then
+    raise exception '4B: RLS debe estar activa en las dos tablas legacy';
+  end if;
+  if exists (select 1 from pg_catalog.pg_roles r
+    where r.rolname = 'authenticated' and r.rolbypassrls)
+     or exists (select 1 from pg_catalog.pg_class c
+       where c.oid in ('public.training_sessions'::regclass,
+                       'public.training_session_load_metrics'::regclass)
+         and c.relowner = (select r.oid from pg_catalog.pg_roles r
+           where r.rolname = 'authenticated') and not c.relforcerowsecurity) then
+    raise exception '4B: authenticated podria eludir las politicas RLS restrictivas';
+  end if;
+  if exists (select 1 from pg_catalog.pg_attribute a
+    where a.attrelid = 'public.microcycle_physical_session_links'::regclass
+      and a.attname = 'session_date' and not a.attisdropped
+      and pg_catalog.format_type(a.atttypid, null) <> 'date') then
+    raise exception '4B: fecha del vinculo preexistente incompatible';
+  end if;
   if pg_catalog.has_table_privilege('authenticated',
        'public.microcycle_physical_session_links',
        'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,MAINTAIN')
      or pg_catalog.has_table_privilege('anon',
        'public.microcycle_physical_session_links',
-       'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,MAINTAIN') then
+       'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,MAINTAIN')
+     or pg_catalog.has_any_column_privilege('authenticated',
+       'public.microcycle_physical_session_links', 'INSERT,UPDATE')
+     or pg_catalog.has_any_column_privilege('anon',
+       'public.microcycle_physical_session_links', 'INSERT,UPDATE') then
     raise exception '4B: vinculos 4A tienen escritura directa inesperada';
   end if;
   if exists (select 1 from pg_catalog.pg_trigger t
@@ -109,6 +139,54 @@ begin
     raise exception '4B: unicidad de vinculo o metricas no acreditada';
   end if;
 end $preflight$;
+
+-- La FK compuesta mantiene la fecha del vinculo sincronizada incluso si cambia
+-- la fecha de la sesion. UNIQUE(CTS, fecha) es la barrera final de concurrencia.
+do $unique_session_date$
+begin
+  if not exists (select 1 from pg_catalog.pg_constraint c
+    where c.conrelid = 'public.training_sessions'::regclass
+      and c.conname = 'training_sessions_id_date_4b_key') then
+    alter table public.training_sessions
+      add constraint training_sessions_id_date_4b_key unique (id, session_date);
+  end if;
+end $unique_session_date$;
+
+alter table public.microcycle_physical_session_links
+  add column if not exists session_date date;
+update public.microcycle_physical_session_links l
+  set session_date = s.session_date
+from public.training_sessions s
+where s.id = l.training_session_id and l.session_date is null;
+do $link_date_check$
+begin
+  if exists (select 1 from public.microcycle_physical_session_links l
+    left join public.training_sessions s on s.id = l.training_session_id
+    where s.id is null or l.session_date is distinct from s.session_date) then
+    raise exception '4B: fecha de vinculo preexistente incompatible con la sesion';
+  end if;
+end $link_date_check$;
+alter table public.microcycle_physical_session_links
+  alter column session_date set not null;
+do $link_constraints$
+begin
+  if not exists (select 1 from pg_catalog.pg_constraint c
+    where c.conrelid = 'public.microcycle_physical_session_links'::regclass
+      and c.conname = 'microcycle_physical_session_links_cts_date_4b_key') then
+    alter table public.microcycle_physical_session_links
+      add constraint microcycle_physical_session_links_cts_date_4b_key
+      unique (club_team_season_id, session_date);
+  end if;
+  if not exists (select 1 from pg_catalog.pg_constraint c
+    where c.conrelid = 'public.microcycle_physical_session_links'::regclass
+      and c.conname = 'microcycle_physical_session_links_session_date_4b_fkey') then
+    alter table public.microcycle_physical_session_links
+      add constraint microcycle_physical_session_links_session_date_4b_fkey
+      foreign key (training_session_id, session_date)
+      references public.training_sessions(id, session_date)
+      on update cascade on delete restrict;
+  end if;
+end $link_constraints$;
 
 create or replace function public.guard_cts_physical_session_4b()
 returns trigger language plpgsql security definer set search_path = pg_catalog
@@ -207,6 +285,46 @@ create trigger guard_cts_physical_metric_4b before insert or update or delete
   on public.training_session_load_metrics for each row
   execute function public.guard_cts_physical_metric_4b();
 
+-- El guard de triggers conserva las reglas CTS para administracion y RPC.
+-- Estas politicas RESTRICTIVE impiden que un cliente authenticated use el
+-- guardado legacy o las escrituras directas sobre filas ya vinculadas.
+create or replace function public.is_unlinked_physical_session_4b(target_session_id uuid)
+returns boolean language sql stable security definer set search_path = pg_catalog
+as $unlinked$
+  select target_session_id is not null and auth.uid() is not null
+    and not exists (select 1 from public.microcycle_physical_session_links l
+      where l.training_session_id = target_session_id)
+$unlinked$;
+comment on function public.is_unlinked_physical_session_4b(uuid) is
+  'NEXO CLUB 4B: RLS write boundary for unlinked legacy physical sessions';
+alter function public.is_unlinked_physical_session_4b(uuid) owner to postgres;
+revoke all on function public.is_unlinked_physical_session_4b(uuid)
+  from public, anon, authenticated, service_role;
+grant execute on function public.is_unlinked_physical_session_4b(uuid) to authenticated;
+
+drop policy if exists microcycle_4b_sessions_update on public.training_sessions;
+create policy microcycle_4b_sessions_update on public.training_sessions
+  as restrictive for update to authenticated
+  using (public.is_unlinked_physical_session_4b(id))
+  with check (public.is_unlinked_physical_session_4b(id));
+drop policy if exists microcycle_4b_sessions_delete on public.training_sessions;
+create policy microcycle_4b_sessions_delete on public.training_sessions
+  as restrictive for delete to authenticated
+  using (public.is_unlinked_physical_session_4b(id));
+drop policy if exists microcycle_4b_metrics_insert on public.training_session_load_metrics;
+create policy microcycle_4b_metrics_insert on public.training_session_load_metrics
+  as restrictive for insert to authenticated
+  with check (public.is_unlinked_physical_session_4b(session_id));
+drop policy if exists microcycle_4b_metrics_update on public.training_session_load_metrics;
+create policy microcycle_4b_metrics_update on public.training_session_load_metrics
+  as restrictive for update to authenticated
+  using (public.is_unlinked_physical_session_4b(session_id))
+  with check (public.is_unlinked_physical_session_4b(session_id));
+drop policy if exists microcycle_4b_metrics_delete on public.training_session_load_metrics;
+create policy microcycle_4b_metrics_delete on public.training_session_load_metrics
+  as restrictive for delete to authenticated
+  using (public.is_unlinked_physical_session_4b(session_id));
+
 create or replace function public.save_cts_daily_training_load_4b(
   p_club_team_season_id uuid, p_session_date date, p_session_type text,
   p_actual_duration_minutes integer, p_distance_m numeric, p_hsr_m numeric,
@@ -268,8 +386,8 @@ begin
       p_session_type,p_actual_duration_minutes,nullif(btrim(p_notes),''),null,now())
     returning * into v_session;
     insert into public.microcycle_physical_session_links
-      (training_session_id,club_team_season_id)
-    values (v_session.id,p_club_team_season_id);
+      (training_session_id,club_team_season_id,session_date)
+    values (v_session.id,p_club_team_season_id,v_session.session_date);
   else
     select s.* into v_session from public.training_sessions s
     join public.microcycle_physical_session_links l
@@ -310,6 +428,65 @@ grant execute on function public.save_cts_daily_training_load_4b(uuid,date,text,
 
 do $postflight$
 begin
+  if not exists (select 1 from pg_catalog.pg_constraint c
+    where c.conrelid = 'public.training_sessions'::regclass
+      and c.conname = 'training_sessions_id_date_4b_key'
+      and c.contype = 'u' and c.convalidated
+      and pg_catalog.cardinality(c.conkey) = 2
+      and c.conkey[1] = (select a.attnum from pg_catalog.pg_attribute a
+        where a.attrelid = c.conrelid and a.attname = 'id')
+      and c.conkey[2] = (select a.attnum from pg_catalog.pg_attribute a
+        where a.attrelid = c.conrelid and a.attname = 'session_date'))
+     or not exists (select 1 from pg_catalog.pg_constraint c
+       where c.conrelid = 'public.microcycle_physical_session_links'::regclass
+         and c.conname = 'microcycle_physical_session_links_cts_date_4b_key'
+         and c.contype = 'u' and c.convalidated
+         and pg_catalog.cardinality(c.conkey) = 2
+         and c.conkey[1] = (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid = c.conrelid and a.attname = 'club_team_season_id')
+         and c.conkey[2] = (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid = c.conrelid and a.attname = 'session_date'))
+     or not exists (select 1 from pg_catalog.pg_constraint c
+       where c.conrelid = 'public.microcycle_physical_session_links'::regclass
+         and c.conname = 'microcycle_physical_session_links_session_date_4b_fkey'
+         and c.contype = 'f' and c.convalidated
+         and c.confrelid = 'public.training_sessions'::regclass
+         and c.confupdtype = 'c' and c.confdeltype = 'r'
+         and pg_catalog.cardinality(c.conkey) = 2
+         and pg_catalog.cardinality(c.confkey) = 2
+         and c.conkey[1] = (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid = c.conrelid and a.attname = 'training_session_id')
+         and c.conkey[2] = (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid = c.conrelid and a.attname = 'session_date')
+         and c.confkey[1] = (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid = c.confrelid and a.attname = 'id')
+         and c.confkey[2] = (select a.attnum from pg_catalog.pg_attribute a
+           where a.attrelid = c.confrelid and a.attname = 'session_date'))
+     or not exists (select 1 from pg_catalog.pg_attribute a
+       where a.attrelid = 'public.microcycle_physical_session_links'::regclass
+         and a.attname = 'session_date' and a.attnotnull
+         and pg_catalog.format_type(a.atttypid, null) = 'date') then
+    raise exception '4B: unicidad o sincronizacion de fecha CTS incompleta';
+  end if;
+  if (select count(*) from pg_catalog.pg_policy p
+      where ((p.polrelid = 'public.training_sessions'::regclass
+          and p.polname in ('microcycle_4b_sessions_update','microcycle_4b_sessions_delete'))
+        or (p.polrelid = 'public.training_session_load_metrics'::regclass
+          and p.polname in ('microcycle_4b_metrics_insert','microcycle_4b_metrics_update','microcycle_4b_metrics_delete')))
+        and not p.polpermissive) <> 5 then
+    raise exception '4B: politicas restrictivas de escritura incompletas';
+  end if;
+  if not exists (select 1 from pg_catalog.pg_proc p
+      where p.oid = 'public.is_unlinked_physical_session_4b(uuid)'::regprocedure
+        and p.prosecdef and p.provolatile = 's'
+        and p.proconfig = array['search_path=pg_catalog']::text[]
+        and p.proowner = (select oid from pg_catalog.pg_roles where rolname='postgres'))
+     or not pg_catalog.has_function_privilege('authenticated',
+       'public.is_unlinked_physical_session_4b(uuid)', 'EXECUTE')
+     or pg_catalog.has_function_privilege('anon',
+       'public.is_unlinked_physical_session_4b(uuid)', 'EXECUTE') then
+    raise exception '4B: helper RLS incompleto';
+  end if;
   if not exists (select 1 from pg_catalog.pg_trigger t
       where t.tgrelid = 'public.training_sessions'::regclass
         and t.tgname = 'guard_cts_physical_session_4b' and not t.tgisinternal
@@ -339,7 +516,9 @@ begin
          and acl.grantee = 0 and acl.privilege_type = 'EXECUTE')
      or pg_catalog.has_table_privilege('authenticated',
        'public.microcycle_physical_session_links',
-       'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,MAINTAIN') then
+       'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,MAINTAIN')
+     or pg_catalog.has_any_column_privilege('authenticated',
+       'public.microcycle_physical_session_links', 'INSERT,UPDATE') then
     raise exception '4B: guard o privilegios incompletos';
   end if;
 end $postflight$;
