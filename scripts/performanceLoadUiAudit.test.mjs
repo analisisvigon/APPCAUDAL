@@ -37,7 +37,7 @@ assert.match(app, /readOnly=\{!physicalContext \|\| physicalContext\.seasonStatu
 assert.match(app, /performanceLoadsKey === `\$\{performancePhysicalScopeId\}:\$\{performanceWeekStart\}`/);
 assert.match(app, /resolveRpePeriodEntries\(\{/);
 assert.match(app, /getPerformanceNaturalWeekStart\(new Date\(\)\)/);
-assert.match(app, /No se pudo actualizar RPE/);
+assert.match(app, /No se pudo actualizar Rendimiento/);
 assert.match(app, /Duración/);
 assert.match(app, /Carga RPE/);
 assert.match(app, /selectedRpeWorkload\.durationMinutes === null \? '—'/);

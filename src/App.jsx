@@ -5720,6 +5720,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   const [performanceLoadMetricKey, setPerformanceLoadMetricKey] = useState('loadUnits');
   const [performanceMonthLoads, setPerformanceMonthLoads] = useState([]);
   const [performanceMonthLoadsKey, setPerformanceMonthLoadsKey] = useState('');
+  const [performancePhysicalMonthVersion, setPerformancePhysicalMonthVersion] = useState(0);
   const [performanceMonthLoading, setPerformanceMonthLoading] = useState(false);
   // Fase 1: estado y mutaciones legacy conservados sin carga ni exposición en la UI.
   const [trainingSessions, setTrainingSessions] = useState([]);
@@ -7864,7 +7865,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     return () => { cancelled = true; };
   }, [activeTab, authLoading, authenticatedUserId, performanceChartPeriod,
     performanceChartMonth, performancePhysicalScopeReady, performancePhysicalScopeId,
-    performanceRefreshVersion]);
+    performancePhysicalMonthVersion]);
 
   useEffect(() => {
     if (!performanceSelectedPlayerId || typeof document === 'undefined') return undefined;
@@ -9264,6 +9265,11 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
           : loadCtsTrainingLoadsRange(supabase, scopeId, requestWeekStart, weekEnd),
       ]);
 
+      if (requestVersion !== performanceRequestVersionRef.current
+        || performancePhysicalScopeRef.current !== scopeId) return false;
+      setPerformanceTrainingLoads(nextTrainingLoads);
+      setPerformanceLoadsKey(requestKey);
+
       const failed = [
         wellnessResponse,
         rpeResponse,
@@ -9288,8 +9294,6 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       const nextRpeEntries = rpeResponse.data || [];
       setWellnessEntries(nextWellnessEntries);
       setRpeEntries((current) => resolveRpeRefreshEntries(current, nextRpeEntries, true));
-      setPerformanceTrainingLoads(nextTrainingLoads);
-      setPerformanceLoadsKey(requestKey);
       setPreviousWellnessEntries(previousWellnessResponse.data || []);
       setPreviousRpeEntries(previousRpeResponse.data || []);
       setPerformanceObservationHistory({
@@ -9337,8 +9341,8 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       if (requestVersion === performanceRequestVersionRef.current
         && performancePhysicalScopeRef.current === scopeId) {
         setPerformanceError(loadError.message
-          ? `No se pudo actualizar RPE: ${loadError.message}`
-          : 'No se pudo actualizar RPE. Se mantienen los últimos datos cargados.');
+          ? `No se pudo actualizar Rendimiento: ${loadError.message}`
+          : 'No se pudo actualizar Rendimiento. Se mantienen los últimos datos cargados.');
       }
       return false;
     } finally {
@@ -9375,7 +9379,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       performanceMonthLoadsCacheRef.current.clear();
       setPerformanceMonthLoads([]);
       setPerformanceMonthLoadsKey('');
-      setPerformanceRefreshVersion((current) => current + 1);
+      setPerformancePhysicalMonthVersion((current) => current + 1);
       setPerformanceStatus(`Carga del ${savedLoad.session.session_date} guardada para ${context.teamName} · ${context.seasonLabel}.`);
       setHomeActivityRefreshVersion((current) => current + 1);
       return savedLoad;
@@ -28878,6 +28882,9 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
           {physicalContext ? <p className="mt-2 text-xs text-slate-400">
             {physicalContext.teamName} · {physicalContext.seasonLabel} · {physicalContext.seasonStatus === 'open'
               ? 'El guardado se vincula a este equipo y temporada.' : 'Temporada cerrada: solo consulta.'}
+          </p> : null}
+          {physicalContext ? <p className="mt-1 text-[11px] text-slate-500">
+            Esta selección afecta a la carga física colectiva. RPE y Wellness mantienen su consulta actual.
           </p> : null}
           {performancePhysicalScopeId === 'legacy' ? <p className="mt-2 text-xs text-amber-200">
             Archivo histórico sin CTS. Estas cargas no se atribuyen al equipo actual y no se editan aquí.
