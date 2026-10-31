@@ -6,6 +6,25 @@ import {
 } from './plannedSessionDistributions.js';
 import { loadPlannedDistribution, loadPlannedSpecificPositions,
   savePlannedDistribution, savePlannedSessionValue } from '../data/plannedSessionsStore.js';
+import { fieldIsMeasured, metresFromZone, seededPlayerLayout, taskZoneMetres,
+  zoneFromMetres } from './plannedSessionFieldScale.js';
+
+const field = { length_m: 105, width_m: 68 };
+const proposedZone = { slot_id: 'exercise-1', x: 80, y: 80, w: 24, h: 18,
+  color: 'blue', provisional: true };
+const scaledZone = zoneFromMetres(proposedZone, field, { length_m: 30, width_m: 20 });
+assert.ok(scaledZone && !scaledZone.provisional);
+assert.ok(scaledZone.x + scaledZone.w <= 100 && scaledZone.y + scaledZone.h <= 100);
+assert.deepEqual(metresFromZone(scaledZone, field), { length_m: 30, width_m: 20 });
+assert.equal(zoneFromMetres(proposedZone, field, { length_m: 106, width_m: 20 }), null);
+assert.equal(zoneFromMetres(proposedZone, field, { length_m: -1, width_m: 20 }), null);
+assert.equal(fieldIsMeasured({ length_m: '', width_m: 68 }), false);
+assert.equal(taskZoneMetres({ items: [{ kind: 'free', preview: { space_length_m: 30,
+  space_width_m: 20 } }] }), null, 'la actividad libre no inventa dimensiones de Biblioteca');
+assert.deepEqual(taskZoneMetres({ items: [{ kind: 'library_task', preview: {
+  space_length_m: 30, space_width_m: 20 } }] }), { length_m: 30, width_m: 20 });
+assert.equal(taskZoneMetres({ items: [{ kind: 'library_task', preview: {
+  space_length_m: 30, space_width_m: 20 }, working: { space_width_m: null } }] }), null);
 
 const roster = Array.from({ length: 24 }, (_, index) => ({
   player_id: `player-${index}`, player_name_snapshot: index === 0 ? 'Pepe Pérez' :
@@ -16,6 +35,15 @@ const rows = roster.map((row, index) => ({ player_id: row.player_id,
     index < 4 ? 'goalkeeper' : index < 9 ? 'centre_back' :
       index < 14 ? 'central_midfield' : 'centre_forward' }));
 const byId = specificPositionMap(rows);
+const presetLateral = autoPlayerLayout(roster, byId, '4-4-2')[0];
+const usual = { formation_key: '4-4-2', player_layout: [
+  presetLateral,
+  { player_id: 'player-2', placement: 'unplaced', x: null, y: null },
+] };
+const seeded = seededPlayerLayout(usual, roster, byId, autoPlayerLayout);
+assert.equal(seeded.length, 24);
+assert.deepEqual(seeded[0], { ...presetLateral, placement: 'manual' });
+assert.deepEqual(seeded[2], { player_id: 'player-2', placement: 'unplaced', x: null, y: null });
 assert.equal(playerCompactLabels(roster).get('player-0'), 'Pepe Pérez');
 assert.equal(playerCompactLabels(roster).get('player-1'), 'Pepe Prieto');
 for (const system of SESSION_SYSTEMS) {

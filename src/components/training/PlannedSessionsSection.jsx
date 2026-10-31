@@ -104,6 +104,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [specificPositions, setSpecificPositions] = useState([]);
   const [boardsError, setBoardsError] = useState('');
   const [boardDefaults, setBoardDefaults] = useState(null);
+  const [boardDefaultsLoading, setBoardDefaultsLoading] = useState(false);
+  const [boardDefaultsContextId, setBoardDefaultsContextId] = useState('');
   const [fieldDimensions, setFieldDimensions] = useState({ length_m: '', width_m: '' });
   const [fieldBaseline, setFieldBaseline] = useState({ length_m: '', width_m: '' });
   const [sessionValue, setSessionValue] = useState('');
@@ -246,11 +248,13 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   }, [client, contextId]);
 
   useEffect(() => {
-    if (!BOARD_V11_ENABLED || !contextId) { setBoardDefaults(null); return undefined; }
+    if (!BOARD_V11_ENABLED || !contextId) { setBoardDefaults(null); setBoardDefaultsLoading(false); setBoardDefaultsContextId(''); return undefined; }
     let cancelled = false;
+    setBoardDefaults(null); setBoardDefaultsLoading(true); setBoardDefaultsContextId('');
     loadPlannedBoardDefaultsV11(client, contextId).then((row) => {
-      if (!cancelled) setBoardDefaults(row);
-    }).catch((cause) => { if (!cancelled) setBoardsError(`${errorKind(cause)}: ${readError(cause)}`); });
+      if (!cancelled) { setBoardDefaults(row); setBoardDefaultsContextId(contextId); }
+    }).catch((cause) => { if (!cancelled) setError(`${errorKind(cause)}: no se pudieron cargar las configuraciones habituales. ${readError(cause)}`); })
+      .finally(() => { if (!cancelled) setBoardDefaultsLoading(false); });
     return () => { cancelled = true; };
   }, [client, contextId]);
 
@@ -321,7 +325,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         nextPositions = savedDistribution.specific_positions_snapshot.length
           ? savedDistribution.specific_positions_snapshot
           : await loadPlannedSpecificPositions(client, players.roster.map((row) => row.player_id));
-        if (!savedRow && seed?.formation_key && players.roster.length) {
+        if (!savedRow && seed?.formation_key) {
           nextDistribution = { ...nextDistribution, formation_key: seed.formation_key,
             player_layout: seededPlayerLayout(seed, players.roster,
               specificPositionMap(nextPositions), autoPlayerLayout) };
@@ -364,7 +368,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     });
   }, [openSessionRequest?.id, openSessionRequest?.contextId, contextsLoading, contexts, contextId]);
   const startNew = () => {
-    if (!canWriteContext || busy || !requestDiscard()) return;
+    if (!canWriteContext || busy || boardDefaultsLoading ||
+        (BOARD_V11_ENABLED && boardDefaultsContextId !== contextId) || !requestDiscard()) return;
     setEditor(createEmptyPlannedEditor()); setBaseline(null);
     setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
     setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
@@ -675,9 +680,11 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     if (BOARD_V11_ENABLED && fieldIsMeasured(fieldDimensions)) {
       const slot = editor.slots.find((entry) => entry.id === slotId);
       const zone = distribution?.space_zones.find((entry) => entry.slot_id === slotId);
-      const metres = { length_m: task.space_length_m, width_m: task.space_width_m };
+      const prospective = slot && { ...slot, items: slot.items.map((entry) => entry.id === itemId
+        ? createPlannedLibraryItem(id, task) : entry) };
+      const metres = taskZoneMetres(prospective);
       const resized = zone && zoneFromMetres(zone, fieldDimensions, metres);
-      if (resized && slot?.items?.[0]?.id === itemId) changeZone(slotId, resized);
+      if (resized && zone.provisional) changeZone(slotId, resized);
     }
   };
   const switchToFreeTask = (slotId, itemId) => {
@@ -736,12 +743,12 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const changeZoneMetres = (slotId, metres) => {
     const zone = distribution?.space_zones.find((entry) => entry.slot_id === slotId);
     const resized = zone && zoneFromMetres(zone, fieldDimensions, metres);
-    if (!resized) { setError('La zona debe tener medidas positivas y caber dentro del campo.'); return; }
-    changeZone(slotId, resized); setError('');
+    if (!resized) { setError('La zona debe tener medidas positivas y caber dentro del campo.'); return false; }
+    changeZone(slotId, resized); setError(''); return true;
   };
 
   const saveFieldDimensions = async () => {
-    if (!BOARD_V11_ENABLED || !editor?.id || !canEdit || !fieldDirty || editorDirty || distributionDirty ||
+    if (!BOARD_V11_ENABLED || !editor?.id || !canEdit || !fieldDirty || editorDirty ||
         busy || conflict || creationUncertain) return;
     const bothEmpty = fieldDimensions.length_m === '' && fieldDimensions.width_m === '';
     if (!bothEmpty && (!validMetres(fieldDimensions.length_m) || !validMetres(fieldDimensions.width_m))) {
@@ -806,7 +813,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   };
 
   const saveDistributions = async () => {
-    if (!editor?.id || !canEdit || !distribution || boardsError || !distributionDirty ||
+    if (!editor?.id || !canEdit || !distribution || boardsError || !distributionDirty || fieldDirty ||
         editorDirty || dateNeedsReconciliation || busy || operationRef.current || conflict || creationUncertain) return;
     const issue = validateDistribution(distribution, roster, editor.slots);
     if (issue) { setError(`Validación de pizarras: ${issue}`); return; }
@@ -857,7 +864,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
               </select>
             </label>
             {canWriteContext ? <button type="button" className={`${button} bg-caudal-electric text-slate-950`}
-              disabled={busy} onClick={startNew}>Nueva sesión</button> : null}
+              disabled={busy || boardDefaultsLoading || (BOARD_V11_ENABLED && boardDefaultsContextId !== contextId)}
+              onClick={startNew}>Nueva sesión</button> : null}
           </div>
         ) : null}
         {selected ? <p className="mt-3 text-sm text-slate-400">
@@ -966,12 +974,12 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
             {canEdit && editor.id && !boardsError ? <button type="button"
               className={`${button} border border-caudal-electric/50 text-caudal-electric`}
               onClick={saveDistributions}
-              disabled={busy || !distributionDirty || editorDirty || dateNeedsReconciliation || conflict || creationUncertain}>
+              disabled={busy || !distributionDirty || fieldDirty || editorDirty || dateNeedsReconciliation || conflict || creationUncertain}>
               Guardar pizarras</button> : null}
             {BOARD_V11_ENABLED && canEdit && editor.id ? <button type="button"
               className={`${button} border border-caudal-electric/50 text-caudal-electric`}
               onClick={saveFieldDimensions}
-              disabled={busy || !fieldDirty || editorDirty || distributionDirty || conflict || creationUncertain}>
+              disabled={busy || !fieldDirty || editorDirty || conflict || creationUncertain}>
               Guardar dimensiones</button> : null}
             {canEdit && editor.id && valueSupported ? <button type="button"
               className={`${button} border border-caudal-electric/50 text-caudal-electric`}

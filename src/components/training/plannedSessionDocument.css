@@ -120,6 +120,15 @@
 .planned-distribution-zone i { position: absolute; right: 0; bottom: 0; width: 5mm; height: 5mm; border-top: 1px solid var(--zone-ink); border-left: 1px solid var(--zone-ink); background: #fff; cursor: nwse-resize; }
 .planned-distribution-zone-provisional { border-style: dashed; }
 .planned-distribution-zone-overlap { outline: 1px dashed #36434a; outline-offset: -3px; }
+.planned-board-default-button { margin-top: 1mm; padding: 1mm 2mm; border: 1px solid #728da4; border-radius: 1mm; background: #f4f8fb; color: #203a55; font-size: 6pt; font-weight: 700; }
+.planned-board-default-button:disabled { opacity: .45; cursor: not-allowed; }
+.planned-board-field-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 1mm; margin-bottom: 1mm; text-align: left; font-size: 6pt; }
+.planned-board-field-controls label { flex: 1 1 12mm; min-width: 0; }
+.planned-board-field-controls input, .planned-board-zone-metres input { display: block; box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid #aebdb8; border-radius: 1mm; background: #fff; padding: .5mm; color: #20252d; font-size: 7pt; }
+.planned-board-zone-metres { margin-top: 1mm; text-align: left; font-size: 6pt; }
+.planned-board-zone-metres > div { display: grid; grid-template-columns: 8mm 1fr 1fr; gap: 1mm; align-items: end; margin-top: 1mm; }
+@media print { .planned-board-default-button, .planned-board-field-controls, .planned-board-zone-metres,
+  .planned-zone-metre-label { display: none !important; } }
 .planned-distribution-zone-blue { --zone-ink: #1657a1; --zone-fill: #2388e266; }
 .planned-distribution-zone-red { --zone-ink: #a42331; --zone-fill: #e23d4a66; }
 .planned-distribution-zone-green { --zone-ink: #237248; --zone-fill: #43b47666; }

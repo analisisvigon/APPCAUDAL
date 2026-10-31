@@ -131,6 +131,7 @@ export function SessionSpaceDistribution({ zones = [], slots = [], canEdit = fal
   defaultButtonDisabled = false }) {
   const fieldRef = useRef(null);
   const dragRef = useRef(null);
+  const [zoneMetresDraft, setZoneMetresDraft] = useState({});
   const ordered = PLANNED_PHASES.flatMap((phase) => slots.filter((slot) => slot.phase === phase.key));
   const slotById = new Map(ordered.map((slot, index) => [slot.id, {
     short: `E${index + 1}`, label: `${phaseLabel(slot.phase)} · Ej. ${index + 1}`,
@@ -184,7 +185,7 @@ export function SessionSpaceDistribution({ zones = [], slots = [], canEdit = fal
         onPointerMove={canEdit ? move : undefined}
         onPointerUp={canEdit ? (event) => {
           if (dragRef.current?.pointerId === event.pointerId) {
-            if (dragRef.current.moved) onZoneChange(zone.slot_id, { provisional: false });
+            if (dragRef.current.moved && dragRef.current.resize) onZoneChange(zone.slot_id, { provisional: false });
             dragRef.current = null;
           }
         } : undefined}
@@ -197,24 +198,38 @@ export function SessionSpaceDistribution({ zones = [], slots = [], canEdit = fal
       {visibleZones.map((zone) => <span key={zone.slot_id}>
         <i className={`planned-distribution-swatch planned-distribution-zone-${zone.color}`} />
         {slotById.get(zone.slot_id).label}{zone.provisional ? ' · provisional' : ''}
+        {!zone.provisional && fieldIsMeasured(fieldDimensions) ? <span className="planned-zone-metre-label">{(() => {
+          const metres = metresFromZone(zone, fieldDimensions);
+          return ` · ${metres.length_m} × ${metres.width_m} m`;
+        })()}</span> : null}
       </span>)}
     </div>
-    {canEdit && fieldIsMeasured(fieldDimensions) && onZoneMetresChange ? <div className="planned-board-zone-metres">
+    {canEdit && fieldIsMeasured(fieldDimensions) && onZoneMetresChange ? <details className="planned-board-zone-metres">
+      <summary>Medidas de los ejercicios</summary>
       {visibleZones.map((zone) => {
-        const metres = metresFromZone(zone, fieldDimensions);
+        const metres = zone.provisional ? { length_m: '', width_m: '' }
+          : metresFromZone(zone, fieldDimensions);
+        const draft = zoneMetresDraft[zone.slot_id] || {};
+        const edit = (key, value) => {
+          const next = { length_m: draft.length_m ?? metres.length_m,
+            width_m: draft.width_m ?? metres.width_m, [key]: value };
+          setZoneMetresDraft((current) => ({ ...current, [zone.slot_id]: next }));
+          if (validMetres(next.length_m) && validMetres(next.width_m)) {
+            if (onZoneMetresChange(zone.slot_id, next))
+              setZoneMetresDraft((current) => ({ ...current, [zone.slot_id]: {} }));
+          }
+        };
         return <div key={zone.slot_id}>
           <strong>{slotById.get(zone.slot_id).short}</strong>
-          <label>Largo (m)<input key={`${zone.slot_id}-length-${metres.length_m}`} type="number"
-            min="0.01" max={fieldDimensions.length_m} step="0.1" defaultValue={metres.length_m}
-            onBlur={(event) => { if (validMetres(event.target.value)) onZoneMetresChange(zone.slot_id,
-              { ...metres, length_m: Number(event.target.value) }); }} /></label>
-          <label>Ancho (m)<input key={`${zone.slot_id}-width-${metres.width_m}`} type="number"
-            min="0.01" max={fieldDimensions.width_m} step="0.1" defaultValue={metres.width_m}
-            onBlur={(event) => { if (validMetres(event.target.value)) onZoneMetresChange(zone.slot_id,
-              { ...metres, width_m: Number(event.target.value) }); }} /></label>
+          <label>Largo (m)<input type="number" min="0.01" max={fieldDimensions.length_m}
+            step="0.01" value={draft.length_m ?? metres.length_m}
+            onChange={(event) => edit('length_m', event.target.value)} /></label>
+          <label>Ancho (m)<input type="number" min="0.01" max={fieldDimensions.width_m}
+            step="0.01" value={draft.width_m ?? metres.width_m}
+            onChange={(event) => edit('width_m', event.target.value)} /></label>
         </div>;
       })}
-    </div> : null}
+    </details> : null}
     {overlaps.length ? <small>Zonas superpuestas: {overlaps.map(([left, right]) =>
       `${slotById.get(left).short} / ${slotById.get(right).short}`).join('; ')}. No implica conflicto temporal.</small> : null}
     {canEdit && visibleZones.length ? <small>Arrastra las zonas; usa la esquina para cambiar su tamaño. Las nuevas son propuestas provisionales.</small> : null}
