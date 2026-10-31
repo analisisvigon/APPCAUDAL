@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 
 import {
   getTrainingLoadForDate,
+  loadCtsTrainingLoadsRange,
   loadTrainingLoadsRange,
   replaceTrainingLoadByDate,
+  saveAuthorizedCtsDailyTeamLoad,
   saveCtsDailyTeamLoad,
   saveDailyTeamLoad,
 } from './performanceLoadStore.js';
@@ -134,6 +136,73 @@ assert.equal(ctsCalls[0][1].p_existing_session_id, null);
 await saveCtsDailyTeamLoad(ctsClient, 'cts-almadina', baseDraft, 'cts-session');
 assert.equal(ctsCalls[1][1].p_existing_session_id, 'cts-session');
 await assert.rejects(saveCtsDailyTeamLoad(ctsClient, '', baseDraft), /equipo/);
+
+const ctsReadCalls = [];
+const linkedRow = { training_session_id: 'cts-session', session_date: '2026-08-10',
+  session_type: 'training', actual_duration_minutes: 63, distance_m: 4250,
+  hsr_m: null, accelerations: 0, decelerations: null, sprints: null,
+  meters_per_minute: null, load_units: 320, has_team_metrics: true };
+const ctsReadClient = {
+  async rpc(name, params) {
+    ctsReadCalls.push([name, params]);
+    return { data: params.p_week_starts_on === '2026-08-10' ? [linkedRow] : [], error: null };
+  },
+  from(table) {
+    assert.equal(table, 'training_sessions');
+    return { select(columns) {
+      assert.match(columns, /notes/);
+      return { in(column, ids) {
+        assert.equal(column, 'id'); assert.deepEqual(ids, ['cts-session']);
+        return Promise.resolve({ data: [{ id: 'cts-session', session_date: '2026-08-10',
+          notes: 'Notas conservadas', record_kind: null, updated_at: null }], error: null });
+      } };
+    } };
+  },
+};
+const scopedLoads = await loadCtsTrainingLoadsRange(ctsReadClient,
+  'cts-almadina', '2026-08-10', '2026-08-16');
+assert.equal(scopedLoads.length, 1);
+assert.equal(scopedLoads[0].session.notes, 'Notas conservadas');
+assert.equal(scopedLoads[0].metrics.hsr_m, null, 'ausencia no equivale a cero');
+assert.equal(scopedLoads[0].metrics.accelerations, 0, 'cero acreditado se conserva');
+assert.deepEqual(ctsReadCalls, [['get_microcycle_team_loads_4a', {
+  p_club_team_season_id: 'cts-almadina', p_week_starts_on: '2026-08-10',
+}]]);
+assert.equal((await loadCtsTrainingLoadsRange(ctsReadClient,
+  'cts-almadina', '2026-08-17', '2026-08-23')).length, 0);
+await assert.rejects(loadCtsTrainingLoadsRange(ctsReadClient, '',
+  '2026-08-10', '2026-08-16'), /equipo/);
+await assert.rejects(loadCtsTrainingLoadsRange({
+  rpc: async () => ({ data: [linkedRow, linkedRow], error: null }),
+}, 'cts-almadina', '2026-08-10', '2026-08-16'), /duplicadas/);
+await assert.rejects(loadCtsTrainingLoadsRange({
+  rpc: async () => ({ data: [linkedRow], error: null }),
+  from: () => ({ select: () => ({ in: async () => ({ data: [], error: null }) }) }),
+}, 'cts-almadina', '2026-08-10', '2026-08-16'), /observaciones/);
+
+const deniedWrite = { rpc: async () => ({ error: new Error('Sin permiso CTS') }) };
+await assert.rejects(saveCtsDailyTeamLoad(deniedWrite, 'cts-closed', baseDraft), /Sin permiso/);
+
+const authorizedCalls = [];
+const authorizedClient = { async rpc(name, params) {
+  authorizedCalls.push([name, params]);
+  if (name === 'can_write_club_team_season') return { data: true, error: null };
+  return ctsClient.rpc(name, params);
+} };
+const openContext = { id: 'cts-almadina', seasonStatus: 'open' };
+await saveAuthorizedCtsDailyTeamLoad(authorizedClient, openContext, baseDraft);
+assert.deepEqual(authorizedCalls.map(([name]) => name),
+  ['can_write_club_team_season', 'save_cts_daily_training_load_4b']);
+assert.equal(authorizedCalls[1][1].p_existing_session_id, null);
+authorizedCalls.length = 0;
+await saveAuthorizedCtsDailyTeamLoad(authorizedClient, openContext, baseDraft, ctsSaved);
+assert.equal(authorizedCalls[1][1].p_existing_session_id, 'cts-session');
+authorizedCalls.length = 0;
+await assert.rejects(saveAuthorizedCtsDailyTeamLoad(authorizedClient,
+  { ...openContext, seasonStatus: 'closed' }, baseDraft), /temporada abierta/);
+assert.equal(authorizedCalls.length, 0, 'temporada cerrada no llama ninguna RPC');
+await assert.rejects(saveAuthorizedCtsDailyTeamLoad({ rpc: async () => ({ data: false }) },
+  openContext, baseDraft), /permiso/);
 
 const replaced = replaceTrainingLoadByDate(loads, editedSave);
 assert.equal(replaced.length, 1);

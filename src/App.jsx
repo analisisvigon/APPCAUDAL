@@ -4,7 +4,7 @@ import { createPortal, flushSync } from 'react-dom';
 
 import { supabase } from './lib/supabase';
 import { deleteOwnPlayer } from './data/ownPlayerDeletion';
-import { SportsContextCoordinator, verifySelectableSportsContext, verifySportsContext } from './sports/authorizedContext';
+import { SportsContextCoordinator, loadAuthorizedSportsContexts, loadOperationalPreferredContextId, verifySelectableSportsContext, verifySportsContext } from './sports/authorizedContext';
 import {
   assertCtsCreate, assertCtsMatchWrite, canWriteOperationalCts,
   createOperationalMatch, createOperationalPlayer, editOperationalMatch,
@@ -206,9 +206,10 @@ import {
 import { getDailyQuestionnaireRequirement, getMissingDailyPlayers } from './utils/performanceDaily';
 import {
   getTrainingLoadForDate,
+  loadCtsTrainingLoadsRange,
   loadTrainingLoadsRange,
   replaceTrainingLoadByDate,
-  saveDailyTeamLoad,
+  saveAuthorizedCtsDailyTeamLoad,
 } from './utils/performanceLoadStore';
 import { cleanImportedFieldValue, extractTransfermarktPlayerId, isEmptyImportedField, normalizeTransfermarktPosition } from './utils/rivalPlayerImport';
 import { resolveMatchPlanPendingNavigation, serializeMatchPlanLegacyFields } from './utils/matchPlanWorkspace';
@@ -5718,13 +5719,19 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   const [performanceWeekStart, setPerformanceWeekStart] = useState(() => getPerformanceNaturalWeekStart(new Date()));
   const [performanceLoadMetricKey, setPerformanceLoadMetricKey] = useState('loadUnits');
   const [performanceMonthLoads, setPerformanceMonthLoads] = useState([]);
+  const [performanceMonthLoadsKey, setPerformanceMonthLoadsKey] = useState('');
   const [performanceMonthLoading, setPerformanceMonthLoading] = useState(false);
   // Fase 1: estado y mutaciones legacy conservados sin carga ni exposición en la UI.
   const [trainingSessions, setTrainingSessions] = useState([]);
   const [wellnessEntries, setWellnessEntries] = useState([]);
   const [rpeEntries, setRpeEntries] = useState([]);
   const [performanceTrainingLoads, setPerformanceTrainingLoads] = useState([]);
+  const [performanceLoadsKey, setPerformanceLoadsKey] = useState('');
   const [performanceLoadSaving, setPerformanceLoadSaving] = useState(false);
+  const [performancePhysicalContexts, setPerformancePhysicalContexts] = useState([]);
+  const [performancePhysicalScopeId, setPerformancePhysicalScopeId] = useState('');
+  const [performancePhysicalScopeReady, setPerformancePhysicalScopeReady] = useState(false);
+  const [performancePhysicalScopeError, setPerformancePhysicalScopeError] = useState('');
   const [previousWellnessEntries, setPreviousWellnessEntries] = useState([]);
   const [previousRpeEntries, setPreviousRpeEntries] = useState([]);
   const [performanceObservationHistory, setPerformanceObservationHistory] = useState({
@@ -7552,6 +7559,41 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   }, []);
 
   const authenticatedUserId = session?.user?.id || '';
+  const performancePhysicalScopeRef = useRef('');
+  performancePhysicalScopeRef.current = performancePhysicalScopeId;
+  useEffect(() => {
+    if (authLoading || !authenticatedUserId || activeTab !== 'Rendimiento') return undefined;
+    let cancelled = false;
+    setPerformancePhysicalScopeReady(false);
+    setPerformancePhysicalScopeError('');
+    void (async () => {
+      try {
+        const clubId = identity?.membership?.club_id;
+        const contexts = (await loadAuthorizedSportsContexts(supabase))
+          .filter((context) => context.clubId === clubId);
+        const preferred = selectedCtsId || await loadOperationalPreferredContextId(supabase, contexts);
+        if (cancelled) return;
+        setPerformancePhysicalContexts(contexts);
+        setPerformancePhysicalScopeId((current) => {
+          if (selectedCtsId) return contexts.some((row) => row.id === selectedCtsId) ? selectedCtsId : '';
+          if (current === 'legacy' && identity?.membership?.role === 'owner') return current;
+          if (contexts.some((row) => row.id === current)) return current;
+          if (contexts.some((row) => row.id === preferred)) return preferred;
+          const open = contexts.filter((row) => row.seasonStatus === 'open');
+          return open.length === 1 ? open[0].id : '';
+        });
+        setPerformancePhysicalScopeReady(true);
+      } catch (scopeError) {
+        if (cancelled) return;
+        setPerformancePhysicalContexts([]);
+        setPerformancePhysicalScopeId('');
+        setPerformancePhysicalScopeError(scopeError.message || 'No se pudo verificar el equipo y temporada.');
+        setPerformancePhysicalScopeReady(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab, authLoading, authenticatedUserId, identity?.membership?.club_id,
+    identity?.membership?.role, selectedCtsId]);
   const authenticatedDataLoadKey = authenticatedUserId
     ? `${authenticatedUserId}:${authDataRefreshVersion}:${selectedCtsId || 'legacy'}`
     : '';
@@ -7734,19 +7776,35 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   }, [activeTab, authLoading, authenticatedUserId, matches.length]);
 
   useEffect(() => {
-    if (authLoading || !authenticatedUserId || activeTab !== 'Rendimiento') return;
-    loadPerformanceData();
-  }, [activeTab, authLoading, authenticatedUserId, performanceWeekStart]);
+    performanceRequestVersionRef.current += 1;
+    performancePeriodRequestVersionRef.current += 1;
+    performanceMonthLoadsCacheRef.current.clear();
+    setPerformanceTrainingLoads([]);
+    setPerformanceLoadsKey('');
+    setPerformanceMonthLoads([]);
+    setPerformanceMonthLoadsKey('');
+    setPerformanceStatus('');
+    setPerformanceMonthLoading(false);
+  }, [performancePhysicalScopeId]);
 
   useEffect(() => {
-    if (authLoading || !authenticatedUserId || activeTab !== 'Rendimiento') return undefined;
+    if (authLoading || !authenticatedUserId || activeTab !== 'Rendimiento'
+      || !performancePhysicalScopeReady || !performancePhysicalScopeId) return;
+    loadPerformanceData();
+  }, [activeTab, authLoading, authenticatedUserId, performanceWeekStart,
+    performancePhysicalScopeReady, performancePhysicalScopeId]);
+
+  useEffect(() => {
+    if (authLoading || !authenticatedUserId || activeTab !== 'Rendimiento'
+      || !performancePhysicalScopeReady || !performancePhysicalScopeId) return undefined;
     const refreshPerformanceOnFocus = () => {
-      if (performanceRefreshInFlightRef.current.has(performanceWeekStart)) return;
+      if (performanceRefreshInFlightRef.current.has(`${performancePhysicalScopeId}:${performanceWeekStart}`)) return;
       loadPerformanceData();
     };
     window.addEventListener('focus', refreshPerformanceOnFocus);
     return () => window.removeEventListener('focus', refreshPerformanceOnFocus);
-  }, [activeTab, authLoading, authenticatedUserId, performanceWeekStart]);
+  }, [activeTab, authLoading, authenticatedUserId, performanceWeekStart,
+    performancePhysicalScopeReady, performancePhysicalScopeId]);
 
   useEffect(() => {
     if (activeTab !== 'Rendimiento' || !performanceSelectedDate) return;
@@ -7765,11 +7823,16 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   }, [activeTab, authLoading, authenticatedUserId, performanceChartPeriod, performanceChartMonth, performanceChartSeasonKey, performanceRefreshVersion]);
 
   useEffect(() => {
-    if (authLoading || !authenticatedUserId || activeTab !== 'Rendimiento' || performanceChartPeriod !== 'month') return;
-    const cacheKey = performanceChartMonth;
+    if (authLoading || !authenticatedUserId || activeTab !== 'Rendimiento'
+      || performanceChartPeriod !== 'month' || !performancePhysicalScopeReady
+      || !performancePhysicalScopeId) return;
+    const scopeId = performancePhysicalScopeId;
+    const cacheKey = `${scopeId}:${performanceChartMonth}`;
+    let cancelled = false;
     if (performanceMonthLoadsCacheRef.current.has(cacheKey)) {
       setPerformanceMonthLoads(performanceMonthLoadsCacheRef.current.get(cacheKey));
-      return;
+      setPerformanceMonthLoadsKey(cacheKey);
+      return undefined;
     }
 
     const [year, month] = performanceChartMonth.split('-').map(Number);
@@ -7781,19 +7844,27 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       setPerformanceMonthLoading(true);
       setPerformanceError('');
       try {
-        const nextMonthLoads = await loadTrainingLoadsRange(supabase, startDate, endDate);
+        const nextMonthLoads = scopeId === 'legacy'
+          ? await loadTrainingLoadsRange(supabase, startDate, endDate)
+          : await loadCtsTrainingLoadsRange(supabase, scopeId, startDate, endDate);
+        if (cancelled || performancePhysicalScopeRef.current !== scopeId) return;
         performanceMonthLoadsCacheRef.current.set(cacheKey, nextMonthLoads);
         setPerformanceMonthLoads(nextMonthLoads);
+        setPerformanceMonthLoadsKey(cacheKey);
       } catch (loadError) {
         console.error('Error cargando las cargas mensuales:', loadError);
-        setPerformanceError(loadError.message || 'No se pudo cargar la carga mensual.');
+        if (!cancelled && performancePhysicalScopeRef.current === scopeId)
+          setPerformanceError(loadError.message || 'No se pudo cargar la carga mensual.');
       } finally {
-        setPerformanceMonthLoading(false);
+        if (!cancelled && performancePhysicalScopeRef.current === scopeId) setPerformanceMonthLoading(false);
       }
     };
 
     loadMonthData();
-  }, [activeTab, authLoading, authenticatedUserId, performanceChartPeriod, performanceChartMonth]);
+    return () => { cancelled = true; };
+  }, [activeTab, authLoading, authenticatedUserId, performanceChartPeriod,
+    performanceChartMonth, performancePhysicalScopeReady, performancePhysicalScopeId,
+    performanceRefreshVersion]);
 
   useEffect(() => {
     if (!performanceSelectedPlayerId || typeof document === 'undefined') return undefined;
@@ -9070,8 +9141,11 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
 
   const loadPerformanceData = async () => {
     const requestWeekStart = performanceWeekStart;
-    if (performanceRefreshInFlightRef.current.has(requestWeekStart)) return false;
-    performanceRefreshInFlightRef.current.add(requestWeekStart);
+    const scopeId = performancePhysicalScopeId;
+    if (!performancePhysicalScopeReady || !scopeId) return false;
+    const requestKey = `${scopeId}:${requestWeekStart}`;
+    if (performanceRefreshInFlightRef.current.has(requestKey)) return false;
+    performanceRefreshInFlightRef.current.add(requestKey);
     const requestVersion = performanceRequestVersionRef.current + 1;
     performanceRequestVersionRef.current = requestVersion;
     setPerformanceLoading(true);
@@ -9185,7 +9259,9 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
           'rpe_entries',
           'id,jugador_id,entry_date,submitted_at,comment,created_at,updated_at'
         ),
-        loadTrainingLoadsRange(supabase, requestWeekStart, weekEnd),
+        scopeId === 'legacy'
+          ? loadTrainingLoadsRange(supabase, requestWeekStart, weekEnd)
+          : loadCtsTrainingLoadsRange(supabase, scopeId, requestWeekStart, weekEnd),
       ]);
 
       const failed = [
@@ -9205,13 +9281,15 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
         throw failed.error;
       }
 
-      if (requestVersion !== performanceRequestVersionRef.current) return false;
+      if (requestVersion !== performanceRequestVersionRef.current
+        || performancePhysicalScopeRef.current !== scopeId) return false;
 
       const nextWellnessEntries = wellnessResponse.data || [];
       const nextRpeEntries = rpeResponse.data || [];
       setWellnessEntries(nextWellnessEntries);
       setRpeEntries((current) => resolveRpeRefreshEntries(current, nextRpeEntries, true));
       setPerformanceTrainingLoads(nextTrainingLoads);
+      setPerformanceLoadsKey(requestKey);
       setPreviousWellnessEntries(previousWellnessResponse.data || []);
       setPreviousRpeEntries(previousRpeResponse.data || []);
       setPerformanceObservationHistory({
@@ -9256,15 +9334,17 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       return true;
     } catch (loadError) {
       console.error('Error cargando Rendimiento:', loadError);
-      if (requestVersion === performanceRequestVersionRef.current) {
+      if (requestVersion === performanceRequestVersionRef.current
+        && performancePhysicalScopeRef.current === scopeId) {
         setPerformanceError(loadError.message
           ? `No se pudo actualizar RPE: ${loadError.message}`
           : 'No se pudo actualizar RPE. Se mantienen los últimos datos cargados.');
       }
       return false;
     } finally {
-      performanceRefreshInFlightRef.current.delete(requestWeekStart);
-      if (requestVersion === performanceRequestVersionRef.current) setPerformanceLoading(false);
+      performanceRefreshInFlightRef.current.delete(requestKey);
+      if (requestVersion === performanceRequestVersionRef.current
+        && performancePhysicalScopeRef.current === scopeId) setPerformanceLoading(false);
     }
   };
 
@@ -9279,9 +9359,24 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     setPerformanceError('');
     setPerformanceStatus('');
     try {
-      const savedLoad = await saveDailyTeamLoad(supabase, draft);
+      const scopeId = performancePhysicalScopeId;
+      const context = performancePhysicalContexts.find((row) => row.id === scopeId);
+      if (!performancePhysicalScopeReady || !context || context.seasonStatus !== 'open'
+        || performanceLoadsKey !== `${scopeId}:${performanceWeekStart}`) {
+        throw new Error('Selecciona un equipo y una temporada abierta para registrar la carga.');
+      }
+      const existing = getTrainingLoadForDate(performanceTrainingLoads, draft.sessionDate);
+      const savedLoad = await saveAuthorizedCtsDailyTeamLoad(supabase, context, draft, existing);
+      if (performancePhysicalScopeRef.current !== scopeId) {
+        throw new Error('El equipo o temporada cambió durante el guardado. Recarga antes de continuar.');
+      }
       setPerformanceTrainingLoads((current) => replaceTrainingLoadByDate(current, savedLoad));
-      setPerformanceStatus(`Carga del ${savedLoad.session.session_date} guardada correctamente.`);
+      setPerformanceLoadsKey(`${scopeId}:${performanceWeekStart}`);
+      performanceMonthLoadsCacheRef.current.clear();
+      setPerformanceMonthLoads([]);
+      setPerformanceMonthLoadsKey('');
+      setPerformanceRefreshVersion((current) => current + 1);
+      setPerformanceStatus(`Carga del ${savedLoad.session.session_date} guardada para ${context.teamName} · ${context.seasonLabel}.`);
       setHomeActivityRefreshVersion((current) => current + 1);
       return savedLoad;
     } catch (saveError) {
@@ -27332,7 +27427,16 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     const dashboard = performanceDashboard;
     const previousDashboard = previousPerformanceDashboard;
     const selectedDay = dashboard.days.find((day) => day.entryDate === performanceSelectedDate) || dashboard.days[0];
-    const selectedTrainingLoad = getTrainingLoadForDate(performanceTrainingLoads, selectedDay?.entryDate || '');
+    const physicalContext = performancePhysicalContexts.find((row) => row.id === performancePhysicalScopeId);
+    const visiblePhysicalLoads = performancePhysicalScopeReady
+      && performanceLoadsKey === `${performancePhysicalScopeId}:${performanceWeekStart}`
+      ? performanceTrainingLoads : [];
+    const visibleMonthLoads = performancePhysicalScopeReady
+      && performanceMonthLoadsKey === `${performancePhysicalScopeId}:${performanceChartMonth}`
+      ? performanceMonthLoads : [];
+    const physicalLoadsReady = performancePhysicalScopeReady && Boolean(performancePhysicalScopeId)
+      && performanceLoadsKey === `${performancePhysicalScopeId}:${performanceWeekStart}`;
+    const selectedTrainingLoad = getTrainingLoadForDate(visiblePhysicalLoads, selectedDay?.entryDate || '');
     const statusPresentation = {
       prioridad: {
         label: 'Prioridad',
@@ -28680,7 +28784,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             <nav aria-label="Navegación del microciclo" className="grid min-w-[770px] grid-cols-7 gap-1.5 rounded-2xl border border-white/[0.07] bg-black/15 p-1.5 lg:min-w-0">
               {dashboard.days.map((day) => {
                 const selected = day.entryDate === selectedDay?.entryDate;
-                const hasTrainingLoad = Boolean(getTrainingLoadForDate(performanceTrainingLoads, day.entryDate));
+                const hasTrainingLoad = Boolean(getTrainingLoadForDate(visiblePhysicalLoads, day.entryDate));
                 return (
                   <button
                     key={`cycle-${day.entryDate}`}
@@ -28758,17 +28862,48 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
         {performanceStatus ? <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-5 py-4 text-sm text-emerald-100">{performanceStatus}</div> : null}
         {performanceLoading ? <div className="rounded-2xl border border-white/[0.06] bg-[#091428] px-5 py-4 text-sm text-slate-400">Actualizando datos de Rendimiento…</div> : null}
 
-        <DailyLoadCard
+        <section aria-label="Equipo y temporada de carga física" className="rounded-2xl border border-sky-300/15 bg-[#091428] p-4">
+          <label className="block text-xs font-bold text-slate-300">Carga física de equipo y temporada
+            <select value={performancePhysicalScopeId}
+              onChange={(event) => setPerformancePhysicalScopeId(event.target.value)}
+              disabled={!performancePhysicalScopeReady || performanceLoadSaving}
+              className="mt-2 block w-full rounded-xl border border-white/15 bg-[#0c1930] px-3 py-2.5 text-sm text-white">
+              <option value="">Seleccionar equipo y temporada</option>
+              {performancePhysicalContexts.map((context) => <option key={context.id} value={context.id}>
+                {context.teamName} · {context.seasonLabel}{context.seasonStatus === 'closed' ? ' · cerrada' : ''}
+              </option>)}
+              {identity?.membership?.role === 'owner' ? <option value="legacy">Histórico del Caudal sin CTS · solo lectura</option> : null}
+            </select>
+          </label>
+          {physicalContext ? <p className="mt-2 text-xs text-slate-400">
+            {physicalContext.teamName} · {physicalContext.seasonLabel} · {physicalContext.seasonStatus === 'open'
+              ? 'El guardado se vincula a este equipo y temporada.' : 'Temporada cerrada: solo consulta.'}
+          </p> : null}
+          {performancePhysicalScopeId === 'legacy' ? <p className="mt-2 text-xs text-amber-200">
+            Archivo histórico sin CTS. Estas cargas no se atribuyen al equipo actual y no se editan aquí.
+          </p> : null}
+          {performancePhysicalScopeError ? <p role="alert" className="mt-2 text-xs text-rose-200">{performancePhysicalScopeError}</p> : null}
+        </section>
+
+        {physicalLoadsReady ? <DailyLoadCard
           date={selectedDay?.entryDate || performanceSelectedDate || performanceWeekStart}
           load={selectedTrainingLoad}
-          averageRpe={selectedDay?.avgRpe ?? null}
-          rpeResponseCount={selectedDay?.rpeResponseCount || 0}
+          averageRpe={performancePhysicalScopeId === 'legacy' ? selectedDay?.avgRpe ?? null : null}
+          rpeResponseCount={performancePhysicalScopeId === 'legacy' ? selectedDay?.rpeResponseCount || 0 : 0}
           activePlayerCount={players.length || null}
+          showRpeSummary={performancePhysicalScopeId === 'legacy'}
+          readOnly={!physicalContext || physicalContext.seasonStatus !== 'open'}
+          readOnlyReason={performancePhysicalScopeId === 'legacy'
+            ? 'Histórico sin CTS: solo consulta.' : 'Temporada cerrada: solo consulta.'}
           saving={performanceLoadSaving}
           onSave={savePerformanceDailyLoad}
-        />
+        /> : <p className="rounded-2xl border border-white/10 bg-[#091428] p-5 text-sm text-slate-400">
+          {!performancePhysicalScopeReady ? 'Verificando equipos y temporadas autorizados…'
+            : !performancePhysicalScopeId ? 'Selecciona un equipo y temporada autorizados para consultar su carga física.'
+              : performanceError || 'Cargando la carga física del equipo y temporada seleccionados…'}
+        </p>}
 
-        <div className="mt-5">
+        {physicalLoadsReady ? <div className="mt-5">
           <LoadEvolutionSection
             period={performanceChartPeriod}
             setPeriod={setPerformanceChartPeriod}
@@ -28778,14 +28913,14 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             setMonth={setPerformanceChartMonth}
             weekStart={performanceWeekStart}
             weekEnd={performanceWeekEnd}
-            weekLoads={performanceTrainingLoads}
-            monthLoads={performanceMonthLoads}
+            weekLoads={visiblePhysicalLoads}
+            monthLoads={visibleMonthLoads}
             monthLoading={performanceMonthLoading}
-            rpeEntries={performanceRpePeriodEntries}
+            rpeEntries={performancePhysicalScopeId === 'legacy' ? performanceRpePeriodEntries : []}
             onSelectDate={(date) => setPerformanceSelectedDate(date)}
             selectedDate={performanceSelectedDate}
           />
-        </div>
+        </div> : null}
 
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           {kpis.map((kpi) => (

@@ -106,6 +106,9 @@ export default function DailyLoadCard({
   averageRpe = null,
   rpeResponseCount = 0,
   activePlayerCount = null,
+  showRpeSummary = true,
+  readOnly = false,
+  readOnlyReason = '',
   saving = false,
   onSave,
 }) {
@@ -136,6 +139,7 @@ export default function DailyLoadCard({
   };
 
   const startEditing = () => {
+    if (readOnly) return;
     setDraft(buildDailyLoadDraft(load, date));
     setValidationErrors({});
     setSaveError('');
@@ -151,6 +155,7 @@ export default function DailyLoadCard({
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (readOnly || saving) return;
     const validation = validateDailyLoad(draft);
     if (!validation.isValid) {
       setValidationErrors(validation.errors);
@@ -186,18 +191,19 @@ export default function DailyLoadCard({
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-300">Carga del día</p>
         <h3 className="mt-1 text-lg font-black capitalize text-white">{formatLongCalendarDate(date)}</h3>
+        {readOnly ? <p className="mt-2 text-xs text-amber-200">{readOnlyReason || 'Solo consulta.'}</p> : null}
       </div>
 
       {!editing && !load ? (
         <div className="mt-4 rounded-2xl border border-dashed border-white/10 px-5 py-5 text-center">
           <p className="text-sm font-bold text-slate-400">Sin carga registrada.</p>
-          <button
+          {!readOnly ? <button
             type="button"
             onClick={startEditing}
             className="mt-4 rounded-xl border border-sky-300/25 bg-sky-300/[0.08] px-4 py-2.5 text-xs font-black text-sky-100 transition hover:bg-sky-300/[0.14]"
           >
             Registrar carga
-          </button>
+          </button> : null}
         </div>
       ) : null}
 
@@ -215,7 +221,7 @@ export default function DailyLoadCard({
             ) : null}
           </div>
 
-          <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(240px,0.65fr)]">
+          <div className={`mt-4 grid gap-4 ${showRpeSummary ? 'xl:grid-cols-[minmax(0,1.35fr)_minmax(240px,0.65fr)]' : ''}`}>
             <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
               {summaryMetrics.map(({ value, label, suffix, decimals }) => (
                 <div key={label} className="min-w-0 rounded-xl border border-white/[0.07] bg-white/[0.025] px-3 py-3">
@@ -227,11 +233,11 @@ export default function DailyLoadCard({
                 </div>
               ))}
             </div>
-            <RpeAutomaticSummary
+            {showRpeSummary ? <RpeAutomaticSummary
               averageRpe={averageRpe}
               responseCount={rpeResponseCount}
               activePlayerCount={activePlayerCount}
-            />
+            /> : null}
           </div>
 
           {session?.notes ? (
@@ -241,7 +247,7 @@ export default function DailyLoadCard({
             </div>
           ) : null}
 
-          <div className="mt-4 flex justify-end">
+          {!readOnly ? <div className="mt-4 flex justify-end">
             <button
               type="button"
               onClick={startEditing}
@@ -249,7 +255,7 @@ export default function DailyLoadCard({
             >
               Editar
             </button>
-          </div>
+          </div> : null}
         </div>
       ) : null}
 
@@ -309,14 +315,14 @@ export default function DailyLoadCard({
             ))}
           </div>
 
-          <div className="mt-3">
+          {showRpeSummary ? <div className="mt-3">
             <RpeAutomaticSummary
               averageRpe={averageRpe}
               responseCount={rpeResponseCount}
               activePlayerCount={activePlayerCount}
               compact
             />
-          </div>
+          </div> : null}
 
           <label className="mt-3 block">
             <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Observaciones</span>

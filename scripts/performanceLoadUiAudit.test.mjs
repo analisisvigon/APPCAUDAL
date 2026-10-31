@@ -13,8 +13,8 @@ const store = fs.readFileSync(path.join(projectRoot, 'src', 'utils', 'performanc
 const rpeUtils = fs.readFileSync(path.join(projectRoot, 'src', 'utils', 'performanceRpe.js'), 'utf8');
 
 assert.match(app, /<DailyLoadCard/);
-assert.match(app, /averageRpe=\{selectedDay\?\.avgRpe \?\? null\}/);
-assert.match(app, /rpeResponseCount=\{selectedDay\?\.rpeResponseCount \|\| 0\}/);
+assert.match(app, /averageRpe=\{performancePhysicalScopeId === 'legacy' \? selectedDay\?\.avgRpe \?\? null : null\}/);
+assert.match(app, /rpeResponseCount=\{performancePhysicalScopeId === 'legacy' \? selectedDay\?\.rpeResponseCount \|\| 0 : 0\}/);
 assert.match(app, /activePlayerCount=\{players\.length \|\| null\}/);
 assert.match(app, /loadTrainingLoadsRange\(supabase, requestWeekStart, weekEnd\)/);
 assert.match(app, /\.from\('rpe_entries'\)[\s\S]*?\.gte\('entry_date', requestWeekStart\)[\s\S]*?\.lte\('entry_date', weekEnd\)/);
@@ -31,7 +31,10 @@ assert.doesNotMatch(
   /setPerformancePeriodEntries\(\{ key: '', wellness: \[\], rpe: \[\] \}\)/,
   'El refresco debe invalidar la caché sin borrar la última vista histórica antes de recibir la nueva.',
 );
-assert.match(app, /rpeEntries=\{performanceRpePeriodEntries\}/);
+assert.match(app, /rpeEntries=\{performancePhysicalScopeId === 'legacy' \? performanceRpePeriodEntries : \[\]\}/);
+assert.match(app, /saveAuthorizedCtsDailyTeamLoad\(supabase, context, draft, existing\)/);
+assert.match(app, /readOnly=\{!physicalContext \|\| physicalContext\.seasonStatus !== 'open'\}/);
+assert.match(app, /performanceLoadsKey === `\$\{performancePhysicalScopeId\}:\$\{performanceWeekStart\}`/);
 assert.match(app, /resolveRpePeriodEntries\(\{/);
 assert.match(app, /getPerformanceNaturalWeekStart\(new Date\(\)\)/);
 assert.match(app, /No se pudo actualizar RPE/);
@@ -132,15 +135,18 @@ const changedFiles = execFileSync('git', ['diff', '--name-only'], {
 }).trim().split(/\r?\n/).filter(Boolean);
 const allowedProductFiles = new Set([
   'src/components/performance/LoadEvolutionSection.jsx',
+  'src/components/performance/DailyLoadCard.jsx',
   'src/utils/performanceLoad.js',
   'src/utils/performanceLoad.test.js',
+  'src/utils/performanceLoadStore.js',
+  'src/utils/performanceLoadStore.test.js',
 ]);
 const isStaffPerformanceProductPath = (file) => (
   file.startsWith('src/components/performance/')
   || /^src\/utils\/performance(?:Load|Rpe|Daily)/.test(file)
 );
 const changedPerformanceFiles = changedFiles.filter(isStaffPerformanceProductPath);
-assert.ok(changedPerformanceFiles.every((file) => allowedProductFiles.has(file)), 'La activación queda aislada a Rendimiento STAFF y sus tests de producto.');
+assert.ok(changedPerformanceFiles.every((file) => allowedProductFiles.has(file)), 'La integración CTS queda aislada a Rendimiento y sus pruebas.');
 assert.ok([...allowedProductFiles].every(isStaffPerformanceProductPath), 'La allowlist pertenece exclusivamente a Rendimiento STAFF.');
 assert.equal(isStaffPerformanceProductPath('src/App.jsx'), false, 'Los cambios de producto no relacionados no afectan a este audit.');
 assert.equal(isStaffPerformanceProductPath('supabase_goal_own_goal_support.sql'), false, 'Los contratos de otros dominios no afectan a este audit.');
