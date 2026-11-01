@@ -40,7 +40,7 @@ import {
   changePlannedSessionLifecycle,
 } from '../../data/plannedSessionsStore';
 import { availabilityChanges, eligibleRosterCandidates, hasUncertainRosterDate } from '../../utils/plannedSessionPlayers';
-import { autoPlayerLayout, distributionPayloadKey, emptyDistribution, movePlayerBoardLayout, normalizeDistribution,
+import { autoPlayerLayout, distributionForSave, distributionPayloadKey, emptyDistribution, movePlayerBoardLayout, normalizeDistribution,
   reconcileSpaceZones, specificPositionMap, validateDistribution } from '../../utils/plannedSessionDistributions';
 import { parsePlannedSessionValue, readPlannedSessionValue } from '../../utils/plannedSessionValue';
 import { BOARD_V11_ENABLED, boardDefaultBlockReason, fieldIsMeasured, sameFieldDimensions,
@@ -132,6 +132,9 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     JSON.stringify([...selectedMembershipIds].sort()) !== JSON.stringify([...initialSelectedMembershipIds].sort()));
   const distributionDirty = Boolean(distribution && distributionBaseline &&
     distributionPayloadKey(distribution) !== distributionPayloadKey(distributionBaseline));
+  const savedBoardPayload = distribution ? distributionForSave(distribution, roster) : null;
+  const savableDistributionDirty = Boolean(savedBoardPayload && distributionBaseline &&
+    distributionPayloadKey(savedBoardPayload) !== distributionPayloadKey(distributionBaseline));
   const fieldDirty = BOARD_V11_ENABLED && !sameFieldDimensions(fieldDimensions, fieldBaseline);
   const exerciseDimensionsDirty = Boolean(editor && v12Supported &&
     exerciseDimensionsKey(exerciseDimensions) !== exerciseDimensionsKey(exerciseDimensionsBaseline));
@@ -613,10 +616,13 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     if (BOARD_V11_ENABLED && distribution?.formation_key && !distribution.player_layout.length) {
       const positions = await loadPlannedSpecificPositions(client, players.roster.map((row) => row.player_id));
       const seed = await loadPlannedBoardSeedV11(client, editor.id);
+      const selectedFormation = distribution.formation_key;
+      const positionMap = specificPositionMap(positions);
       setDistribution((current) => current ? { ...current,
-        formation_key: seed?.formation_key || current.formation_key,
-        player_layout: seededPlayerLayout(seed, players.roster,
-          specificPositionMap(positions), autoPlayerLayout) } : current);
+        formation_key: selectedFormation,
+        player_layout: seed?.formation_key === selectedFormation
+          ? seededPlayerLayout(seed, players.roster, positionMap, autoPlayerLayout)
+          : autoPlayerLayout(players.roster, positionMap, selectedFormation) } : current);
     }
     if (!distribution?.specific_positions_snapshot?.length) {
       try {
@@ -787,14 +793,14 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   });
 
   const changeFormation = (formationKey) => {
-    if (!roster.length || !distribution || boardsError) return;
+    if (!canEdit || !distribution || boardsError) return;
     if (distribution.player_layout.some((item) => item.placement === 'manual') &&
         !window.confirm('Cambiar el sistema descartará los ajustes manuales de jugadores. ¿Continuar?')) return;
     const positionById = specificPositionMap(
       distribution.specific_positions_snapshot.length
         ? distribution.specific_positions_snapshot : specificPositions);
     setDistribution((current) => ({ ...current, formation_key: formationKey,
-      player_layout: formationKey ? autoPlayerLayout(roster, positionById, formationKey) : [] }));
+      player_layout: formationKey && roster.length ? autoPlayerLayout(roster, positionById, formationKey) : [] }));
   };
   const changeZone = (slotId, change) => {
     const zone = distribution?.space_zones.find((entry) => entry.slot_id === slotId);
@@ -942,9 +948,10 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
 
   const saveDistributions = async () => {
     if (!editor?.id || !canEdit || !distribution || boardsError || v12ProbeError ||
-        !(distributionDirty || exerciseDimensionsDirty) || fieldDirty ||
+        !(savableDistributionDirty || exerciseDimensionsDirty) || fieldDirty ||
         editorDirty || dateNeedsReconciliation || busy || operationRef.current || conflict || creationUncertain) return;
-    const issue = validateDistribution(distribution, roster, editor.slots);
+    const payload = distributionForSave(distribution, roster);
+    const issue = validateDistribution(payload, roster, editor.slots);
     let dimensionsPayload = [];
     try {
       if (v12Supported) dimensionsPayload = exerciseDimensionsPayload(exerciseDimensions, editor.slots);
@@ -958,8 +965,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     operationRef.current = true; setBusy(true); setError(''); setNotice('');
     try {
       const revision = v12Supported
-        ? await savePlannedDistributionV12(client, editor.id, editor.revision, distribution, dimensionsPayload)
-        : await savePlannedDistribution(client, editor.id, editor.revision, distribution);
+        ? await savePlannedDistributionV12(client, editor.id, editor.revision, payload, dimensionsPayload)
+        : await savePlannedDistribution(client, editor.id, editor.revision, payload);
       const [data, savedRow, savedDimensions] = await Promise.all([
         loadPlannedSession(client, editor.id, selected.id),
         loadPlannedDistribution(client, editor.id),
@@ -969,15 +976,20 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       const saved = normalizeDistribution(savedRow);
       const loadedDimensions = normalizeExerciseDimensions(savedDimensions);
       if (fresh.revision !== revision ||
-          distributionPayloadKey(saved) !== distributionPayloadKey(distribution) ||
+          distributionPayloadKey(saved) !== distributionPayloadKey(payload) ||
           (v12Supported && exerciseDimensionsKey(loadedDimensions) !==
             exerciseDimensionsKey(normalizeExerciseDimensions(dimensionsPayload))))
         throw new Error('La distribución recargada no coincide con el guardado. Recarga la ficha.');
-      setEditor(fresh); setBaseline(fresh); setDistribution(saved); setDistributionBaseline(saved);
+      setEditor(fresh); setBaseline(fresh);
+      setDistribution(!roster.length && distribution.formation_key
+        ? { ...saved, formation_key: distribution.formation_key } : saved);
+      setDistributionBaseline(saved);
       if (v12Supported) { setExerciseDimensions(loadedDimensions);
         setExerciseDimensionsBaseline(loadedDimensions); setExerciseDimensionsLoadedFor(editor.id); }
       if (saved.specific_positions_snapshot.length) setSpecificPositions(saved.specific_positions_snapshot);
-      setNotice('Pizarras guardadas y verificadas desde el servidor.');
+      setNotice(!roster.length && distribution.formation_key
+        ? 'Zonas guardadas. El sistema vacío sigue pendiente: la RPC actual requiere plantilla congelada para guardarlo.'
+        : 'Pizarras guardadas y verificadas desde el servidor.');
     } catch (cause) {
       if (cause?.code === '40001') {
         setConflict(true);
@@ -1120,7 +1132,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
             {canEdit && editor.id && !boardsError ? <button type="button"
               className={`${button} border border-caudal-electric/50 text-caudal-electric`}
               onClick={saveDistributions}
-              disabled={busy || !(distributionDirty || exerciseDimensionsDirty) || fieldDirty || editorDirty || dateNeedsReconciliation || conflict || creationUncertain || Boolean(v12ProbeError)}>
+              disabled={busy || !(savableDistributionDirty || exerciseDimensionsDirty) || fieldDirty || editorDirty || dateNeedsReconciliation || conflict || creationUncertain || Boolean(v12ProbeError)}>
               Guardar pizarras</button> : null}
             {BOARD_V11_ENABLED && canEdit && editor.id ? <button type="button"
               className={`${button} border border-caudal-electric/50 text-caudal-electric`}
@@ -1144,6 +1156,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           </div>
           {dirty ? <p className="w-full text-xs text-amber-200">Cambios sin guardar. Guarda antes de confirmar.</p> : null}
           {distributionDirty && editorDirty ? <p className="w-full text-xs text-amber-200">Guarda primero los ejercicios y después las pizarras; cada operación actualiza la revisión de la sesión.</p> : null}
+          {!frozen && distribution?.formation_key && distribution.formation_key !== distributionBaseline?.formation_key ?
+            <p className="w-full text-xs text-amber-200">Puedes ajustar el esquema vacío. La RPC actual solo permite guardar el sistema cuando la plantilla de esta sesión está congelada; las zonas sí pueden guardarse por separado.</p> : null}
           {fieldDirty ? <p className="w-full text-xs text-amber-200">Dimensiones del campo pendientes de guardar.</p> : null}
           {exerciseDimensionsDirty ? <p className="w-full text-xs text-amber-200">Medidas de ejercicios pendientes: guarda primero la sesión y el campo; después, las pizarras.</p> : null}
           {v12ProbeError ? <p className="w-full text-xs text-red-200" role="alert">{v12ProbeError}. Recarga la página antes de guardar pizarras.</p> : null}

@@ -38,6 +38,13 @@ try {
   }));
   assert.match(blockedPlayers, /disabled=""[^>]*>Fijar distribución habitual/);
   assert.match(blockedPlayers, /Guarda primero la distribución de jugadores/);
+  const emptyEditable = renderToStaticMarkup(React.createElement(SessionPlayerDistribution, {
+    distribution: { formation_key: '4-3-3', player_layout: [] }, roster: [],
+    availability: {}, positionById: new Map(), canEdit: true,
+    onFormationChange: () => {},
+  }));
+  assert.match(emptyEditable, /<select[^>]*>.*4-3-3/s,
+    'se puede elegir sistema sin plantilla congelada');
   const space = renderToStaticMarkup(React.createElement(SessionSpaceDistribution, {
     slots: [{ id: 'slot-1', phase: 'main' }],
     zones: [{ slot_id: 'slot-1', x: 12, y: 14, w: 28, h: 20,
@@ -56,6 +63,17 @@ try {
   }));
   assert.match(blockedField, /disabled=""[^>]*>Fijar dimensiones habituales/);
   assert.match(blockedField, /Pulsa Guardar dimensiones antes de fijarlas como habituales/);
+  const provisionalEditable = renderToStaticMarkup(React.createElement(SessionSpaceDistribution, {
+    slots: [{ id: 'slot-1', phase: 'main' }],
+    zones: [{ slot_id: 'slot-1', x: 12, y: 14, w: 28, h: 20,
+      color: 'blue', provisional: true }],
+    fieldDimensions: { length_m: '', width_m: '' }, canEdit: true,
+    onZoneChange: () => {}, onFieldDimensionsChange: () => {},
+  }));
+  assert.match(provisionalEditable, /data-resize="true"/,
+    'la zona provisional conserva el control de tamaño sin metros');
+  assert.match(provisionalEditable, /Largo \(m\)/,
+    'el campo puede medirse sin fijar dimensiones habituales');
   const documentCss = readFileSync('src/components/training/plannedSessionDocument.css', 'utf8');
   const printCss = readFileSync('src/components/training/plannedSessionPrint.css', 'utf8');
   assert.match(documentCss, /\.planned-sheet-cover-lower \{[^}]*grid-template-columns: 25% 25% 50%/);

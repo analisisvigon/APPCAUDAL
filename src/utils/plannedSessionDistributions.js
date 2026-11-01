@@ -59,6 +59,10 @@ export const normalizeDistribution = (row) => row ? {
   space_zones: row.space_zones || [],
 } : emptyDistribution();
 
+// RPC 05 admite zonas sin plantilla, pero exige plantilla congelada para guardar un sistema.
+export const distributionForSave = (distribution, roster = []) => roster.length
+  ? distribution : { ...distribution, formation_key: null, player_layout: [] };
+
 export const distributionPayloadKey = (distribution) => JSON.stringify({
   formation_key: distribution?.formation_key || null,
   players: [...(distribution?.player_layout || [])].map((item) => [item.player_id,

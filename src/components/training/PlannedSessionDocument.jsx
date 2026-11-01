@@ -415,12 +415,12 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
             <div className="planned-sheet-cover-lower">
               <SessionPlayerDistribution distribution={distribution} roster={frozen ? roster : []}
                 availability={availability} positionById={positionById}
-                canEdit={canEdit && !busy && !boardsError && frozen}
+                canEdit={canEdit && !busy && !boardsError}
                 onFormationChange={onFormationChange} onPlayerMove={onPlayerMove}
                 onFixDefault={boardV11Enabled ? () => onFixBoardDefault('players') : null}
                 defaultButtonReason={playerDefaultBlockReason} />
               <SessionSpaceDistribution zones={distribution.space_zones} slots={editor.slots}
-                canEdit={canEdit && !busy && !boardsError && Boolean(editor.id)}
+                canEdit={canEdit && !busy && !boardsError}
                 onZoneChange={onZoneChange} fieldDimensions={boardV11Enabled ? fieldDimensions : null}
                 onFieldDimensionsChange={onFieldDimensionsChange} onZoneMetresChange={onZoneMetresChange}
                 onFixDefault={boardV11Enabled ? () => onFixBoardDefault('field') : null}

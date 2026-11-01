@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {
   autoPlayerLayout, distributionPayloadKey, emptyDistribution, layoutPlayerBoardCards, movePlayerBoardLayout, normalizeDistribution,
   overlappingZonePairs, playerCompactLabels, reconcileSpaceZones, SESSION_SYSTEMS,
-  resolvePlayerBoardDrop, specificPositionMap, validateDistribution,
+  resolvePlayerBoardDrop, specificPositionMap, validateDistribution, distributionForSave,
 } from './plannedSessionDistributions.js';
 import { loadPlannedDistribution, loadPlannedSpecificPositions,
   savePlannedDistribution, savePlannedSessionValue } from '../data/plannedSessionsStore.js';
@@ -11,6 +11,15 @@ import { fieldIsMeasured, metresFromZone, seededPlayerLayout, taskZoneMetres,
   exerciseDimensionsPayload, sameFieldDimensions, boardDefaultBlockReason } from './plannedSessionFieldScale.js';
 
 const field = { length_m: 105, width_m: 68 };
+const emptyScheme = { ...emptyDistribution(), formation_key: '4-3-3',
+  space_zones: [{ slot_id: 'slot-1', x: 10, y: 15, w: 25, h: 20,
+    color: 'blue', provisional: true }] };
+assert.equal(validateDistribution(emptyScheme, [], [{ id: 'slot-1' }]) !== '', true,
+  'la RPC 05 no admite sistema con plantilla vacía');
+assert.equal(distributionForSave(emptyScheme, []).formation_key, null);
+assert.equal(distributionForSave(emptyScheme, []).space_zones[0].slot_id, 'slot-1');
+assert.equal(validateDistribution(distributionForSave(emptyScheme, []), [], [{ id: 'slot-1' }]), '',
+  'las zonas se guardan sin fingir que el sistema vacío está persistido');
 assert.equal(sameFieldDimensions({ length_m: '105', width_m: '68.00' }, field), true);
 const defaultSource = { sessionId: 'session', canEdit: true, busy: false, conflict: false,
   creationUncertain: false, boardsError: '', rosterCount: 24, formationKey: '4-3-3',
