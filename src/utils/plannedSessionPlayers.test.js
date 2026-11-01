@@ -6,6 +6,7 @@ const candidates = [
   { id: 'm1', player_id: 'p1', name: 'Alex', position_key: 'goalkeeper', joined_on: null, left_on: null, has_departed: false },
   { id: 'm2', player_id: 'p2', name: 'Borja', position_key: 'defender', joined_on: '2026-11-01', left_on: null, has_departed: false },
   { id: 'm3', player_id: 'p3', name: 'Luis', position_key: null, joined_on: '2026-07-01', left_on: '2026-10-25', has_departed: true },
+  { id: 'm4', player_id: 'p4', name: 'Baja sin fecha', position_key: null, joined_on: null, left_on: null, has_departed: true },
 ];
 assert.deepEqual(eligibleRosterCandidates(candidates, '2026-10-25').map((row) => row.id), ['m1']);
 assert.deepEqual(eligibleRosterCandidates(candidates, '2026-11-01').map((row) => row.id), ['m1', 'm2']);

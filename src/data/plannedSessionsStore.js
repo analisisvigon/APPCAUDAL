@@ -76,6 +76,31 @@ export const listPlannedSessions = async (client, clubTeamSeasonId) => {
         Number(slot.duration_minutes) > 0) }));
 };
 
+// Los valores sugeridos proceden solo de registros visibles del CTS actual.
+export const listPlannedLocations = async (client, clubTeamSeasonId) => {
+  if (!clubTeamSeasonId) return [];
+  const rows = unwrap(await client.from('planned_training_sessions').select('location')
+    .eq('club_team_season_id', clubTeamSeasonId)) || [];
+  const names = new Map();
+  for (const row of rows) {
+    const label = String(row.location || '').trim().replace(/\s+/g, ' ');
+    if (label && !names.has(label.toLocaleLowerCase('es'))) names.set(label.toLocaleLowerCase('es'), label);
+  }
+  return [...names.values()].sort((a, b) => a.localeCompare(b, 'es'));
+};
+
+export const listPlannedOpponents = async (client, clubTeamSeasonId) => {
+  if (!clubTeamSeasonId) return [];
+  const matches = unwrap(await client.from('partidos').select('equipo_rival_id')
+    .eq('club_team_season_id', clubTeamSeasonId)) || [];
+  const ids = [...new Set(matches.map((row) => row.equipo_rival_id).filter(Boolean))];
+  if (!ids.length) return [];
+  const rivals = unwrap(await client.from('equipos_rivales').select('id,name').in('id', ids)) || [];
+  return rivals.filter((row) => ids.includes(row.id) && row.name?.trim())
+    .map((row) => ({ id: row.id, name: row.name.trim() }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+};
+
 export const loadPlannedSession = async (client, sessionId, clubTeamSeasonId) => {
   const session = unwrap(await client.from('planned_training_sessions').select('*')
     .eq('id', sessionId).eq('club_team_season_id', clubTeamSeasonId).single());

@@ -4,6 +4,8 @@ import {
   createPlannedDraft,
   loadPlannedContexts,
   listPlannedSessions,
+  listPlannedLocations,
+  listPlannedOpponents,
   savePlannedSession,
   SESSION_RETIREMENT_BACKEND_VERIFIED,
   changePlannedSessionLifecycle,
@@ -21,6 +23,7 @@ const rows = {
   planned_training_sessions: [{ id: 'session-id', club_team_season_id: 'cts-id',
     session_date: '2026-10-18', morphology_pattern: 'MD-3' }],
   planned_session_slots: [{ session_id: 'session-id', duration_minutes: 15 }],
+  partidos: [{ equipo_rival_id: 'rival-id' }, { equipo_rival_id: 'rival-id' }],
 };
 const selects = [];
 const equalFilters = [];
@@ -65,6 +68,15 @@ assert.equal((await listPlannedSessions(client, 'cts-id'))[0].durationKnown, fal
   'sin franjas cargadas el cero del listado no se acredita como duración real');
 assert.ok(selects.find(([table, columns]) => table === 'planned_training_sessions' &&
   columns.split(',').includes('morphology_pattern')), 'el listado y calendario consultan el MD persistido');
+rows.planned_training_sessions = [
+  { location: ' Campo Norte ' }, { location: 'campo  norte' }, { location: 'Campo Sur' },
+];
+rows.equipos_rivales.push({ id: 'rival-id', name: 'Rival acreditado' });
+assert.deepEqual(await listPlannedLocations(client, 'cts-id'), ['Campo Norte', 'Campo Sur']);
+assert.deepEqual(await listPlannedOpponents(client, 'cts-id'), [{ id: 'rival-id', name: 'Rival acreditado' }]);
+assert.ok(equalFilters.some(([table, column, value]) => table === 'partidos' &&
+  column === 'club_team_season_id' && value === 'cts-id'),
+  'los rivales se obtienen solo desde partidos visibles del CTS actual');
 assert.equal(await createPlannedDraft(client, 'cts-id', '2026-10-18'), 'session-id');
 assert.equal(await savePlannedSession(client, { p_session_id: 'session-id' }), 2);
 assert.equal(await confirmPlannedSession(client, 'session-id', 2), 2);

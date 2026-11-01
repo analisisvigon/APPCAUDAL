@@ -114,7 +114,7 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], availa
           <PrintField label="Lesionados">{roster.length ? counts.injured : '—'}</PrintField>
         </div>
         <div className="planned-print-cover-details">
-          <div className="planned-print-session-numbers"><span>Nº sesión <b>{editor.session_number ?? '—'}</b></span>
+          <div className="planned-print-session-numbers"><span>Nº sesión <b>{editor.session_number ?? 'Pendiente'}</b></span>
             <span>Tº sesión <b>{getPlannedDuration(editor.slots)} min</b></span></div>
           <div className="planned-print-cover-notes">
             <PrintField label="Objetivos">{editor.header.objectives}</PrintField>

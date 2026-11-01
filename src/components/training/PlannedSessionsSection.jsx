@@ -16,6 +16,8 @@ import {
   confirmPlannedSession,
   createPlannedDraft,
   listPlannedSessions,
+  listPlannedLocations,
+  listPlannedOpponents,
   loadPlannedContexts,
   loadPlannedSession,
   listPlannedLibraryTasks,
@@ -86,6 +88,9 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [libraryTasks, setLibraryTasks] = useState([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryError, setLibraryError] = useState('');
+  const [locationOptions, setLocationOptions] = useState([]);
+  const [opponentOptions, setOpponentOptions] = useState([]);
+  const [suggestionsError, setSuggestionsError] = useState('');
   const [editor, setEditor] = useState(null);
   const [baseline, setBaseline] = useState(null);
   const [unsupportedItems, setUnsupportedItems] = useState(false);
@@ -151,9 +156,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     sessionId: editor?.id, canEdit, busy: busy || operationRef.current,
     conflict, creationUncertain, boardsError, rosterCount: roster.length,
     formationKey: distribution?.formation_key, playerCount: distribution?.player_layout?.length ?? 0,
-    playerSourceSaved: Boolean(distributionBaseline && distribution?.formation_key === distributionBaseline.formation_key &&
-      JSON.stringify(distribution?.player_layout) === JSON.stringify(distributionBaseline.player_layout)),
-    fieldDimensions, fieldSourceSaved: sameFieldDimensions(fieldDimensions, fieldBaseline),
+    fieldDimensions,
   };
   const playerDefaultBlockReason = boardDefaultBlockReason('players', boardDefaultSource);
   const fieldDefaultBlockReason = boardDefaultBlockReason('field', boardDefaultSource);
@@ -323,6 +326,22 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     }).catch((cause) => {
       if (!cancelled) { setSessionsLoadError(true); setError(`${errorKind(cause)}: no se pudieron cargar las sesiones. ${readError(cause)}`); }
     }).finally(() => { if (!cancelled) setSessionsLoading(false); });
+    return () => { cancelled = true; };
+  }, [client, contextId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLocationOptions([]); setOpponentOptions([]); setSuggestionsError('');
+    if (!contextId) return undefined;
+    Promise.allSettled([listPlannedLocations(client, contextId), listPlannedOpponents(client, contextId)])
+      .then(([locations, opponents]) => {
+        if (cancelled) return;
+        if (locations.status === 'fulfilled') setLocationOptions(locations.value);
+        if (opponents.status === 'fulfilled') setOpponentOptions(opponents.value);
+        const failures = [locations.status === 'rejected' && `lugares: ${readError(locations.reason)}`,
+          opponents.status === 'rejected' && `rivales: ${readError(opponents.reason)}`].filter(Boolean);
+        if (failures.length) setSuggestionsError(`No se pudieron cargar estas sugerencias del equipo-temporada: ${failures.join('; ')}`);
+      });
     return () => { cancelled = true; };
   }, [client, contextId]);
 
@@ -510,29 +529,68 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       setError(`Validación: ${issues[0].message} Corrige los campos señalados antes de guardar.`);
       return;
     }
+    const availabilityPatch = roster.length ? availabilityChanges(availability, availabilityBaseline, roster) : [];
+    if (availabilityPatch.some((row) => row.observation?.length > 1000)) {
+      setError('Las observaciones individuales no pueden superar 1000 caracteres.'); return;
+    }
+    const emptyField = fieldDimensions.length_m === '' && fieldDimensions.width_m === '';
+    if (fieldDirty && !emptyField && !fieldIsMeasured(fieldDimensions)) {
+      setError('Indica largo y ancho válidos para el campo, o deja ambos vacíos.'); return;
+    }
+    const boardPayload = distribution ? distributionForSave(distribution, roster) : null;
+    if ((savableDistributionDirty || exerciseDimensionsDirty) &&
+        (boardsError || v12ProbeError || validateDistribution(boardPayload, roster, editor.slots))) {
+      setError(boardsError || v12ProbeError || `Validación de pizarras: ${validateDistribution(boardPayload, roster, editor.slots)}`);
+      return;
+    }
+    let dimensionsPayload = [];
+    try {
+      if (v12Supported) dimensionsPayload = exerciseDimensionsPayload(exerciseDimensions, editor.slots);
+      if (valueDirty) parsePlannedSessionValue(sessionValue);
+    } catch (cause) { setError(`Validación: ${readError(cause)}`); return; }
+    const invalidExercise = v12Supported && editor.slots.find((slot) => exerciseDimensionIssue(slot.id));
+    if (invalidExercise) { setError(`Ejercicio ${editor.slots.indexOf(invalidExercise) + 1}: ${exerciseDimensionIssue(invalidExercise.id)}`); return; }
     operationRef.current = true;
     setBusy(true); setError(''); setNotice(''); setConflict(false);
     let working = editor;
     let original = baseline;
     let creating = false;
     const wasNew = !working.id;
+    const completed = [];
+    let stage = 'la sesión';
+    let revision = working.revision;
+    const advance = (nextRevision) => {
+      revision = nextRevision;
+      setEditor((current) => current ? { ...current, id: working.id, revision } : current);
+      setBaseline((current) => current ? { ...current, id: working.id, revision } : current);
+    };
     try {
       if (!working.id) {
+        stage = 'crear el borrador';
         creating = true;
         const id = await createPlannedDraft(client, selected.id, working.session_date);
         creating = false;
         working = { ...working, id, revision: 1 };
+        revision = 1;
         original = { ...createEmptyPlannedEditor(), id, revision: 1,
           session_date: working.session_date };
         setEditor(working); setBaseline(original);
+        completed.push('borrador creado');
       }
-      const use03c = hasPlannedLibraryItems(working) || hasPlannedLibraryItems(original);
-      const revision = await savePlannedSession(client, buildPlannedSavePayload(working, original), use03c);
-      const saved = { ...working, revision };
-      if (!use03c) { setEditor(saved); setBaseline(saved); }
-      try {
+      if (editorDirty || wasNew) {
+        stage = 'guardar datos generales y ejercicios';
+        const use03c = hasPlannedLibraryItems(working) || hasPlannedLibraryItems(original);
+        const nextRevision = await savePlannedSession(client, buildPlannedSavePayload(working, original), use03c);
+        advance(nextRevision);
         const data = await loadPlannedSession(client, working.id, selected.id);
         const fresh = hydratePlannedEditor(data.session, data.slots, data.items);
+        if (fresh.revision !== revision) throw new Error('La revisión devuelta no coincide con la sesión recargada.');
+        if (use03c) assertPlanned03cReload(working, fresh, revision);
+        setEditor(fresh); setBaseline(fresh);
+        const savedLocation = String(fresh.header.location || '').trim().replace(/\s+/g, ' ');
+        if (savedLocation) setLocationOptions((current) => [...new Set([...current, savedLocation])]
+          .filter((name, index, all) => all.findIndex((entry) => entry.toLocaleLowerCase('es') === name.toLocaleLowerCase('es')) === index)
+          .sort((a, b) => a.localeCompare(b, 'es')));
         setValueSupported(readPlannedSessionValue(data.session).supported);
         if (wasNew) {
           if (BOARD_V11_ENABLED) {
@@ -544,8 +602,6 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           const initialValue = readPlannedSessionValue(data.session).value;
           setSessionValue(initialValue); setBaselineSessionValue(initialValue);
         }
-        if (use03c) assertPlanned03cReload(working, fresh, revision);
-        setEditor(fresh); setBaseline(fresh);
         setUnsupportedItems(unsupportedSession(data, fresh));
         setDistribution((current) => current ? { ...current,
           space_zones: reconcileSpaceZones(current.space_zones, fresh.slots) } : current);
@@ -555,14 +611,79 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           const initialIds = eligibleRosterCandidates(nextCandidates, fresh.session_date).map((row) => row.id);
           setSelectedMembershipIds(initialIds); setInitialSelectedMembershipIds(initialIds);
         }
-        setNotice(distributionDirty
-          ? 'Ejercicios guardados y recargados. Las pizarras siguen pendientes: pulsa «Guardar pizarras».'
-          : 'Sesión guardada y recargada desde el servidor.');
-      } catch (reloadError) {
-        if (use03c) setCreationUncertain(true);
-        setNotice(`Guardado confirmado, pero no se pudo verificar la lectura posterior: ${readError(reloadError)}. Recarga la ficha antes de continuar.`);
+        completed.push('datos generales y ejercicios');
+      }
+      if (availabilityPatch.length) {
+        stage = 'guardar disponibilidad';
+        const nextRevision = await savePlannedAvailability(client, working.id, revision, availabilityPatch);
+        advance(nextRevision);
+        const [data, players] = await Promise.all([
+          loadPlannedSession(client, working.id, selected.id), loadPlannedSessionPlayers(client, working.id),
+        ]);
+        if (data.session.revision !== revision) throw new Error('La revisión de disponibilidad no coincide.');
+        const nextAvailability = Object.fromEntries(players.availability.map((row) => [row.player_id,
+          { status: row.status, observation: row.observation || '' }]));
+        if (availabilityChanges(nextAvailability, availability, roster).length)
+          throw new Error('La disponibilidad recargada no coincide con los cambios enviados.');
+        setAvailability(nextAvailability); setAvailabilityBaseline(nextAvailability);
+        completed.push('disponibilidad');
+      }
+      if (fieldDirty) {
+        stage = 'guardar dimensiones del campo';
+        const nextRevision = await savePlannedFieldDimensionsV11(client, working.id, revision, fieldDimensions);
+        advance(nextRevision);
+        const [data, seed] = await Promise.all([loadPlannedSession(client, working.id, selected.id),
+          loadPlannedBoardSeedV11(client, working.id)]);
+        const nextField = { length_m: seed?.field_length_m ?? '', width_m: seed?.field_width_m ?? '' };
+        if (data.session.revision !== revision || !sameFieldDimensions(nextField, fieldDimensions))
+          throw new Error('Las dimensiones recargadas no coinciden con el guardado.');
+        setFieldDimensions(nextField); setFieldBaseline(nextField);
+        completed.push('dimensiones del campo');
+      }
+      if (savableDistributionDirty || exerciseDimensionsDirty) {
+        stage = 'guardar pizarras y medidas de ejercicios';
+        const nextRevision = v12Supported
+          ? await savePlannedDistributionV12(client, working.id, revision, boardPayload, dimensionsPayload)
+          : await savePlannedDistribution(client, working.id, revision, boardPayload);
+        advance(nextRevision);
+        const [data, savedRow, savedDimensions] = await Promise.all([
+          loadPlannedSession(client, working.id, selected.id), loadPlannedDistribution(client, working.id),
+          v12Supported ? loadPlannedExerciseDimensionsV12(client, working.id) : Promise.resolve([]),
+        ]);
+        const savedBoard = normalizeDistribution(savedRow);
+        const loadedDimensions = normalizeExerciseDimensions(savedDimensions);
+        if (data.session.revision !== revision ||
+            distributionPayloadKey(savedBoard) !== distributionPayloadKey(boardPayload) ||
+            (v12Supported && exerciseDimensionsKey(loadedDimensions) !==
+              exerciseDimensionsKey(normalizeExerciseDimensions(dimensionsPayload))))
+          throw new Error('Las pizarras recargadas no coinciden con el guardado.');
+        setDistribution(!roster.length ? { ...savedBoard, formation_key: distribution.formation_key } : savedBoard);
+        setDistributionBaseline(savedBoard);
+        if (v12Supported) {
+          setExerciseDimensions(loadedDimensions); setExerciseDimensionsBaseline(loadedDimensions);
+          setExerciseDimensionsLoadedFor(working.id);
+        }
+        completed.push('pizarras y ejercicios');
+      }
+      if (valueDirty) {
+        stage = 'guardar VALOR';
+        const nextRevision = await savePlannedSessionValue(client, working.id, revision, sessionValue);
+        advance(nextRevision);
+        const data = await loadPlannedSession(client, working.id, selected.id);
+        const received = readPlannedSessionValue(data.session).value;
+        const expected = parsePlannedSessionValue(sessionValue);
+        if (data.session.revision !== revision ||
+            (expected == null ? received !== '' : Number(received) !== expected))
+          throw new Error('VALOR no coincide con la lectura posterior.');
+        setSessionValue(received); setBaselineSessionValue(received);
+        completed.push('VALOR');
       }
       await refreshList(selected.id);
+      const pending = [pendingEmptyFormation && 'sistema vacío', selectionDirty && 'selección de plantilla sin confirmar'].filter(Boolean);
+      setNotice(pending.length
+        ? `${completed.length ? `Guardado: ${completed.join(', ')}. ` : ''}Pendiente: ${pending.join(' y ')}. Confirma la plantilla para continuar.`
+        : completed.length ? `Guardado y verificado: ${completed.join(', ')}.` : 'No hay cambios que guardar.');
+      return { id: working.id, revision };
     } catch (cause) {
       if (creating && ['42501', '23514', '22023'].includes(cause?.code)) {
         setError(`${errorKind(cause)}: no se pudo crear el borrador. Los cambios siguen en el formulario. ${readError(cause)}`);
@@ -571,11 +692,10 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         setError(`Conexión o servidor: no se pudo confirmar si se creó el borrador. No repitas Guardar: actualiza la lista y comprueba si apareció una sesión nueva antes de iniciar otra. ${readError(cause)}`);
       } else if (cause?.code === '40001') {
         setConflict(true);
-        setError('Otra edición cambió esta sesión. Tus cambios siguen aquí; recarga para ver la versión actual antes de volver a editar.');
+        setError(`Revisión obsoleta al ${stage}. ${completed.length ? `Ya se guardó: ${completed.join(', ')}. ` : ''}Los demás cambios siguen en pantalla; recarga antes de reintentar.`);
       } else {
-        if (hasPlannedLibraryItems(working) && !['42501', '23514', '22023', '0A000', '22001'].includes(cause?.code))
-          setCreationUncertain(true);
-        setError(`${errorKind(cause)}: no se pudo guardar. Los cambios siguen en el formulario. ${readError(cause)}`);
+        if (!['42501', '23514', '22023', '0A000', '22001'].includes(cause?.code)) setCreationUncertain(true);
+        setError(`${errorKind(cause)} al ${stage}. ${completed.length ? `Ya se guardó: ${completed.join(', ')}. ` : ''}No se garantiza que todo esté guardado; recarga la sesión antes de reintentar. ${readError(cause)}`);
       }
     } finally { operationRef.current = false; setBusy(false); }
   };
@@ -911,11 +1031,18 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     if (!BOARD_V11_ENABLED || !editor?.id || !canEdit || busy || operationRef.current) return;
     if (blockReason) { setError(blockReason); return; }
     if (
-        !window.confirm(`¿Sustituir la ${kind === 'players' ? 'distribución' : 'dimensión'} habitual de ${selected.team_name} · ${selected.label}?`)) return;
+        !window.confirm(`¿Guardar los cambios pendientes y sustituir la ${kind === 'players' ? 'distribución' : 'dimensión'} habitual de ${selected.team_name} · ${selected.label}?`)) return;
+    // La RPC de valores habituales copia el origen ya guardado; no recibe un estado del cliente.
+    let expectedRevision = editor.revision;
+    if (dirty) {
+      const saved = await save();
+      if (!saved) return;
+      expectedRevision = saved.revision;
+    }
     operationRef.current = true; setBusy(true); setError(''); setNotice('');
     try {
       const current = await loadPlannedSession(client, editor.id, selected.id);
-      if (current.session.revision !== editor.revision) {
+      if (current.session.revision !== expectedRevision) {
         setConflict(true);
         throw new Error('La revisión de la sesión ha cambiado. Recárgala antes de fijar la configuración habitual.');
       }
@@ -1138,24 +1265,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           </div>
           <div className="flex flex-wrap gap-2">
             {canEdit ? <button type="button" className={`${button} bg-caudal-electric text-slate-950`}
-              onClick={save} disabled={busy || !editorDirty || conflict || creationUncertain || dateNeedsReconciliation}>
+              onClick={save} disabled={busy || !dirty || conflict || creationUncertain || dateNeedsReconciliation}>
               {busy ? 'Procesando…' : 'Guardar cambios'}</button> : null}
-            {canEdit && editor.id && !boardsError ? <button type="button"
-              className={`${button} border border-caudal-electric/50 text-caudal-electric`}
-              onClick={saveDistributions}
-              disabled={busy || !(savableDistributionDirty || exerciseDimensionsDirty) || fieldDirty || editorDirty || dateNeedsReconciliation || conflict || creationUncertain || Boolean(v12ProbeError)}>
-              Guardar pizarras</button> : null}
-            {BOARD_V11_ENABLED && canEdit && editor.id ? <button type="button"
-              className={`${button} border border-caudal-electric/50 text-caudal-electric`}
-              onClick={saveFieldDimensions}
-              disabled={busy || !fieldDirty || editorDirty || conflict || creationUncertain}>
-              Guardar dimensiones</button> : null}
-            {canEdit && editor.id && valueSupported ? <button type="button"
-              className={`${button} border border-caudal-electric/50 text-caudal-electric`}
-              onClick={saveValue}
-              disabled={busy || !valueDirty || editorDirty || distributionDirty || exerciseDimensionsDirty || availabilityDirty ||
-                dateNeedsReconciliation || conflict || creationUncertain}>
-              Guardar VALOR</button> : null}
             {canEdit && editor.id && editor.planning_state === 'draft' ?
               <button type="button" className={`${button} border border-caudal-electric/50 text-caudal-electric`}
                 onClick={confirm} disabled={busy || dirty || conflict || creationUncertain}>Confirmar y numerar</button> : null}
@@ -1166,14 +1277,12 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
               disabled={busy}>Cerrar plantilla</button>
           </div>
           {dirty ? <p className="w-full text-xs text-amber-200">Cambios sin guardar. Guarda antes de confirmar.</p> : null}
-          {distributionDirty && editorDirty ? <p className="w-full text-xs text-amber-200">Guarda primero los ejercicios y después las pizarras; cada operación actualiza la revisión de la sesión.</p> : null}
+          {distributionDirty && editorDirty ? <p className="w-full text-xs text-amber-200">Los ejercicios y las pizarras se guardarán en orden con «Guardar cambios».</p> : null}
           {pendingEmptyFormation ?
             <p className="w-full text-xs text-amber-200">El cambio de sistema vacío sigue pendiente. La RPC actual solo permite guardarlo cuando la plantilla de esta sesión está congelada; las zonas sí pueden guardarse por separado.</p> : null}
           {fieldDirty ? <p className="w-full text-xs text-amber-200">Dimensiones del campo pendientes de guardar.</p> : null}
-          {exerciseDimensionsDirty ? <p className="w-full text-xs text-amber-200">Medidas de ejercicios pendientes: guarda primero la sesión y el campo; después, las pizarras.</p> : null}
+          {exerciseDimensionsDirty ? <p className="w-full text-xs text-amber-200">Medidas de ejercicios pendientes de guardar.</p> : null}
           {v12ProbeError ? <p className="w-full text-xs text-red-200" role="alert">{v12ProbeError}. Recarga la página antes de guardar pizarras.</p> : null}
-          {valueDirty && (editorDirty || distributionDirty || exerciseDimensionsDirty || availabilityDirty || fieldDirty) ?
-            <p className="w-full text-xs text-amber-200">Guarda primero los otros cambios; después podrás guardar VALOR con la revisión actualizada.</p> : null}
           {dateNeedsReconciliation && canEdit ? <button type="button" className={`${button} border border-amber-400/50 text-amber-200`}
             onClick={reconcileDate} disabled={busy || conflict || creationUncertain}>Confirmar cambio de fecha y conciliar plantilla</button> : null}
           {creationUncertain ? <p className="w-full text-xs text-amber-200">Guardado bloqueado: comprueba la sesión en la lista y recárgala antes de continuar.</p> : null}
@@ -1181,6 +1290,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         </div>
         {playersError ? <p role="alert" className="rounded-xl border border-red-400/30 p-3 text-sm text-red-100">{playersError} Recarga la sesión; no se habilitarán operaciones de jugadores con datos incompletos.</p> : null}
         {boardsError ? <p role="alert" className="rounded-xl border border-red-400/30 p-3 text-sm text-red-100">{boardsError} La edición de pizarras está deshabilitada; la sesión y sus ejercicios siguen disponibles.</p> : null}
+        {suggestionsError ? <p role="status" className="text-xs text-amber-200">{suggestionsError} Los campos Lugar y Rival siguen siendo editables.</p> : null}
         {editor.id && !frozen && !playersError ? <div className={`${panel} space-y-2 text-sm`}>
           <p className="font-bold">Plantilla propuesta · aún no guardada</p>
           <p>Seleccionados {proposed.filter((row) => selectedMembershipIds.includes(row.id)).length} de {proposed.length} candidatos válidos para esta fecha. La apertura de la sesión no incorpora jugadores.</p>
@@ -1191,12 +1301,10 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         </div> : null}
         {editor.id && frozen ? <div className={`${panel} space-y-2 text-sm`}>
           <p className="font-bold">Plantilla histórica congelada · {roster.length} jugadores</p>
-          {availabilityDirty && canEdit ? <button type="button" className={`${button} border border-caudal-electric/50 text-caudal-electric`}
-            onClick={saveAvailability} disabled={busy || (editorDirty && !onlyDateDirty) || conflict || creationUncertain}>
-            Guardar disponibilidad</button> : null}
-          {availabilityDirty ? <p>La disponibilidad visible aún no está guardada.</p> : null}
+          {availabilityDirty ? <p>La disponibilidad visible se guardará con «Guardar cambios».</p> : null}
         </div> : null}
         <PlannedSessionDocument editor={editor} selected={selected} canEdit={canEdit} busy={busy}
+          locationOptions={locationOptions} opponentOptions={opponentOptions} suggestionsError={suggestionsError}
           distribution={distribution || emptyDistribution()} boardsError={boardsError}
           fieldDimensions={fieldDimensions} printedFieldDimensions={fieldBaseline}
           printedSpaceDistribution={distributionBaseline || emptyDistribution()}

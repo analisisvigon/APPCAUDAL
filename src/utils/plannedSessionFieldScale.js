@@ -35,12 +35,10 @@ export const boardDefaultBlockReason = (kind, source) => {
     if (!source.rosterCount) return 'Congela primero la plantilla de esta sesión.';
     if (!source.formationKey) return 'Selecciona un sistema táctico.';
     if (source.playerCount !== source.rosterCount) return 'Completa la ubicación de toda la plantilla.';
-    if (!source.playerSourceSaved) return 'Guarda primero la distribución de jugadores.';
     return '';
   }
   if (kind === 'field') {
     if (!fieldIsMeasured(source.fieldDimensions)) return 'Indica un largo y un ancho válidos para el campo.';
-    if (!source.fieldSourceSaved) return 'Pulsa «Guardar dimensiones» antes de fijarlas como habituales.';
     return '';
   }
   return 'Configuración desconocida.';

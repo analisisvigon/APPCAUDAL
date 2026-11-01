@@ -46,8 +46,10 @@ const defaultSource = { sessionId: 'session', canEdit: true, busy: false, confli
   playerCount: 24, playerSourceSaved: true, fieldDimensions: field, fieldSourceSaved: true };
 assert.equal(boardDefaultBlockReason('players', defaultSource), '');
 assert.equal(boardDefaultBlockReason('field', defaultSource), '');
-assert.match(boardDefaultBlockReason('players', { ...defaultSource, playerSourceSaved: false }), /Guarda primero/);
-assert.match(boardDefaultBlockReason('field', { ...defaultSource, fieldSourceSaved: false }), /Guardar dimensiones/);
+assert.equal(boardDefaultBlockReason('players', { ...defaultSource, playerSourceSaved: false }), '',
+  'Fijar guarda primero la distribución pendiente');
+assert.equal(boardDefaultBlockReason('field', { ...defaultSource, fieldSourceSaved: false }), '',
+  'Fijar guarda primero las dimensiones pendientes');
 assert.match(boardDefaultBlockReason('players', { ...defaultSource, rosterCount: 0 }), /Congela/);
 assert.match(boardDefaultBlockReason('field', { ...defaultSource, conflict: true }), /Recarga/);
 const proposedZone = { slot_id: 'exercise-1', x: 80, y: 80, w: 24, h: 18,

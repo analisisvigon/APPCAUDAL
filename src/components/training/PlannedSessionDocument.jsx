@@ -21,7 +21,7 @@ const CAUDAL_TEAM_ID = '85a16f33-9fe5-44d4-b85d-37d73651ebf6';
 const A4_LANDSCAPE_WIDTH_PX = 297 * 96 / 25.4;
 
 function SheetField({ label, value, onChange, disabled, issue, type = 'text', multiline = false,
-  printMirror = multiline, positiveOptionalInteger = false, className = '' }) {
+  printMirror = multiline, positiveOptionalInteger = false, className = '', suggestions = [], suggestionListId = '', hint = '' }) {
   const handleChange = (nextValue) => {
     if (!positiveOptionalInteger || nextValue === '' || /^[1-9]\d*$/.test(nextValue)) onChange(nextValue);
   };
@@ -29,9 +29,17 @@ function SheetField({ label, value, onChange, disabled, issue, type = 'text', mu
     <span>{label}</span>
     {multiline ? <textarea value={value ?? ''} onChange={(event) => handleChange(event.target.value)} disabled={disabled}
       aria-invalid={Boolean(issue)} /> : <input type={type} value={value ?? ''}
+      list={suggestionListId || undefined}
       min={positiveOptionalInteger ? 1 : undefined} step={positiveOptionalInteger ? 1 : undefined}
       inputMode={positiveOptionalInteger ? 'numeric' : undefined}
+      onClick={(event) => {
+        if (!disabled && ['date', 'time'].includes(type)) {
+          try { event.currentTarget.showPicker?.(); } catch { /* El control nativo sigue disponible. */ }
+        }
+      }}
       onChange={(event) => handleChange(event.target.value)} disabled={disabled} aria-invalid={Boolean(issue)} />}
+    {suggestionListId ? <datalist id={suggestionListId}>{suggestions.map((name) => <option key={name} value={name} />)}</datalist> : null}
+    {hint ? <span className="planned-sheet-reserved-hint">{hint}</span> : null}
     {printMirror ? <span className="planned-sheet-print-text" aria-hidden="true">{value ?? ''}</span> : null}
     {issue ? <small role="alert">{issue}</small> : null}
   </label>;
@@ -244,7 +252,8 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   exerciseDimensionsSupported, exerciseDimensions, printedExerciseDimensions,
   onExerciseDimensionChange, exerciseDimensionIssue,
   boardsError, positionById, onFormationChange, onZoneChange, onPlayerMove,
-  leagueLogoUrl, sessionValue, printedSessionValue, valueSupported, onValueChange }) {
+  leagueLogoUrl, sessionValue, printedSessionValue, valueSupported, onValueChange,
+  locationOptions = [], opponentOptions = [], suggestionsError = '' }) {
   const [zoom, setZoom] = useState(100);
   const [fitZoom, setFitZoom] = useState(100);
   const viewportRef = useRef(null);
@@ -352,7 +361,8 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
             <div className="planned-sheet-cover-meta">
               {field('Día', editor.session_date, (value) => updateEditor((current) => ({ ...current, session_date: value })), fieldIssue('session_date'), { type: 'date' })}
               {field('Hora', editor.header.starts_at, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, starts_at: value } })), fieldIssue('starts_at'), { type: 'time' })}
-              {field('Lugar', editor.header.location, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, location: value } })), fieldIssue('location'))}
+              {field('Lugar', editor.header.location, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, location: value } })), fieldIssue('location'),
+                { suggestions: locationOptions, suggestionListId: 'planned-session-locations' })}
               <div className="planned-sheet-roster-metric"><b>Nº jugadores</b><span>{frozen ? playerCounts.participants : '—'}</span></div>
               {field('Periodo', editor.header.period_label, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, period_label: value } })), fieldIssue('period_label'))}
               <div className="planned-sheet-field planned-sheet-microcycle-pair">
@@ -377,12 +387,14 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
                 {fieldIssue('morphology_pattern') ? <small role="alert">{fieldIssue('morphology_pattern')}</small> : null}
                 </label>
               </div>
-              {field('Rival', editor.header.next_opponent_label, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, next_opponent_label: value } })), fieldIssue('next_opponent_label'))}
+              {field('Rival', editor.header.next_opponent_label, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, next_opponent_label: value } })), fieldIssue('next_opponent_label'),
+                { suggestions: opponentOptions.map((row) => row.name), suggestionListId: 'planned-session-opponents',
+                  hint: !opponentOptions.length && !suggestionsError ? 'Sin rivales visibles; puedes escribir un nombre.' : '' })}
               <div className="planned-sheet-roster-metric"><b>Lesionados</b><span>{frozen ? playerCounts.injured : '—'}</span></div>
             </div>
             <div className="planned-sheet-cover-objectives">
               <div className="planned-sheet-side-metrics">
-                <span>Nº sesión <b>{editor.session_number ?? '—'}</b></span>
+                <span>Nº sesión <b>{editor.session_number ?? 'Pendiente'}</b></span>
                 <span>Tº sesión <b>{getPlannedDuration(editor.slots)} min</b></span>
               </div>
               <div className="planned-sheet-cover-notes">

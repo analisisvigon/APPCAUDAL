@@ -121,7 +121,7 @@ export function SessionPlayerDistribution({ distribution, roster, availability, 
     {distribution.formation_key && distribution.player_layout.length !== roster.length ?
       <small role="alert">La distribución no contiene toda la plantilla congelada; recarga antes de guardar.</small> : null}
     {canEdit && distribution.formation_key ?
-      <small>Arrastra cada nombre a una demarcación o a «Sin ubicación automática» y pulsa «Guardar pizarras». Fuera de esas zonas se cancela el movimiento.</small> : null}
+      <small>Arrastra cada nombre a una demarcación o a «Sin ubicación automática» y pulsa «Guardar cambios». Fuera de esas zonas se cancela el movimiento.</small> : null}
     {!roster.length ? <small>Congela la plantilla de la sesión antes de seleccionar un sistema.</small> : null}
   </div>;
 }

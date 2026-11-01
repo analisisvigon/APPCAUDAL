@@ -14,7 +14,8 @@ export const PLAYER_STATUSES = [
 ];
 
 export const eligibleRosterCandidates = (candidates, date) => candidates.filter((row) =>
-  Boolean(date) && (!row.joined_on || row.joined_on <= date) &&
+  Boolean(date) && !(row.has_departed && !row.left_on) &&
+  (!row.joined_on || row.joined_on <= date) &&
   (!row.left_on || row.left_on > date));
 
 export const hasUncertainRosterDate = (row) => !row.joined_on || (row.has_departed && !row.left_on);
