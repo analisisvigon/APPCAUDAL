@@ -198,6 +198,11 @@
 .planned-sheet-exercise-foot .planned-sheet-field { border-bottom: 0; font-style: italic; }
 .planned-sheet-exercise-foot .planned-sheet-field input { min-height: 6mm; }
 .planned-sheet-exercise-foot .planned-sheet-pending { display: flex; align-items: center; justify-content: center; gap: 3mm; }
+.planned-sheet-exercise-measures { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 1mm 3mm; padding: 1mm 2mm; min-width: 0; font-size: 7.5pt; }
+.planned-sheet-exercise-measures label { display: inline-flex; align-items: center; gap: 1mm; white-space: nowrap; }
+.planned-sheet-exercise-measures input { width: 15mm; min-width: 0; padding: .5mm; border: 1px solid #888; border-radius: 1mm; font: inherit; }
+.planned-sheet-exercise-measures-text { font-weight: 700; white-space: nowrap; }
+.planned-sheet-exercise-measures small { flex-basis: 100%; color: #a22; text-align: right; }
 .planned-sheet-exercise-empty { justify-content: center; align-items: center; color: #777; }
 .planned-sheet-exercise-empty h3 { background: #f5ee00; padding: 1mm 2mm; color: #111; }
 .planned-sheet-empty-task { padding: 2mm; font-size: 8pt; color: #a22; }

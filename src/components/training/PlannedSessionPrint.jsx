@@ -32,7 +32,7 @@ function PrintIdentity({ selected, page, leagueLogoUrl, cancelled }) {
   </header>;
 }
 
-function PrintTask({ item, index }) {
+function PrintTask({ item, index, hasExerciseDimensions }) {
   const library = item.kind === 'library_task';
   const name = library ? getPlannedLibraryValue(item, 'name') : item.title;
   const description = library ? getPlannedLibraryValue(item, 'description') : item.description;
@@ -56,12 +56,12 @@ function PrintTask({ item, index }) {
           </div>)}</div> : null}
       </div>
     </div>
-    {library && (source.space_width_m != null || source.space_length_m != null) ?
+    {library && !hasExerciseDimensions && (source.space_width_m != null || source.space_length_m != null) ?
       <div className="planned-print-task-space">Espacio · {source.space_width_m ?? '—'} × {source.space_length_m ?? '—'} m</div> : null}
   </div>;
 }
 
-function PrintExercise({ slot, number }) {
+function PrintExercise({ slot, number, dimensions }) {
   if (!slot) return <div className="planned-print-empty-activation">ACTIVACIÓN</div>;
   const longContent = slot.items.some((item) => value(item.kind === 'library_task'
     ? getPlannedLibraryValue(item, 'description') : item.description).length > 900);
@@ -70,15 +70,19 @@ function PrintExercise({ slot, number }) {
     <div className="planned-print-exercise-head"><strong>{phaseName(slot.phase).toLocaleUpperCase('es')} · Ejercicio {number}</strong>
       <span>{value(slot.duration)} min</span></div>
     <div className="planned-print-tasks">{slot.items.map((item, index) =>
-      <PrintTask key={item.id} item={item} index={index} />)}</div>
+      <PrintTask key={item.id} item={item} index={index}
+        hasExerciseDimensions={Boolean(dimensions?.length_m && dimensions?.width_m)} />)}</div>
     <div className="planned-print-exercise-foot"><span>Tiempo total: <b>{value(slot.duration)} min</b></span>
-      <span>Espacio de trabajo</span></div>
+      <span>{dimensions?.length_m && dimensions?.width_m
+        ? `Espacio de trabajo: ${dimensions.length_m} × ${dimensions.width_m} m`
+        : 'Espacio de trabajo'}</span></div>
   </section>;
 }
 
 export function PlannedSessionPrintPages({ editor, selected, roster = [], availability = {},
   distribution = { formation_key: null, player_layout: [], space_zones: [] }, positionById = new Map(),
   playerDistribution = distribution, leagueLogoUrl = '', sessionValue = '', fieldDimensions = null,
+  exerciseDimensions = {},
   pages = planPlannedSessionPrintSheets(editor.slots) }) {
   const sessionMicrocycle = seasonMicrocycleForDate(selected, editor.session_date);
   const ordered = ['activation', 'main', 'cooldown'].flatMap((phase) => editor.slots.filter((slot) => slot.phase === phase));
@@ -127,20 +131,23 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], availa
           <SessionSpaceDistribution zones={distribution.space_zones} slots={editor.slots}
             fieldDimensions={fieldDimensions} />
           <div className="planned-print-cover-activation">{page.activation
-            ? <PrintExercise slot={page.activation} number={numberOf(page.activation.id)} />
+            ? <PrintExercise slot={page.activation} number={numberOf(page.activation.id)}
+              dimensions={exerciseDimensions[page.activation.id]} />
             : <div className="planned-print-empty-activation">ACTIVACIÓN · ejercicio en la hoja siguiente o sin planificar</div>}</div>
         </div>
       </> : <>
         <h2 className="planned-print-page-title">{index === 1 ? 'PARTE PRINCIPAL · VUELTA A LA CALMA' : 'EJERCICIOS · CONTINUACIÓN'}</h2>
         <div className="planned-print-exercise-grid" data-layout={layoutOf(page.slots)}>{page.slots.map((slot) =>
-          <PrintExercise key={slot.id} slot={slot} number={numberOf(slot.id)} />)}</div>
+          <PrintExercise key={slot.id} slot={slot} number={numberOf(slot.id)}
+            dimensions={exerciseDimensions[slot.id]} />)}</div>
       </>}
     </article>)}
   </div>;
 }
 
 export default function PlannedSessionPrint({ editor, selected, pages, printRef, roster, availability,
-  distribution, playerDistribution, positionById, leagueLogoUrl, sessionValue, fieldDimensions }) {
+  distribution, playerDistribution, positionById, leagueLogoUrl, sessionValue, fieldDimensions,
+  exerciseDimensions }) {
   if (typeof document === 'undefined') return null;
   return createPortal(<div className="planned-print-portal" ref={printRef}>
     <style media="print">{'@page { size: A4 landscape; margin: 0; }'}</style>
@@ -148,6 +155,6 @@ export default function PlannedSessionPrint({ editor, selected, pages, printRef,
       roster={roster} availability={availability} distribution={distribution}
       playerDistribution={playerDistribution}
       positionById={positionById} leagueLogoUrl={leagueLogoUrl} sessionValue={sessionValue}
-      fieldDimensions={fieldDimensions} />
+      fieldDimensions={fieldDimensions} exerciseDimensions={exerciseDimensions} />
   </div>, document.body);
 }

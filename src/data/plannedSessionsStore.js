@@ -179,6 +179,27 @@ export const savePlannedDistribution = async (client, sessionId, revision, distr
     p_space_zones: distribution.space_zones,
   }));
 
+export const checkPlannedExerciseDimensionsV12 = async (client) => {
+  const response = await client.from('planned_session_exercise_dimensions_v12')
+    .select('session_id').limit(0);
+  if (!response?.error) return true;
+  if (['PGRST205', '42P01'].includes(response.error.code)) return false;
+  throw response.error;
+};
+
+export const loadPlannedExerciseDimensionsV12 = async (client, sessionId) =>
+  unwrap(await client.from('planned_session_exercise_dimensions_v12')
+    .select('slot_id,length_m,width_m').eq('session_id', sessionId));
+
+export const savePlannedDistributionV12 = async (client, sessionId, revision, distribution, dimensions) =>
+  unwrap(await client.rpc('save_planned_session_exercise_dimensions_v12', {
+    p_session_id: sessionId, p_expected_revision: revision,
+    p_formation_key: distribution.formation_key,
+    p_player_layout: distribution.player_layout,
+    p_space_zones: distribution.space_zones,
+    p_dimensions: dimensions,
+  }));
+
 export const loadPlannedBoardDefaultsV11 = async (client, ctsId) => unwrap(await client
   .from('planned_cts_board_defaults_v11').select('formation_key,player_layout,field_length_m,field_width_m')
   .eq('club_team_season_id', ctsId).maybeSingle());

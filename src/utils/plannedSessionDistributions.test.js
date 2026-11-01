@@ -7,7 +7,8 @@ import {
 import { loadPlannedDistribution, loadPlannedSpecificPositions,
   savePlannedDistribution, savePlannedSessionValue } from '../data/plannedSessionsStore.js';
 import { fieldIsMeasured, metresFromZone, seededPlayerLayout, taskZoneMetres,
-  zoneFromMetres } from './plannedSessionFieldScale.js';
+  zoneFromMetres, normalizeExerciseDimensions, exerciseDimensionsKey,
+  exerciseDimensionsPayload } from './plannedSessionFieldScale.js';
 
 const field = { length_m: 105, width_m: 68 };
 const proposedZone = { slot_id: 'exercise-1', x: 80, y: 80, w: 24, h: 18,
@@ -16,6 +17,19 @@ const scaledZone = zoneFromMetres(proposedZone, field, { length_m: 30, width_m: 
 assert.ok(scaledZone && !scaledZone.provisional);
 assert.ok(scaledZone.x + scaledZone.w <= 100 && scaledZone.y + scaledZone.h <= 100);
 assert.deepEqual(metresFromZone(scaledZone, field), { length_m: 30, width_m: 20 });
+const measuredSlots = [{ id: 'exercise-1' }, { id: 'exercise-2' }];
+const measured = normalizeExerciseDimensions([{ slot_id: 'exercise-1', length_m: 30, width_m: 20 }]);
+assert.deepEqual(exerciseDimensionsPayload(measured, measuredSlots),
+  [{ slot_id: 'exercise-1', length_m: 30, width_m: 20 }]);
+assert.equal(exerciseDimensionsKey(measured), exerciseDimensionsKey({
+  'exercise-1': { length_m: 30, width_m: 20 },
+  'exercise-2': { length_m: '', width_m: '' },
+}));
+assert.throws(() => exerciseDimensionsPayload({
+  'exercise-1': { length_m: '30', width_m: '' },
+}, measuredSlots), /largo y ancho/i);
+assert.equal(zoneFromMetres(scaledZone, field, { length_m: 30, width_m: 20 }).x,
+  scaledZone.x, 'cambiar medidas conserva la posición si cabe');
 assert.equal(zoneFromMetres(proposedZone, field, { length_m: 106, width_m: 20 }), null);
 assert.equal(zoneFromMetres(proposedZone, field, { length_m: -1, width_m: 20 }), null);
 assert.equal(fieldIsMeasured({ length_m: '', width_m: 68 }), false);

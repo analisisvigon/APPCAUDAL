@@ -92,7 +92,8 @@ function LibraryTaskPicker({ task, slotId, tasks, loading, error, disabled, onSe
 function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, updateTask,
   moveSlot, phaseIndex, phaseCount, changePhase, removeSlot, addTask, removeTask,
   swapTasks, moveTaskToSlot, targets, fieldIssue, libraryTasks, libraryLoading,
-  libraryError, selectLibraryTask, switchToFreeTask, openBoard }) {
+  libraryError, selectLibraryTask, switchToFreeTask, openBoard,
+  exerciseDimensionsSupported, exerciseDimensions, onExerciseDimensionChange, exerciseDimensionIssue }) {
   if (!slot) return <div className="planned-sheet-exercise planned-sheet-exercise-empty">
     <h3><PhaseName phase={phase} /></h3><p className="planned-sheet-reserved-hint">Sin ejercicio planificado en esta fase.</p>
   </div>;
@@ -161,7 +162,7 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
             <SheetField label="Tiempo propio · min (opcional)" type="number" positiveOptionalInteger value={task.minutes}
               disabled={!canEdit || busy} issue={fieldIssue('minutes', slot.id, task.id)}
               onChange={(value) => updateTask(slot.id, task.id, 'minutes', value)} />
-            <div className="planned-sheet-copy-space">Espacio · {getPlannedLibrarySource(task).space_width_m ?? '—'} × {getPlannedLibrarySource(task).space_length_m ?? '—'} m</div>
+            {!exerciseDimensionsSupported ? <div className="planned-sheet-copy-space">Espacio · {getPlannedLibrarySource(task).space_width_m ?? '—'} × {getPlannedLibrarySource(task).space_length_m ?? '—'} m</div> : null}
           </div>
         </> : <>
         <SheetField label="Nombre" value={task.title} disabled={!canEdit || busy}
@@ -204,7 +205,19 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
     <div className="planned-sheet-exercise-foot">
       <SheetField label="Tº total · min" type="number" value={slot.duration} disabled={!canEdit || busy}
         issue={fieldIssue('duration', slot.id)} onChange={(value) => updateSlot(slot.id, (current) => ({ ...current, duration: value }))} />
-      <PendingArea label="Espacio de trabajo" className="planned-sheet-space-pending" />
+      {exerciseDimensionsSupported ? <div className="planned-sheet-exercise-measures">
+        {canEdit ? <>
+          <label>Largo (m)<input type="number" min="0.01" max="500" step="0.01"
+            value={exerciseDimensions?.length_m ?? ''} disabled={busy}
+            onChange={(event) => onExerciseDimensionChange(slot.id, 'length_m', event.target.value)} /></label>
+          <label>Ancho (m)<input type="number" min="0.01" max="500" step="0.01"
+            value={exerciseDimensions?.width_m ?? ''} disabled={busy}
+            onChange={(event) => onExerciseDimensionChange(slot.id, 'width_m', event.target.value)} /></label>
+        </> : null}
+        {exerciseDimensions?.length_m && exerciseDimensions?.width_m ? <span className="planned-sheet-exercise-measures-text">
+          {exerciseDimensions.length_m} × {exerciseDimensions.width_m} m</span> : null}
+        {exerciseDimensionIssue ? <small role="alert">{exerciseDimensionIssue}</small> : null}
+      </div> : <PendingArea label="Espacio de trabajo" className="planned-sheet-space-pending" />}
     </div>
     {fieldIssue('items', slot.id) ? <p className="planned-sheet-inline-error">{fieldIssue('items', slot.id)}</p> : null}
     {canEdit ? <div className="planned-sheet-tools" aria-label={`Edición del ejercicio ${number}`}>
@@ -227,6 +240,8 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   selectedMembershipIds, availability, onSelectPlayer, onAvailability,
   distribution, printedPlayerDistribution, printedSpaceDistribution, fieldDimensions, printedFieldDimensions,
   boardV11Enabled, onFieldDimensionsChange, onZoneMetresChange, onFixBoardDefault, boardDefaultBusy,
+  exerciseDimensionsSupported, exerciseDimensions, printedExerciseDimensions,
+  onExerciseDimensionChange, exerciseDimensionIssue,
   boardsError, positionById, onFormationChange, onZoneChange, onPlayerMove,
   leagueLogoUrl, sessionValue, printedSessionValue, valueSupported, onValueChange }) {
   const [zoom, setZoom] = useState(100);
@@ -303,7 +318,11 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
         .map((entry) => ({ id: entry.id, number: numberOf(entry.id) })) : []}
       fieldIssue={fieldIssue} libraryTasks={libraryTasks} libraryLoading={libraryLoading}
       libraryError={libraryError} selectLibraryTask={selectLibraryTask}
-      switchToFreeTask={switchToFreeTask} openBoard={setBoardTaskId} />;
+      switchToFreeTask={switchToFreeTask} openBoard={setBoardTaskId}
+      exerciseDimensionsSupported={exerciseDimensionsSupported}
+      exerciseDimensions={slot ? exerciseDimensions[slot.id] : null}
+      onExerciseDimensionChange={onExerciseDimensionChange}
+      exerciseDimensionIssue={slot ? exerciseDimensionIssue(slot.id) : ''} />;
   };
 
   const boardLocation = editor.slots.flatMap((slot) => slot.items.map((item) => ({ slotId: slot.id, item })))
@@ -444,6 +463,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
       roster={frozen ? roster : []} availability={availability}
       distribution={printedSpaceDistribution || distribution}
       fieldDimensions={boardV11Enabled ? printedFieldDimensions : null}
+      exerciseDimensions={exerciseDimensionsSupported ? printedExerciseDimensions : {}}
       playerDistribution={printedPlayerDistribution}
       positionById={positionById} />
     {boardLocation?.item.kind === 'library_task' ? <div className="planned-board-dialog-backdrop">

@@ -119,6 +119,7 @@ for (const [name, slots] of Object.entries(fixtures)) {
     space_zones: [] };
   const markup = renderToStaticMarkup(React.createElement(PlannedSessionPrintPages, { editor,
     selected: { team_id: '85a16f33-9fe5-44d4-b85d-37d73651ebf6', team_name: 'C.D. Caudal', label: '2026/2027' },
+    exerciseDimensions: name === 'two_brief' ? { m1: { length_m: 30, width_m: 20 } } : {},
     roster, positionById, playerDistribution: savedPlayerDistribution,
     availability: (name === 'roster_24' || playerBoard) ? {
       'fixture-player-1': { status: 'injured' },
@@ -126,6 +127,10 @@ for (const [name, slots] of Object.entries(fixtures)) {
       'fixture-player-16': { status: 'adapted' },
     } : {} }));
   assert.doesNotMatch(markup, /<button|<textarea|<input|Cambiar tarea de Biblioteca|Más detalles/);
+  if (name === 'two_brief') {
+    assert.match(markup, /Espacio de trabajo: 30 × 20 m/);
+    assert.equal((markup.match(/Espacio de trabajo: 30 × 20 m/g) || []).length, 1);
+  }
   if (name === 'two_brief' || name === 'two_boards') assert.match(markup, /data-layout="two"/);
   if (name === 'three_normal') assert.match(markup, /data-layout="three"/);
   if (name === 'four_normal' || name === 'four_boards') assert.match(markup, /data-layout="grid"/);

@@ -7,6 +7,7 @@ import {
   savePlannedSession,
   SESSION_RETIREMENT_BACKEND_VERIFIED,
   changePlannedSessionLifecycle,
+  savePlannedDistributionV12,
 } from './plannedSessionsStore.js';
 
 const calls = [];
@@ -73,5 +74,13 @@ assert.deepEqual(calls[0].args, {
   p_club_team_season_id: 'cts-id', p_session_date: '2026-10-18',
 });
 assert.deepEqual(calls[2].args, { p_session_id: 'session-id', p_expected_revision: 2 });
+const dimensions = [{ slot_id: 'slot-id', length_m: 30, width_m: 20 }];
+assert.equal(await savePlannedDistributionV12(client, 'session-id', 2,
+  { formation_key: null, player_layout: [], space_zones: [] }, dimensions), 2);
+assert.deepEqual(calls.at(-1), {
+  name: 'save_planned_session_exercise_dimensions_v12',
+  args: { p_session_id: 'session-id', p_expected_revision: 2,
+    p_formation_key: null, p_player_layout: [], p_space_zones: [], p_dimensions: dimensions },
+});
 
 console.log('planned sessions store tests passed');

@@ -29,6 +29,23 @@ export const metresFromZone = (zone, field) => fieldIsMeasured(field)
   ? { length_m: Math.round(zone.h * Number(field.length_m) / 100 * 100) / 100,
     width_m: Math.round(zone.w * Number(field.width_m) / 100 * 100) / 100 } : null;
 
+export const normalizeExerciseDimensions = (rows = []) => Object.fromEntries(rows.map((row) => [row.slot_id,
+  { length_m: row.length_m, width_m: row.width_m }]));
+
+export const exerciseDimensionsKey = (dimensions = {}) => JSON.stringify(Object.entries(dimensions)
+  .filter(([, value]) => value?.length_m !== '' || value?.width_m !== '')
+  .map(([slotId, value]) => [slotId, value?.length_m == null ? '' : String(value.length_m),
+    value?.width_m == null ? '' : String(value.width_m)])
+  .sort(([left], [right]) => left.localeCompare(right)));
+
+export const exerciseDimensionsPayload = (dimensions = {}, slots = []) => slots.flatMap((slot) => {
+  const value = dimensions[slot.id];
+  if (!value || (value.length_m === '' && value.width_m === '')) return [];
+  if (!validMetres(value.length_m) || !validMetres(value.width_m))
+    throw new Error(`Ejercicio ${slots.indexOf(slot) + 1}: indica largo y ancho positivos, hasta 500 m, o deja ambos vacíos.`);
+  return [{ slot_id: slot.id, length_m: Number(value.length_m), width_m: Number(value.width_m) }];
+});
+
 export const seededPlayerLayout = (seed, roster, positions, autoPlayerLayout) => {
   if (!seed?.formation_key || !roster.length) return [];
   const defaultById = new Map((seed.player_layout || []).map((row) => [row.player_id, row]));
