@@ -31,6 +31,13 @@ try {
   assert.match(markup, /planned-distribution-meta/, 'la fila de sistema reserva la misma altura que la otra pizarra');
   assert.equal((markup.match(/planned-distribution-player-out/g) || []).length, 1,
     'el estado cambia el color sin duplicar etiquetas');
+  const blockedPlayers = renderToStaticMarkup(React.createElement(SessionPlayerDistribution, {
+    distribution: { formation_key: '4-4-2', player_layout: layout }, roster,
+    positionById: positions, availability: {}, canEdit: true, onFixDefault: () => {},
+    defaultButtonReason: 'Guarda primero la distribución de jugadores.',
+  }));
+  assert.match(blockedPlayers, /disabled=""[^>]*>Fijar distribución habitual/);
+  assert.match(blockedPlayers, /Guarda primero la distribución de jugadores/);
   const space = renderToStaticMarkup(React.createElement(SessionSpaceDistribution, {
     slots: [{ id: 'slot-1', phase: 'main' }],
     zones: [{ slot_id: 'slot-1', x: 12, y: 14, w: 28, h: 20,
@@ -42,6 +49,13 @@ try {
   assert.match(space, /<span>E1<\/span>/, 'la zona muestra una etiqueta corta');
   assert.match(space, /Parte principal · Ej. 1/, 'la leyenda conserva la identificación completa');
   assert.equal(space.includes('data-resize'), false, 'sin control de tamaño en impresión');
+  const blockedField = renderToStaticMarkup(React.createElement(SessionSpaceDistribution, {
+    slots: [], zones: [], fieldDimensions: { length_m: 105, width_m: 68 },
+    canEdit: true, onFixDefault: () => {},
+    defaultButtonReason: 'Pulsa Guardar dimensiones antes de fijarlas como habituales.',
+  }));
+  assert.match(blockedField, /disabled=""[^>]*>Fijar dimensiones habituales/);
+  assert.match(blockedField, /Pulsa Guardar dimensiones antes de fijarlas como habituales/);
   const documentCss = readFileSync('src/components/training/plannedSessionDocument.css', 'utf8');
   const printCss = readFileSync('src/components/training/plannedSessionPrint.css', 'utf8');
   assert.match(documentCss, /\.planned-sheet-cover-lower \{[^}]*grid-template-columns: 25% 25% 50%/);

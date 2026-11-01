@@ -5,6 +5,32 @@ export const validMetres = (value) => value !== '' && value != null &&
   Number(Number(value).toFixed(2)) === Number(value);
 
 export const fieldIsMeasured = (field) => validMetres(field?.length_m) && validMetres(field?.width_m);
+export const sameFieldDimensions = (left, right) => ['length_m', 'width_m'].every((key) => {
+  const a = left?.[key], b = right?.[key];
+  return (a === '' || a == null) && (b === '' || b == null) ||
+    validMetres(a) && validMetres(b) && Number(a) === Number(b);
+});
+
+export const boardDefaultBlockReason = (kind, source) => {
+  if (!source.sessionId) return 'Guarda primero la sesión.';
+  if (!source.canEdit) return 'Necesitas una membresía owner o admin activa y una temporada abierta.';
+  if (source.busy) return 'Espera a que termine la operación actual.';
+  if (source.conflict || source.creationUncertain) return 'Recarga la sesión para comprobar la revisión actual.';
+  if (kind === 'players') {
+    if (source.boardsError) return 'Recarga la sesión: no se pudieron cargar las pizarras.';
+    if (!source.rosterCount) return 'Congela primero la plantilla de esta sesión.';
+    if (!source.formationKey) return 'Selecciona un sistema táctico.';
+    if (source.playerCount !== source.rosterCount) return 'Completa la ubicación de toda la plantilla.';
+    if (!source.playerSourceSaved) return 'Guarda primero la distribución de jugadores.';
+    return '';
+  }
+  if (kind === 'field') {
+    if (!fieldIsMeasured(source.fieldDimensions)) return 'Indica un largo y un ancho válidos para el campo.';
+    if (!source.fieldSourceSaved) return 'Pulsa «Guardar dimensiones» antes de fijarlas como habituales.';
+    return '';
+  }
+  return 'Configuración desconocida.';
+};
 
 export const taskZoneMetres = (slot) => {
   const valueOf = (item, key) => Object.prototype.hasOwnProperty.call(item.working || {}, key)

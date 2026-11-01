@@ -43,7 +43,8 @@ import { availabilityChanges, eligibleRosterCandidates, hasUncertainRosterDate }
 import { autoPlayerLayout, distributionPayloadKey, emptyDistribution, movePlayerBoardLayout, normalizeDistribution,
   reconcileSpaceZones, specificPositionMap, validateDistribution } from '../../utils/plannedSessionDistributions';
 import { parsePlannedSessionValue, readPlannedSessionValue } from '../../utils/plannedSessionValue';
-import { BOARD_V11_ENABLED, fieldIsMeasured, seededPlayerLayout, taskZoneMetres,
+import { BOARD_V11_ENABLED, boardDefaultBlockReason, fieldIsMeasured, sameFieldDimensions,
+  seededPlayerLayout, taskZoneMetres,
   validMetres, zoneFromMetres, metresFromZone, normalizeExerciseDimensions,
   exerciseDimensionsKey, exerciseDimensionsPayload } from '../../utils/plannedSessionFieldScale';
 import PlannedSessionDocument from './PlannedSessionDocument';
@@ -131,12 +132,22 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     JSON.stringify([...selectedMembershipIds].sort()) !== JSON.stringify([...initialSelectedMembershipIds].sort()));
   const distributionDirty = Boolean(distribution && distributionBaseline &&
     distributionPayloadKey(distribution) !== distributionPayloadKey(distributionBaseline));
-  const fieldDirty = BOARD_V11_ENABLED && JSON.stringify(fieldDimensions) !== JSON.stringify(fieldBaseline);
+  const fieldDirty = BOARD_V11_ENABLED && !sameFieldDimensions(fieldDimensions, fieldBaseline);
   const exerciseDimensionsDirty = Boolean(editor && v12Supported &&
     exerciseDimensionsKey(exerciseDimensions) !== exerciseDimensionsKey(exerciseDimensionsBaseline));
   const valueDirty = valueSupported && sessionValue !== baselineSessionValue;
   const dirty = editorDirty || availabilityDirty || selectionDirty || distributionDirty ||
     fieldDirty || exerciseDimensionsDirty || valueDirty;
+  const boardDefaultSource = {
+    sessionId: editor?.id, canEdit, busy: busy || operationRef.current,
+    conflict, creationUncertain, boardsError, rosterCount: roster.length,
+    formationKey: distribution?.formation_key, playerCount: distribution?.player_layout?.length ?? 0,
+    playerSourceSaved: Boolean(distributionBaseline && distribution?.formation_key === distributionBaseline.formation_key &&
+      JSON.stringify(distribution?.player_layout) === JSON.stringify(distributionBaseline.player_layout)),
+    fieldDimensions, fieldSourceSaved: sameFieldDimensions(fieldDimensions, fieldBaseline),
+  };
+  const playerDefaultBlockReason = boardDefaultBlockReason('players', boardDefaultSource);
+  const fieldDefaultBlockReason = boardDefaultBlockReason('field', boardDefaultSource);
   const safeLeagueLogoUrl = (() => {
     try {
       const parsed = new URL(String(leagueLogoUrl).trim());
@@ -879,10 +890,18 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   };
 
   const fixBoardDefault = async (kind) => {
-    if (!BOARD_V11_ENABLED || !editor?.id || !canEdit || dirty || busy || operationRef.current ||
+    const blockReason = kind === 'players' ? playerDefaultBlockReason : fieldDefaultBlockReason;
+    if (!BOARD_V11_ENABLED || !editor?.id || !canEdit || busy || operationRef.current) return;
+    if (blockReason) { setError(blockReason); return; }
+    if (
         !window.confirm(`¿Sustituir la ${kind === 'players' ? 'distribución' : 'dimensión'} habitual de ${selected.team_name} · ${selected.label}?`)) return;
     operationRef.current = true; setBusy(true); setError(''); setNotice('');
     try {
+      const current = await loadPlannedSession(client, editor.id, selected.id);
+      if (current.session.revision !== editor.revision) {
+        setConflict(true);
+        throw new Error('La revisión de la sesión ha cambiado. Recárgala antes de fijar la configuración habitual.');
+      }
       await fixPlannedBoardDefaultV11(client, editor.id, kind);
       setBoardDefaults(await loadPlannedBoardDefaultsV11(client, contextId));
       setNotice(kind === 'players' ? 'Distribución habitual fijada para nuevas sesiones.' : 'Dimensiones habituales fijadas para nuevas sesiones.');
@@ -1161,7 +1180,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           exerciseDimensions={exerciseDimensions} printedExerciseDimensions={exerciseDimensionsBaseline}
           onExerciseDimensionChange={changeExerciseDimension} exerciseDimensionIssue={exerciseDimensionIssue}
           onFieldDimensionsChange={changeFieldDimensions} onZoneMetresChange={changeZoneMetres}
-          onFixBoardDefault={fixBoardDefault} boardDefaultBusy={busy || dirty || !editor.id}
+          onFixBoardDefault={fixBoardDefault} playerDefaultBlockReason={playerDefaultBlockReason}
+          fieldDefaultBlockReason={fieldDefaultBlockReason}
           positionById={specificPositionMap(distribution?.specific_positions_snapshot?.length
             ? distribution.specific_positions_snapshot : specificPositions)}
           onFormationChange={changeFormation} onZoneChange={changeZone}

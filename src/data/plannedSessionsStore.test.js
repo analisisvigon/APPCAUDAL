@@ -8,6 +8,7 @@ import {
   SESSION_RETIREMENT_BACKEND_VERIFIED,
   changePlannedSessionLifecycle,
   savePlannedDistributionV12,
+  fixPlannedBoardDefaultV11,
 } from './plannedSessionsStore.js';
 
 const calls = [];
@@ -82,5 +83,11 @@ assert.deepEqual(calls.at(-1), {
   args: { p_session_id: 'session-id', p_expected_revision: 2,
     p_formation_key: null, p_player_layout: [], p_space_zones: [], p_dimensions: dimensions },
 });
+await fixPlannedBoardDefaultV11(client, 'session-id', 'players');
+assert.deepEqual(calls.at(-1), { name: 'fix_planned_board_default_v11',
+  args: { p_session_id: 'session-id', p_kind: 'players' } });
+await fixPlannedBoardDefaultV11(client, 'session-id', 'field');
+assert.deepEqual(calls.at(-1), { name: 'fix_planned_board_default_v11',
+  args: { p_session_id: 'session-id', p_kind: 'field' } });
 
 console.log('planned sessions store tests passed');

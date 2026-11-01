@@ -17,7 +17,7 @@ const statusClass = (status) => ['absent', 'injured'].includes(status)
     ? 'planned-distribution-player-adapted' : '';
 
 export function SessionPlayerDistribution({ distribution, roster, availability, positionById,
-  canEdit = false, onFormationChange, onPlayerMove, onFixDefault, defaultButtonDisabled = false }) {
+  canEdit = false, onFormationChange, onPlayerMove, onFixDefault, defaultButtonReason = '' }) {
   const fieldRef = useRef(null);
   const unplacedRef = useRef(null);
   const dragRef = useRef(null);
@@ -113,8 +113,10 @@ export function SessionPlayerDistribution({ distribution, roster, availability, 
       </span>)}</span>
     </div> : null}
     {canEdit && onFixDefault ? <button type="button" className="planned-board-default-button"
-      disabled={defaultButtonDisabled || !distribution.formation_key || !roster.length}
+      disabled={Boolean(defaultButtonReason)} title={defaultButtonReason || undefined}
       onClick={onFixDefault}>Fijar distribución habitual</button> : null}
+    {canEdit && onFixDefault && defaultButtonReason ? <small className="planned-board-default-message" role="status">
+      {defaultButtonReason}</small> : null}
     {legacy.length ? <small role="alert">{legacy.length} jugadores tienen coordenadas anteriores sin demarcación. Asígnalos a un puesto o restablece la distribución; no se han cambiado sus datos guardados.</small> : null}
     {distribution.formation_key && distribution.player_layout.length !== roster.length ?
       <small role="alert">La distribución no contiene toda la plantilla congelada; recarga antes de guardar.</small> : null}
@@ -128,7 +130,7 @@ const phaseLabel = (key) => PLANNED_PHASES.find((phase) => phase.key === key)?.l
 
 export function SessionSpaceDistribution({ zones = [], slots = [], canEdit = false, onZoneChange,
   fieldDimensions, onFieldDimensionsChange, onZoneMetresChange, onFixDefault,
-  defaultButtonDisabled = false }) {
+  defaultButtonReason = '' }) {
   const fieldRef = useRef(null);
   const dragRef = useRef(null);
   const [zoneMetresDraft, setZoneMetresDraft] = useState({});
@@ -167,8 +169,10 @@ export function SessionSpaceDistribution({ zones = [], slots = [], canEdit = fal
       <label>Ancho (m)<input type="number" min="0.01" max="500" step="0.1"
         value={fieldDimensions.width_m} onChange={(event) => onFieldDimensionsChange?.('width_m', event.target.value)} /></label>
       {onFixDefault ? <button type="button" className="planned-board-default-button"
-        disabled={defaultButtonDisabled || !fieldIsMeasured(fieldDimensions)}
+        disabled={Boolean(defaultButtonReason)} title={defaultButtonReason || undefined}
         onClick={onFixDefault}>Fijar dimensiones habituales</button> : null}
+      {onFixDefault && defaultButtonReason ? <small className="planned-board-default-message" role="status">
+        {defaultButtonReason}</small> : null}
     </div> : fieldIsMeasured(fieldDimensions)
       ? <small>{fieldDimensions.length_m} × {fieldDimensions.width_m} m</small> : null)}
     <div className="planned-distribution-field planned-distribution-space-field" ref={fieldRef}>

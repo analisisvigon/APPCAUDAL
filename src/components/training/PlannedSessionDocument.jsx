@@ -239,7 +239,8 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   libraryError, selectLibraryTask, switchToFreeTask, roster, frozen,
   selectedMembershipIds, availability, onSelectPlayer, onAvailability,
   distribution, printedPlayerDistribution, printedSpaceDistribution, fieldDimensions, printedFieldDimensions,
-  boardV11Enabled, onFieldDimensionsChange, onZoneMetresChange, onFixBoardDefault, boardDefaultBusy,
+  boardV11Enabled, onFieldDimensionsChange, onZoneMetresChange, onFixBoardDefault,
+  playerDefaultBlockReason, fieldDefaultBlockReason,
   exerciseDimensionsSupported, exerciseDimensions, printedExerciseDimensions,
   onExerciseDimensionChange, exerciseDimensionIssue,
   boardsError, positionById, onFormationChange, onZoneChange, onPlayerMove,
@@ -417,13 +418,13 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
                 canEdit={canEdit && !busy && !boardsError && frozen}
                 onFormationChange={onFormationChange} onPlayerMove={onPlayerMove}
                 onFixDefault={boardV11Enabled ? () => onFixBoardDefault('players') : null}
-                defaultButtonDisabled={boardDefaultBusy} />
+                defaultButtonReason={playerDefaultBlockReason} />
               <SessionSpaceDistribution zones={distribution.space_zones} slots={editor.slots}
                 canEdit={canEdit && !busy && !boardsError && Boolean(editor.id)}
                 onZoneChange={onZoneChange} fieldDimensions={boardV11Enabled ? fieldDimensions : null}
                 onFieldDimensionsChange={onFieldDimensionsChange} onZoneMetresChange={onZoneMetresChange}
                 onFixDefault={boardV11Enabled ? () => onFixBoardDefault('field') : null}
-                defaultButtonDisabled={boardDefaultBusy} />
+                defaultButtonReason={fieldDefaultBlockReason} />
               <div className="planned-sheet-cover-activation">
                 {sheet.coverOverflow
                   ? <div className="planned-sheet-activation-reference">ACTIVACIÓN · ejercicio en la hoja siguiente</div>

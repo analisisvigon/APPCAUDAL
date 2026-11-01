@@ -8,9 +8,19 @@ import { loadPlannedDistribution, loadPlannedSpecificPositions,
   savePlannedDistribution, savePlannedSessionValue } from '../data/plannedSessionsStore.js';
 import { fieldIsMeasured, metresFromZone, seededPlayerLayout, taskZoneMetres,
   zoneFromMetres, normalizeExerciseDimensions, exerciseDimensionsKey,
-  exerciseDimensionsPayload } from './plannedSessionFieldScale.js';
+  exerciseDimensionsPayload, sameFieldDimensions, boardDefaultBlockReason } from './plannedSessionFieldScale.js';
 
 const field = { length_m: 105, width_m: 68 };
+assert.equal(sameFieldDimensions({ length_m: '105', width_m: '68.00' }, field), true);
+const defaultSource = { sessionId: 'session', canEdit: true, busy: false, conflict: false,
+  creationUncertain: false, boardsError: '', rosterCount: 24, formationKey: '4-3-3',
+  playerCount: 24, playerSourceSaved: true, fieldDimensions: field, fieldSourceSaved: true };
+assert.equal(boardDefaultBlockReason('players', defaultSource), '');
+assert.equal(boardDefaultBlockReason('field', defaultSource), '');
+assert.match(boardDefaultBlockReason('players', { ...defaultSource, playerSourceSaved: false }), /Guarda primero/);
+assert.match(boardDefaultBlockReason('field', { ...defaultSource, fieldSourceSaved: false }), /Guardar dimensiones/);
+assert.match(boardDefaultBlockReason('players', { ...defaultSource, rosterCount: 0 }), /Congela/);
+assert.match(boardDefaultBlockReason('field', { ...defaultSource, conflict: true }), /Recarga/);
 const proposedZone = { slot_id: 'exercise-1', x: 80, y: 80, w: 24, h: 18,
   color: 'blue', provisional: true };
 const scaledZone = zoneFromMetres(proposedZone, field, { length_m: 30, width_m: 20 });
