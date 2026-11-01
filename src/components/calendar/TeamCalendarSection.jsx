@@ -9,7 +9,7 @@ import { clampMicrocycleDate, microcycleRangeLabel, seasonMicrocycleForDate, sea
 import { microcycleDayIntensity, plannedMicrocycleMinutes } from '../../utils/microcyclePresentation.js';
 import { plannedMdReferences } from '../../utils/microcycleMatchDays.js';
 import { loadMicrocyclePhysicalLoads } from '../../data/microcyclePhysicalLoads.js';
-import { loadMicrocycleCollectiveRecovery, MICROCYCLE_RECOVERY_4D_ENABLED } from '../../data/microcycleCollectiveRecovery.js';
+import { loadMicrocycleCollectiveRecovery } from '../../data/microcycleCollectiveRecovery.js';
 import MicrocyclePlanningPreview from './MicrocyclePlanningPreview.jsx';
 import MicrocycleCopyDialog from './MicrocycleCopyDialog.jsx';
 import MicrocyclePhysicalLoadChart from './MicrocyclePhysicalLoadChart.jsx';
@@ -140,7 +140,7 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
   onSavePlan, onReloadPlan, onCopyPlan, onOpenPerformance,
   sessionStatusVerified = true, copyAvailable = false, mdReferences = new Map(),
   mdLoading = false, mdError = false, showPhysical = false, physicalRows = [], physicalLoading = false,
-  physicalError = '', recoveryEnabled = false, recoveryRows = [], recoveryLoading = false,
+  physicalError = '', recoveryRows = [], recoveryLoading = false,
   recoveryError = '' }) {
   const [editDayRequest, setEditDayRequest] = useState(0);
   const [editWeekRequest, setEditWeekRequest] = useState(0);
@@ -195,7 +195,7 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
       {planDraft || summary.matches > 0 ? <div className="mt-4"><WeeklyIntensityChart days={days} dailyPlan={dailyPlan} grouped={grouped} /></div> : null}
       {showPhysical ? <div className="mt-4"><MicrocyclePhysicalLoadChart days={days} rows={physicalRows}
         loading={physicalLoading} error={physicalError} /></div> : null}
-      {showPhysical && recoveryEnabled ? <div className="mt-3"><MicrocycleCollectiveRecoveryChart
+      {showPhysical ? <div className="mt-3"><MicrocycleCollectiveRecoveryChart
         days={days} rows={recoveryRows} loading={recoveryLoading} error={recoveryError} /></div> : null}
     </section>
     <div ref={editorRef}><MicrocyclePlanningPreview key={days[0]} days={days} selectedDay={selectedDay}
@@ -466,7 +466,7 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
     const key = `${contextId}:${monday}`;
     setRecoveryRows([]); setRecoveryError(''); setRecoveryLoadedKey('');
     setRecoveryLoading(false);
-    if (!MICROCYCLE_RECOVERY_4D_ENABLED || mode !== 'microcycles' || view !== 'week'
+    if (mode !== 'microcycles' || view !== 'week'
       || !contextId || !validWeek) return () => { signal.cancelled = true; };
     setRecoveryLoading(true);
     loadMicrocycleCollectiveRecovery(client, contextId, weekDays).then((rows) => {
@@ -765,7 +765,6 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
         physicalRows={physicalLoadedKey === physicalScopeKey ? physicalRows : []}
         physicalLoading={physicalLoading || physicalLoadedKey !== physicalScopeKey}
         physicalError={physicalLoadedKey === physicalScopeKey ? physicalError : ''}
-        recoveryEnabled={MICROCYCLE_RECOVERY_4D_ENABLED}
         recoveryRows={recoveryLoadedKey === physicalScopeKey ? recoveryRows : []}
         recoveryLoading={recoveryLoading || recoveryLoadedKey !== physicalScopeKey}
         recoveryError={recoveryLoadedKey === physicalScopeKey ? recoveryError : ''}

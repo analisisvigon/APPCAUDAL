@@ -1,4 +1,4 @@
-export const BOARD_V11_ENABLED = import.meta.env?.VITE_PLANNED_BOARD_V11_ENABLED === 'true';
+export const BOARD_V11_ENABLED = true;
 
 export const validMetres = (value) => value !== '' && value != null &&
   Number.isFinite(Number(value)) && Number(value) > 0 && Number(value) <= 500 &&

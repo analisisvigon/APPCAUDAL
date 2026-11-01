@@ -13,27 +13,26 @@ rows[1] = { ...rows[1], wellness_average: '0', wellness_responses: 5,
   wellness_state: 'available' };
 const calls = [];
 const client = { async rpc(name, args) { calls.push([name, args]); return { data: rows, error: null }; } };
-assert.deepEqual(await loadMicrocycleCollectiveRecovery(client, 'cts-almadina', days, true), rows);
+assert.deepEqual(await loadMicrocycleCollectiveRecovery(client, 'cts-almadina', days), rows);
 assert.deepEqual(calls, [['get_microcycle_collective_recovery_4d', {
   p_club_team_season_id: 'cts-almadina', p_week_starts_on: days[0],
 }]]);
-await assert.rejects(loadMicrocycleCollectiveRecovery(client, 'cts-almadina', days), /no está activada/);
-await assert.rejects(loadMicrocycleCollectiveRecovery(client, '', days, true), /equipo/);
-await assert.rejects(loadMicrocycleCollectiveRecovery(client, 'cts', days.slice(1), true), /semana/);
+await assert.rejects(loadMicrocycleCollectiveRecovery(client, '', days), /equipo/);
+await assert.rejects(loadMicrocycleCollectiveRecovery(client, 'cts', days.slice(1)), /semana/);
 await assert.rejects(loadMicrocycleCollectiveRecovery({ rpc: async () => ({ data: rows.slice(1) }) },
-  'cts', days, true), /semana completa/);
+  'cts', days), /semana completa/);
 await assert.rejects(loadMicrocycleCollectiveRecovery({ rpc: async () => ({ data: [
   { ...rows[0], day_date: '2026-10-19' }, ...rows.slice(1),
-] }) }, 'cts', days, true), /incompatibles/);
+] }) }, 'cts', days), /incompatibles/);
 await assert.rejects(loadMicrocycleCollectiveRecovery({ rpc: async () => ({ data: [
   { ...rows[0], jugador_id: 'private' }, ...rows.slice(1),
-] }) }, 'cts', days, true), /incompatibles/);
+] }) }, 'cts', days), /incompatibles/);
 await assert.rejects(loadMicrocycleCollectiveRecovery({ rpc: async () => ({ data: [
   { ...rows[0], rpe_state: 'below_threshold', rpe_average: 7.5 }, ...rows.slice(1),
-] }) }, 'cts', days, true), /privacidad/);
+] }) }, 'cts', days), /privacidad/);
 await assert.rejects(loadMicrocycleCollectiveRecovery({ rpc: async () => ({ data: [
   { ...rows[0], rpe_responses: 4 }, ...rows.slice(1),
-] }) }, 'cts', days, true), /privacidad/);
+] }) }, 'cts', days), /privacidad/);
 await assert.rejects(loadMicrocycleCollectiveRecovery({ rpc: async () => ({ error: new Error('denegado') }) },
-  'cts', days, true), /denegado/);
-console.log('microcycleCollectiveRecovery: contrato, privacidad y bloqueo previo OK');
+  'cts', days), /denegado/);
+console.log('microcycleCollectiveRecovery: contrato, privacidad y RPC activada por defecto OK');
