@@ -29,6 +29,9 @@ assert.equal(events[0].title, 'Sesión nº 12');
 assert.equal(events[0].time, '');
 assert.equal(events[0].contextId, 'cts-old');
 assert.equal(events[1].crest, '/rival-a.png');
+assert.equal(buildTeamCalendarEvents([], [{ ...matches[0], competitionId: 'competition-1' }], [],
+  [{ id: 'competition-1', label: 'Liga Sub-23' }])[0].label, 'Liga Sub-23',
+  'el partido usa el nombre acreditado de su competición');
 assert.equal(events[1].time, '');
 assert.equal(events[2].title, 'Borrador de sesión');
 assert.equal(events[2].microcycle, 'MD-3');

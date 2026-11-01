@@ -54,9 +54,24 @@ export const loadPlannedContexts = async (client, clubId) => {
   }).sort((a, b) => b.starts_on.localeCompare(a.starts_on) || a.team_name.localeCompare(b.team_name));
 };
 
-export const listPlannedSessions = async (client, clubTeamSeasonId) => {
+export const checkPlannedMicrocycleV4 = async (client) => {
+  const result = await client.from('planned_training_sessions').select('mc_number').limit(0);
+  if (!result.error) return true;
+  if (['42703', 'PGRST204', 'PGRST205'].includes(result.error.code)) return false;
+  throw result.error;
+};
+
+export const savePlannedSessionMcV4 = async (client, sessionId, revision, number) => {
+  if (number !== null && (!Number.isInteger(number) || number < 1 || number > 9999))
+    throw new Error('El número MC debe estar entre 1 y 9999.');
+  return unwrap(await client.rpc('save_planned_session_mc_v4', {
+    p_session_id: sessionId, p_expected_revision: revision, p_mc_number: number,
+  }));
+};
+
+export const listPlannedSessions = async (client, clubTeamSeasonId, withMcV4 = false) => {
   let query = client.from('planned_training_sessions')
-    .select(`id,club_team_season_id,session_date,starts_at,planning_state,session_number,revision,morphology_pattern,objectives${SESSION_RETIREMENT_BACKEND_VERIFIED ? ',cancelled_at' : ''}`)
+    .select(`id,club_team_season_id,session_date,starts_at,planning_state,session_number,revision,morphology_pattern,objectives${withMcV4 ? ',mc_number' : ''}${SESSION_RETIREMENT_BACKEND_VERIFIED ? ',cancelled_at' : ''}`)
     .eq('club_team_season_id', clubTeamSeasonId);
   if (SESSION_RETIREMENT_BACKEND_VERIFIED) query = query.is('retired_at', null);
   const sessions = unwrap(await query.order('session_date', { ascending: false })) || [];

@@ -33500,7 +33500,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
         {activeTab === 'Calendario' ? (
           <TeamCalendarSection mode="calendar" client={supabase} clubId={identity?.membership?.club_id || ''}
             membership={identity?.membership} preferredContextId={selectedCtsId}
-            matches={matches} teams={teams} onRefreshMatches={loadPartidos}
+            matches={matches} teams={teams} competitions={competitions} onRefreshMatches={loadPartidos}
             onOpenSession={(target) => {
               setCalendarSessionTarget(target);
               setActiveTab('Sesiones');
@@ -33516,7 +33516,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             initialMicrocycleRequest={microcycleRequest} onDirtyChange={setMicrocyclesDirty}
             client={supabase} clubId={identity?.membership?.club_id || ''}
             membership={identity?.membership} preferredContextId={microcycleRequest?.contextId || selectedCtsId}
-            matches={matches} teams={teams} onRefreshMatches={loadPartidos}
+            matches={matches} teams={teams} competitions={competitions} onRefreshMatches={loadPartidos}
             onOpenSession={(target) => { setCalendarSessionTarget(target); setActiveTab('Sesiones'); }}
             onOpenMatch={(match) => { setActiveTab('Partidos'); openMatchPage(match, 'PRE'); }}
             onOpenPerformance={() => setActiveTab('Rendimiento')} />

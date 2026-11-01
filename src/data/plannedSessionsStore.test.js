@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import {
   confirmPlannedSession,
   createPlannedDraft,
+  checkPlannedMicrocycleV4,
   loadPlannedContexts,
   listPlannedSessions,
   listPlannedLocations,
   listPlannedOpponents,
   savePlannedSession,
+  savePlannedSessionMcV4,
   SESSION_RETIREMENT_BACKEND_VERIFIED,
   changePlannedSessionLifecycle,
   savePlannedDistributionV12,
@@ -34,6 +36,7 @@ const client = {
       eq(column, value) { equalFilters.push([table, column, value]); return this; },
       in() { return this; },
       order() { return this; },
+      limit() { return this; },
       then(resolve) { resolve({ data: rows[table], error: null }); },
     };
     return query;
@@ -52,6 +55,7 @@ rows.equipos_rivales[0].name = 'Almadina SC';
 assert.equal((await loadPlannedContexts(client, 'club-id'))[0].team_name, 'Al-Madina SC');
 rows.equipos_rivales[0].name = 'C.D. Caudal';
 assert.equal(contexts[0].label, '2026/2027');
+assert.equal(await checkPlannedMicrocycleV4(client), true);
 const listed = await listPlannedSessions(client, 'cts-id');
 assert.equal(SESSION_RETIREMENT_BACKEND_VERIFIED, false,
   'no consultar una columna de retirada antes de instalar y verificar el backend');
@@ -60,6 +64,10 @@ await assert.rejects(changePlannedSessionLifecycle(client, 'session-id', 2, 'ret
 assert.equal(listed[0].morphology_pattern, 'MD-3');
 assert.equal(listed[0].total_minutes, 15);
 assert.equal(listed[0].durationKnown, true);
+rows.planned_training_sessions[0].mc_number = 1;
+assert.equal((await listPlannedSessions(client, 'cts-id', true))[0].mc_number, 1);
+assert.ok(selects.some(([table, columns]) => table === 'planned_training_sessions' &&
+  columns.split(',').includes('mc_number')), 'el MC solo se consulta tras detectar V4');
 assert.ok(equalFilters.some(([table, column, value]) =>
   table === 'planned_training_sessions' && column === 'club_team_season_id' && value === 'cts-id'),
   'la lista usada por Sesiones y Calendario carga un único CTS');
@@ -87,6 +95,10 @@ assert.deepEqual(calls[0].args, {
   p_club_team_season_id: 'cts-id', p_session_date: '2026-10-18',
 });
 assert.deepEqual(calls[2].args, { p_session_id: 'session-id', p_expected_revision: 2 });
+assert.equal(await savePlannedSessionMcV4(client, 'session-id', 2, 1), 2);
+assert.deepEqual(calls.at(-1), { name: 'save_planned_session_mc_v4',
+  args: { p_session_id: 'session-id', p_expected_revision: 2, p_mc_number: 1 } });
+await assert.rejects(savePlannedSessionMcV4(client, 'session-id', 2, 0), /entre 1 y 9999/);
 const dimensions = [{ slot_id: 'slot-id', length_m: 30, width_m: 20 }];
 assert.equal(await savePlannedDistributionV12(client, 'session-id', 2,
   { formation_key: null, player_layout: [], space_zones: [] }, dimensions), 2);

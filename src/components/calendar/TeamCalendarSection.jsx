@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { listPlannedSessions, loadPlannedContexts, SESSION_RETIREMENT_BACKEND_VERIFIED } from '../../data/plannedSessionsStore.js';
+import { checkPlannedMicrocycleV4, listPlannedSessions, loadPlannedContexts, SESSION_RETIREMENT_BACKEND_VERIFIED } from '../../data/plannedSessionsStore.js';
 import { chooseCalendarContext, scopeCalendarMatches } from '../../utils/teamCalendarContext.js';
 import { MICROCYCLES_2B_BACKEND_VERIFIED, hydrateMicrocycleDraft,
   listSeasonMicrocyclePlans, loadMicrocycle2b, saveMicrocycle2b, verifyMicrocycleSave } from '../../data/microcycles2bStore.js';
 import { buildTeamCalendarEvents, calendarLocalDateKey, calendarMonthDays,
   calendarWeekDays, calendarWeekSummary, shiftCalendarWeek } from '../../utils/teamCalendar.js';
-import { clampMicrocycleDate, microcycleRangeLabel, seasonMicrocycleForDate, seasonMicrocycles } from '../../utils/microcycleIdentity.js';
-import { microcycleDayIntensity, plannedMicrocycleMinutes } from '../../utils/microcyclePresentation.js';
+import { assignedMicrocycles, clampMicrocycleDate, microcycleRangeLabel, seasonWeekForDate } from '../../utils/microcycleIdentity.js';
+import { getMatchStatus } from '../../utils/matchStatus.js';
+import { microcycleDayIntensity } from '../../utils/microcyclePresentation.js';
 import { plannedMdReferences } from '../../utils/microcycleMatchDays.js';
 import { loadMicrocyclePhysicalLoads } from '../../data/microcyclePhysicalLoads.js';
 import { loadMicrocycleCollectiveRecovery } from '../../data/microcycleCollectiveRecovery.js';
@@ -103,6 +104,7 @@ export function EventButton({ event, onOpen, variant = 'month' }) {
     <span className="min-w-0 flex-1 space-y-1">
       <span className="flex min-w-0 flex-wrap items-center gap-1.5">
         <strong className={`${isList ? 'text-sm' : 'text-xs'} min-w-0 font-black ${isMatch ? 'truncate' : 'whitespace-normal'}`} title={event.title}>{event.title}</strong>
+        {isMatch && variant === 'week' ? <span className="rounded-md border border-fuchsia-200/40 px-1.5 py-0.5 text-[10px] font-black text-fuchsia-100">MD</span> : null}
         {!isMatch && event.cancelled ? <span className="rounded-md border border-amber-300/60 px-1.5 py-0.5 text-[10px] font-black text-amber-100">ANULADA</span> : null}
         {!isMatch && event.microcycle ? <span className="shrink-0 rounded-md border border-sky-300/45 bg-sky-300/20 px-1.5 py-0.5 text-[11px] font-black leading-none text-sky-50">{event.microcycle}</span> : null}
       </span>
@@ -150,7 +152,6 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
   const planDraft = plan && !planLoading && !planError ? hydrateMicrocycleDraft(plan, days) : null;
   const dailyPlan = planDraft?.days || {};
   const plannedCount = days.filter((key) => hasDailyPlan(dailyPlan[key])).length;
-  const plannedMinutes = plannedMicrocycleMinutes(days, dailyPlan);
   const openEditor = (request) => {
     request();
     requestAnimationFrame(() => editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -183,20 +184,17 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
           {planDraft ? 'Editar planificación' : 'Planificar semana'}</button> : null}
       </div>
       <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {[['Días planificados', `${plannedCount} / 7`],
+        {[['Días de actividad', `${summary.activeDays} / 7`],
           ['Entrenamientos', String(summary.sessions)], ['Partidos', String(summary.matches)],
-          ['Minutos previstos', plannedMinutes ? `${plannedMinutes} min` : '—']].map(([label, value]) =>
+          ['Minutos de sesiones', summary.durationCoverage === 'none' ? '—'
+            : `${summary.durationMinutes} min${summary.durationCoverage === 'partial' ? ' · parcial' : ''}`]].map(([label, value]) =>
           <div key={label} className="rounded-xl border border-white/[0.07] bg-black/10 px-3 py-2">
             <span className="block text-[10px] uppercase tracking-wide text-slate-500">{label}</span>
             <strong className="mt-1 block text-base tabular-nums text-white">{value}</strong>
           </div>)}
       </div>
       {!sessionStatusVerified ? <p className="mt-2 text-[10px] text-slate-500">Las sesiones mostradas son visibles; su ciclo de vida aún no está verificado en esta vista.</p> : null}
-      {planDraft || summary.matches > 0 ? <div className="mt-4"><WeeklyIntensityChart days={days} dailyPlan={dailyPlan} grouped={grouped} /></div> : null}
-      {showPhysical ? <div className="mt-4"><MicrocyclePhysicalLoadChart days={days} rows={physicalRows}
-        loading={physicalLoading} error={physicalError} /></div> : null}
-      {showPhysical ? <div className="mt-3"><MicrocycleCollectiveRecoveryChart
-        days={days} rows={recoveryRows} loading={recoveryLoading} error={recoveryError} /></div> : null}
+      <div className="mt-4"><WeeklyIntensityChart days={days} dailyPlan={dailyPlan} grouped={grouped} /></div>
     </section>
     <div ref={editorRef}><MicrocyclePlanningPreview key={days[0]} days={days} selectedDay={selectedDay}
       onSelectDay={onSelectDay} onEditingChange={onPreviewEditingChange}
@@ -210,17 +208,10 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
       <button type="button" onClick={onCopyPlan} disabled={!copyAvailable}
         className="min-h-10 rounded-lg border border-sky-300/35 px-3 py-2 text-xs font-bold text-sky-100 disabled:opacity-50">
         Copiar planificación</button>
-      <button type="button" disabled title="Pendiente de integrar y verificar el flujo de plantillas en la interfaz"
-        className="min-h-10 rounded-lg border border-white/15 px-3 py-2 text-xs text-slate-400 opacity-50">
-        Guardar como plantilla</button>
-      <button type="button" disabled title="Pendiente de integrar y verificar el flujo de plantillas en la interfaz"
-        className="min-h-10 rounded-lg border border-white/15 px-3 py-2 text-xs text-slate-400 opacity-50">
-        Utilizar plantilla</button>
-      <span className="text-[11px] text-slate-500">Plantillas pendientes de integración en esta interfaz.</span>
       </div>
     </details>
     {!loading && !error ? <>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         {days.map((key) => {
           const rows = grouped.get(key) || [];
           const orderedRows = [...rows].sort((left, right) => Number(left.kind === 'training') - Number(right.kind === 'training'));
@@ -230,7 +221,7 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
           const displayIntensity = microcycleDayIntensity(planned, rows.some((event) => event.kind !== 'training'));
           return <article key={key} className={`min-w-0 rounded-2xl border p-3 ${key === today
             ? 'ring-1 ring-sky-300/60 ' : ''}${plannedDayTone(planned, rows)}`}>
-            <button type="button" onClick={() => onSelectDay(key)} aria-pressed={chosenDay === key}
+            <button type="button" onClick={() => canWritePlan ? editDay(key) : onSelectDay(key)} aria-pressed={chosenDay === key}
               className={`mb-3 flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${chosenDay === key ? 'bg-sky-400/15 text-white' : 'text-slate-200'}`}
               aria-label={`Ver detalle del ${dateLabel(key)}`}>
               <span className="text-xs font-black uppercase tracking-wide">{day.toLocaleDateString('es-ES', { weekday: 'long' })}</span>
@@ -277,6 +268,10 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
         Seguimiento físico
       </summary>
       <div className="mt-4 space-y-3 text-sm text-slate-300">
+        {showPhysical ? <MicrocyclePhysicalLoadChart days={days} rows={physicalRows}
+          loading={physicalLoading} error={physicalError} /> : null}
+        {showPhysical ? <MicrocycleCollectiveRecoveryChart days={days} rows={recoveryRows}
+          loading={recoveryLoading} error={recoveryError} /> : null}
         <p>{showPhysical
           ? 'Consulta las cargas vinculadas a este equipo y temporada en los gráficos superiores. Los registros históricos sin CTS permanecen separados en Rendimiento.'
           : 'Los datos físicos todavía no están vinculados a este equipo y temporada. Consúltalos en Rendimiento sin atribuirlos a este microciclo.'}</p>
@@ -290,7 +285,7 @@ export function CalendarWeekView({ days, grouped, events, selectedDay, onSelectD
 }
 
 export default function TeamCalendarSection({ client, clubId, membership, preferredContextId,
-  matches, teams, onRefreshMatches, onOpenSession, onOpenMatch, onOpenPerformance,
+  matches, teams, competitions = [], onRefreshMatches, onOpenSession, onOpenMatch, onOpenPerformance,
   onOpenMicrocycle, onDirtyChange, mode = 'calendar', initialMicrocycleRequest = null }) {
   const [month, setMonth] = useState(() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); });
   const [weekAnchor, setWeekAnchor] = useState(() => initialMicrocycleRequest?.date || calendarLocalDateKey());
@@ -323,12 +318,15 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
   const [recoveryError, setRecoveryError] = useState('');
   const [recoveryLoadedKey, setRecoveryLoadedKey] = useState('');
   const [seasonPlans, setSeasonPlans] = useState([]);
+  const [mcV4Supported, setMcV4Supported] = useState(false);
+  const [legacyWeekSelected, setLegacyWeekSelected] = useState(false);
   const [seasonPlansError, setSeasonPlansError] = useState('');
   const [overviewVersion, setOverviewVersion] = useState(0);
   const [copyOpen, setCopyOpen] = useState(false);
   const [allWeeksOpen, setAllWeeksOpen] = useState(false);
   const [weekSearch, setWeekSearch] = useState('');
   const planSaveRef = useRef(false);
+  const initialMcContextRef = useRef('');
   const sessionLoadSeq = useRef(0);
   const matchLoadSeq = useRef(0);
   const [loading, setLoading] = useState(true);
@@ -338,9 +336,16 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
   const selectedContext = contexts.find((row) => row.id === contextId) || null;
   const weekDays = useMemo(() => calendarWeekDays(weekAnchor), [weekAnchor]);
   const monday = weekDays[0];
-  const currentMicrocycle = seasonMicrocycleForDate(selectedContext,
+  const boundedWeek = seasonWeekForDate(selectedContext,
     monday < selectedContext?.starts_on ? selectedContext?.starts_on : monday);
-  const validWeek = currentMicrocycle?.monday === monday;
+  const validWeek = boundedWeek?.monday === monday;
+  const assigned = useMemo(() => {
+    if (!mcV4Supported || !contextId || !selectedContext) return { weeks: [], error: '' };
+    try { return { weeks: assignedMicrocycles(sessions, contextId, selectedContext), error: '' }; }
+    catch (cause) { return { weeks: [], error: cause.message }; }
+  }, [mcV4Supported, sessions, contextId, selectedContext]);
+  const seasonWeeks = assigned.weeks;
+  const currentMicrocycle = seasonWeeks.find((week) => week.monday === monday) || null;
   const planScopeRef = useRef('');
   planScopeRef.current = `${contextId}:${monday}`;
   const physicalScopeKey = `${contextId}:${monday}`;
@@ -349,7 +354,15 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
   const currentPlan = plan?.club_team_season_id === contextId && plan?.week_starts_on === monday ? plan : null;
   const planReady = loadedPlanKey === `${contextId}:${monday}:${planLoadVersion}`;
   const canWritePlan = verifiedWriteContextId === contextId && Boolean(contextId) &&
-    selectedContext?.status === 'open' && validWeek;
+    selectedContext?.status === 'open' && validWeek &&
+    (mode !== 'microcycles' || Boolean(currentMicrocycle || legacyWeekSelected));
+  useEffect(() => {
+    let cancelled = false;
+    checkPlannedMicrocycleV4(client).then((ready) => {
+      if (!cancelled) setMcV4Supported(ready);
+    }).catch(() => { if (!cancelled) setMcV4Supported(false); });
+    return () => { cancelled = true; };
+  }, [client]);
   useEffect(() => { onDirtyChange?.(previewEditing); }, [onDirtyChange, previewEditing]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   useEffect(() => {
@@ -402,14 +415,14 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
     const request = ++sessionLoadSeq.current;
     setLoading(true); setError('');
     try {
-      const rows = contextId ? await listPlannedSessions(client, contextId) : [];
+      const rows = contextId ? await listPlannedSessions(client, contextId, mcV4Supported) : [];
       if (!signal?.cancelled && request === sessionLoadSeq.current) setSessions(rows);
     } catch {
       if (!signal?.cancelled && request === sessionLoadSeq.current) {
         setSessions([]); setError('No se pudieron cargar las sesiones. Reintenta la actualización.');
       }
     } finally { if (!signal?.cancelled && request === sessionLoadSeq.current) setLoading(false); }
-  }, [client, contextId]);
+  }, [client, contextId, mcV4Supported]);
   useEffect(() => {
     const signal = { cancelled: false };
     refresh(signal);
@@ -525,21 +538,35 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
       if (request === matchLoadSeq.current) setMatchesLoading(false);
     })]);
   };
-  const scopedMatches = useMemo(() => scopeCalendarMatches(matches, contextId), [matches, contextId]);
+  const scopedMatches = useMemo(() => scopeCalendarMatches(matches, contextId)
+    .filter((match) => mode !== 'microcycles' ||
+      !['cancelled', 'postponed', 'suspended'].includes(getMatchStatus(match))),
+  [matches, contextId, mode]);
   const mdReferences = useMemo(() => mode === 'microcycles' && selectedContext && !matchError && !matchesLoading
     ? plannedMdReferences(weekDays, scopedMatches, contextId, selectedContext) : new Map(),
   [mode, selectedContext, matchError, matchesLoading, weekDays, scopedMatches, contextId]);
-  const allEvents = useMemo(() => buildTeamCalendarEvents(error ? [] : sessions, matchError ? [] : scopedMatches, teams),
-    [sessions, scopedMatches, teams, error, matchError]);
-  const events = useMemo(() => allEvents.filter((event) => enabled[event.kind]), [allEvents, enabled]);
+  const allEvents = useMemo(() => buildTeamCalendarEvents(error ? [] : sessions, matchError ? [] : scopedMatches, teams, competitions),
+    [sessions, scopedMatches, teams, competitions, error, matchError]);
+  const events = useMemo(() => allEvents.filter((event) => mode === 'microcycles'
+    ? event.kind !== 'training' || (currentMicrocycle
+      ? event.mcNumber === currentMicrocycle.number : legacyWeekSelected && event.mcNumber == null)
+    : enabled[event.kind]), [allEvents, enabled, mode, currentMicrocycle, legacyWeekSelected]);
   const grouped = useMemo(() => {
     const byDate = new Map();
     for (const event of events) byDate.set(event.date, [...(byDate.get(event.date) || []), event]);
     return byDate;
   }, [events]);
   const days = useMemo(() => calendarMonthDays(month.getFullYear(), month.getMonth()), [month]);
-  const seasonWeeks = useMemo(() => seasonMicrocycles(selectedContext), [selectedContext]);
   const selectedWeekIndex = seasonWeeks.findIndex((week) => week.monday === monday);
+  useEffect(() => {
+    if (mode !== 'microcycles' || !mcV4Supported || !contextId || !seasonWeeks.length ||
+        initialMcContextRef.current === contextId) return;
+    initialMcContextRef.current = contextId;
+    const requested = initialMicrocycleRequest?.contextId === contextId ? initialMicrocycleRequest.date : '';
+    const target = seasonWeeks.find((week) => week.days.includes(requested)) ||
+      seasonWeeks.find((week) => week.days.includes(calendarLocalDateKey())) || seasonWeeks.at(-1);
+    setWeekAnchor(target.monday); setSelectedWeekDay(''); setLegacyWeekSelected(false);
+  }, [mode, mcV4Supported, contextId, seasonWeeks.length, initialMicrocycleRequest?.date]);
   const nearbyWeeks = seasonWeeks.slice(Math.max(0, Math.min(selectedWeekIndex - 2, seasonWeeks.length - 5)),
     Math.max(0, Math.min(selectedWeekIndex - 2, seasonWeeks.length - 5)) + 5);
   const matchingWeeks = seasonWeeks.filter((week) => !weekSearch.trim() ||
@@ -547,6 +574,8 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
   const planByMonday = useMemo(() => new Map(seasonPlans
     .filter((row) => row.club_team_season_id === contextId)
     .map((row) => [row.week_starts_on, row])), [seasonPlans, contextId]);
+  const legacyPlans = seasonPlans.filter((row) => row.club_team_season_id === contextId &&
+    !seasonWeeks.some((week) => week.monday === row.week_starts_on));
   const now = new Date();
   const today = calendarLocalDateKey(now);
   const moveMonth = (step) => { setSelectedDay(''); setMonth((current) => new Date(current.getFullYear(), current.getMonth() + step, 1)); };
@@ -580,7 +609,11 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
   };
   const moveWeek = (step) => {
     if (!discardPreview()) return;
-    setSelectedWeekDay(''); setWeekAnchor((current) => shiftCalendarWeek(current, step));
+    setSelectedWeekDay('');
+    if (mode === 'microcycles') {
+      const target = seasonWeeks[selectedWeekIndex + step];
+      if (target) { setWeekAnchor(target.monday); setLegacyWeekSelected(false); }
+    } else setWeekAnchor((current) => shiftCalendarWeek(current, step));
   };
   const changeView = (next) => {
     if (view === 'week' && next !== 'week' && !discardPreview()) return;
@@ -601,7 +634,10 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
   const goToday = () => {
     if (view === 'week' && !discardPreview()) return;
     const target = mode === 'microcycles' ? clampMicrocycleDate(selectedContext, today) : today;
-    setSelectedDay(target); setSelectedWeekDay(target); setWeekAnchor(target);
+    const assignedTarget = mode === 'microcycles'
+      ? seasonWeeks.find((week) => week.days.includes(target)) || seasonWeeks.at(-1) : null;
+    setSelectedDay(target); setSelectedWeekDay(target); setWeekAnchor(assignedTarget?.monday || target);
+    if (assignedTarget) setLegacyWeekSelected(false);
     setMonth(new Date(now.getFullYear(), now.getMonth(), 1));
   };
   const changeContext = (nextId) => {
@@ -609,7 +645,7 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
     setContextId(nextId); setSessions([]); setPlan(null);
     if (mode === 'microcycles') {
       setWeekAnchor(clampMicrocycleDate(contexts.find((row) => row.id === nextId), today));
-      setSelectedWeekDay(''); setAllWeeksOpen(false); setWeekSearch('');
+      setSelectedWeekDay(''); setAllWeeksOpen(false); setWeekSearch(''); setLegacyWeekSelected(false);
     }
   };
   const openMicrocycleFromCalendar = (date) => {
@@ -619,6 +655,7 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
   const selectSeasonWeek = (week) => {
     if (!discardPreview()) return;
     setWeekAnchor(week.monday);
+    setLegacyWeekSelected(false);
     setSelectedWeekDay('');
     setAllWeeksOpen(false);
   };
@@ -639,8 +676,10 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
         <div>
           <p className="text-[11px] font-black uppercase tracking-[0.24em] text-sky-300">NEXO CLUB · PLANIFICACIÓN</p>
           <h2 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl">
-            {validWeek ? `MICROCICLO ${String(currentMicrocycle.number).padStart(2, '0')}` : 'MICROCICLOS'}</h2>
-          {validWeek ? <p className="mt-1 text-sm capitalize text-slate-300">{microcycleRangeLabel(currentMicrocycle, true)}</p> : null}
+            {currentMicrocycle ? currentMicrocycle.label.toUpperCase()
+              : legacyWeekSelected ? 'PLANIFICACIÓN SIN MC' : 'MICROCICLOS'}</h2>
+          {currentMicrocycle || legacyWeekSelected ? <p className="mt-1 text-sm capitalize text-slate-300">
+            {microcycleRangeLabel(currentMicrocycle || boundedWeek, true)}</p> : null}
           {selectedContext ? <p className="mt-1 text-xs text-slate-400">{selectedContext.team_name} · Temporada {selectedContext.label}</p> : null}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -648,7 +687,7 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
             className="rounded-lg border border-white/15 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Anterior</button>
           <button type="button" onClick={() => moveWeek(1)} disabled={selectedWeekIndex < 0 || selectedWeekIndex >= seasonWeeks.length - 1 || planSaving}
             className="rounded-lg border border-white/15 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Siguiente</button>
-          <button type="button" onClick={goToday} disabled={!selectedContext || planSaving}
+          <button type="button" onClick={goToday} disabled={!seasonWeeks.length || planSaving}
             className="rounded-lg border border-sky-300/40 px-3 py-2 text-xs font-bold text-sky-100 disabled:opacity-40">Hoy</button>
           <button type="button" onClick={() => setAllWeeksOpen((value) => !value)} disabled={!seasonWeeks.length}
             aria-expanded={allWeeksOpen} className="rounded-lg border border-white/15 px-3 py-2 text-xs font-bold text-slate-200 disabled:opacity-40">Ver todas las semanas</button>
@@ -669,15 +708,17 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
         {contexts.length ? 'Selecciona un contexto autorizado para consultar o planificar.' : 'No hay equipos-temporadas autorizados.'}</p> : null}
       {selectedContext?.status === 'closed' ? <p className="mt-2 text-xs text-amber-200">Temporada cerrada: consulta únicamente.</p> : null}
       {permissionError ? <p role="alert" className="mt-2 text-xs text-red-200">{permissionError}</p> : null}
+      {mode === 'microcycles' && !mcV4Supported ? <p role="status" className="mt-2 text-xs text-amber-200">MC manual pendiente de instalar y verificar. La planificación anterior sigue disponible.</p> : null}
+      {assigned.error ? <p role="alert" className="mt-2 text-xs text-red-200">{assigned.error}</p> : null}
     </section>
     {mode === 'microcycles' && selectedContext ? <section className="rounded-2xl border border-white/10 bg-[#0b1a2d]/85 p-3 sm:p-4" aria-label="Microciclos de la temporada">
       {seasonPlansError ? <p role="alert" className="mt-2 text-sm text-red-200">{seasonPlansError}</p> : null}
-      <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Semanas próximas">
+      <div className="flex flex-wrap gap-2 pb-1" aria-label="Microciclos existentes">
         {nearbyWeeks.map((week) => {
           const planRow = planByMonday.get(week.monday);
           return <button key={week.monday} type="button" onClick={() => selectSeasonWeek(week)}
             aria-current={week.monday === monday ? 'date' : undefined}
-            className={`min-w-32 flex-1 rounded-xl border px-3 py-2 text-left transition hover:bg-white/10 ${week.monday === monday
+            className={`min-w-28 rounded-xl border px-3 py-2 text-left transition hover:bg-white/10 ${week.monday === monday
               ? 'border-sky-300/70 bg-sky-300/15' : 'border-white/10 bg-white/[0.025]'}`}>
             <strong className="block text-xs text-white">{week.label}</strong>
             <span className="mt-0.5 block whitespace-nowrap text-[11px] text-slate-400">{microcycleRangeLabel(week)}</span>
@@ -685,7 +726,7 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
           </button>;
         })}
       </div>
-      {allWeeksOpen ? <div className="mt-3 rounded-xl border border-white/10 bg-[#091428] p-3" aria-label="Todas las semanas">
+      {allWeeksOpen ? <div className="mt-3 rounded-xl border border-white/10 bg-[#091428] p-3" aria-label="Todos los MC">
         <label className="text-xs text-slate-300">Buscar número de MC
           <input type="search" inputMode="numeric" value={weekSearch} onChange={(event) => setWeekSearch(event.target.value)}
             className="mt-1 block w-full max-w-xs rounded-lg border border-white/20 bg-[#0b1a2d] px-3 py-2 text-sm text-white" placeholder="Por ejemplo, 18" /></label>
@@ -697,6 +738,13 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
         </div>
         {!matchingWeeks.length ? <p className="mt-2 text-xs text-slate-400">Ningún microciclo coincide.</p> : null}
       </div> : null}
+      {legacyPlans.length ? <details className="mt-3 rounded-lg border border-white/10 px-3 py-2">
+        <summary className="cursor-pointer text-xs font-semibold text-slate-300">Planificaciones anteriores sin MC · {legacyPlans.length}</summary>
+        <div className="mt-2 flex flex-wrap gap-2">{legacyPlans.map((row) => <button key={row.id} type="button"
+          onClick={() => { if (discardPreview()) { setWeekAnchor(row.week_starts_on); setLegacyWeekSelected(true); } }}
+          className="rounded-lg border border-white/15 px-3 py-2 text-xs text-slate-200">
+          Semana del {row.week_starts_on}</button>)}</div>
+      </details> : null}
     </section> : null}
     <section className="rounded-[1.35rem] border border-white/10 bg-[#0b1a2d]/85 p-3 sm:p-5">
       {mode === 'calendar' ? <div className="flex flex-wrap items-center justify-between gap-3">
@@ -717,9 +765,9 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
         className="mt-3 min-h-10 rounded-xl border border-sky-300/35 px-3 py-2 text-xs font-bold text-sky-100 hover:bg-sky-300/10">
         Abrir microciclo de {selectedDay ? 'la fecha seleccionada' : 'esta semana'}
       </button> : null}
-      <div className="flex flex-wrap gap-2" aria-label="Filtros del calendario">
+      {mode === 'calendar' ? <div className="flex flex-wrap gap-2" aria-label="Filtros del calendario">
         {FILTERS.map(([key, label]) => <button key={key} type="button" onClick={() => setEnabled((current) => ({ ...current, [key]: !current[key] }))} aria-pressed={enabled[key]} className={`rounded-xl border px-3 py-1.5 text-xs font-bold ${enabled[key] ? tone[key] : 'border-white/10 bg-white/[0.035] text-slate-500'}`}>{label}</button>)}
-      </div>
+      </div> : null}
       {loading ? <p role="status" className="mt-4 text-sm text-slate-400">Cargando sesiones…</p> : null}
       {error ? <p role="alert" className="mt-4 rounded-xl border border-red-400/25 bg-red-400/10 p-3 text-sm text-red-100">{error}</p> : null}
       {matchError ? <p role="alert" className="mt-4 rounded-xl border border-red-400/25 bg-red-400/10 p-3 text-sm text-red-100">{matchError}</p> : null}
@@ -752,7 +800,12 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
           {contextId && onOpenMicrocycle ? <button type="button" onClick={() => openMicrocycleFromCalendar(key)}
             className="min-h-9 rounded-lg border border-sky-300/30 px-2 text-xs font-bold text-sky-100">Abrir microciclo</button> : null}</div>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{rows.map((event) => <EventButton key={`${event.kind}-${event.id}`} event={event} onOpen={open} variant="list" />)}</div>
-      </section>)}</div> : <CalendarWeekView key={`${contextId}:${monday}:${previewEpoch}`} days={weekDays} grouped={grouped} events={events}
+      </section>)}</div> : mode === 'microcycles' && !currentMicrocycle && !legacyWeekSelected
+        ? <div className="mt-4 rounded-2xl border border-sky-300/20 bg-sky-300/[0.06] p-6 text-center">
+          <p className="text-lg font-bold text-white">Todavía no hay un MC asignado</p>
+          <p className="mx-auto mt-2 max-w-xl text-sm text-slate-300">Abre Sesiones, crea o edita una sesión y selecciona MC 1. Al guardarla aparecerá aquí su semana, sin generar semanas vacías.</p>
+          {legacyPlans.length ? <p className="mt-2 text-xs text-slate-400">Las planificaciones anteriores siguen accesibles en «Planificaciones anteriores sin MC».</p> : null}
+        </div> : <CalendarWeekView key={`${contextId}:${monday}:${previewEpoch}`} days={weekDays} grouped={grouped} events={events}
         selectedDay={selectedWeekDay} onSelectDay={setSelectedWeekDay} onOpen={open}
         today={today} loading={loading} error={Boolean(error || matchError)}
         onPreviewEditingChange={setPreviewEditing} plan={currentPlan}

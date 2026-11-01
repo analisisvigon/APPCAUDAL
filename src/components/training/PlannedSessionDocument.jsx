@@ -13,7 +13,6 @@ import PlannedSessionRoster from './PlannedSessionRoster';
 import { SessionPlayerDistribution, SessionSpaceDistribution } from './PlannedSessionDistributionBoards';
 import { sessionPlayerCounts } from '../../utils/plannedSessionPlayers';
 import { OWN_CLUB_IDENTITY, getOwnClubDisplayName } from '../../constants/clubIdentity';
-import { microcycleRangeLabel, seasonMicrocycleForDate } from '../../utils/microcycleIdentity';
 import './plannedSessionDocument.css';
 
 const PhaseName = ({ phase }) => PLANNED_PHASES.find((entry) => entry.key === phase)?.label || phase;
@@ -253,6 +252,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   onExerciseDimensionChange, exerciseDimensionIssue,
   boardsError, positionById, onFormationChange, onZoneChange, onPlayerMove,
   leagueLogoUrl, sessionValue, printedSessionValue, valueSupported, onValueChange,
+  mcNumber = '', printedMcNumber = '', mcEnabled = false, mcOptions = [], onMcChange,
   locationOptions = [], opponentOptions = [], suggestionsError = '' }) {
   const [zoom, setZoom] = useState(100);
   const [fitZoom, setFitZoom] = useState(100);
@@ -277,7 +277,6 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   }, [zoom]);
   const sheets = planPlannedSessionSheets(editor.slots);
   const printSheets = planPlannedSessionPrintSheets(editor.slots);
-  const sessionMicrocycle = seasonMicrocycleForDate(selected, editor.session_date);
   useEffect(() => {
     let frame = 0;
     const measure = () => {
@@ -366,9 +365,15 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
               <div className="planned-sheet-roster-metric"><b>Nº jugadores</b><span>{frozen ? playerCounts.participants : '—'}</span></div>
               {field('Periodo', editor.header.period_label, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, period_label: value } })), fieldIssue('period_label'))}
               <div className="planned-sheet-field planned-sheet-microcycle-pair">
-                <div><span>Microciclo</span><strong title="Calculado desde la fecha y el equipo-temporada">
-                  {sessionMicrocycle ? `${sessionMicrocycle.label} · ${microcycleRangeLabel(sessionMicrocycle)}` : 'Sin microciclo válido'}
-                </strong></div>
+                <label className="planned-sheet-microcycle"><span>Microciclo</span>
+                  <input type="number" min="1" max="9999" step="1" list="planned-session-mc-options"
+                    value={mcNumber} placeholder="Sin asignar"
+                    disabled={!canEdit || busy || !mcEnabled}
+                    onChange={(event) => onMcChange?.(event.target.value)} />
+                  <datalist id="planned-session-mc-options">{mcOptions.map((number) =>
+                    <option key={number} value={number} />)}</datalist>
+                  <span className="planned-sheet-microcycle-print" aria-hidden="true">{printedMcNumber ? `MC ${printedMcNumber}` : 'Sin asignar'}</span>
+                </label>
                 <label className="planned-sheet-microcycle">
                 <span>Día respecto al partido</span>
                 <select value={editor.header.morphology_pattern || ''}
@@ -472,6 +477,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
     </div>
     <p className="planned-document-note">Vista editorial de 03B. La exportación PDF definitiva y las zonas marcadas como pendientes no están activadas.</p>
     <PlannedSessionPrint editor={editor} selected={selected} pages={printSheets} printRef={printRef}
+      mcNumber={printedMcNumber}
       leagueLogoUrl={leagueLogoUrl} sessionValue={printedSessionValue}
       roster={frozen ? roster : []} availability={availability}
       distribution={printedSpaceDistribution || distribution}

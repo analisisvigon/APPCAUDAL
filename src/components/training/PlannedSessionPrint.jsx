@@ -7,7 +7,6 @@ import PlannedSessionRoster from './PlannedSessionRoster';
 import { SessionPlayerDistribution, SessionSpaceDistribution } from './PlannedSessionDistributionBoards';
 import { sessionPlayerCounts } from '../../utils/plannedSessionPlayers';
 import { OWN_CLUB_IDENTITY, getOwnClubDisplayName } from '../../constants/clubIdentity';
-import { microcycleRangeLabel, seasonMicrocycleForDate } from '../../utils/microcycleIdentity';
 import './plannedSessionPrint.css';
 
 const CAUDAL_TEAM_ID = '85a16f33-9fe5-44d4-b85d-37d73651ebf6';
@@ -82,9 +81,8 @@ function PrintExercise({ slot, number, dimensions }) {
 export function PlannedSessionPrintPages({ editor, selected, roster = [], availability = {},
   distribution = { formation_key: null, player_layout: [], space_zones: [] }, positionById = new Map(),
   playerDistribution = distribution, leagueLogoUrl = '', sessionValue = '', fieldDimensions = null,
-  exerciseDimensions = {},
+  exerciseDimensions = {}, mcNumber = '',
   pages = planPlannedSessionPrintSheets(editor.slots) }) {
-  const sessionMicrocycle = seasonMicrocycleForDate(selected, editor.session_date);
   const ordered = ['activation', 'main', 'cooldown'].flatMap((phase) => editor.slots.filter((slot) => slot.phase === phase));
   const numberOf = (id) => ordered.findIndex((slot) => slot.id === id) + 1;
   const counts = sessionPlayerCounts(roster, availability);
@@ -106,8 +104,7 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], availa
           <PrintField label="Nº jugadores">{roster.length ? counts.participants : '—'}</PrintField>
           <PrintField label="Periodo">{editor.header.period_label}</PrintField>
           <div className="planned-print-field planned-print-microcycle-pair">
-            <div><strong>Microciclo</strong><span>{sessionMicrocycle
-              ? `${sessionMicrocycle.label} · ${microcycleRangeLabel(sessionMicrocycle)}` : 'Sin microciclo válido'}</span></div>
+            <div><strong>Microciclo</strong><span>{mcNumber ? `MC ${mcNumber}` : 'Sin asignar'}</span></div>
             <div><strong>Día respecto al partido</strong><span>{plannedMicrocycleDisplay(editor.header.morphology_pattern)}</span></div>
           </div>
           <PrintField label="Rival">{editor.header.next_opponent_label}</PrintField>
@@ -147,7 +144,7 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], availa
 
 export default function PlannedSessionPrint({ editor, selected, pages, printRef, roster, availability,
   distribution, playerDistribution, positionById, leagueLogoUrl, sessionValue, fieldDimensions,
-  exerciseDimensions }) {
+  exerciseDimensions, mcNumber }) {
   if (typeof document === 'undefined') return null;
   return createPortal(<div className="planned-print-portal" ref={printRef}>
     <style media="print">{'@page { size: A4 landscape; margin: 0; }'}</style>
@@ -155,6 +152,6 @@ export default function PlannedSessionPrint({ editor, selected, pages, printRef,
       roster={roster} availability={availability} distribution={distribution}
       playerDistribution={playerDistribution}
       positionById={positionById} leagueLogoUrl={leagueLogoUrl} sessionValue={sessionValue}
-      fieldDimensions={fieldDimensions} exerciseDimensions={exerciseDimensions} />
+      fieldDimensions={fieldDimensions} exerciseDimensions={exerciseDimensions} mcNumber={mcNumber} />
   </div>, document.body);
 }

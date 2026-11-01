@@ -35,9 +35,11 @@ assert.equal(hydratePlannedEditor({ ...session, cancelled_at: '2026-10-26T10:00:
   '2026-10-26T10:00:00Z', 'la ficha y la impresión conservan la marca de anulación');
 assert.equal(original.cancelled_at, null, 'una sesión antigua sin columnas nuevas sigue siendo legible');
 assert.deepEqual(PLANNED_MICROCYCLE_OPTIONS.map(([value]) => value),
-  ['', 'MD+2', 'MD+1', 'MD', 'MD-5', 'MD-4', 'MD-3', 'MD-2', 'MD-1']);
+  ['', 'MD-7', 'MD-6', 'MD-5', 'MD-4', 'MD-3', 'MD-2', 'MD-1', 'MD',
+    'MD+1', 'MD+2', 'MD+3', 'MD+4', 'MD+5', 'MD+6', 'MD+7']);
 assert.equal(isPlannedMicrocycle('MD-3'), true);
-assert.equal(isPlannedMicrocycle('MD-6'), false);
+assert.equal(isPlannedMicrocycle('MD-6'), true);
+assert.equal(isPlannedMicrocycle('MD-8'), false);
 assert.equal(plannedMicrocycleDisplay('Patrón anterior'), 'Valor anterior: Patrón anterior');
 const legacy = hydratePlannedEditor({ ...session, morphology_pattern: 'Patrón anterior' }, slots, items);
 assert.equal(legacy.header.morphology_pattern, 'Patrón anterior');

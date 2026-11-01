@@ -248,7 +248,7 @@
   .planned-sheet-identity { min-height: 20mm; }
   .planned-sheet-cover-meta .planned-sheet-field { gap: 0; padding: 1mm; }
   .planned-sheet-cover-meta .planned-sheet-field input { min-height: 5mm; padding: 0; }
-  .planned-sheet-microcycle select { display: none !important; }
+  .planned-sheet-microcycle select, .planned-sheet-microcycle input, .planned-sheet-microcycle datalist { display: none !important; }
   .planned-sheet-microcycle .planned-sheet-microcycle-print { display: block !important; min-height: 5mm; font: 400 9pt Arial, Helvetica, sans-serif; }
   .planned-sheet-roster { min-height: 41mm; }
   .planned-sheet-cover-lower { min-height: 0; }

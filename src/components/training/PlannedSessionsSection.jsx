@@ -15,6 +15,7 @@ import {
 import {
   confirmPlannedSession,
   createPlannedDraft,
+  checkPlannedMicrocycleV4,
   listPlannedSessions,
   listPlannedLocations,
   listPlannedOpponents,
@@ -22,6 +23,7 @@ import {
   loadPlannedSession,
   listPlannedLibraryTasks,
   savePlannedSession,
+  savePlannedSessionMcV4,
   loadPlannedRosterCandidates,
   loadPlannedSessionPlayers,
   freezePlannedRoster,
@@ -42,6 +44,7 @@ import {
   changePlannedSessionLifecycle,
 } from '../../data/plannedSessionsStore';
 import { availabilityChanges, eligibleRosterCandidates, hasUncertainRosterDate } from '../../utils/plannedSessionPlayers';
+import { calendarWeekDays } from '../../utils/teamCalendar';
 import { autoPlayerLayout, distributionForSave, distributionPayloadKey, emptyDistribution, movePlayerBoardLayout, normalizeDistribution,
   reconcileSpaceZones, specificPositionMap, validateDistribution } from '../../utils/plannedSessionDistributions';
 import { parsePlannedSessionValue, readPlannedSessionValue } from '../../utils/plannedSessionValue';
@@ -126,6 +129,9 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [exerciseDimensionsBaseline, setExerciseDimensionsBaseline] = useState({});
   const [exerciseDimensionsLoadedFor, setExerciseDimensionsLoadedFor] = useState('');
   const [sessionValue, setSessionValue] = useState('');
+  const [mcV4Supported, setMcV4Supported] = useState(false);
+  const [mcNumber, setMcNumber] = useState('');
+  const [mcBaseline, setMcBaseline] = useState('');
   const [baselineSessionValue, setBaselineSessionValue] = useState('');
   const [valueSupported, setValueSupported] = useState(false);
   const selected = contexts.find((row) => row.id === contextId) || null;
@@ -150,8 +156,9 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const exerciseDimensionsDirty = Boolean(editor && v12Supported &&
     exerciseDimensionsKey(exerciseDimensions) !== exerciseDimensionsKey(exerciseDimensionsBaseline));
   const valueDirty = valueSupported && sessionValue !== baselineSessionValue;
+  const mcDirty = mcV4Supported && mcNumber !== mcBaseline;
   const dirty = editorDirty || availabilityDirty || selectionDirty || distributionDirty ||
-    fieldDirty || exerciseDimensionsDirty || valueDirty;
+    fieldDirty || exerciseDimensionsDirty || valueDirty || mcDirty;
   const boardDefaultSource = {
     sessionId: editor?.id, canEdit, busy: busy || operationRef.current,
     conflict, creationUncertain, boardsError, rosterCount: roster.length,
@@ -171,6 +178,9 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const onlyDateDirty = Boolean(dateNeedsReconciliation && baseline &&
     JSON.stringify({ ...editor, session_date: baseline.session_date }) === JSON.stringify(baseline));
   const proposed = eligibleRosterCandidates(candidates, editor?.session_date);
+  const assignedMcNumbers = [...new Set(sessions.map((row) => row.mc_number)
+    .filter((number) => Number.isInteger(number) && number > 0))].sort((a, b) => a - b);
+  const mcOptions = [...assignedMcNumbers, (assignedMcNumbers.at(-1) || 0) + 1];
   const storageKey = membership?.club_id && userId
     ? `appcaudal-planned-cts:${membership.club_id}:${userId}` : '';
 
@@ -186,8 +196,16 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setFieldBaseline({ length_m: '', width_m: '' });
     setExerciseDimensions({}); setExerciseDimensionsBaseline({}); setExerciseDimensionsLoadedFor('');
     setSessionValue(''); setBaselineSessionValue(''); setValueSupported(false);
+    setMcNumber(''); setMcBaseline('');
     setUnsupportedItems(false); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null); setContextId('');
   }, [membership?.club_id, userId]);
+  useEffect(() => {
+    let cancelled = false;
+    checkPlannedMicrocycleV4(client).then((ready) => {
+      if (!cancelled) setMcV4Supported(ready);
+    }).catch(() => { if (!cancelled) setMcV4Supported(false); });
+    return () => { cancelled = true; };
+  }, [client]);
   useEffect(() => {
     let cancelled = false;
     checkPlannedExerciseDimensionsV12(client).then((supported) => {
@@ -298,13 +316,13 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     if (!targetId) { setSessions([]); setSessionsLoadError(false); return; }
     setSessionsLoading(true);
     try {
-      setSessions(await listPlannedSessions(client, targetId));
+      setSessions(await listPlannedSessions(client, targetId, mcV4Supported));
       setSessionsLoadError(false);
     } catch (cause) {
       setSessionsLoadError(true);
       setError(`${errorKind(cause)}: no se pudieron cargar las sesiones. ${readError(cause)}`);
     } finally { setSessionsLoading(false); }
-  }, [client, contextId]);
+  }, [client, contextId, mcV4Supported]);
 
   useEffect(() => {
     if (!BOARD_V11_ENABLED || !contextId) { setBoardDefaults(null); setBoardDefaultsLoading(false); setBoardDefaultsContextId(''); return undefined; }
@@ -321,13 +339,13 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     let cancelled = false;
     if (!contextId) { setSessions([]); setSessionsLoadError(false); return undefined; }
     setSessionsLoading(true);
-    listPlannedSessions(client, contextId).then((rows) => {
+    listPlannedSessions(client, contextId, mcV4Supported).then((rows) => {
       if (!cancelled) { setSessions(rows); setSessionsLoadError(false); }
     }).catch((cause) => {
       if (!cancelled) { setSessionsLoadError(true); setError(`${errorKind(cause)}: no se pudieron cargar las sesiones. ${readError(cause)}`); }
     }).finally(() => { if (!cancelled) setSessionsLoading(false); });
     return () => { cancelled = true; };
-  }, [client, contextId]);
+  }, [client, contextId, mcV4Supported]);
 
   useEffect(() => {
     let cancelled = false;
@@ -368,6 +386,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setDistribution(null); setDistributionBaseline(null); setSessionSeedFormation(null); setSpecificPositions([]); setBoardsError('');
     setExerciseDimensions({}); setExerciseDimensionsBaseline({}); setExerciseDimensionsLoadedFor('');
     setSessionValue(''); setBaselineSessionValue(''); setValueSupported(false);
+    setMcNumber(''); setMcBaseline('');
     setContextId(nextId); setError(''); setNotice(''); setConflict(false); setCreationUncertain(false);
     try { if (storageKey) window.localStorage.setItem(storageKey, nextId); } catch { /* opcional */ }
   };
@@ -431,6 +450,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       setExerciseDimensions(nextExerciseDimensions); setExerciseDimensionsBaseline(nextExerciseDimensions);
       setExerciseDimensionsLoadedFor(v12Supported ? sessionId : '');
       setValueSupported(supportsValue); setSessionValue(loadedValue); setBaselineSessionValue(loadedValue);
+      setMcNumber(data.session.mc_number == null ? '' : String(data.session.mc_number));
+      setMcBaseline(data.session.mc_number == null ? '' : String(data.session.mc_number));
     } catch (cause) {
       setPlayersError(`${errorKind(cause)}: ${readError(cause)}`);
       setError(`${errorKind(cause)}: no se pudo abrir la sesión. ${readError(cause)}`);
@@ -471,6 +492,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       const defaultField = initialBoard.fieldDimensions;
       setFieldDimensions(defaultField); setFieldBaseline(defaultField);
       setSessionValue(''); setBaselineSessionValue(''); setValueSupported(false);
+      setMcNumber(''); setMcBaseline('');
       setSpecificPositions([]); setBoardsError('');
       setUnsupportedItems(false); setError(''); setNotice(''); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null);
       requestAnimationFrame(() => document.querySelector('[data-planned-session-document]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -520,7 +542,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const save = async () => {
     if (!editor || !selected || !canEdit || busy || operationRef.current || creationUncertain) return;
     if (dateNeedsReconciliation) {
-      setError('La fecha de una sesión con plantilla congelada requiere conciliación expresa antes de guardar otros cambios.');
+      setError('La fecha de una sesión con plantilla congelada requiere conciliación expresa antes de guardar otros cambios. Si cambia de semana y ya tiene MC, desasígnalo primero desde la fecha anterior.');
       return;
     }
     const issues = getPlannedEditorIssues(editor, selected);
@@ -550,6 +572,9 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     } catch (cause) { setError(`Validación: ${readError(cause)}`); return; }
     const invalidExercise = v12Supported && editor.slots.find((slot) => exerciseDimensionIssue(slot.id));
     if (invalidExercise) { setError(`Ejercicio ${editor.slots.indexOf(invalidExercise) + 1}: ${exerciseDimensionIssue(invalidExercise.id)}`); return; }
+    if (mcDirty && mcNumber !== '' && (!/^[1-9]\d{0,3}$/.test(mcNumber) || Number(mcNumber) > 9999)) {
+      setError('El MC debe ser un número entero entre 1 y 9999, o quedar sin asignar.'); return;
+    }
     operationRef.current = true;
     setBusy(true); setError(''); setNotice(''); setConflict(false);
     let working = editor;
@@ -576,6 +601,16 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           session_date: working.session_date };
         setEditor(working); setBaseline(original);
         completed.push('borrador creado');
+      }
+      const movingAssignedWeek = !wasNew && mcV4Supported && mcBaseline &&
+        calendarWeekDays(baseline.session_date)[0] !== calendarWeekDays(working.session_date)[0];
+      if (movingAssignedWeek) {
+        stage = 'desasignar el MC de la semana anterior';
+        const nextRevision = await savePlannedSessionMcV4(client, working.id, revision, null);
+        advance(nextRevision); working = { ...working, revision: nextRevision };
+        original = { ...original, revision: nextRevision };
+        setMcBaseline('');
+        completed.push('MC anterior desasignado');
       }
       if (editorDirty || wasNew) {
         stage = 'guardar datos generales y ejercicios';
@@ -677,6 +712,17 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           throw new Error('VALOR no coincide con la lectura posterior.');
         setSessionValue(received); setBaselineSessionValue(received);
         completed.push('VALOR');
+      }
+      if (mcDirty || movingAssignedWeek) {
+        stage = 'guardar número MC';
+        const nextNumber = mcNumber === '' ? null : Number(mcNumber);
+        const nextRevision = await savePlannedSessionMcV4(client, working.id, revision, nextNumber);
+        advance(nextRevision);
+        const data = await loadPlannedSession(client, working.id, selected.id);
+        if (data.session.revision !== revision || data.session.mc_number !== nextNumber)
+          throw new Error('El MC recargado no coincide con el valor enviado.');
+        setMcBaseline(mcNumber);
+        completed.push(nextNumber == null ? 'MC sin asignar' : `MC ${nextNumber}`);
       }
       await refreshList(selected.id);
       const pending = [pendingEmptyFormation && 'sistema vacío', selectionDirty && 'selección de plantilla sin confirmar'].filter(Boolean);
@@ -822,6 +868,11 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         creationUncertain || availabilityDirty) return;
     if (!onlyDateDirty) {
       setError('Guarda o descarta los demás cambios antes de conciliar la fecha.'); return;
+    }
+    if (mcV4Supported && mcBaseline &&
+        calendarWeekDays(baseline.session_date)[0] !== calendarWeekDays(editor.session_date)[0]) {
+      setError('Esta sesión tiene MC asignado. Vuelve a la fecha anterior, selecciona «Sin asignar» y guarda; después cambia la fecha y concilia la plantilla. Por último, asigna el MC de la nueva semana.');
+      return;
     }
     const issues = getPlannedEditorIssues(editor, selected).filter((issue) => issue.field === 'session_date');
     if (issues.length) { setError(`Validación: ${issues[0].message}`); return; }
@@ -1196,6 +1247,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
                 {row.cancelled_at ? <span className="rounded-full border border-amber-300/50 px-2 py-1 text-[11px] font-black text-amber-200">ANULADA</span> : null}
               </div>
               <p className="mt-2 text-xs text-slate-400">{row.total_minutes} min planificados
+                {row.mc_number ? ` · MC ${row.mc_number}` : ''}
                 {isPlannedMicrocycle(row.morphology_pattern) ? ` · ${row.morphology_pattern}` : ''} · Abrir sesión</p>
             </button>
             {canWriteContext ? <details className="relative z-10 mt-2 mr-2 shrink-0">
@@ -1291,6 +1343,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         {playersError ? <p role="alert" className="rounded-xl border border-red-400/30 p-3 text-sm text-red-100">{playersError} Recarga la sesión; no se habilitarán operaciones de jugadores con datos incompletos.</p> : null}
         {boardsError ? <p role="alert" className="rounded-xl border border-red-400/30 p-3 text-sm text-red-100">{boardsError} La edición de pizarras está deshabilitada; la sesión y sus ejercicios siguen disponibles.</p> : null}
         {suggestionsError ? <p role="status" className="text-xs text-amber-200">{suggestionsError} Los campos Lugar y Rival siguen siendo editables.</p> : null}
+        {!mcV4Supported ? <p role="status" className="text-xs text-amber-200">MC manual pendiente de instalar y verificar. MD sigue editable.</p> : null}
         {editor.id && !frozen && !playersError ? <div className={`${panel} space-y-2 text-sm`}>
           <p className="font-bold">Plantilla propuesta · aún no guardada</p>
           <p>Seleccionados {proposed.filter((row) => selectedMembershipIds.includes(row.id)).length} de {proposed.length} candidatos válidos para esta fecha. La apertura de la sesión no incorpora jugadores.</p>
@@ -1304,6 +1357,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           {availabilityDirty ? <p>La disponibilidad visible se guardará con «Guardar cambios».</p> : null}
         </div> : null}
         <PlannedSessionDocument editor={editor} selected={selected} canEdit={canEdit} busy={busy}
+          mcEnabled={mcV4Supported} mcNumber={mcNumber} printedMcNumber={mcBaseline}
+          mcOptions={mcOptions} onMcChange={setMcNumber}
           locationOptions={locationOptions} opponentOptions={opponentOptions} suggestionsError={suggestionsError}
           distribution={distribution || emptyDistribution()} boardsError={boardsError}
           fieldDimensions={fieldDimensions} printedFieldDimensions={fieldBaseline}

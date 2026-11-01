@@ -68,7 +68,7 @@ export const calendarMatchKind = (match) => {
   return 'other';
 };
 
-export const buildTeamCalendarEvents = (sessions = [], matches = [], teams = []) => {
+export const buildTeamCalendarEvents = (sessions = [], matches = [], teams = [], competitions = []) => {
   const events = [];
   const seenSessions = new Set();
   for (const session of sessions) {
@@ -83,6 +83,7 @@ export const buildTeamCalendarEvents = (sessions = [], matches = [], teams = [])
       Number.isFinite(Number(session.total_minutes)) && Number(session.total_minutes) > 0;
     events.push({ id, kind: 'training', date, time: calendarTime(session.starts_at), title,
       cancelled: Boolean(session.cancelled_at),
+      mcNumber: Number.isInteger(session.mc_number) ? session.mc_number : null,
       microcycle: isPlannedMicrocycle(session.morphology_pattern) ? session.morphology_pattern : '',
       durationKnown,
       durationMinutes: durationKnown ? Number(session.total_minutes) : null,
@@ -97,7 +98,10 @@ export const buildTeamCalendarEvents = (sessions = [], matches = [], teams = [])
     seenMatches.add(id);
     const team = teams.find((row) => row.id === (match.equipoRivalId || match.equipo_rival_id));
     const kind = calendarMatchKind(match);
-    const label = { league: 'Liga', cup: 'Copa', friendly: 'Amistoso', other: 'Otro partido' }[kind];
+    const catalogCompetition = competitions.find((row) => row.id && row.id ===
+      (match.competitionId || match.competition_id));
+    const label = catalogCompetition?.label || catalogCompetition?.name ||
+      { league: 'Liga', cup: 'Copa', friendly: 'Amistoso', other: 'Otro partido' }[kind];
     const status = getMatchStatus(match);
     const venue = match.isHome ?? match.is_home;
     const candidateScore = status === 'played' ? getMatchScore(match) : null;

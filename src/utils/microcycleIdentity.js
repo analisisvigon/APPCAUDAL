@@ -1,35 +1,34 @@
 import { calendarDateKey, calendarWeekDays } from './teamCalendar.js';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-const dayNumber = (key) => Date.parse(`${key}T00:00:00Z`) / DAY_MS;
-
-export function seasonMicrocycleForDate(season, date) {
+export function seasonWeekForDate(season, date) {
   const start = calendarDateKey(season?.starts_on);
   const end = calendarDateKey(season?.ends_on);
   const target = calendarDateKey(date);
   if (!start || !end || !target || start > end || target < start || target > end) return null;
-  const firstMonday = calendarWeekDays(start)[0];
   const days = calendarWeekDays(target);
-  if (!firstMonday || days.length !== 7) return null;
-  const number = Math.floor((dayNumber(days[0]) - dayNumber(firstMonday)) / 7) + 1;
-  return { number, label: `MC ${String(number).padStart(2, '0')}`,
-    monday: days[0], sunday: days[6], days };
+  return days.length === 7 ? { monday: days[0], sunday: days[6], days } : null;
 }
 
-export function seasonMicrocycles(season) {
+// Solo las sesiones con MC guardado crean una entrada navegable.
+export function assignedMicrocycles(sessions, contextId, season) {
   const start = calendarDateKey(season?.starts_on);
   const end = calendarDateKey(season?.ends_on);
-  if (!start || !end || start > end) return [];
-  const firstMonday = calendarWeekDays(start)[0];
-  const weeks = [];
-  for (let monday = firstMonday; monday <= end;) {
-    const dateInSeason = monday < start ? start : monday;
-    const week = seasonMicrocycleForDate(season, dateInSeason);
-    if (!week || week.monday !== monday) break;
-    weeks.push(week);
-    monday = new Date((dayNumber(monday) + 7) * DAY_MS).toISOString().slice(0, 10);
+  const byMonday = new Map();
+  for (const session of sessions || []) {
+    const date = calendarDateKey(session.session_date);
+    const number = Number(session.mc_number);
+    if (session.club_team_season_id !== contextId || !date || date < start || date > end ||
+        !Number.isInteger(number) || number < 1 || number > 9999) continue;
+    const days = calendarWeekDays(date);
+    const current = byMonday.get(days[0]);
+    if (current && current.number !== number)
+      throw new Error('Hay números MC contradictorios en una misma semana.');
+    byMonday.set(days[0], { number, label: `MC ${number}`, monday: days[0], sunday: days[6], days });
   }
-  return weeks;
+  const result = [...byMonday.values()].sort((a, b) => a.monday.localeCompare(b.monday));
+  if (new Set(result.map((week) => week.number)).size !== result.length)
+    throw new Error('Un mismo número MC figura en semanas distintas.');
+  return result;
 }
 
 export function clampMicrocycleDate(season, date) {

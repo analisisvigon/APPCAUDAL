@@ -10,9 +10,10 @@ export const PLANNED_HEADER_FIELDS = [
 ];
 
 export const PLANNED_MICROCYCLE_OPTIONS = [
-  ['', 'Sin asignar'], ['MD+2', 'MD+2'], ['MD+1', 'MD+1'], ['MD', 'MD'],
-  ['MD-5', 'MD-5'], ['MD-4', 'MD-4'], ['MD-3', 'MD-3'],
-  ['MD-2', 'MD-2'], ['MD-1', 'MD-1'],
+  ['', 'Sin asignar'],
+  ...Array.from({ length: 7 }, (_, index) => `MD-${7 - index}`).map((value) => [value, value]),
+  ['MD', 'MD'],
+  ...Array.from({ length: 7 }, (_, index) => `MD+${index + 1}`).map((value) => [value, value]),
 ];
 export const isPlannedMicrocycle = (value) =>
   Boolean(value) && PLANNED_MICROCYCLE_OPTIONS.some(([option]) => option === value);
