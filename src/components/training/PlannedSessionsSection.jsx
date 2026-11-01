@@ -43,7 +43,8 @@ import { availabilityChanges, eligibleRosterCandidates, hasUncertainRosterDate }
 import { autoPlayerLayout, distributionForSave, distributionPayloadKey, emptyDistribution, movePlayerBoardLayout, normalizeDistribution,
   reconcileSpaceZones, specificPositionMap, validateDistribution } from '../../utils/plannedSessionDistributions';
 import { parsePlannedSessionValue, readPlannedSessionValue } from '../../utils/plannedSessionValue';
-import { BOARD_V11_ENABLED, boardDefaultBlockReason, fieldIsMeasured, sameFieldDimensions,
+import { BOARD_V11_ENABLED, applySessionBoardSeed, initialBoardFromDefaults,
+  boardDefaultBlockReason, fieldIsMeasured, sameFieldDimensions,
   seededPlayerLayout, taskZoneMetres,
   validMetres, zoneFromMetres, metresFromZone, normalizeExerciseDimensions,
   exerciseDimensionsKey, exerciseDimensionsPayload } from '../../utils/plannedSessionFieldScale';
@@ -111,6 +112,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [boardDefaults, setBoardDefaults] = useState(null);
   const [boardDefaultsLoading, setBoardDefaultsLoading] = useState(false);
   const [boardDefaultsContextId, setBoardDefaultsContextId] = useState('');
+  const [sessionSeedFormation, setSessionSeedFormation] = useState(null);
   const [fieldDimensions, setFieldDimensions] = useState({ length_m: '', width_m: '' });
   const [fieldBaseline, setFieldBaseline] = useState({ length_m: '', width_m: '' });
   const [v12Supported, setV12Supported] = useState(false);
@@ -130,11 +132,15 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const availabilityDirty = Boolean(roster.length && availabilityChanges(availability, availabilityBaseline, roster).length);
   const selectionDirty = Boolean(editor?.id && !roster.length &&
     JSON.stringify([...selectedMembershipIds].sort()) !== JSON.stringify([...initialSelectedMembershipIds].sort()));
-  const distributionDirty = Boolean(distribution && distributionBaseline &&
-    distributionPayloadKey(distribution) !== distributionPayloadKey(distributionBaseline));
   const savedBoardPayload = distribution ? distributionForSave(distribution, roster) : null;
   const savableDistributionDirty = Boolean(savedBoardPayload && distributionBaseline &&
     distributionPayloadKey(savedBoardPayload) !== distributionPayloadKey(distributionBaseline));
+  const pendingEmptyFormation = Boolean(!roster.length && distribution &&
+    distribution.formation_key !== sessionSeedFormation);
+  const distributionDirty = Boolean(roster.length
+    ? distribution && distributionBaseline &&
+      distributionPayloadKey(distribution) !== distributionPayloadKey(distributionBaseline)
+    : savableDistributionDirty || pendingEmptyFormation);
   const fieldDirty = BOARD_V11_ENABLED && !sameFieldDimensions(fieldDimensions, fieldBaseline);
   const exerciseDimensionsDirty = Boolean(editor && v12Supported &&
     exerciseDimensionsKey(exerciseDimensions) !== exerciseDimensionsKey(exerciseDimensionsBaseline));
@@ -173,7 +179,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
     setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
     setDistribution(null); setDistributionBaseline(null); setSpecificPositions([]); setBoardsError('');
-    setBoardDefaults(null); setFieldDimensions({ length_m: '', width_m: '' });
+    setBoardDefaults(null); setSessionSeedFormation(null); setFieldDimensions({ length_m: '', width_m: '' });
     setFieldBaseline({ length_m: '', width_m: '' });
     setExerciseDimensions({}); setExerciseDimensionsBaseline({}); setExerciseDimensionsLoadedFor('');
     setSessionValue(''); setBaselineSessionValue(''); setValueSupported(false);
@@ -340,7 +346,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setEditor(null); setBaseline(null); setUnsupportedItems(false); setValidationIssues([]); setExpandedSlotId(null);
     setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
     setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
-    setDistribution(null); setDistributionBaseline(null); setSpecificPositions([]); setBoardsError('');
+    setDistribution(null); setDistributionBaseline(null); setSessionSeedFormation(null); setSpecificPositions([]); setBoardsError('');
     setExerciseDimensions({}); setExerciseDimensionsBaseline({}); setExerciseDimensionsLoadedFor('');
     setSessionValue(''); setBaselineSessionValue(''); setValueSupported(false);
     setContextId(nextId); setError(''); setNotice(''); setConflict(false); setCreationUncertain(false);
@@ -364,6 +370,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       let nextPositions = [];
       let nextBoardsError = '';
       let nextExerciseDimensions = {};
+      let nextSeedFormation = null;
       try {
         const [savedRow, seed, savedExerciseDimensions] = await Promise.all([
           loadPlannedDistribution(client, sessionId),
@@ -372,6 +379,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         ]);
         nextExerciseDimensions = normalizeExerciseDimensions(savedExerciseDimensions);
         const savedDistribution = normalizeDistribution(savedRow);
+        nextSeedFormation = seed?.formation_key || null;
         if (seed) nextField = { length_m: seed.field_length_m ?? '', width_m: seed.field_width_m ?? '' };
         nextDistribution = canWriteContext ? { ...savedDistribution,
           space_zones: reconcileSpaceZones(savedDistribution.space_zones, next.slots) }
@@ -385,11 +393,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         nextPositions = savedDistribution.specific_positions_snapshot.length
           ? savedDistribution.specific_positions_snapshot
           : await loadPlannedSpecificPositions(client, players.roster.map((row) => row.player_id));
-        if (!savedRow && seed?.formation_key) {
-          nextDistribution = { ...nextDistribution, formation_key: seed.formation_key,
-            player_layout: seededPlayerLayout(seed, players.roster,
-              specificPositionMap(nextPositions), autoPlayerLayout) };
-        }
+        nextDistribution = applySessionBoardSeed(nextDistribution, savedRow, seed,
+          players.roster, specificPositionMap(nextPositions), autoPlayerLayout);
         setDistributionBaseline(savedDistribution);
       } catch (cause) {
         nextBoardsError = `${errorKind(cause)}: no se pudieron cargar las pizarras o posiciones. ${readError(cause)}`;
@@ -402,6 +407,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       setSelectedMembershipIds(initialIds); setInitialSelectedMembershipIds(initialIds);
       setAvailability(nextAvailability); setAvailabilityBaseline(nextAvailability); setPlayersError('');
       setDistribution(nextDistribution); setSpecificPositions(nextPositions); setBoardsError(nextBoardsError);
+      setSessionSeedFormation(nextSeedFormation);
       setFieldDimensions(nextField); setFieldBaseline(nextField);
       setExerciseDimensions(nextExerciseDimensions); setExerciseDimensionsBaseline(nextExerciseDimensions);
       setExerciseDimensionsLoadedFor(v12Supported ? sessionId : '');
@@ -429,25 +435,29 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       requestAnimationFrame(() => document.querySelector('[aria-label="Ficha de sesión"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     });
   }, [openSessionRequest?.id, openSessionRequest?.contextId, contextsLoading, contexts, contextId]);
-  const startNew = () => {
-    if (!canWriteContext || busy || boardDefaultsLoading ||
+  const startNew = async () => {
+    if (!canWriteContext || busy || operationRef.current || boardDefaultsLoading ||
         (BOARD_V11_ENABLED && boardDefaultsContextId !== contextId) || !requestDiscard()) return;
-    setEditor(createEmptyPlannedEditor()); setBaseline(null);
-    setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
-    setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
-    setDistribution(BOARD_V11_ENABLED && boardDefaults?.formation_key
-      ? { ...emptyDistribution(), formation_key: boardDefaults.formation_key }
-      : emptyDistribution()); setDistributionBaseline(emptyDistribution());
-    setExerciseDimensions({}); setExerciseDimensionsBaseline({}); setExerciseDimensionsLoadedFor('');
-    const defaultField = BOARD_V11_ENABLED && fieldIsMeasured({ length_m: boardDefaults?.field_length_m,
-      width_m: boardDefaults?.field_width_m })
-      ? { length_m: boardDefaults.field_length_m, width_m: boardDefaults.field_width_m }
-      : { length_m: '', width_m: '' };
-    setFieldDimensions(defaultField); setFieldBaseline(defaultField);
-    setSessionValue(''); setBaselineSessionValue(''); setValueSupported(false);
-    setSpecificPositions([]); setBoardsError('');
-    setUnsupportedItems(false); setError(''); setNotice(''); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null);
-    requestAnimationFrame(() => document.querySelector('[data-planned-session-document]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    operationRef.current = true; setBusy(true); setError('');
+    try {
+      const latestDefaults = BOARD_V11_ENABLED ? await loadPlannedBoardDefaultsV11(client, contextId) : null;
+      setBoardDefaults(latestDefaults);
+      setEditor(createEmptyPlannedEditor()); setBaseline(null);
+      setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
+      setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
+      const initialBoard = initialBoardFromDefaults(latestDefaults);
+      setDistribution(initialBoard.distribution); setDistributionBaseline(emptyDistribution());
+      setSessionSeedFormation(latestDefaults?.formation_key || null);
+      setExerciseDimensions({}); setExerciseDimensionsBaseline({}); setExerciseDimensionsLoadedFor('');
+      const defaultField = initialBoard.fieldDimensions;
+      setFieldDimensions(defaultField); setFieldBaseline(defaultField);
+      setSessionValue(''); setBaselineSessionValue(''); setValueSupported(false);
+      setSpecificPositions([]); setBoardsError('');
+      setUnsupportedItems(false); setError(''); setNotice(''); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null);
+      requestAnimationFrame(() => document.querySelector('[data-planned-session-document]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    } catch (cause) {
+      setError(`${errorKind(cause)}: no se pudo comprobar la última configuración habitual. No se creó una sesión. ${readError(cause)}`);
+    } finally { operationRef.current = false; setBusy(false); }
   };
   const updateEditor = (update) => {
     setValidationIssues([]);
@@ -529,6 +539,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
             const seed = await loadPlannedBoardSeedV11(client, working.id);
             const initialField = { length_m: seed?.field_length_m ?? '', width_m: seed?.field_width_m ?? '' };
             setFieldBaseline(initialField);
+            setSessionSeedFormation(seed?.formation_key || null);
           }
           const initialValue = readPlannedSessionValue(data.session).value;
           setSessionValue(initialValue); setBaselineSessionValue(initialValue);
@@ -981,14 +992,14 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
             exerciseDimensionsKey(normalizeExerciseDimensions(dimensionsPayload))))
         throw new Error('La distribución recargada no coincide con el guardado. Recarga la ficha.');
       setEditor(fresh); setBaseline(fresh);
-      setDistribution(!roster.length && distribution.formation_key
+      setDistribution(!roster.length
         ? { ...saved, formation_key: distribution.formation_key } : saved);
       setDistributionBaseline(saved);
       if (v12Supported) { setExerciseDimensions(loadedDimensions);
         setExerciseDimensionsBaseline(loadedDimensions); setExerciseDimensionsLoadedFor(editor.id); }
       if (saved.specific_positions_snapshot.length) setSpecificPositions(saved.specific_positions_snapshot);
-      setNotice(!roster.length && distribution.formation_key
-        ? 'Zonas guardadas. El sistema vacío sigue pendiente: la RPC actual requiere plantilla congelada para guardarlo.'
+      setNotice(pendingEmptyFormation
+        ? 'Zonas guardadas. El cambio de sistema vacío sigue pendiente: la RPC actual requiere plantilla congelada para guardarlo.'
         : 'Pizarras guardadas y verificadas desde el servidor.');
     } catch (cause) {
       if (cause?.code === '40001') {
@@ -1156,8 +1167,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           </div>
           {dirty ? <p className="w-full text-xs text-amber-200">Cambios sin guardar. Guarda antes de confirmar.</p> : null}
           {distributionDirty && editorDirty ? <p className="w-full text-xs text-amber-200">Guarda primero los ejercicios y después las pizarras; cada operación actualiza la revisión de la sesión.</p> : null}
-          {!frozen && distribution?.formation_key && distribution.formation_key !== distributionBaseline?.formation_key ?
-            <p className="w-full text-xs text-amber-200">Puedes ajustar el esquema vacío. La RPC actual solo permite guardar el sistema cuando la plantilla de esta sesión está congelada; las zonas sí pueden guardarse por separado.</p> : null}
+          {pendingEmptyFormation ?
+            <p className="w-full text-xs text-amber-200">El cambio de sistema vacío sigue pendiente. La RPC actual solo permite guardarlo cuando la plantilla de esta sesión está congelada; las zonas sí pueden guardarse por separado.</p> : null}
           {fieldDirty ? <p className="w-full text-xs text-amber-200">Dimensiones del campo pendientes de guardar.</p> : null}
           {exerciseDimensionsDirty ? <p className="w-full text-xs text-amber-200">Medidas de ejercicios pendientes: guarda primero la sesión y el campo; después, las pizarras.</p> : null}
           {v12ProbeError ? <p className="w-full text-xs text-red-200" role="alert">{v12ProbeError}. Recarga la página antes de guardar pizarras.</p> : null}

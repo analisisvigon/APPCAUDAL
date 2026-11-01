@@ -1,3 +1,5 @@
+import { emptyDistribution } from './plannedSessionDistributions.js';
+
 export const BOARD_V11_ENABLED = true;
 
 export const validMetres = (value) => value !== '' && value != null &&
@@ -5,6 +7,18 @@ export const validMetres = (value) => value !== '' && value != null &&
   Number(Number(value).toFixed(2)) === Number(value);
 
 export const fieldIsMeasured = (field) => validMetres(field?.length_m) && validMetres(field?.width_m);
+
+export const initialBoardFromDefaults = (defaults) => {
+  const field = { length_m: defaults?.field_length_m, width_m: defaults?.field_width_m };
+  return { distribution: { ...emptyDistribution(), formation_key: defaults?.formation_key || null },
+    fieldDimensions: fieldIsMeasured(field) ? field : { length_m: '', width_m: '' } };
+};
+
+export const applySessionBoardSeed = (distribution, savedRow, seed, roster, positions, autoPlayerLayout) =>
+  (!savedRow || !roster.length) && seed?.formation_key && !savedRow?.formation_key
+    ? { ...distribution, formation_key: seed.formation_key,
+      player_layout: seededPlayerLayout(seed, roster, positions, autoPlayerLayout) }
+    : distribution;
 export const sameFieldDimensions = (left, right) => ['length_m', 'width_m'].every((key) => {
   const a = left?.[key], b = right?.[key];
   return (a === '' || a == null) && (b === '' || b == null) ||

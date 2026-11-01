@@ -8,9 +8,29 @@ import { loadPlannedDistribution, loadPlannedSpecificPositions,
   savePlannedDistribution, savePlannedSessionValue } from '../data/plannedSessionsStore.js';
 import { fieldIsMeasured, metresFromZone, seededPlayerLayout, taskZoneMetres,
   zoneFromMetres, normalizeExerciseDimensions, exerciseDimensionsKey,
-  exerciseDimensionsPayload, sameFieldDimensions, boardDefaultBlockReason } from './plannedSessionFieldScale.js';
+  exerciseDimensionsPayload, sameFieldDimensions, boardDefaultBlockReason,
+  initialBoardFromDefaults, applySessionBoardSeed } from './plannedSessionFieldScale.js';
 
 const field = { length_m: 105, width_m: 68 };
+const defaults = { formation_key: '4-3-3', player_layout: [],
+  field_length_m: 105, field_width_m: 68 };
+const sessionTwo = initialBoardFromDefaults(defaults);
+assert.equal(sessionTwo.distribution.formation_key, '4-3-3');
+assert.deepEqual(sessionTwo.fieldDimensions, field);
+sessionTwo.distribution.formation_key = '4-4-2';
+sessionTwo.fieldDimensions.length_m = 100;
+assert.equal(defaults.formation_key, '4-3-3', 'los cambios de sesión no alteran los habituales');
+assert.equal(initialBoardFromDefaults(defaults).fieldDimensions.length_m, 105,
+  'otra sesión nueva recibe las dimensiones habituales originales');
+const savedZonesOnly = { ...emptyDistribution(), space_zones: [{ slot_id: 'slot-1',
+  x: 12, y: 14, w: 28, h: 20, color: 'blue', provisional: false }] };
+const reopened = applySessionBoardSeed(savedZonesOnly, savedZonesOnly, defaults, [], new Map(), autoPlayerLayout);
+assert.equal(reopened.formation_key, '4-3-3', 'el seed se conserva al reabrir sin jugadores');
+assert.deepEqual(reopened.space_zones, savedZonesOnly.space_zones, 'las zonas particulares se conservan');
+assert.deepEqual(reopened.player_layout, [], 'el esquema vacío no inventa jugadores');
+assert.equal(applySessionBoardSeed(savedZonesOnly, savedZonesOnly, defaults,
+  [{ player_id: 'p1' }], new Map(), autoPlayerLayout).formation_key, null,
+'un sistema retirado de una sesión con plantilla no se recupera del seed');
 const emptyScheme = { ...emptyDistribution(), formation_key: '4-3-3',
   space_zones: [{ slot_id: 'slot-1', x: 10, y: 15, w: 25, h: 20,
     color: 'blue', provisional: true }] };
