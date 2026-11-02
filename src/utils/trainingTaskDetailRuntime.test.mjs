@@ -85,7 +85,7 @@ try {
   assert.match(html, /Vídeo destacado/, 'el recurso apto con menor orden se muestra como acceso rápido');
   assert.doesNotMatch(html, /Imagen posterior/, 'los recursos adicionales permanecen en la colección cerrada');
   assert.doesNotMatch(html, /<iframe|<video/, 'el acceso rápido no monta ni reproduce el vídeo');
-  assert.match(html, /Ampliar pizarra/, 'la pizarra real se renderiza y conserva ampliación');
+  assert.match(html, /Ampliar/, 'la pizarra real se renderiza y conserva ampliación compacta');
   assert.match(html, /aria-expanded="false"/, 'los acordeones comienzan cerrados');
   assert.doesNotMatch(html, /Organización detallada/, 'no aparece un acordeón de organización sin datos complementarios');
   assert.doesNotMatch(html, /POST pesado que permanece desmontado/, 'POST no se monta mientras su acordeón está cerrado');

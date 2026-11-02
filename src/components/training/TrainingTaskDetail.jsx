@@ -152,7 +152,7 @@ export default function TrainingTaskDetail({ task = null, currentUserId = '', pl
         </div>
 
         <section className="order-2 min-w-0 rounded-[1.1rem] border border-caudal-electric/20 bg-[#06111f] p-1.5 sm:p-2 lg:order-none" aria-label="Pizarra táctica de la tarea">
-          {parsedBoard.kind === 'empty' ? <div className="flex min-h-72 items-center justify-center rounded-xl border border-dashed border-white/10 bg-black/15 px-5 text-center"><div><p className="text-sm font-black text-white">Pizarra táctica</p><p className="mt-1 text-xs text-slate-600">Sin diseño guardado</p></div></div> : <TrainingTaskBoardEditor key={task.id} players={players} payload={task.editorPayload ?? task.editor_payload} readOnly />}
+          {parsedBoard.kind === 'empty' ? <div className="flex min-h-72 items-center justify-center rounded-xl border border-dashed border-white/10 bg-black/15 px-5 text-center"><div><p className="text-sm font-black text-white">Pizarra táctica</p><p className="mt-1 text-xs text-slate-600">Sin diseño guardado</p></div></div> : <TrainingTaskBoardEditor key={task.id} players={players} payload={task.editorPayload ?? task.editor_payload} spaceWidthM={task.spaceWidthM} spaceLengthM={task.spaceLengthM} readOnly compact />}
         </section>
       </div>
 

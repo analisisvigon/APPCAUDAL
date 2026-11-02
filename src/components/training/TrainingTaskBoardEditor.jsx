@@ -36,6 +36,15 @@ import {
   removeTrainingTaskAssignment, removeTrainingTaskPlayerFromBoard, resolveTrainingTaskPlayerRef,
   setTrainingTaskTeamColor, syncTrainingTaskPlacedPlayers,
 } from '../../utils/trainingTaskRoster';
+import {
+  accreditTrainingTaskZone,
+  applyTrainingTaskZoneMetres,
+  getTrainingTaskSpatialCaption,
+  getTrainingTaskSpatialPosition,
+  getTrainingTaskZoneMetres,
+  readTrainingTaskSpace,
+  synchronizeTrainingTaskSpatialMetadata,
+} from '../../utils/trainingTaskSpatial';
 
 const buttonClass = 'min-h-10 rounded-xl bg-white/[0.07] px-3 text-[11px] font-black text-slate-200 outline-none hover:bg-white/[0.12] focus-visible:ring-2 focus-visible:ring-caudal-electric disabled:opacity-35';
 const inputClass = 'min-h-10 rounded-xl border border-white/10 bg-white px-3 text-xs font-bold text-slate-950 outline-none focus:ring-2 focus:ring-caudal-electric';
@@ -43,11 +52,13 @@ const TRACE_TYPES = new Set(['arrow', 'curved_arrow', 'dashed_arrow', 'double_ar
 const ROTATABLE_TYPES = new Set(['pole', 'mannequin', 'goal', 'mini_goal']);
 const COLOR_TYPES = new Set(['participant', 'player', 'opponent', 'cone', 'pole', 'mannequin', 'hoop', 'goal', 'mini_goal', 'arrow', 'curved_arrow', 'dashed_arrow', 'double_arrow', 'line', 'dashed_line', 'zone', 'text']);
 
-function ElementProperties({ element, players = [], onChange, onDuplicate, onDelete }) {
+function ElementProperties({ element, players = [], space = null, onChange, onDuplicate, onDelete }) {
   const participant = ['participant', 'player', 'opponent'].includes(element.type);
   const labelEditable = participant || ['zone', 'text', 'text_box'].includes(element.type);
   const selectedColor = getTrainingBoardColor(element, element.type === 'text' ? 'white' : 'blue').key;
   const realPlayer = element.playerRef ? resolveTrainingTaskPlayerRef(element.playerRef, players) : null;
+  const zoneMetres = getTrainingTaskZoneMetres(element, space);
+  const materialPosition = getTrainingTaskSpatialPosition(element, space);
   return <aside className="mt-2 w-full shrink-0 rounded-xl bg-[#071526]/90 p-3 xl:mt-0 xl:w-72" aria-label="Propiedades del elemento seleccionado">
     <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[9px] font-black uppercase tracking-[0.16em] text-caudal-electric">Elemento seleccionado</p><p className="mt-0.5 text-sm font-black capitalize text-white">{element.role || element.type.replaceAll('_', ' ')}</p></div><div className="flex gap-1.5"><button type="button" disabled={!onDuplicate} onClick={onDuplicate} className={buttonClass}>Duplicar</button><button type="button" onClick={onDelete} className={`${buttonClass} text-red-200`}>Borrar</button></div></div>
     {realPlayer ? <div className="mt-3 flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-2">{realPlayer.display.image ? <img src={realPlayer.display.image} alt="" className="h-10 w-10 rounded-full object-cover" /> : null}<div className="min-w-0"><p className="truncate text-xs font-black text-white">{realPlayer.display.name}</p><p className="truncate text-[10px] text-slate-500">{realPlayer.display.number ? `#${realPlayer.display.number} · ` : ''}{realPlayer.display.specificPosition || realPlayer.display.position}{realPlayer.unavailable ? ' · no disponible' : ''}</p></div></div> : null}
@@ -61,6 +72,11 @@ function ElementProperties({ element, players = [], onChange, onDuplicate, onDel
       {['goal', 'mini_goal'].includes(element.type) ? <button type="button" onClick={() => onChange(rotateTrainingBoardElement(element))} className={buttonClass}>Rotar 90°</button> : null}
       {['goal', 'mini_goal'].includes(element.type) ? <><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Ancho<input type="number" min="4" max="30" value={element.width || (element.type === 'goal' ? 10 : 6)} onChange={(event) => onChange({ width: Math.max(4, Math.min(30, Number(event.target.value))) })} className={inputClass} /></label><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Fondo<input type="number" min="2" max="14" value={element.height || (element.type === 'goal' ? 4.5 : 3)} onChange={(event) => onChange({ height: Math.max(2, Math.min(14, Number(event.target.value))) })} className={inputClass} /></label></> : null}
     </div>
+    {element.type === 'zone' ? <div className="mt-3 rounded-xl border border-caudal-electric/20 bg-caudal-electric/[0.06] p-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[9px] font-black uppercase tracking-wider text-caudal-electric">Escala espacial</p><p className="mt-0.5 text-[10px] text-slate-400">{space ? element.spatialMode === 'measured' ? 'Medidas acreditadas para esta tarea.' : 'Zona visual/provisional.' : 'Añade ancho y largo en Organización para acreditar medidas.'}</p></div>{space ? <button type="button" onClick={() => onChange(accreditTrainingTaskZone(element, space))} className={buttonClass}>{element.spatialMode === 'measured' ? 'Recalcular' : 'Acreditar medidas'}</button> : null}</div>
+      {space && zoneMetres ? <div className="mt-2 grid grid-cols-2 gap-2"><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Ancho · m<input type="number" min="0.1" step="0.1" value={element.spatialMode === 'measured' ? element.zoneWidthM ?? zoneMetres.widthM : zoneMetres.widthM} onChange={(event) => onChange(applyTrainingTaskZoneMetres(element, space, { widthM: event.target.value, lengthM: element.zoneLengthM ?? zoneMetres.lengthM }))} className={inputClass} /></label><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Largo · m<input type="number" min="0.1" step="0.1" value={element.spatialMode === 'measured' ? element.zoneLengthM ?? zoneMetres.lengthM : zoneMetres.lengthM} onChange={(event) => onChange(applyTrainingTaskZoneMetres(element, space, { widthM: element.zoneWidthM ?? zoneMetres.widthM, lengthM: event.target.value }))} className={inputClass} /></label></div> : null}
+    </div> : null}
+    {materialPosition ? <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.035] p-2.5"><p className="text-[9px] font-black uppercase tracking-wider text-caudal-electric">Referencia espacial</p><p className="mt-0.5 text-[11px] text-slate-300">{materialPosition.widthM} m de ancho · {materialPosition.lengthM} m de largo</p><p className="mt-1 text-[10px] leading-4 text-slate-500">La posición se guarda proporcionalmente al espacio de la tarea.</p></div> : null}
     {COLOR_TYPES.has(element.type) ? <div className="mt-3"><p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Color</p><div className="mt-1.5 flex flex-wrap gap-2">{Object.values(TRAINING_BOARD_PALETTE).map((color) => <button key={color.key} type="button" title={color.label} aria-label={`Color ${color.label}`} aria-pressed={selectedColor === color.key} onClick={() => onChange({ colorKey: color.key })} className={`h-9 w-9 rounded-full border-2 shadow-sm ${selectedColor === color.key ? 'scale-110 border-caudal-electric ring-2 ring-caudal-electric/30' : 'border-white/40'}`} style={{ backgroundColor: color.value }} />)}</div></div> : null}
   </aside>;
 }
@@ -72,7 +88,7 @@ const initialEditorState = (payload) => {
   return { parsed, scene: null };
 };
 
-export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange = null, readOnly = false, showEmpty = true, players = [] }) {
+export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange = null, readOnly = false, showEmpty = true, players = [], spaceWidthM = null, spaceLengthM = null, compact = false }) {
   const [{ parsed, scene: initialScene }] = useState(() => initialEditorState(payload));
   const [scene, setScene] = useState(initialScene);
   const [hasPayload, setHasPayload] = useState(parsed.kind === 'v1');
@@ -87,9 +103,10 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
   const assignments = normalizeTrainingTaskAssignments(scene?.assignments);
   const selectedElement = elements.find((element) => element.id === selectedId) || null;
   const selectedView = selectedElement ? adaptLegacyTrainingBoardElement(selectedElement) : null;
+  const space = readTrainingTaskSpace(spaceWidthM, spaceLengthM);
 
   const commitScene = (nextScene, { recordHistory = true } = {}) => {
-    const serialized = serializeTrainingTaskEditorScene(nextScene);
+    const serialized = serializeTrainingTaskEditorScene({ ...nextScene, board: { ...nextScene.board, elements: synchronizeTrainingTaskSpatialMetadata(nextScene.board.elements, space) } });
     setScene(serialized);
     setHasPayload(true);
     if (recordHistory) setHistory((current) => pushDiagramHistory(current, serialized.board.elements));
@@ -208,17 +225,17 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
 
   const size = getTrainingTaskEditorPayloadSize(hasPayload ? scene : {});
   return (
-    <section className={`min-w-0 bg-black/15 p-2 sm:p-3 ${expanded ? 'fixed inset-2 z-[90] overflow-y-auto rounded-2xl bg-[#050d18] shadow-2xl sm:inset-4' : 'rounded-[1.25rem]'}`} aria-labelledby="training-task-board-title">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <section className={`min-w-0 bg-black/15 ${compact ? 'p-1.5' : 'p-2 sm:p-3'} ${expanded ? 'fixed inset-2 z-[90] overflow-y-auto rounded-2xl bg-[#050d18] shadow-2xl sm:inset-4' : 'rounded-[1.25rem]'}`} aria-labelledby="training-task-board-title">
+      {!compact ? <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Diseño de la tarea</p>
           <h3 id="training-task-board-title" className="mt-1 text-base font-black text-white">Pizarra profesional de entrenamiento</h3>
           <p className="mt-1 text-xs text-slate-500">{readOnly ? 'Vista de la organización guardada.' : 'Opcional. Abrir la pizarra no añade datos hasta que realices un cambio.'}</p>
         </div>
         <div className="flex items-end gap-2">{!readOnly ? <label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Terreno<select value={scene.board.pitchType === 'penalty-area' ? 'half' : scene.board.pitchType} onChange={(event) => commitScene({ ...scene, board: { ...scene.board, pitchType: event.target.value } })} className="min-h-10 rounded-xl border border-white/10 bg-white px-3 text-xs font-bold text-slate-950"><option value="full">Campo completo</option><option value="half">Medio campo</option><option value="blank">Terreno sin líneas</option></select></label> : null}<button type="button" className={buttonClass} onClick={() => setExpanded((current) => !current)}>{expanded ? 'Cerrar vista' : 'Ampliar pizarra'}</button></div>
-      </div>
+      </div> : <div className="flex items-center justify-between gap-2 px-1 pb-1"><p id="training-task-board-title" className="text-[10px] font-black uppercase tracking-[0.14em] text-caudal-electric">Pizarra · {getTrainingTaskSpatialCaption(space)}</p><button type="button" className={buttonClass} onClick={() => setExpanded((current) => !current)}>{expanded ? 'Cerrar' : 'Ampliar'}</button></div>}
 
-      <div className="mt-3 flex gap-1 rounded-xl bg-black/20 p-1" role="tablist" aria-label="Vista del diseño"><button type="button" role="tab" aria-selected={view === 'board'} onClick={() => setView('board')} className={`${buttonClass} flex-1 ${view === 'board' ? 'bg-caudal-electric text-slate-950' : ''}`}>Pizarra</button><button type="button" role="tab" aria-selected={view === 'teams'} onClick={() => setView('teams')} className={`${buttonClass} flex-1 ${view === 'teams' ? 'bg-caudal-electric text-slate-950' : ''}`}>Equipos · {assignments.players.length}</button></div>
+      {!compact ? <div className="mt-3 flex gap-1 rounded-xl bg-black/20 p-1" role="tablist" aria-label="Vista del diseño"><button type="button" role="tab" aria-selected={view === 'board'} onClick={() => setView('board')} className={`${buttonClass} flex-1 ${view === 'board' ? 'bg-caudal-electric text-slate-950' : ''}`}>Pizarra</button><button type="button" role="tab" aria-selected={view === 'teams'} onClick={() => setView('teams')} className={`${buttonClass} flex-1 ${view === 'teams' ? 'bg-caudal-electric text-slate-950' : ''}`}>Equipos · {assignments.players.length}</button></div> : null}
       {view === 'teams' ? <TrainingTaskTeamsPanel players={players} assignments={assignments} elements={elements} readOnly={readOnly} onAssign={assignPlayer} onRemove={removeAssignment} onTeamColor={changeTeamColor} /> : null}
       {view === 'board' && !readOnly ? <div className="mt-2"><TrainingTaskBoardToolbar activeTool={activeTool} onToolChange={(tool) => { setActiveTool(tool); if (tool !== 'select') setSelectedId(''); }} /><TrainingTaskRosterToolbar assignments={assignments} players={players} elements={elements} activeTool={activeTool} onToolChange={(tool) => { setActiveTool(tool); setSelectedId(''); }} /></div> : null}
       {view === 'board' && !readOnly ? <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Acciones de la pizarra">
@@ -231,7 +248,7 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
       </div> : null}
 
       {view === 'board' && !readOnly && activeTool !== 'select' ? <p className="mt-1.5 text-center text-[10px] font-bold text-caudal-electric">{activeTool === 'zone' || TRACE_TYPES.has(activeTool) ? 'Arrastra sobre el campo para dibujar' : 'Haz clic en el campo para colocar · Escape para seleccionar'}</p> : null}
-      {view === 'board' ? <div className="mt-2 min-w-0 gap-2 xl:flex">
+      {view === 'board' ? <div className={`${compact ? 'mt-1' : 'mt-2'} min-w-0 gap-2 xl:flex`}>
         <div className="w-full min-w-0 flex-1 overflow-auto rounded-xl bg-[#0b1e16] p-1 shadow-[0_18px_45px_rgba(0,0,0,.25)]">
           <div className={`${readOnly ? 'min-w-0' : 'min-w-[520px]'} overflow-hidden rounded-lg`}>
           <TrainingTaskDiagramCanvas
@@ -248,7 +265,7 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
           />
           </div>
         </div>
-        {!readOnly && selectedView ? <ElementProperties element={selectedView} players={players} onChange={updateSelected} onDuplicate={selectedElement.playerRef ? null : () => { const copy = duplicateDiagramElement(selectedElement); updateElements([...elements, copy]); setSelectedId(copy.id); }} onDelete={deleteSelected} /> : null}
+        {!readOnly && selectedView ? <ElementProperties element={selectedView} players={players} space={space} onChange={updateSelected} onDuplicate={selectedElement.playerRef ? null : () => { const copy = duplicateDiagramElement(selectedElement); updateElements([...elements, copy]); setSelectedId(copy.id); }} onDelete={deleteSelected} /> : null}
       </div> : null}
       {!readOnly ? <p className={`mt-2 text-right text-[10px] font-bold ${size.exceedsLimit ? 'text-red-200' : 'text-slate-600'}`}>{size.bytes.toLocaleString('es-ES')} / 262.144 bytes</p> : null}
     </section>
