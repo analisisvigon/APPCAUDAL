@@ -91,7 +91,7 @@ export default function TrainingTaskDetail({ task = null, currentUserId = '', pl
   const mediaSummary = `${mediaCount} ${mediaCount === 1 ? 'recurso' : 'recursos'}${task.attachmentPath ? ' · adjunto legacy' : ''}`;
   const feedbackSummary = Number(task.feedbackCount) > 0 ? `${task.feedbackCount} ${Number(task.feedbackCount) === 1 ? 'experiencia' : 'experiencias'} · ${ratingLabel}` : 'Sin experiencias registradas';
 
-  return <article className="w-full min-w-0 overflow-hidden rounded-[1.35rem] border border-caudal-electric/20 bg-[linear-gradient(145deg,rgba(8,24,45,.98),rgba(5,13,25,.98))] shadow-[0_24px_70px_rgba(0,0,0,.32)] xl:ml-[calc((100%-min(96rem,100vw-4rem))/2)] xl:w-[min(96rem,calc(100vw-4rem))]" aria-labelledby="training-task-detail-title">
+  return <article className="w-full min-w-0 overflow-hidden rounded-[1.35rem] border border-caudal-electric/20 bg-[linear-gradient(145deg,rgba(8,24,45,.98),rgba(5,13,25,.98))] shadow-[0_24px_70px_rgba(0,0,0,.32)] lg:flex lg:h-[calc(100dvh-9rem)] lg:min-h-0 lg:flex-col xl:ml-[calc((100%-min(96rem,100vw-4rem))/2)] xl:w-[min(96rem,calc(100vw-4rem))]" aria-labelledby="training-task-detail-title">
     <header className="border-b border-white/10 bg-[radial-gradient(circle_at_85%_0%,rgba(61,217,255,.10),transparent_40%)] px-4 py-3.5 sm:px-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
@@ -112,7 +112,7 @@ export default function TrainingTaskDetail({ task = null, currentUserId = '', pl
       </div>
     </header>
 
-    <div className="space-y-3 p-3.5 sm:p-4">
+    <div className="space-y-3 p-3.5 sm:p-4 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,0.43fr)_minmax(0,0.57fr)] lg:grid-rows-[auto_minmax(0,1.2fr)_minmax(0,0.8fr)] lg:gap-3 lg:space-y-0">
       <section aria-label="Resumen de la tarea" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <Metric label="Jugadores" value={playersLabel} detail={assignments.length ? `${assignments.length} asignados${assignedTeams ? ` · ${assignedTeams} grupos` : ''}` : ''} />
         <Metric kind="time" label="Duración" value={hasValue(task.durationMinutes) ? `${task.durationMinutes} min` : ''} />
@@ -120,8 +120,8 @@ export default function TrainingTaskDetail({ task = null, currentUserId = '', pl
         <Metric kind="rating" label="Valoración POST" value={ratingLabel} detail={Number(task.feedbackCount) > 0 ? `${task.feedbackCount} ${Number(task.feedbackCount) === 1 ? 'experiencia' : 'experiencias'}` : ''} />
       </section>
 
-      <div className="flex min-w-0 flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,0.43fr)_minmax(0,0.57fr)] lg:items-start">
-        <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-3">
+      <div className="flex min-w-0 flex-col gap-3 lg:contents">
+        <div className="contents lg:col-start-1 lg:row-start-2 lg:flex lg:min-h-0 lg:min-w-0 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:pr-2">
           <section className="order-1 min-w-0 rounded-[1.1rem] border border-white/10 bg-white/[0.03] p-4 sm:p-5">
             <div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-caudal-electric">Objetivo principal</p><p className={`mt-1.5 whitespace-pre-wrap text-base leading-6 ${hasValue(task.objective) ? 'font-semibold text-white' : 'italic text-slate-600'}`}>{displayValue(task.objective, 'Sin definir')}</p></div>
             <div className="mt-3 border-t border-white/10 pt-3"><p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">Descripción y desarrollo</p><p className={`mt-1.5 whitespace-pre-wrap text-sm leading-6 ${hasValue(task.description) ? 'text-slate-300' : 'italic text-slate-600'}`}>{displayValue(task.description, 'Sin definir')}</p></div>
@@ -151,12 +151,12 @@ export default function TrainingTaskDetail({ task = null, currentUserId = '', pl
           {featuredMedia ? <div className="order-5 min-w-0 rounded-[1.1rem] border border-white/10 bg-white/[0.03] px-4 pb-4"><TrainingTaskFeaturedMedia client={client} media={featuredMedia} /></div> : null}
         </div>
 
-        <section className="order-2 min-w-0 rounded-[1.1rem] border border-caudal-electric/20 bg-[#06111f] p-1.5 sm:p-2 lg:order-none" aria-label="Pizarra táctica de la tarea">
-          {parsedBoard.kind === 'empty' ? <div className="flex min-h-72 items-center justify-center rounded-xl border border-dashed border-white/10 bg-black/15 px-5 text-center"><div><p className="text-sm font-black text-white">Pizarra táctica</p><p className="mt-1 text-xs text-slate-600">Sin diseño guardado</p></div></div> : <TrainingTaskBoardEditor key={task.id} players={players} payload={task.editorPayload ?? task.editor_payload} spaceWidthM={task.spaceWidthM} spaceLengthM={task.spaceLengthM} readOnly compact />}
+        <section className="order-2 min-w-0 rounded-[1.1rem] border border-caudal-electric/20 bg-[#06111f] p-1.5 sm:p-2 lg:col-start-2 lg:row-span-2 lg:row-start-2 lg:min-h-0 lg:overflow-hidden" aria-label="Pizarra táctica de la tarea">
+          {parsedBoard.kind === 'empty' ? <div className="flex min-h-72 items-center justify-center rounded-xl border border-dashed border-white/10 bg-black/15 px-5 text-center"><div><p className="text-sm font-black text-white">Pizarra táctica</p><p className="mt-1 text-xs text-slate-600">Sin diseño guardado</p></div></div> : <TrainingTaskBoardEditor key={task.id} players={players} payload={task.editorPayload ?? task.editor_payload} spaceWidthM={task.spaceWidthM} spaceLengthM={task.spaceLengthM} readOnly compact viewportFit />}
         </section>
       </div>
 
-      <div className="grid gap-2">
+      <div className="grid gap-2 lg:col-start-1 lg:row-start-3 lg:min-h-0 lg:content-start lg:overflow-y-auto lg:pr-2">
         {hasOrganizationDetails ? <TrainingTaskDetailAccordion sectionKey="organization" title="Organización detallada" summary={`${assignments.length} jugadores asignados a la pizarra`} isOpen={Boolean(openSections.organization)} onToggle={() => toggleSection('organization')}>
           <TrainingTaskTeamsPanel players={players} assignments={parsedBoard.scene.assignments} elements={parsedBoard.scene.board.elements} readOnly />
         </TrainingTaskDetailAccordion> : null}

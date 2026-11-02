@@ -70,7 +70,7 @@ function Material({ element, color }) {
   return null;
 }
 
-export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = 'full', selectedId = '', activeTool = 'select', onSelect, onChange, onInsert, readOnly = false, snap = false, players = [], renderMode = 'editor' }) {
+export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = 'full', selectedId = '', activeTool = 'select', onSelect, onChange, onInsert, readOnly = false, snap = false, players = [], renderMode = 'editor', fitViewport = false }) {
   const preview = renderMode === 'preview';
   const svgRef = useRef(null);
   const dragRef = useRef(null);
@@ -81,6 +81,11 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
   const selected = elements.find((element) => element.id === selectedId) || null;
 
   const pointFromEvent = (event) => {
+    const transform = svgRef.current?.getScreenCTM();
+    if (transform) {
+      const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(transform.inverse());
+      return { x: clamp(point.x, 'x'), y: clamp(point.y, 'y') };
+    }
     const rect = svgRef.current.getBoundingClientRect();
     return { x: clamp(((event.clientX - rect.left) / rect.width) * 100, 'x'), y: clamp(((event.clientY - rect.top) / rect.height) * 72, 'y') };
   };
@@ -204,7 +209,7 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
     height: Math.abs(insertionDraft.end.y - insertionDraft.start.y),
   } : null;
   const interactionProps = preview ? {} : { onPointerMove: move, onPointerUp: stop, onPointerCancel: stop, onPointerDown: onBoardPointerDown };
-  return <svg ref={preview ? null : svgRef} viewBox="0 0 100 72" role={preview ? undefined : 'img'} aria-label={preview ? undefined : readOnly ? 'Pizarra de entrenamiento' : 'Editor de pizarra de entrenamiento'} aria-hidden={preview ? true : undefined} data-interaction-mode={preview ? 'preview' : readOnly ? 'readonly' : activeTool === 'select' ? 'select' : 'insert'} className={`training-task-diagram-canvas block h-auto w-full select-none ${preview ? 'pointer-events-none' : activeTool !== 'select' ? 'cursor-crosshair' : ''}`} {...interactionProps}>
+  return <svg ref={preview ? null : svgRef} viewBox="0 0 100 72" role={preview ? undefined : 'img'} aria-label={preview ? undefined : readOnly ? 'Pizarra de entrenamiento' : 'Editor de pizarra de entrenamiento'} aria-hidden={preview ? true : undefined} data-interaction-mode={preview ? 'preview' : readOnly ? 'readonly' : activeTool === 'select' ? 'select' : 'insert'} className={`training-task-diagram-canvas block select-none ${fitViewport === 'all' ? 'h-full max-h-full w-full max-w-full' : fitViewport === 'desktop' ? 'h-auto w-full lg:h-full lg:max-h-full lg:max-w-full' : 'h-auto w-full'} ${preview ? 'pointer-events-none' : activeTool !== 'select' ? 'cursor-crosshair' : ''}`} {...interactionProps}>
     <defs><marker id={markerId} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="2.7" markerHeight="2.7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="context-stroke" /></marker></defs>
     <TrainingPitch pitchType={pitchType} />
     {rendered.map(renderElement)}

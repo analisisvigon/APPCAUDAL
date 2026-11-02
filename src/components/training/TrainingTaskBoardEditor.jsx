@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import TrainingTaskDiagramCanvas from './TrainingTaskDiagramCanvas';
 import TrainingTaskBoardToolbar from './TrainingTaskBoardToolbar';
 import TrainingTaskTeamsPanel, { TrainingTaskRosterToolbar } from './TrainingTaskTeamsPanel';
@@ -88,7 +89,7 @@ const initialEditorState = (payload) => {
   return { parsed, scene: null };
 };
 
-export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange = null, readOnly = false, showEmpty = true, players = [], spaceWidthM = null, spaceLengthM = null, compact = false }) {
+export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange = null, readOnly = false, showEmpty = true, players = [], spaceWidthM = null, spaceLengthM = null, compact = false, viewportFit = false }) {
   const [{ parsed, scene: initialScene }] = useState(() => initialEditorState(payload));
   const [scene, setScene] = useState(initialScene);
   const [hasPayload, setHasPayload] = useState(parsed.kind === 'v1');
@@ -96,6 +97,7 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
   const [snap, setSnap] = useState(false);
   const [activeTool, setActiveTool] = useState('select');
   const [expanded, setExpanded] = useState(false);
+  const boardRef = useRef(null);
   const [view, setView] = useState('board');
   const [history, setHistory] = useState(() => createDiagramHistory(initialScene?.board.elements || []));
   const editable = !readOnly && parsed.kind !== 'unsupported' && parsed.kind !== 'invalid';
@@ -181,8 +183,35 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
   const changeTeamColor = (teamKey, colorKey) => updateAssignments(setTrainingTaskTeamColor(assignments, teamKey, colorKey));
 
   useEffect(() => {
-    if (!editable) return undefined;
+    if (!expanded) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    boardRef.current?.focus();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      requestAnimationFrame(() => boardRef.current?.querySelector('button')?.focus());
+    };
+  }, [expanded]);
+
+  useEffect(() => {
     const onKeyDown = (event) => {
+      if (event.key === 'Tab' && expanded && boardRef.current) {
+        const focusable = [...boardRef.current.querySelectorAll('button:not([disabled]), select:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex="0"]')];
+        if (focusable.length && event.shiftKey && (document.activeElement === focusable[0] || document.activeElement === boardRef.current)) {
+          event.preventDefault();
+          focusable.at(-1).focus();
+        } else if (focusable.length && !event.shiftKey && document.activeElement === focusable.at(-1)) {
+          event.preventDefault();
+          focusable[0].focus();
+        }
+        return;
+      }
+      if (event.key === 'Escape' && expanded) {
+        event.preventDefault();
+        setExpanded(false);
+        return;
+      }
+      if (!editable) return;
       if (event.key === 'Escape' && activeTool !== 'select') {
         event.preventDefault();
         setActiveTool('select');
@@ -224,8 +253,8 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
   if (readOnly && parsed.kind === 'empty' && !showEmpty) return null;
 
   const size = getTrainingTaskEditorPayloadSize(hasPayload ? scene : {});
-  return (
-    <section className={`min-w-0 bg-black/15 ${compact ? 'p-1.5' : 'p-2 sm:p-3'} ${expanded ? 'fixed inset-2 z-[90] overflow-y-auto rounded-2xl bg-[#050d18] shadow-2xl sm:inset-4' : 'rounded-[1.25rem]'}`} aria-labelledby="training-task-board-title">
+  const board = (
+    <section ref={boardRef} tabIndex={expanded ? -1 : undefined} role={expanded ? 'dialog' : undefined} aria-modal={expanded ? 'true' : undefined} className={`min-w-0 bg-black/15 ${compact ? 'p-1.5' : 'p-2 sm:p-3'} ${expanded ? 'fixed inset-0 z-[2147483647] flex h-[100dvh] flex-col overflow-hidden bg-[#050d18] shadow-2xl' : `rounded-[1.25rem] ${viewportFit ? 'lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-hidden' : ''}`}`} aria-labelledby="training-task-board-title">
       {!compact ? <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Diseño de la tarea</p>
@@ -233,10 +262,10 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
           <p className="mt-1 text-xs text-slate-500">{readOnly ? 'Vista de la organización guardada.' : 'Opcional. Abrir la pizarra no añade datos hasta que realices un cambio.'}</p>
         </div>
         <div className="flex items-end gap-2">{!readOnly ? <label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Terreno<select value={scene.board.pitchType === 'penalty-area' ? 'half' : scene.board.pitchType} onChange={(event) => commitScene({ ...scene, board: { ...scene.board, pitchType: event.target.value } })} className="min-h-10 rounded-xl border border-white/10 bg-white px-3 text-xs font-bold text-slate-950"><option value="full">Campo completo</option><option value="half">Medio campo</option><option value="blank">Terreno sin líneas</option></select></label> : null}<button type="button" className={buttonClass} onClick={() => setExpanded((current) => !current)}>{expanded ? 'Cerrar vista' : 'Ampliar pizarra'}</button></div>
-      </div> : <div className="flex items-center justify-between gap-2 px-1 pb-1"><p id="training-task-board-title" className="text-[10px] font-black uppercase tracking-[0.14em] text-caudal-electric">Pizarra · {getTrainingTaskSpatialCaption(space)}</p><button type="button" className={buttonClass} onClick={() => setExpanded((current) => !current)}>{expanded ? 'Cerrar' : 'Ampliar'}</button></div>}
+      </div> : <div className="flex items-center justify-between gap-2 px-1 pb-1"><p id="training-task-board-title" className="text-[10px] font-black uppercase tracking-[0.14em] text-caudal-electric">Pizarra · {getTrainingTaskSpatialCaption(space)}</p><button type="button" className={buttonClass} onClick={() => setExpanded((current) => !current)}>{expanded ? 'Cerrar vista' : 'Ampliar pizarra'}</button></div>}
 
       {!compact ? <div className="mt-3 flex gap-1 rounded-xl bg-black/20 p-1" role="tablist" aria-label="Vista del diseño"><button type="button" role="tab" aria-selected={view === 'board'} onClick={() => setView('board')} className={`${buttonClass} flex-1 ${view === 'board' ? 'bg-caudal-electric text-slate-950' : ''}`}>Pizarra</button><button type="button" role="tab" aria-selected={view === 'teams'} onClick={() => setView('teams')} className={`${buttonClass} flex-1 ${view === 'teams' ? 'bg-caudal-electric text-slate-950' : ''}`}>Equipos · {assignments.players.length}</button></div> : null}
-      {view === 'teams' ? <TrainingTaskTeamsPanel players={players} assignments={assignments} elements={elements} readOnly={readOnly} onAssign={assignPlayer} onRemove={removeAssignment} onTeamColor={changeTeamColor} /> : null}
+      {view === 'teams' ? <div className={expanded ? 'min-h-0 flex-1 overflow-y-auto' : viewportFit ? 'lg:min-h-0 lg:flex-1 lg:overflow-y-auto' : ''}><TrainingTaskTeamsPanel players={players} assignments={assignments} elements={elements} readOnly={readOnly} onAssign={assignPlayer} onRemove={removeAssignment} onTeamColor={changeTeamColor} /></div> : null}
       {view === 'board' && !readOnly ? <div className="mt-2"><TrainingTaskBoardToolbar activeTool={activeTool} onToolChange={(tool) => { setActiveTool(tool); if (tool !== 'select') setSelectedId(''); }} /><TrainingTaskRosterToolbar assignments={assignments} players={players} elements={elements} activeTool={activeTool} onToolChange={(tool) => { setActiveTool(tool); setSelectedId(''); }} /></div> : null}
       {view === 'board' && !readOnly ? <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Acciones de la pizarra">
         <button type="button" className={buttonClass} disabled={history.index <= 0} onClick={() => moveHistory('undo')}>Deshacer</button>
@@ -248,9 +277,9 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
       </div> : null}
 
       {view === 'board' && !readOnly && activeTool !== 'select' ? <p className="mt-1.5 text-center text-[10px] font-bold text-caudal-electric">{activeTool === 'zone' || TRACE_TYPES.has(activeTool) ? 'Arrastra sobre el campo para dibujar' : 'Haz clic en el campo para colocar · Escape para seleccionar'}</p> : null}
-      {view === 'board' ? <div className={`${compact ? 'mt-1' : 'mt-2'} min-w-0 gap-2 xl:flex`}>
-        <div className="w-full min-w-0 flex-1 overflow-auto rounded-xl bg-[#0b1e16] p-1 shadow-[0_18px_45px_rgba(0,0,0,.25)]">
-          <div className={`${readOnly ? 'min-w-0' : 'min-w-[520px]'} overflow-hidden rounded-lg`}>
+      {view === 'board' ? <div className={`${compact ? 'mt-1' : 'mt-2'} min-w-0 gap-2 ${expanded ? 'flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row' : viewportFit ? 'lg:flex lg:min-h-0 lg:flex-1 lg:overflow-hidden' : 'xl:flex'}`}>
+        <div className={`w-full min-w-0 flex-1 rounded-xl bg-[#0b1e16] p-1 shadow-[0_18px_45px_rgba(0,0,0,.25)] ${expanded ? 'flex min-h-0 items-center justify-center overflow-hidden' : viewportFit ? 'overflow-auto lg:flex lg:min-h-0 lg:items-center lg:justify-center lg:overflow-hidden' : 'overflow-auto'}`}>
+          <div className={`${readOnly || expanded ? 'min-w-0' : 'min-w-[520px] lg:min-w-0'} overflow-hidden rounded-lg ${expanded ? 'flex h-full max-h-full w-full items-center justify-center' : viewportFit ? 'lg:flex lg:h-full lg:max-h-full lg:w-full lg:items-center lg:justify-center' : ''}`}>
           <TrainingTaskDiagramCanvas
             elements={elements}
             pitchType={scene.board.pitchType === 'penalty-area' ? 'half' : scene.board.pitchType}
@@ -262,12 +291,14 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
             readOnly={!editable}
             snap={snap}
             players={players}
+            fitViewport={expanded ? 'all' : viewportFit ? 'desktop' : false}
           />
           </div>
         </div>
-        {!readOnly && selectedView ? <ElementProperties element={selectedView} players={players} space={space} onChange={updateSelected} onDuplicate={selectedElement.playerRef ? null : () => { const copy = duplicateDiagramElement(selectedElement); updateElements([...elements, copy]); setSelectedId(copy.id); }} onDelete={deleteSelected} /> : null}
+        {!readOnly && selectedView ? <div className={expanded ? 'max-h-[28dvh] min-h-0 overflow-y-auto lg:max-h-none lg:w-60 lg:shrink-0 xl:w-72' : viewportFit ? 'lg:min-h-0 lg:w-60 lg:shrink-0 lg:overflow-y-auto xl:w-72' : ''}><ElementProperties element={selectedView} players={players} space={space} onChange={updateSelected} onDuplicate={selectedElement.playerRef ? null : () => { const copy = duplicateDiagramElement(selectedElement); updateElements([...elements, copy]); setSelectedId(copy.id); }} onDelete={deleteSelected} /></div> : null}
       </div> : null}
       {!readOnly ? <p className={`mt-2 text-right text-[10px] font-bold ${size.exceedsLimit ? 'text-red-200' : 'text-slate-600'}`}>{size.bytes.toLocaleString('es-ES')} / 262.144 bytes</p> : null}
     </section>
   );
+  return expanded ? createPortal(board, document.body) : board;
 }

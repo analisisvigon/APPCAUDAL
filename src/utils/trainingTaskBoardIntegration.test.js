@@ -91,7 +91,7 @@ assert.match(sectionSource, /task\.author_user_id !== userId/, 'solo el autor ab
 assert.match(detailSource, /TrainingTaskBoardEditor[^>]+readOnly/, 'el detalle, incluida una compartida, renderiza la pizarra readonly');
 assert.match(boardSource, /view === 'board' && !readOnly \? <div className="mt-2"><TrainingTaskBoardToolbar/, 'los controles solo aparecen en modo editable');
 assert.match(appSource, /<TrainingTasksSection[^>]+players=\{players\}/, 'Tareas recibe la plantilla ya cargada por App');
-assert.match(sectionSource, /TrainingTaskBoardEditor players=\{players\}/, 'la plantilla llega al editor');
+assert.match(sectionSource, /TrainingTaskBoardEditor viewportFit players=\{players\}/, 'la plantilla llega al editor ajustado al viewport');
 assert.match(detailSource, /TrainingTaskBoardEditor[^>]+players=\{players\}/, 'la misma plantilla llega a la consulta');
 assert.doesNotMatch(teamsSource, /supabase|\.from\(/, 'Equipos no crea una fuente ni consulta adicional');
 assert.match(boardSource, /removeTrainingTaskPlayerFromBoard/, 'quitar una ficha del campo se mantiene separado de la asignación');
