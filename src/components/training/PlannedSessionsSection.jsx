@@ -180,7 +180,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const proposed = eligibleRosterCandidates(candidates, editor?.session_date);
   const assignedMcNumbers = [...new Set(sessions.map((row) => row.mc_number)
     .filter((number) => Number.isInteger(number) && number > 0))].sort((a, b) => a - b);
-  const mcOptions = [...assignedMcNumbers, (assignedMcNumbers.at(-1) || 0) + 1];
+  const nextMcNumber = (assignedMcNumbers.at(-1) || 0) + 1;
+  const mcOptions = nextMcNumber <= 9999 ? [...assignedMcNumbers, nextMcNumber] : assignedMcNumbers;
   const storageKey = membership?.club_id && userId
     ? `appcaudal-planned-cts:${membership.club_id}:${userId}` : '';
 

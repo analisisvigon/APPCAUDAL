@@ -39,6 +39,13 @@ begin
         and conname='planned_sessions_mc_v4_check') then
     alter table public.planned_training_sessions add constraint planned_sessions_mc_v4_check
       check (mc_number is null or mc_number between 1 and 9999);
+  elsif not exists(select 1 from pg_catalog.pg_constraint c
+      where c.conrelid=to_regclass('public.planned_training_sessions')
+        and c.conname='planned_sessions_mc_v4_check' and c.contype='c' and c.convalidated
+        and pg_catalog.lower(pg_catalog.regexp_replace(
+          pg_catalog.pg_get_expr(c.conbin,c.conrelid),'[[:space:]()]','','g'))=
+          'mc_numberisnullormc_number>=1andmc_number<=9999') then
+    raise exception 'Microciclos V4: CHECK preexistente incompatible';
   end if;
 end $constraint$;
 
@@ -81,7 +88,10 @@ begin
   if exists(select 1 from pg_catalog.pg_trigger where
       tgrelid=to_regclass('public.planned_training_sessions')
       and tgname='planned_sessions_mc_v4_guard' and not tgisinternal
-      and tgfoid<>to_regprocedure('public.guard_planned_session_mc_v4()')::oid) then
+      and (tgfoid<>to_regprocedure('public.guard_planned_session_mc_v4()')::oid
+        or tgtype<>23 or
+        pg_catalog.strpos(pg_catalog.pg_get_triggerdef(oid),
+          'UPDATE OF session_date, mc_number')=0)) then
     raise exception 'Microciclos V4: trigger preexistente incompatible';
   end if;
   if not exists(select 1 from pg_catalog.pg_trigger where
@@ -167,10 +177,17 @@ begin
       and atttypid='pg_catalog.int4'::regtype and not attisdropped) or
      not exists(select 1 from pg_catalog.pg_constraint where
       conrelid=to_regclass('public.planned_training_sessions')
-      and conname='planned_sessions_mc_v4_check' and convalidated) or
+      and conname='planned_sessions_mc_v4_check' and contype='c' and convalidated
+      and pg_catalog.lower(pg_catalog.regexp_replace(
+        pg_catalog.pg_get_expr(conbin,conrelid),'[[:space:]()]','','g'))=
+        'mc_numberisnullormc_number>=1andmc_number<=9999') or
      not exists(select 1 from pg_catalog.pg_trigger where
       tgrelid=to_regclass('public.planned_training_sessions')
-      and tgname='planned_sessions_mc_v4_guard' and tgenabled='O') or
+      and tgname='planned_sessions_mc_v4_guard' and not tgisinternal
+      and tgenabled='O' and tgtype=23
+      and tgfoid=to_regprocedure('public.guard_planned_session_mc_v4()')::oid
+      and pg_catalog.strpos(pg_catalog.pg_get_triggerdef(oid),
+        'UPDATE OF session_date, mc_number')>0) or
      exists(select 1 from public.planned_training_sessions
       where mc_number is not null and (mc_number<1 or mc_number>9999)) then
     raise exception 'Microciclos V4: postflight de estructura fallido';
@@ -184,7 +201,9 @@ begin
         and pg_catalog.pg_get_indexdef(i.indexrelid,1,true)='club_team_season_id'
         and pg_catalog.pg_get_indexdef(i.indexrelid,2,true)='mc_number'
         and pg_catalog.pg_get_indexdef(i.indexrelid,3,true)='session_date'
-        and i.indpred is not null) then
+        and pg_catalog.lower(pg_catalog.regexp_replace(
+          pg_catalog.pg_get_expr(i.indpred,i.indrelid),'[[:space:]()]','','g'))=
+          'mc_numberisnotnull') then
     raise exception 'Microciclos V4: índice inexistente o incompatible';
   end if;
   if exists(select 1 from public.planned_training_sessions s

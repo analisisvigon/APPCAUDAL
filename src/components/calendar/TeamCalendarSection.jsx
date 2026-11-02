@@ -596,8 +596,10 @@ export default function TeamCalendarSection({ client, clubId, membership, prefer
   };
   const openCopiedDestination = (nextContextId, nextMonday) => {
     setCopyOpen(false);
+    initialMcContextRef.current = nextContextId;
     setContextId(nextContextId);
     setWeekAnchor(nextMonday);
+    setLegacyWeekSelected(true);
     setSelectedWeekDay('');
     setPlanLoadVersion((current) => current + 1);
     setPreviewEpoch((current) => current + 1);

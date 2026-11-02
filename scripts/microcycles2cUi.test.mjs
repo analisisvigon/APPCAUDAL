@@ -17,9 +17,10 @@ try {
     copyAvailable: true, onCopyPlan: () => {},
   }));
   assert.match(week, /Copiar planificación/);
-  assert.match(week, /Guardar como plantilla/);
-  assert.match(week, /Utilizar plantilla/);
-  assert.match(week, /Plantillas pendientes de integración en esta interfaz/);
+  assert.doesNotMatch(week, /Guardar como plantilla|Utilizar plantilla|Plantillas pendientes de integración/,
+    'V4 mantiene la copia y omite las plantillas pendientes');
+  assert.equal((week.match(/aria-label="Ver detalle del /g) || []).length, 7,
+    'la semana conserva siete tarjetas diarias');
   assert.match(week, /Sin actividad ni planificación registrada esta semana/);
   const dialog = renderToStaticMarkup(React.createElement(CopyDialog, {
     client: {}, contexts: [{ id: 'cts-1', team_name: 'Almadina SC Sub-23', label: '2026/2027',

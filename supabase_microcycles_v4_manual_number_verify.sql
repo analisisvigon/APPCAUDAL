@@ -9,17 +9,24 @@ with objects as (
       and a.attname='mc_number' and a.atttypid='pg_catalog.int4'::regtype
       and not a.attisdropped and not a.attnotnull) as column_ok,
     exists(select 1 from pg_catalog.pg_constraint c where c.conrelid=o.sessions_oid
-      and c.conname='planned_sessions_mc_v4_check' and c.contype='c' and c.convalidated) as check_ok,
+      and c.conname='planned_sessions_mc_v4_check' and c.contype='c' and c.convalidated
+      and pg_catalog.lower(pg_catalog.regexp_replace(
+        pg_catalog.pg_get_expr(c.conbin,c.conrelid),'[[:space:]()]','','g'))=
+        'mc_numberisnullormc_number>=1andmc_number<=9999') as check_ok,
     exists(select 1 from pg_catalog.pg_index i join pg_catalog.pg_class c on c.oid=i.indexrelid
       where i.indrelid=o.sessions_oid and c.relname='planned_sessions_mc_v4_idx'
         and i.indisvalid and i.indisready and not i.indisunique and i.indnkeyatts=3
         and pg_catalog.pg_get_indexdef(i.indexrelid,1,true)='club_team_season_id'
         and pg_catalog.pg_get_indexdef(i.indexrelid,2,true)='mc_number'
         and pg_catalog.pg_get_indexdef(i.indexrelid,3,true)='session_date'
-        and i.indpred is not null) as index_ok,
+        and pg_catalog.lower(pg_catalog.regexp_replace(
+          pg_catalog.pg_get_expr(i.indpred,i.indrelid),'[[:space:]()]','','g'))=
+          'mc_numberisnotnull') as index_ok,
     exists(select 1 from pg_catalog.pg_trigger t where t.tgrelid=o.sessions_oid
       and t.tgname='planned_sessions_mc_v4_guard' and not t.tgisinternal
-      and t.tgenabled='O' and t.tgfoid=o.guard_oid) as trigger_ok,
+      and t.tgenabled='O' and t.tgtype=23 and t.tgfoid=o.guard_oid
+      and pg_catalog.strpos(pg_catalog.pg_get_triggerdef(t.oid),
+        'UPDATE OF session_date, mc_number')>0) as trigger_ok,
     exists(select 1 from pg_catalog.pg_proc p where p.oid=o.rpc_oid
       and p.prosecdef and p.proconfig @> array['search_path=pg_catalog']::text[]
       and pg_catalog.pg_get_userbyid(p.proowner)='postgres') as rpc_security_ok,

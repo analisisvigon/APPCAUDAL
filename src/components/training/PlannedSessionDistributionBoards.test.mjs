@@ -85,7 +85,7 @@ try {
       header: { staff_observations: 'Revisión posterior', material: 'Conos', morphology_pattern: 'MD-3' } },
     selected: { team_name: 'C.D. Caudal', label: '2026/2027',
       starts_on: '2026-07-01', ends_on: '2027-06-30' },
-    leagueLogoUrl: 'https://assets.example/liga.png', sessionValue: '8.5',
+    leagueLogoUrl: 'https://assets.example/liga.png', sessionValue: '8.5', mcNumber: '17',
     pages: [{ kind: 'cover', activation: null }],
   }));
   assert.match(printed, /Observaciones post/);
@@ -128,16 +128,20 @@ try {
     distribution: { formation_key: null, player_layout: [], space_zones: [] },
     positionById: new Map(), libraryTasks: [], boardsError: '',
     sessionValue: '9', printedSessionValue: '7', valueSupported: true,
+    mcNumber: '17', printedMcNumber: '17', mcEnabled: true,
   };
   const closedMarkup = renderToStaticMarkup(React.createElement(PlannedSessionDocument, documentProps));
   assert.match(closedMarkup, /<label>VALOR \(0–10\)<input[^>]*disabled=""[^>]*value="9"/,
     'la temporada cerrada conserva el dato visible sin permitir editarlo');
-  assert.match(closedMarkup, /MC 17/, 'la sesión del 25 de octubre pertenece a la semana MC 17');
+  assert.match(closedMarkup, /MC 17/, 'se muestra el MC guardado de la sesión');
   assert.match(closedMarkup, /Día respecto al partido/, 'la etiqueta MD sigue siendo independiente');
   assert.match(closedMarkup, /MD-3/, 'la etiqueta MD almacenada se conserva');
   assert.match(renderToStaticMarkup(React.createElement(PlannedSessionDocument, {
     ...documentProps, editor: { ...documentProps.editor, session_date: '2026-10-26' },
-  })), /MC 18/, 'al cambiar la fecha se actualiza el microciclo calculado');
+  })), /MC 17/, 'cambiar la fecha no calcula otro MC automáticamente');
+  assert.doesNotMatch(renderToStaticMarkup(React.createElement(PlannedSessionDocument, {
+    ...documentProps, mcNumber: '', printedMcNumber: '',
+  })), /MC 17/, 'sin asignación manual no se inventa un MC');
   console.log('planned session distribution boards rendering tests passed');
 } finally {
   await vite.close();
