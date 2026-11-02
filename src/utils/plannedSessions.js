@@ -39,18 +39,64 @@ export const getPlannedLibraryValue = (item, field) =>
   Object.prototype.hasOwnProperty.call(item?.working || {}, field)
     ? item.working[field] : getPlannedLibrarySource(item)[field];
 
-export const deriveSessionMaterial = (slots = []) => {
+export const parseSessionMaterial = (value) => {
+  const found = new Set();
+  const materials = [];
+  for (const part of String(value || '').split(/[,;\n]+/)) {
+    const material = part.trim().replace(/\s+/g, ' ');
+    const key = material.toLocaleLowerCase('es');
+    if (material && !found.has(key)) { found.add(key); materials.push(material); }
+  }
+  return materials;
+};
+
+export const sessionMaterialKey = (value) => String(value || '').trim()
+  .replace(/\s+/g, ' ').toLocaleLowerCase('es');
+
+export const sessionExerciseMaterials = (slots = []) => {
   const found = new Set();
   const materials = [];
   for (const slot of slots) for (const item of slot.items || []) {
     const written = item.kind === 'library_task' ? getPlannedLibraryValue(item, 'material') : '';
-    for (const part of String(written || '').split(/[,;\n]+/)) {
-      const material = part.trim().replace(/\s+/g, ' ');
-      const key = material.toLocaleLowerCase('es');
+    for (const material of parseSessionMaterial(written)) {
+      const key = sessionMaterialKey(material);
       if (material && !found.has(key)) { found.add(key); materials.push(material); }
     }
   }
-  return materials.join(', ');
+  return materials;
+};
+
+export const deriveSessionMaterial = (slots = []) => sessionExerciseMaterials(slots).join(', ');
+
+export const readSessionMaterialState = (value) => value?.version === 1 &&
+  Array.isArray(value.manual) && Array.isArray(value.excluded) &&
+  value.manual.every((entry) => typeof entry === 'string') &&
+  value.excluded.every((entry) => typeof entry === 'string')
+  ? { version: 1, manual: parseSessionMaterial(value.manual.join(',')),
+    excluded: [...new Set(value.excluded.map(sessionMaterialKey).filter(Boolean))] } : null;
+
+export const sessionMaterialStateFromInput = (input, slots, previous = null) => {
+  const desired = parseSessionMaterial(input);
+  const desiredKeys = new Set(desired.map(sessionMaterialKey));
+  const automatic = sessionExerciseMaterials(slots);
+  const autoKeys = new Set(automatic.map(sessionMaterialKey));
+  const previousManual = new Set((previous?.manual || []).map(sessionMaterialKey));
+  return { version: 1,
+    manual: desired.filter((entry) => !autoKeys.has(sessionMaterialKey(entry)) ||
+      previousManual.has(sessionMaterialKey(entry))),
+    excluded: [...new Set([...(previous?.excluded || []),
+      ...automatic.map(sessionMaterialKey)].map(sessionMaterialKey)
+      .filter((key) => key && !desiredKeys.has(key)))],
+  };
+};
+
+export const composeSessionMaterial = (slots, state) => {
+  const normalized = readSessionMaterialState(state);
+  if (!normalized) return '';
+  const excluded = new Set(normalized.excluded);
+  return parseSessionMaterial([...sessionExerciseMaterials(slots)
+    .filter((entry) => !excluded.has(sessionMaterialKey(entry))),
+  ...normalized.manual].join(', ')).join(', ');
 };
 
 const stableJson = (value) => Array.isArray(value) ? value.map(stableJson)

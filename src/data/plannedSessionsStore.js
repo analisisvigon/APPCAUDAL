@@ -69,6 +69,18 @@ export const savePlannedSessionMcV4 = async (client, sessionId, revision, number
   }));
 };
 
+export const checkPlannedMaterialAutofill = async (client) => {
+  const result = await client.from('planned_training_sessions').select('material_state').limit(0);
+  if (!result.error) return true;
+  if (['42703', 'PGRST204', 'PGRST205'].includes(result.error.code)) return false;
+  throw result.error;
+};
+
+export const savePlannedSessionMaterial = async (client, sessionId, revision, state) =>
+  unwrap(await client.rpc('save_planned_session_material', {
+    p_session_id: sessionId, p_expected_revision: revision, p_state: state,
+  }));
+
 export const listPlannedSessions = async (client, clubTeamSeasonId, withMcV4 = false) => {
   let query = client.from('planned_training_sessions')
     .select(`id,club_team_season_id,session_date,starts_at,planning_state,session_number,revision,morphology_pattern,objectives${withMcV4 ? ',mc_number' : ''}${SESSION_RETIREMENT_BACKEND_VERIFIED ? ',cancelled_at' : ''}`)

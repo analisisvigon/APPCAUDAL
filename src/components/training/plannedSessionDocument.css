@@ -41,6 +41,11 @@
 .planned-sheet-material-field > button { position: absolute; top: .5mm; right: 1mm; border: 1px solid #688db1; border-radius: 2px; padding: .3mm .8mm; background: #eaf4fc; color: #164b7c; font: 700 6pt Arial, Helvetica, sans-serif; cursor: pointer; }
 .planned-sheet-material-field > button:disabled { opacity: .5; cursor: default; }
 .planned-sheet-material-field > small { display: block; padding: 0 2mm .4mm; color: #64748b; font-size: 5.7pt; }
+.planned-sheet-material-provenance { padding: .5mm 2mm; color: #475569; font: 5.7pt Arial, Helvetica, sans-serif; }
+.planned-sheet-material-provenance summary { cursor: pointer; }
+.planned-sheet-material-provenance > div { display: flex; align-items: center; justify-content: space-between; gap: 1mm; padding-top: .5mm; }
+.planned-sheet-material-provenance button { border: 0; background: none; color: #155b8b; font: inherit; cursor: pointer; }
+.planned-sheet-material-provenance button:disabled { color: #64748b; cursor: default; }
 .planned-sheet-side-metrics { display: grid; grid-template-rows: 1fr 1fr; font-size: 8pt; font-weight: 700; text-align: center; }
 .planned-sheet-side-metrics > span, .planned-sheet-side-metrics > .planned-sheet-pending { display: grid; align-content: center; border-bottom: 1px solid #222; }
 .planned-sheet-side-metrics b { font-size: 11pt; }
@@ -237,7 +242,8 @@
   .planned-sheet-page-tools, .planned-sheet-add, .planned-sheet-reserved-hint,
   .planned-sheet-library-picker, .planned-sheet-board-edit, .planned-sheet-copy-note,
   .planned-sheet-task-details, .planned-sheet-secondary-print-hidden,
-  .planned-sheet-field small, .planned-sheet-inline-error, .planned-board-dialog-backdrop { display: none !important; }
+  .planned-sheet-field small, .planned-sheet-material-provenance,
+  .planned-sheet-inline-error, .planned-board-dialog-backdrop { display: none !important; }
   .planned-document-viewport { overflow: visible; padding: 0; }
   .planned-document-pages { display: block; width: 297mm; min-width: 0; zoom: 100% !important; gap: 0; }
   .planned-session-sheet { page: planned-session-landscape; width: 297mm; min-height: 209mm; margin: 0; box-shadow: none; break-after: page; print-color-adjust: exact; -webkit-print-color-adjust: exact; }

@@ -82,7 +82,7 @@ try {
     '/src/components/training/PlannedSessionPrint.jsx');
   const printed = renderToStaticMarkup(React.createElement(PlannedSessionPrintPages, {
     editor: { session_date: '2026-10-25', session_number: 1, slots: [],
-      header: { staff_observations: 'Revisión posterior', material: 'Conos', morphology_pattern: 'MD-3' } },
+      header: { staff_observations: 'Revisión posterior', material: 'Conos, Picas', morphology_pattern: 'MD-3' } },
     selected: { team_name: 'C.D. Caudal', label: '2026/2027',
       starts_on: '2026-07-01', ends_on: '2027-06-30' },
     leagueLogoUrl: 'https://assets.example/liga.png', sessionValue: '8.5', mcNumber: '17',
@@ -93,6 +93,7 @@ try {
   assert.match(printed, /Día respecto al partido/);
   assert.match(printed, /MD-3/);
   assert.match(printed, /Revisión posterior/);
+  assert.match(printed, /Conos, Picas/, 'el Material general guardado aparece en el PDF');
   assert.match(printed, /VALOR \(0–10\)/);
   assert.match(printed, /8\.5/);
   assert.match(printed, /assets\.example\/liga\.png/);

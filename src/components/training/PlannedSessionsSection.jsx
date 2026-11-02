@@ -10,12 +10,17 @@ import {
   hydratePlannedEditor,
   hasPlannedLibraryItems,
   isPlannedMicrocycle,
+  composeSessionMaterial,
+  readSessionMaterialState,
+  sessionMaterialStateFromInput,
+  sessionMaterialKey,
   PLANNED_PHASES,
 } from '../../utils/plannedSessions';
 import {
   confirmPlannedSession,
   createPlannedDraft,
   checkPlannedMicrocycleV4,
+  checkPlannedMaterialAutofill,
   listPlannedSessions,
   listPlannedLocations,
   listPlannedOpponents,
@@ -24,6 +29,7 @@ import {
   listPlannedLibraryTasks,
   savePlannedSession,
   savePlannedSessionMcV4,
+  savePlannedSessionMaterial,
   loadPlannedRosterCandidates,
   loadPlannedSessionPlayers,
   freezePlannedRoster,
@@ -132,6 +138,10 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [mcV4Supported, setMcV4Supported] = useState(false);
   const [mcNumber, setMcNumber] = useState('');
   const [mcBaseline, setMcBaseline] = useState('');
+  const [materialSupported, setMaterialSupported] = useState(false);
+  const [materialState, setMaterialState] = useState(null);
+  const [materialBaseline, setMaterialBaseline] = useState(null);
+  const materialStateRef = useRef(null);
   const [baselineSessionValue, setBaselineSessionValue] = useState('');
   const [valueSupported, setValueSupported] = useState(false);
   const selected = contexts.find((row) => row.id === contextId) || null;
@@ -157,8 +167,9 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     exerciseDimensionsKey(exerciseDimensions) !== exerciseDimensionsKey(exerciseDimensionsBaseline));
   const valueDirty = valueSupported && sessionValue !== baselineSessionValue;
   const mcDirty = mcV4Supported && mcNumber !== mcBaseline;
+  const materialDirty = materialSupported && JSON.stringify(materialState) !== JSON.stringify(materialBaseline);
   const dirty = editorDirty || availabilityDirty || selectionDirty || distributionDirty ||
-    fieldDirty || exerciseDimensionsDirty || valueDirty || mcDirty;
+    fieldDirty || exerciseDimensionsDirty || valueDirty || mcDirty || materialDirty;
   const boardDefaultSource = {
     sessionId: editor?.id, canEdit, busy: busy || operationRef.current,
     conflict, creationUncertain, boardsError, rosterCount: roster.length,
@@ -198,6 +209,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setExerciseDimensions({}); setExerciseDimensionsBaseline({}); setExerciseDimensionsLoadedFor('');
     setSessionValue(''); setBaselineSessionValue(''); setValueSupported(false);
     setMcNumber(''); setMcBaseline('');
+    materialStateRef.current = null; setMaterialState(null); setMaterialBaseline(null);
     setUnsupportedItems(false); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null); setContextId('');
   }, [membership?.club_id, userId]);
   useEffect(() => {
@@ -205,6 +217,13 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     checkPlannedMicrocycleV4(client).then((ready) => {
       if (!cancelled) setMcV4Supported(ready);
     }).catch(() => { if (!cancelled) setMcV4Supported(false); });
+    return () => { cancelled = true; };
+  }, [client]);
+  useEffect(() => {
+    let cancelled = false;
+    checkPlannedMaterialAutofill(client).then((ready) => {
+      if (!cancelled) setMaterialSupported(ready);
+    }).catch(() => { if (!cancelled) setMaterialSupported(false); });
     return () => { cancelled = true; };
   }, [client]);
   useEffect(() => {
@@ -266,6 +285,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         if (lifecycleAction === 'retire') {
           setEditor(null); setBaseline(null); setRoster([]); setAvailability({}); setAvailabilityBaseline({});
           setDistribution(null); setDistributionBaseline(null); setSessionValue(''); setBaselineSessionValue('');
+          materialStateRef.current = null; setMaterialState(null); setMaterialBaseline(null);
         } else {
           const next = hydratePlannedEditor(fresh.session, fresh.slots, fresh.items);
           setEditor(next); setBaseline(next);
@@ -388,6 +408,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setExerciseDimensions({}); setExerciseDimensionsBaseline({}); setExerciseDimensionsLoadedFor('');
     setSessionValue(''); setBaselineSessionValue(''); setValueSupported(false);
     setMcNumber(''); setMcBaseline('');
+    materialStateRef.current = null; setMaterialState(null); setMaterialBaseline(null);
     setContextId(nextId); setError(''); setNotice(''); setConflict(false); setCreationUncertain(false);
     try { if (storageKey) window.localStorage.setItem(storageKey, nextId); } catch { /* opcional */ }
   };
@@ -400,6 +421,11 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         loadPlannedSession(client, sessionId, contextId), loadPlannedSessionPlayers(client, sessionId),
       ]);
       const next = hydratePlannedEditor(data.session, data.slots, data.items);
+      const savedMaterialState = readSessionMaterialState(data.session.material_state);
+      if (data.session.material_state != null && !savedMaterialState)
+        throw new Error('Esta sesión utiliza una versión de Material que el editor actual no reconoce.');
+      const materialConsistent = !savedMaterialState ||
+        (next.header.material || '') === composeSessionMaterial(next.slots, savedMaterialState);
       const { supported: supportsValue, value: loadedValue } = readPlannedSessionValue(data.session);
       const nextCandidates = players.roster.length ? [] : await loadPlannedRosterCandidates(client, contextId);
       const nextAvailability = Object.fromEntries(players.availability.map((row) => [row.player_id,
@@ -453,6 +479,10 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       setValueSupported(supportsValue); setSessionValue(loadedValue); setBaselineSessionValue(loadedValue);
       setMcNumber(data.session.mc_number == null ? '' : String(data.session.mc_number));
       setMcBaseline(data.session.mc_number == null ? '' : String(data.session.mc_number));
+      const activeMaterialState = materialSupported && materialConsistent ? savedMaterialState : null;
+      materialStateRef.current = activeMaterialState;
+      setMaterialState(activeMaterialState); setMaterialBaseline(activeMaterialState);
+      if (!materialConsistent) setError('El Material guardado difiere del estado de sincronización. Revísalo y activa de nuevo la sincronización; no se cambiará automáticamente.');
     } catch (cause) {
       setPlayersError(`${errorKind(cause)}: ${readError(cause)}`);
       setError(`${errorKind(cause)}: no se pudo abrir la sesión. ${readError(cause)}`);
@@ -494,6 +524,9 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       setFieldDimensions(defaultField); setFieldBaseline(defaultField);
       setSessionValue(''); setBaselineSessionValue(''); setValueSupported(false);
       setMcNumber(''); setMcBaseline('');
+      const initialMaterialState = materialSupported ? { version: 1, manual: [], excluded: [] } : null;
+      materialStateRef.current = initialMaterialState;
+      setMaterialState(initialMaterialState); setMaterialBaseline(null);
       setSpecificPositions([]); setBoardsError('');
       setUnsupportedItems(false); setError(''); setNotice(''); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null);
       requestAnimationFrame(() => document.querySelector('[data-planned-session-document]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -503,7 +536,39 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   };
   const updateEditor = (update) => {
     setValidationIssues([]);
-    setEditor((current) => current ? update(current) : current);
+    setEditor((current) => {
+      if (!current) return current;
+      const next = update(current);
+      if (materialStateRef.current && next.slots !== current.slots) return {
+        ...next, header: { ...next.header,
+          material: composeSessionMaterial(next.slots, materialStateRef.current) },
+      };
+      return next;
+    });
+  };
+  const updateMaterial = (value) => {
+    if (materialStateRef.current) {
+      const next = sessionMaterialStateFromInput(value, editor.slots, materialStateRef.current);
+      materialStateRef.current = next; setMaterialState(next);
+    }
+    updateEditor((current) => ({ ...current, header: { ...current.header, material: value } }));
+  };
+  const enableMaterialAutofill = () => {
+    const next = sessionMaterialStateFromInput(editor.header.material, editor.slots);
+    materialStateRef.current = next; setMaterialState(next);
+  };
+  const pinMaterialManually = (entry) => {
+    const current = materialStateRef.current;
+    if (!current) return;
+    const key = sessionMaterialKey(entry);
+    const next = { ...current,
+      manual: current.manual.some((value) => sessionMaterialKey(value) === key)
+        ? current.manual : [...current.manual, entry],
+      excluded: current.excluded.filter((value) => value !== key),
+    };
+    materialStateRef.current = next; setMaterialState(next);
+    updateEditor((value) => ({ ...value, header: { ...value.header,
+      material: composeSessionMaterial(value.slots, next) } }));
   };
   const fieldIssue = (field, slotId = null, itemId = null) => validationIssues.find((issue) =>
     issue.field === field && issue.slotId === slotId && issue.itemId === itemId)?.message;
@@ -582,6 +647,9 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     let original = baseline;
     let creating = false;
     const wasNew = !working.id;
+    const materialNeedsSync = materialSupported && materialState &&
+      (wasNew || materialDirty || working.header.material !== original?.header.material ||
+        JSON.stringify(working.slots) !== JSON.stringify(original?.slots));
     const completed = [];
     let stage = 'la sesión';
     let revision = working.revision;
@@ -724,6 +792,23 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           throw new Error('El MC recargado no coincide con el valor enviado.');
         setMcBaseline(mcNumber);
         completed.push(nextNumber == null ? 'MC sin asignar' : `MC ${nextNumber}`);
+      }
+      if (materialNeedsSync) {
+        stage = 'sincronizar Material';
+        const nextRevision = await savePlannedSessionMaterial(client, working.id, revision, materialState);
+        advance(nextRevision);
+        const data = await loadPlannedSession(client, working.id, selected.id);
+        const savedMaterialState = readSessionMaterialState(data.session.material_state);
+        const expectedMaterial = composeSessionMaterial(
+          hydratePlannedEditor(data.session, data.slots, data.items).slots, savedMaterialState);
+        if (data.session.revision !== revision || !savedMaterialState ||
+            data.session.material !== (expectedMaterial || null))
+          throw new Error('El Material recargado no coincide con el guardado.');
+        const fresh = hydratePlannedEditor(data.session, data.slots, data.items);
+        setEditor(fresh); setBaseline(fresh);
+        materialStateRef.current = savedMaterialState;
+        setMaterialState(savedMaterialState); setMaterialBaseline(savedMaterialState);
+        completed.push('Material');
       }
       await refreshList(selected.id);
       const pending = [pendingEmptyFormation && 'sistema vacío', selectionDirty && 'selección de plantilla sin confirmar'].filter(Boolean);
@@ -1326,7 +1411,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
             {editor.id ? <button type="button" className={`${button} border border-white/15 text-slate-200`}
               onClick={() => { if (requestDiscard()) openSession(editor.id, true); }} disabled={busy}>Recargar</button> : null}
             <button type="button" className={`${button} border border-white/15 text-slate-200`}
-              onClick={() => { if (requestDiscard()) { setEditor(null); setBaseline(null); setDistribution(null); setDistributionBaseline(null); setSpecificPositions([]); setBoardsError(''); setSessionValue(''); setBaselineSessionValue(''); setValueSupported(false); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null); } }}
+              onClick={() => { if (requestDiscard()) { setEditor(null); setBaseline(null); setDistribution(null); setDistributionBaseline(null); setSpecificPositions([]); setBoardsError(''); setSessionValue(''); setBaselineSessionValue(''); setValueSupported(false); materialStateRef.current = null; setMaterialState(null); setMaterialBaseline(null); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null); } }}
               disabled={busy}>Cerrar plantilla</button>
           </div>
           {dirty ? <p className="w-full text-xs text-amber-200">Cambios sin guardar. Guarda antes de confirmar.</p> : null}
@@ -1378,6 +1463,9 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           leagueLogoUrl={safeLeagueLogoUrl}
           sessionValue={sessionValue} printedSessionValue={baselineSessionValue}
           valueSupported={valueSupported} onValueChange={setSessionValue}
+          materialAutofillEnabled={Boolean(materialState)} materialAvailable={materialSupported}
+          onMaterialChange={updateMaterial} onEnableMaterialAutofill={enableMaterialAutofill}
+          manualMaterial={materialState?.manual || []} onPinMaterialManually={pinMaterialManually}
           roster={frozen ? roster : proposed} frozen={frozen} selectedMembershipIds={selectedMembershipIds}
           availability={availability} onSelectPlayer={(id, checked) => setSelectedMembershipIds((current) =>
             checked ? [...new Set([...current, id])] : current.filter((entry) => entry !== id))}

@@ -3,6 +3,9 @@ import {
   buildPlannedSavePayload,
   createEmptyPlannedEditor,
   deriveSessionMaterial,
+  composeSessionMaterial,
+  sessionMaterialStateFromInput,
+  readSessionMaterialState,
   getPlannedDuration,
   hydratePlannedEditor,
   getPlannedEditorIssues,
@@ -56,6 +59,30 @@ assert.equal(deriveSessionMaterial([{ items: [
   { kind: 'library_task', snapshot: { source: { material: 'balones' } }, working: { material: 'petos; Picas' } },
   { kind: 'free', description: 'Material: no estructurado' },
 ] }]), 'Conos, Petos, Picas', 'deduplica material explícito y respeta cambios de la copia');
+const copiedMaterials = [{ items: [
+  { kind: 'library_task', snapshot: { source: { material: 'Conos, Petos' } }, working: {} },
+  { kind: 'library_task', snapshot: { source: { material: '  conos ; Balones' } }, working: {} },
+] }];
+assert.equal(deriveSessionMaterial(copiedMaterials), 'Conos, Petos, Balones');
+const materialState = sessionMaterialStateFromInput('Petos, Picas', copiedMaterials);
+assert.deepEqual(materialState, { version: 1, manual: ['Picas'], excluded: ['conos', 'balones'] });
+assert.equal(composeSessionMaterial(copiedMaterials, materialState), 'Petos, Picas');
+assert.equal(composeSessionMaterial([{ items: [copiedMaterials[0].items[0]] }], materialState),
+  'Petos, Picas', 'retirar un ejercicio conserva el aporte manual');
+assert.equal(composeSessionMaterial([], { version: 1, manual: ['Conos'], excluded: [] }),
+  'Conos', 'un aporte marcado manualmente permanece al retirar su tarea de origen');
+assert.deepEqual(sessionMaterialStateFromInput('Conos', copiedMaterials,
+  { version: 1, manual: ['Conos'], excluded: [] }).manual, ['Conos'],
+  'editar el listado no pierde una procedencia manual explícita');
+assert.equal(composeSessionMaterial([{ items: [{ kind: 'library_task',
+  snapshot: { source: { material: 'Conos, Petos' } }, working: { material: 'Conos, Cintas' } }] }], materialState),
+  'Cintas, Picas', 'editar la copia recalcula sin reintroducir lo excluido');
+assert.deepEqual(readSessionMaterialState(JSON.parse(JSON.stringify(materialState))), materialState,
+  'el estado se puede hidratar tras cerrar y reabrir');
+assert.equal(composeSessionMaterial(copiedMaterials,
+  readSessionMaterialState(JSON.parse(JSON.stringify(materialState)))), 'Petos, Picas',
+  'guardar y recargar no duplica materiales');
+assert.equal(readSessionMaterialState(null), null, 'una sesión histórica no se activa automáticamente');
 assert.equal(original.header.starts_at, '10:00');
 assert.equal(getPlannedDuration(original.slots), 45,
   'la duración suma ejercicios, no tareas paralelas');

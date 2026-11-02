@@ -3,12 +3,14 @@ import {
   confirmPlannedSession,
   createPlannedDraft,
   checkPlannedMicrocycleV4,
+  checkPlannedMaterialAutofill,
   loadPlannedContexts,
   listPlannedSessions,
   listPlannedLocations,
   listPlannedOpponents,
   savePlannedSession,
   savePlannedSessionMcV4,
+  savePlannedSessionMaterial,
   SESSION_RETIREMENT_BACKEND_VERIFIED,
   changePlannedSessionLifecycle,
   savePlannedDistributionV12,
@@ -56,6 +58,7 @@ assert.equal((await loadPlannedContexts(client, 'club-id'))[0].team_name, 'Al-Ma
 rows.equipos_rivales[0].name = 'C.D. Caudal';
 assert.equal(contexts[0].label, '2026/2027');
 assert.equal(await checkPlannedMicrocycleV4(client), true);
+assert.equal(await checkPlannedMaterialAutofill(client), true);
 const listed = await listPlannedSessions(client, 'cts-id');
 assert.equal(SESSION_RETIREMENT_BACKEND_VERIFIED, false,
   'no consultar una columna de retirada antes de instalar y verificar el backend');
@@ -99,6 +102,10 @@ assert.equal(await savePlannedSessionMcV4(client, 'session-id', 2, 1), 2);
 assert.deepEqual(calls.at(-1), { name: 'save_planned_session_mc_v4',
   args: { p_session_id: 'session-id', p_expected_revision: 2, p_mc_number: 1 } });
 await assert.rejects(savePlannedSessionMcV4(client, 'session-id', 2, 0), /entre 1 y 9999/);
+const materialState = { version: 1, manual: ['Cintas'], excluded: ['conos'] };
+assert.equal(await savePlannedSessionMaterial(client, 'session-id', 2, materialState), 2);
+assert.deepEqual(calls.at(-1), { name: 'save_planned_session_material',
+  args: { p_session_id: 'session-id', p_expected_revision: 2, p_state: materialState } });
 const dimensions = [{ slot_id: 'slot-id', length_m: 30, width_m: 20 }];
 assert.equal(await savePlannedDistributionV12(client, 'session-id', 2,
   { formation_key: null, player_layout: [], space_zones: [] }, dimensions), 2);

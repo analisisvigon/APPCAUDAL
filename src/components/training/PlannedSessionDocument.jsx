@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  deriveSessionMaterial, getPlannedDuration, getPlannedLibrarySource, getPlannedLibraryValue, PLANNED_PHASES,
+  getPlannedDuration, getPlannedLibrarySource, getPlannedLibraryValue, PLANNED_PHASES,
+  sessionExerciseMaterials, sessionMaterialKey,
   PLANNED_MICROCYCLE_OPTIONS, isPlannedMicrocycle, plannedMicrocycleDisplay,
 } from '../../utils/plannedSessions';
 import { needsPlannedTextFragmentation, needsPlannedWideSheet, planPlannedSessionPrintSheets, planPlannedSessionSheets } from '../../utils/plannedSessionSheetPages';
@@ -253,6 +254,8 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   boardsError, positionById, onFormationChange, onZoneChange, onPlayerMove,
   leagueLogoUrl, sessionValue, printedSessionValue, valueSupported, onValueChange,
   mcNumber = '', printedMcNumber = '', mcEnabled = false, mcOptions = [], onMcChange,
+  materialAutofillEnabled = false, materialAvailable = false,
+  onMaterialChange, onEnableMaterialAutofill, manualMaterial = [], onPinMaterialManually,
   locationOptions = [], opponentOptions = [], suggestionsError = '' }) {
   const [zoom, setZoom] = useState(100);
   const [fitZoom, setFitZoom] = useState(100);
@@ -303,13 +306,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   const numberOf = (id) => ordered.findIndex((slot) => slot.id === id) + 1;
   const visibleRoster = frozen ? roster : roster.filter((row) => selectedMembershipIds.includes(row.id));
   const playerCounts = sessionPlayerCounts(visibleRoster, frozen ? availability : {});
-  const derivedMaterial = deriveSessionMaterial(editor.slots);
-  const recalculateMaterial = () => {
-    if (!derivedMaterial || derivedMaterial === editor.header.material) return;
-    if (editor.header.material?.trim() &&
-        !window.confirm('Se sustituirá el Material escrito en la cabecera por el material de las tareas. ¿Continuar?')) return;
-    updateEditor((current) => ({ ...current, header: { ...current.header, material: derivedMaterial } }));
-  };
+  const exerciseMaterials = materialAutofillEnabled ? sessionExerciseMaterials(editor.slots) : [];
   const field = (label, value, onChange, issue, options = {}) =>
     <SheetField label={label} value={value} onChange={onChange} issue={issue}
       disabled={!canEdit || busy} {...options} />;
@@ -406,9 +403,22 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
                 {field('Observaciones', editor.header.notes, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, notes: value } })), fieldIssue('notes'), { multiline: true })}
                 {field('Objetivos', editor.header.objectives, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, objectives: value } })), fieldIssue('objectives'), { multiline: true })}
                 <div className="planned-sheet-material-field">
-                  {field('Material', editor.header.material, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, material: value } })), fieldIssue('material'), { multiline: true })}
-                  {canEdit && derivedMaterial && derivedMaterial !== editor.header.material ?
-                    <button type="button" disabled={busy} onClick={recalculateMaterial}>Actualizar desde tareas</button> : null}
+                  {field('Material', editor.header.material, (value) => onMaterialChange?.(value), fieldIssue('material'), { multiline: true })}
+                  {canEdit && materialAvailable && !materialAutofillEnabled ?
+                    <button type="button" disabled={busy} onClick={onEnableMaterialAutofill}
+                      title="Conserva el Material actual y activa la sincronización solo para esta sesión">
+                      Activar sincronización</button> : null}
+                  {materialAutofillEnabled ? <small>Material de tareas y aportes manuales. Quita un elemento aquí para excluirlo de esta sesión.</small> : null}
+                  {canEdit && exerciseMaterials.length ? <details className="planned-sheet-material-provenance">
+                    <summary>Material procedente de ejercicios</summary>
+                    {exerciseMaterials.map((entry) => {
+                      const pinned = manualMaterial.some((value) => sessionMaterialKey(value) === sessionMaterialKey(entry));
+                      return <div key={sessionMaterialKey(entry)}><span>{entry}</span>
+                        <button type="button" disabled={busy || pinned} onClick={() => onPinMaterialManually?.(entry)}>
+                          {pinned ? 'Conservado manualmente' : 'Conservar aunque se retire el ejercicio'}</button></div>;
+                    })}
+                  </details> : null}
+                  {!materialAvailable && canEdit ? <small>Autocompletado pendiente de instalar; el Material actual se conserva.</small> : null}
                   {canEdit && editor.slots.some((slot) => slot.items.some((item) => item.kind === 'free')) ?
                     <small>Material de actividades libres: añádelo aquí.</small> : null}
                 </div>
