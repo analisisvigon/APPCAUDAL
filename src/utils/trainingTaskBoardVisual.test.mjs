@@ -12,7 +12,7 @@ assert.match(canvas, /pitchType === 'blank'/);
 assert.match(canvas, /pitchType === 'half'/);
 for (const type of ['cone', 'pole', 'mannequin', 'hoop', 'goal', 'mini_goal']) assert.match(canvas, new RegExp(`type === '${type}'|includes\\(type\\)`));
 assert.match(canvas, /fillOpacity/);
-assert.match(canvas, /r="1\.85"/, 'el participante usa una ficha visual reducida');
+assert.match(canvas, /r="1\.52"/, 'el participante usa una ficha visual reducida');
 assert.match(canvas, /r="3\.2" fill="transparent"/, 'el hit area tactil permanece mayor que la ficha visible sin bloquear vecinos en exceso');
 assert.match(canvas, /goal.*mini_goal|mini_goal.*goal/, 'porterias grande y pequena comparten renderer especializado');
 assert.match(canvas, /netLines/, 'las porterias incluyen profundidad y lineas de red');

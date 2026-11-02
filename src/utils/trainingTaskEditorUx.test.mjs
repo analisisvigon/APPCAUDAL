@@ -26,7 +26,7 @@ for (const field of ['name', 'taskType', 'taskCode', 'objective', 'description',
 }
 assert.match(sectionSource, /sticky bottom-2[\s\S]*onClick=\{onSave\}/, 'guardar y cancelar permanecen accesibles al final de apartados largos');
 assert.match(sectionSource, /disabled=\{saving\}/, 'el guardado mantiene su estado disabled');
-assert.match(sectionSource, /TrainingTaskBoardEditor players=\{players\} payload=\{draft\.editorPayload\} onPayloadChange=/, 'la pizarra editable mantiene el mismo editor_payload controlado');
+assert.match(sectionSource, /TrainingTaskBoardEditor players=\{players\} payload=\{draft\.editorPayload\}[\s\S]*spaceWidthM=\{draft\.spaceWidthM\}[\s\S]*onPayloadChange=/, 'la pizarra editable mantiene el mismo editor_payload controlado y recibe el espacio de la tarea');
 assert.match(detailSource, /TrainingTaskBoardEditor[^>]+players=\{players\}[^>]+readOnly/, 'la consulta conserva la pizarra readonly');
 assert.doesNotMatch(detailSource, /TaskSectionNavigation|role="tablist"/, 'la consulta unificada no introduce las seis pestañas');
 assert.match(detailSource, /lg:grid-cols-\[minmax\(0,0\.43fr\)_minmax\(0,0\.57fr\)\]/, 'el panel principal reserva aproximadamente 57 % a la pizarra');
