@@ -102,4 +102,6 @@
   body > .planned-print-portal { position: static !important; left: auto !important; top: auto !important; width: 297mm !important; pointer-events: auto !important; }
   .planned-print-sheet { break-after: page; page-break-after: always; box-shadow: none; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .planned-print-sheet:last-child { break-after: auto; page-break-after: auto; }
+  body:has(> .planned-print-batch-portal) > .planned-print-portal:not(.planned-print-batch-portal) { display: none !important; }
+  .planned-print-batch-portal .planned-print-pages:not(:last-child) > .planned-print-sheet:last-child { break-after: page; page-break-after: always; }
 }

@@ -1,0 +1,20 @@
+import { createPortal } from 'react-dom';
+import { PlannedSessionPrintPages } from './PlannedSessionPrint';
+
+export function PlannedSessionBatchPrintPages({ sessions, selected, leagueLogoUrl }) {
+  return sessions.map((session) => <PlannedSessionPrintPages key={session.id}
+      editor={session.editor} selected={selected}
+      roster={session.roster} availability={session.availability}
+      distribution={session.distribution} playerDistribution={session.distribution}
+      positionById={session.positionById} leagueLogoUrl={leagueLogoUrl}
+      sessionValue={session.sessionValue} fieldDimensions={session.fieldDimensions}
+      exerciseDimensions={session.exerciseDimensions} mcNumber={session.mcNumber} />);
+}
+
+export default function PlannedSessionBatchPrint({ sessions, selected, leagueLogoUrl, printRef }) {
+  if (!sessions.length || typeof document === 'undefined') return null;
+  return createPortal(<div className="planned-print-portal planned-print-batch-portal" ref={printRef}>
+    <style media="print">{'@page { size: A4 landscape; margin: 0; }'}</style>
+    <PlannedSessionBatchPrintPages sessions={sessions} selected={selected} leagueLogoUrl={leagueLogoUrl} />
+  </div>, document.body);
+}

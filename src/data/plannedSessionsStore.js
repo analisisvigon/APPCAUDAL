@@ -103,6 +103,33 @@ export const listPlannedSessions = async (client, clubTeamSeasonId, withMcV4 = f
         Number(slot.duration_minutes) > 0) }));
 };
 
+// Paginación explícita: PostgREST puede limitar el número de filas por respuesta.
+// La consulta sigue pasando por RLS y nunca busca fuera del CTS seleccionado.
+export const listPlannedSessionsForExport = async (client, clubTeamSeasonId, fromDate, toDate) => {
+  if (!clubTeamSeasonId || !/^\d{4}-\d{2}-\d{2}$/.test(fromDate) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(toDate) || fromDate > toDate)
+    throw new Error('Selecciona un intervalo de fechas válido.');
+  const pageSize = 500;
+  const rows = [];
+  for (let offset = 0; ;) {
+    let query = client.from('planned_training_sessions')
+      .select('id,club_team_season_id,session_date,starts_at,session_number', { count: 'exact' })
+      .eq('club_team_season_id', clubTeamSeasonId)
+      .gte('session_date', fromDate).lte('session_date', toDate)
+      .order('session_date', { ascending: true })
+      .order('starts_at', { ascending: true })
+      .order('session_number', { ascending: true })
+      .order('id', { ascending: true });
+    if (SESSION_RETIREMENT_BACKEND_VERIFIED) query = query.is('retired_at', null);
+    const response = await query.range(offset, offset + pageSize - 1);
+    const batch = unwrap(response) || [];
+    rows.push(...batch);
+    if (!batch.length || (Number.isInteger(response.count) && rows.length >= response.count)) break;
+    offset += batch.length;
+  }
+  return rows;
+};
+
 // Los valores sugeridos proceden solo de registros visibles del CTS actual.
 export const listPlannedLocations = async (client, clubTeamSeasonId) => {
   if (!clubTeamSeasonId) return [];

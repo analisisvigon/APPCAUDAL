@@ -22,6 +22,7 @@ import {
   checkPlannedMicrocycleV4,
   checkPlannedMaterialAutofill,
   listPlannedSessions,
+  listPlannedSessionsForExport,
   listPlannedLocations,
   listPlannedOpponents,
   loadPlannedContexts,
@@ -60,6 +61,8 @@ import { BOARD_V11_ENABLED, applySessionBoardSeed, initialBoardFromDefaults,
   validMetres, zoneFromMetres, metresFromZone, normalizeExerciseDimensions,
   exerciseDimensionsKey, exerciseDimensionsPayload } from '../../utils/plannedSessionFieldScale';
 import PlannedSessionDocument from './PlannedSessionDocument';
+import PlannedSessionBatchPrint from './PlannedSessionBatchPrint';
+import { loadPlannedSessionPrintData, plannedSessionExportFileName } from '../../utils/plannedSessionBatchExport';
 
 const panel = 'rounded-2xl border border-white/10 bg-[#0b1a2d]/85 p-4 sm:p-5';
 const input = 'min-h-11 w-full rounded-xl border border-white/15 bg-[#071325] px-3 py-2 text-sm text-white outline-none focus:border-caudal-electric';
@@ -91,6 +94,16 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsLoadError, setSessionsLoadError] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportFrom, setExportFrom] = useState('');
+  const [exportTo, setExportTo] = useState('');
+  const [exportResult, setExportResult] = useState(null);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportProgress, setExportProgress] = useState('');
+  const [exportError, setExportError] = useState('');
+  const [batchPrint, setBatchPrint] = useState(null);
+  const batchPrintRef = useRef(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [lifecycleAction, setLifecycleAction] = useState('retire');
   const [retirementReason, setRetirementReason] = useState('');
@@ -131,6 +144,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [fieldBaseline, setFieldBaseline] = useState({ length_m: '', width_m: '' });
   const [v12Supported, setV12Supported] = useState(false);
   const [v12ProbeError, setV12ProbeError] = useState('');
+  const [v12ProbeReady, setV12ProbeReady] = useState(false);
   const [exerciseDimensions, setExerciseDimensions] = useState({});
   const [exerciseDimensionsBaseline, setExerciseDimensionsBaseline] = useState({});
   const [exerciseDimensionsLoadedFor, setExerciseDimensionsLoadedFor] = useState('');
@@ -228,10 +242,11 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   }, [client]);
   useEffect(() => {
     let cancelled = false;
+    setV12ProbeReady(false);
     checkPlannedExerciseDimensionsV12(client).then((supported) => {
-      if (!cancelled) { setV12Supported(supported); setV12ProbeError(''); }
+      if (!cancelled) { setV12Supported(supported); setV12ProbeError(''); setV12ProbeReady(true); }
     }).catch((cause) => {
-      if (!cancelled) setV12ProbeError(`No se pudo comprobar Sesiones V1.2: ${readError(cause)}`);
+      if (!cancelled) { setV12ProbeError(`No se pudo comprobar Sesiones V1.2: ${readError(cause)}`); setV12ProbeReady(true); }
     });
     return () => { cancelled = true; };
   }, [client]);
@@ -367,6 +382,54 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     }).finally(() => { if (!cancelled) setSessionsLoading(false); });
     return () => { cancelled = true; };
   }, [client, contextId, mcV4Supported]);
+
+  useEffect(() => {
+    if (!exportOpen || !contextId || !exportFrom || !exportTo || exportFrom > exportTo) {
+      setExportResult(null); setExportLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setExportResult(null); setExportLoading(true); setExportError('');
+    listPlannedSessionsForExport(client, contextId, exportFrom, exportTo)
+      .then((rows) => { if (!cancelled) setExportResult({ contextId, from: exportFrom, to: exportTo, rows }); })
+      .catch((cause) => { if (!cancelled) setExportError(`${errorKind(cause)}: no se pudieron consultar las sesiones. ${readError(cause)}`); })
+      .finally(() => { if (!cancelled) setExportLoading(false); });
+    return () => { cancelled = true; };
+  }, [client, contextId, exportOpen, exportFrom, exportTo]);
+
+  useEffect(() => {
+    if (!batchPrint?.sessions.length) return undefined;
+    let cancelled = false;
+    const previousTitle = document.title;
+    const finish = () => {
+      if (cancelled) return;
+      setBatchPrint(null); setExportBusy(false);
+      setExportProgress('Cuadro de impresión cerrado. Si elegiste «Guardar como PDF», comprueba el archivo en tu equipo.');
+    };
+    const openPrint = async () => {
+      await new Promise((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
+      if (document.fonts?.ready) await document.fonts.ready;
+      const images = [...(batchPrintRef.current?.querySelectorAll('img') || [])];
+      await Promise.all(images.map((image) => image.decode?.() || Promise.resolve()));
+      if (cancelled) return;
+      const sheets = batchPrintRef.current?.querySelectorAll('.planned-print-sheet');
+      if (!sheets?.length) throw new Error('No se pudieron preparar las hojas para imprimir.');
+      document.title = batchPrint.fileName.replace(/\.pdf$/i, '');
+      setExportProgress(`Abriendo la impresión de ${sheets.length} hojas. Elige «Guardar como PDF».`);
+      window.addEventListener('afterprint', finish, { once: true });
+      window.print();
+    };
+    openPrint().catch((cause) => {
+      if (cancelled) return;
+      setExportError(`No se generó ningún PDF: ${readError(cause)}`);
+      setExportBusy(false); setBatchPrint(null);
+    });
+    return () => {
+      cancelled = true;
+      window.removeEventListener('afterprint', finish);
+      document.title = previousTitle;
+    };
+  }, [batchPrint]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1276,6 +1339,34 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     } finally { operationRef.current = false; setBusy(false); }
   };
 
+  const openExportDialog = () => {
+    const referenceDate = sessions.find((row) => row.club_team_season_id === contextId)?.session_date || selected?.starts_on;
+    const week = calendarWeekDays(referenceDate);
+    setExportFrom(week[0] || referenceDate || '');
+    setExportTo(week[6] || referenceDate || '');
+    setExportResult(null); setExportError(''); setExportProgress(''); setExportOpen(true);
+  };
+
+  const downloadSessionsPdf = async () => {
+    if (!selected || busy || exportBusy || exportLoading || !v12ProbeReady || v12ProbeError ||
+        exportResult?.contextId !== contextId || exportResult?.from !== exportFrom ||
+        exportResult?.to !== exportTo || !exportResult.rows.length) return;
+    setExportBusy(true); setExportError(''); setExportProgress('');
+    const printSessions = [];
+    try {
+      for (const [index, row] of exportResult.rows.entries()) {
+        setExportProgress(`Preparando sesión ${index + 1} de ${exportResult.rows.length}…`);
+        printSessions.push(await loadPlannedSessionPrintData(client, row, contextId, v12Supported));
+      }
+      setExportProgress('Componiendo las hojas A4…');
+      setBatchPrint({ sessions: printSessions,
+        fileName: plannedSessionExportFileName(exportFrom, exportTo), selected });
+    } catch (cause) {
+      setExportError(`No se abrió la impresión; no se ha generado un archivo incompleto. ${readError(cause)}`);
+      setExportProgress(''); setExportBusy(false);
+    }
+  };
+
   return (
     <main className="space-y-5 pb-24 xl:pb-8">
       <header className={panel}>
@@ -1290,15 +1381,20 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
             <label className="block w-full max-w-md text-xs font-semibold text-slate-300">
               Equipo y temporada
               <select className={`${input} mt-1`} value={contextId}
-                onChange={(event) => changeContext(event.target.value)} disabled={busy}>
+                onChange={(event) => changeContext(event.target.value)} disabled={busy || exportBusy}>
                 {contexts.map((row) => <option key={row.id} value={row.id}>
                   {row.team_name} · {row.label}{row.status === 'closed' ? ' · Cerrada' : ''}
                 </option>)}
               </select>
             </label>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className={`${button} border border-white/15 text-slate-100`}
+                disabled={busy || exportBusy || sessionsLoading || sessionsLoadError || !v12ProbeReady || Boolean(v12ProbeError)}
+                onClick={openExportDialog}>Exportar PDF</button>
             {canWriteContext ? <button type="button" className={`${button} bg-caudal-electric text-slate-950`}
-              disabled={busy || boardDefaultsLoading || (BOARD_V11_ENABLED && boardDefaultsContextId !== contextId)}
+              disabled={busy || exportBusy || boardDefaultsLoading || (BOARD_V11_ENABLED && boardDefaultsContextId !== contextId)}
               onClick={startNew}>Nueva sesión</button> : null}
+            </div>
           </div>
         ) : null}
         {selected ? <p className="mt-3 text-sm text-slate-400">
@@ -1307,6 +1403,44 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
             isManager ? ' Temporada abierta' : ' Consulta; escritura reservada al propietario/administrador de pruebas'}
         </p> : null}
       </header>
+
+      {exportOpen && selected ? <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/75 p-3"
+        role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !exportBusy) setExportOpen(false); }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="planned-export-title"
+          className="w-full max-w-lg rounded-2xl border border-white/15 bg-[#0b1a2d] p-4 text-white shadow-2xl sm:p-5">
+          <div className="flex items-start justify-between gap-3"><div>
+            <h3 id="planned-export-title" className="text-lg font-black">Exportar sesiones a PDF</h3>
+            <p className="mt-1 text-xs text-slate-400">{selected.team_name} · {selected.label}. Se usarán las sesiones guardadas que puedes consultar.</p>
+          </div><button type="button" className={`${button} border border-white/15 text-slate-200`}
+            disabled={exportBusy} onClick={() => setExportOpen(false)}>Cerrar</button></div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="text-xs font-semibold text-slate-300">Fecha inicial
+              <input type="date" className={`${input} mt-1`} value={exportFrom}
+                disabled={exportBusy} onChange={(event) => setExportFrom(event.target.value)} />
+            </label>
+            <label className="text-xs font-semibold text-slate-300">Fecha final
+              <input type="date" className={`${input} mt-1`} value={exportTo}
+                disabled={exportBusy} onChange={(event) => setExportTo(event.target.value)} />
+            </label>
+          </div>
+          {!exportFrom || !exportTo || exportFrom > exportTo
+            ? <p className="mt-3 text-xs text-amber-200">Selecciona dos fechas válidas y comprueba que la inicial no sea posterior a la final.</p>
+            : exportLoading ? <p className="mt-3 text-xs text-slate-300" role="status">Buscando sesiones autorizadas…</p>
+              : exportResult?.contextId === contextId && exportResult.from === exportFrom && exportResult.to === exportTo
+                ? <p className="mt-3 text-sm text-slate-200" role="status">{exportResult.rows.length} {exportResult.rows.length === 1 ? 'sesión encontrada' : 'sesiones encontradas'} (fechas incluidas).{!exportResult.rows.length ? ' No se generará un PDF vacío.' : ''}</p>
+                : null}
+          {v12ProbeError ? <p className="mt-3 text-xs text-amber-200">No se pudieron verificar las medidas guardadas de los ejercicios. Recarga Sesiones antes de exportar.</p> : null}
+          {exportError ? <p role="alert" className="mt-3 rounded-lg border border-red-400/30 bg-red-950/40 p-2 text-xs text-red-100">{exportError}</p> : null}
+          {exportProgress ? <p role="status" className="mt-3 text-xs text-caudal-electric">{exportProgress}</p> : null}
+          <p className="mt-3 text-[11px] text-slate-500">En el cuadro de impresión selecciona «Guardar como PDF». El nombre sugerido será {plannedSessionExportFileName(exportFrom, exportTo)}.</p>
+          <div className="mt-4 flex justify-end"><button type="button"
+            className={`${button} bg-caudal-electric text-slate-950`}
+            disabled={busy || exportBusy || exportLoading || !v12ProbeReady || Boolean(v12ProbeError) ||
+              exportResult?.contextId !== contextId || exportResult?.from !== exportFrom ||
+              exportResult?.to !== exportTo || !exportResult?.rows.length}
+            onClick={downloadSessionsPdf}>{exportBusy ? 'Preparando…' : 'Descargar PDF'}</button></div>
+        </section>
+      </div> : null}
 
       {error ? <div role="alert" className="rounded-xl border border-red-400/30 bg-red-950/40 p-3 text-sm text-red-100">{error}</div> : null}
       {notice ? <div role="status" className="rounded-xl border border-caudal-electric/30 bg-caudal-electric/10 p-3 text-sm text-slate-100">{notice}</div> : null}
@@ -1478,6 +1612,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           libraryError={libraryError} selectLibraryTask={selectLibraryTask}
           switchToFreeTask={switchToFreeTask} />
       </section> : null}
+      {batchPrint ? <PlannedSessionBatchPrint sessions={batchPrint.sessions}
+        selected={batchPrint.selected} leagueLogoUrl={safeLeagueLogoUrl} printRef={batchPrintRef} /> : null}
     </main>
   );
 }
