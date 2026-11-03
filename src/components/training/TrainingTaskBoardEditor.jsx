@@ -106,6 +106,7 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
   const selectedElement = elements.find((element) => element.id === selectedId) || null;
   const selectedView = selectedElement ? adaptLegacyTrainingBoardElement(selectedElement) : null;
   const space = readTrainingTaskSpace(spaceWidthM, spaceLengthM);
+  const scrollableEditBoard = viewportFit && !readOnly && !expanded;
 
   const commitScene = (nextScene, { recordHistory = true } = {}) => {
     const serialized = serializeTrainingTaskEditorScene({ ...nextScene, board: { ...nextScene.board, elements: synchronizeTrainingTaskSpatialMetadata(nextScene.board.elements, space) } });
@@ -254,7 +255,7 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
 
   const size = getTrainingTaskEditorPayloadSize(hasPayload ? scene : {});
   const board = (
-    <section ref={boardRef} tabIndex={expanded ? -1 : undefined} role={expanded ? 'dialog' : undefined} aria-modal={expanded ? 'true' : undefined} className={`min-w-0 bg-black/15 ${compact ? 'p-1.5' : 'p-2 sm:p-3'} ${expanded ? 'fixed inset-0 z-[2147483647] flex h-[100dvh] flex-col overflow-hidden bg-[#050d18] shadow-2xl' : `rounded-[1.25rem] ${viewportFit ? 'lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-hidden' : ''}`}`} aria-labelledby="training-task-board-title">
+    <section ref={boardRef} tabIndex={expanded ? -1 : undefined} role={expanded ? 'dialog' : undefined} aria-modal={expanded ? 'true' : undefined} className={`min-w-0 ${compact ? 'p-1.5' : 'p-2 sm:p-3'} ${expanded ? 'fixed inset-0 z-[2147483647] flex h-[100dvh] flex-col overflow-hidden bg-[#050d18] shadow-2xl' : `rounded-[1.25rem] bg-black/15 ${viewportFit ? 'lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-hidden' : ''}`}`} aria-labelledby="training-task-board-title">
       {!compact ? <div className="flex shrink-0 flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Diseño de la tarea</p>
@@ -278,8 +279,8 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
 
       {view === 'board' && !readOnly && activeTool !== 'select' ? <p className="mt-1.5 text-center text-[10px] font-bold text-caudal-electric">{activeTool === 'zone' || TRACE_TYPES.has(activeTool) ? 'Arrastra sobre el campo para dibujar' : 'Haz clic en el campo para colocar · Escape para seleccionar'}</p> : null}
       {view === 'board' ? <div className={`${compact ? 'mt-1' : 'mt-2'} min-w-0 gap-2 ${expanded ? 'flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row' : viewportFit ? 'lg:flex lg:min-h-0 lg:flex-1 lg:overflow-hidden' : 'xl:flex'}`}>
-        <div className={`w-full min-w-0 flex-1 rounded-xl bg-[#0b1e16] p-1 shadow-[0_18px_45px_rgba(0,0,0,.25)] ${expanded ? 'flex min-h-0 items-center justify-center overflow-hidden' : viewportFit ? 'overflow-auto lg:flex lg:min-h-0 lg:items-center lg:justify-center lg:overflow-hidden' : 'overflow-auto'}`}>
-          <div className={`${readOnly || expanded ? 'min-w-0' : 'min-w-[520px] lg:min-w-0'} overflow-hidden rounded-lg ${expanded ? 'flex h-full max-h-full w-full items-center justify-center' : viewportFit ? 'lg:flex lg:h-full lg:max-h-full lg:w-full lg:items-center lg:justify-center' : ''}`}>
+        <div className={`w-full min-w-0 flex-1 rounded-xl bg-[#0b1e16] p-1 shadow-[0_18px_45px_rgba(0,0,0,.25)] ${expanded ? 'flex min-h-0 items-center justify-center overflow-hidden' : scrollableEditBoard ? 'overflow-auto lg:min-h-0' : viewportFit ? 'overflow-auto lg:flex lg:min-h-0 lg:items-center lg:justify-center lg:overflow-hidden' : 'overflow-auto'}`}>
+          <div className={`${readOnly || expanded ? 'min-w-0' : 'min-w-[520px] lg:min-w-0'} overflow-hidden rounded-lg ${expanded ? 'flex h-full max-h-full w-full items-center justify-center' : scrollableEditBoard ? 'w-full' : viewportFit ? 'lg:flex lg:h-full lg:max-h-full lg:w-full lg:items-center lg:justify-center' : ''}`}>
           <TrainingTaskDiagramCanvas
             elements={elements}
             pitchType={scene.board.pitchType === 'penalty-area' ? 'half' : scene.board.pitchType}
@@ -291,7 +292,7 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
             readOnly={!editable}
             snap={snap}
             players={players}
-            fitViewport={expanded ? 'all' : viewportFit ? 'desktop' : false}
+            fitViewport={expanded ? 'all' : viewportFit && readOnly ? 'desktop' : false}
           />
           </div>
         </div>
