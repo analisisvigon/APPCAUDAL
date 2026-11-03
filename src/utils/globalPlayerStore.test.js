@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import {
   assignGlobalPlayerToTeam,
-  archiveGlobalPlayerProfile,
   buildGlobalPlayerCoverage,
   buildGlobalPlayerRpcPayload,
   calculateGlobalPlayerProfileCompletion,
@@ -27,15 +26,6 @@ assert.equal(payload.p_sources.length, 1);
 assert.equal(buildGlobalPlayerRpcPayload({ name: 'Prioritario', scoutingPriority: 'very_high' }).p_player.scoutingPriority, 'very_high');
 assert.equal(buildGlobalPlayerRpcPayload({ name: 'Agustín Porto', shirtName: ' Agus Porto ' }).p_player.shirtName, 'Agus Porto');
 assert.equal(normalizeGlobalPlayer({ id: 'porto', name: 'Agustín Porto', shirt_name: 'Agus Porto' }).shirtName, 'Agus Porto');
-assert.equal(normalizeGlobalPlayer({ id: 'archived', name: 'Historico' }, { archivedPlayerIds: new Set(['archived']) }).archivedAt, 'archived');
-assert.equal(normalizeGlobalPlayer({ id: 'active', name: 'Activo' }, { archivedPlayerIds: new Set(['archived']) }).archivedAt, '');
-assert.equal(await archiveGlobalPlayerProfile({ rpc: async (name, args) => {
-  assert.equal(name, 'archive_global_player_profile');
-  assert.deepEqual(args, { p_player_id: 'player-uuid' });
-  return { data: 'archived', error: null };
-} }, 'player-uuid'), 'archived');
-await assert.rejects(() => archiveGlobalPlayerProfile({ rpc: async () => ({ data: null, error: new Error('Sin permiso') }) }, 'player-uuid'), /Sin permiso/);
-
 const importedPhotoPayload = buildGlobalPlayerRpcPayload({
   name: 'Foto externa',
   photoUrl: 'https://project.supabase.co/storage/v1/object/public/rival-player-assets/global/player/photo.jpg',

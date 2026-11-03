@@ -351,7 +351,6 @@ import {
   loadAuthenticatedExternalImage,
 } from './utils/playerSourceFunction';
 import {
-  archiveGlobalPlayerProfile,
   assignGlobalPlayerToTeam,
   buildOwnRosterGlobalEditorDraft,
   buildGlobalPlayerCoverage,
@@ -31735,12 +31734,6 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             onOpenProfile={(player) => openRivalPlayerModal(player, { standalone: true })}
             onManageTeam={openPlayerTeamManager}
             canDelete={identity?.membership?.role === 'owner' && identity?.membership?.is_active !== false}
-            onDelete={async (player) => {
-              await archiveGlobalPlayerProfile(supabase, player.globalPlayerId);
-              setGlobalPlayers((current) => current.map((item) =>
-                item.globalPlayerId === player.globalPlayerId ? { ...item, archivedAt: 'archived' } : item));
-              setGlobalPlayerStatus(`${player.name} se ha archivado. El historial permanece disponible en «Ver archivados».`);
-            }}
             onOpenTeam={(team) => {
               if (team.isOwnClub || team.teamKind === 'own') {
                 setActiveTab('Plantilla');
