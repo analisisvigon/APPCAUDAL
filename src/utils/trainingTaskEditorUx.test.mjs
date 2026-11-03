@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 const sectionSource = await readFile(new URL('../components/training/TrainingTasksSection.jsx', import.meta.url), 'utf8');
 const detailSource = await readFile(new URL('../components/training/TrainingTaskDetail.jsx', import.meta.url), 'utf8');
 const boardSource = await readFile(new URL('../components/training/TrainingTaskBoardEditor.jsx', import.meta.url), 'utf8');
+const canvasSource = await readFile(new URL('../components/training/TrainingTaskDiagramCanvas.jsx', import.meta.url), 'utf8');
 const mediaSource = await readFile(new URL('../components/training/TrainingTaskMediaPanel.jsx', import.meta.url), 'utf8');
 
 for (const section of ['Información', 'Organización', 'Contenido', 'Diseño', 'Multimedia', 'POST']) {
@@ -32,16 +33,18 @@ assert.doesNotMatch(detailSource, /TaskSectionNavigation|role="tablist"/, 'la co
 assert.match(detailSource, /lg:grid-cols-\[minmax\(0,0\.43fr\)_minmax\(0,0\.57fr\)\]/, 'el panel principal reserva aproximadamente 57 % a la pizarra');
 assert.match(detailSource, /xl:w-\[min\(96rem,calc\(100vw-4rem\)\)\]/, 'solo el detalle puede aprovechar más ancho que el contenedor global');
 assert.doesNotMatch(detailSource, /max-w-4xl/, 'la cabecera no limita artificialmente el ancho útil');
-assert.match(boardSource, /readOnly \|\| expanded \? 'min-w-0'/, 'la pizarra readonly y ampliada no fuerzan scroll horizontal');
+assert.match(boardSource, /readOnly \|\| expanded \|\| viewportFit \? 'min-w-0'/, 'la pizarra ajustada no impone un ancho mínimo que recorte el campo');
 assert.match(boardSource, /createPortal\(board, document\.body\)/, 'la vista ampliada sale de los contextos de apilamiento de la aplicación');
 assert.match(boardSource, /expanded \? 'fixed inset-0 z-\[2147483647\][^']*bg-\[\#050d18\]/, 'la vista ampliada cubre el viewport con fondo opaco');
 assert.doesNotMatch(boardSource, /min-w-0 bg-black\/15 \$\{compact/, 'el fondo semitransparente no compite con el fondo opaco del portal');
 assert.match(boardSource, /document\.body\.style\.overflow = 'hidden'/, 'la vista ampliada bloquea el scroll del fondo');
 assert.match(boardSource, /event\.key === 'Escape' && expanded/, 'Escape cierra la vista ampliada');
-assert.match(boardSource, /const scrollableEditBoard = viewportFit && !readOnly && !expanded/, 'el editor usa un tratamiento de tamaño distinto al de la consulta');
-assert.match(boardSource, /scrollableEditBoard \? 'overflow-auto lg:min-h-0'/, 'el campo editable aprovecha el ancho y permite scroll interno si falta altura');
-assert.match(boardSource, /fitViewport=\{expanded \? 'all' : viewportFit && readOnly \? 'desktop' : false\}/, 'el ajuste estricto de altura no reduce la pizarra editable');
-assert.match(sectionSource, /activeSection === 'design' \? 'lg:flex lg:h-\[calc\(100dvh-9rem\)\]/, 'Diseño limita su altura al viewport');
+assert.doesNotMatch(boardSource, /scrollableEditBoard/, 'el campo editable no usa scroll interno como dimensionado habitual');
+assert.match(boardSource, /viewportFit \? 'overflow-hidden lg:flex lg:min-h-0 lg:items-center lg:justify-center'/, 'el campo se contiene en el alto y ancho disponibles');
+assert.match(boardSource, /fitViewport=\{expanded \? 'all' : viewportFit \? 'desktop' : false\}/, 'la pizarra de Diseño se ajusta al viewport');
+assert.match(canvasSource, /preserveAspectRatio=\{fitViewport \? 'xMidYMid meet' : undefined\}/, 'la escala uniforme muestra todo el terreno sin deformarlo');
+assert.match(sectionSource, /activeSection === 'design' \? 'lg:flex lg:h-\[calc\(100dvh-2rem\)\]/, 'Diseño aprovecha el alto del viewport y reserva espacio para los controles');
+assert.match(sectionSource, /className="lg:hidden"><SectionHeading eyebrow="4 · Diseño de la tarea"/, 'el encabezado duplicado no resta altura al campo en escritorio');
 assert.match(detailSource, /lg:grid-rows-\[auto_minmax\(0,1\.2fr\)_minmax\(0,0\.8fr\)\]/, 'la consulta conserva pizarra y contenido en el alto disponible');
 assert.match(detailSource, /lg:overflow-y-auto lg:pr-2/, 'la metodología utiliza desplazamiento interno');
 

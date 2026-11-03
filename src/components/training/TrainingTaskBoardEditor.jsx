@@ -106,7 +106,6 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
   const selectedElement = elements.find((element) => element.id === selectedId) || null;
   const selectedView = selectedElement ? adaptLegacyTrainingBoardElement(selectedElement) : null;
   const space = readTrainingTaskSpace(spaceWidthM, spaceLengthM);
-  const scrollableEditBoard = viewportFit && !readOnly && !expanded;
 
   const commitScene = (nextScene, { recordHistory = true } = {}) => {
     const serialized = serializeTrainingTaskEditorScene({ ...nextScene, board: { ...nextScene.board, elements: synchronizeTrainingTaskSpatialMetadata(nextScene.board.elements, space) } });
@@ -256,31 +255,35 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
   const size = getTrainingTaskEditorPayloadSize(hasPayload ? scene : {});
   const board = (
     <section ref={boardRef} tabIndex={expanded ? -1 : undefined} role={expanded ? 'dialog' : undefined} aria-modal={expanded ? 'true' : undefined} className={`min-w-0 ${compact ? 'p-1.5' : 'p-2 sm:p-3'} ${expanded ? 'fixed inset-0 z-[2147483647] flex h-[100dvh] flex-col overflow-hidden bg-[#050d18] shadow-2xl' : `rounded-[1.25rem] bg-black/15 ${viewportFit ? 'lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-hidden' : ''}`}`} aria-labelledby="training-task-board-title">
-      {!compact ? <div className="flex shrink-0 flex-wrap items-start justify-between gap-3">
+      <div className={viewportFit && !readOnly && !expanded ? 'lg:flex lg:shrink-0 lg:items-center lg:gap-3' : ''}>
+      {!compact ? <div className={`flex shrink-0 flex-wrap items-start justify-between gap-3 ${viewportFit && !readOnly && !expanded ? 'lg:min-w-0 lg:flex-1' : ''}`}>
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Diseño de la tarea</p>
           <h3 id="training-task-board-title" className="mt-1 text-base font-black text-white">Pizarra profesional de entrenamiento</h3>
-          <p className="mt-1 text-xs text-slate-500">{readOnly ? 'Vista de la organización guardada.' : 'Opcional. Abrir la pizarra no añade datos hasta que realices un cambio.'}</p>
+          <p className={`mt-1 text-xs text-slate-500 ${viewportFit && !expanded ? 'lg:hidden' : ''}`}>{readOnly ? 'Vista de la organización guardada.' : 'Opcional. Abrir la pizarra no añade datos hasta que realices un cambio.'}</p>
         </div>
         <div className="flex items-end gap-2">{!readOnly ? <label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Terreno<select value={scene.board.pitchType === 'penalty-area' ? 'half' : scene.board.pitchType} onChange={(event) => commitScene({ ...scene, board: { ...scene.board, pitchType: event.target.value } })} className="min-h-10 rounded-xl border border-white/10 bg-white px-3 text-xs font-bold text-slate-950"><option value="full">Campo completo</option><option value="half">Medio campo</option><option value="blank">Terreno sin líneas</option></select></label> : null}<button type="button" className={buttonClass} onClick={() => setExpanded((current) => !current)}>{expanded ? 'Cerrar vista' : 'Ampliar pizarra'}</button></div>
       </div> : <div className="flex shrink-0 items-center justify-between gap-2 px-1 pb-1"><p id="training-task-board-title" className="text-[10px] font-black uppercase tracking-[0.14em] text-caudal-electric">Pizarra · {getTrainingTaskSpatialCaption(space)}</p><button type="button" className={buttonClass} onClick={() => setExpanded((current) => !current)}>{expanded ? 'Cerrar vista' : 'Ampliar pizarra'}</button></div>}
 
-      {!compact ? <div className="mt-3 flex shrink-0 gap-1 rounded-xl bg-black/20 p-1" role="tablist" aria-label="Vista del diseño"><button type="button" role="tab" aria-selected={view === 'board'} onClick={() => setView('board')} className={`${buttonClass} flex-1 ${view === 'board' ? 'bg-caudal-electric text-slate-950' : ''}`}>Pizarra</button><button type="button" role="tab" aria-selected={view === 'teams'} onClick={() => setView('teams')} className={`${buttonClass} flex-1 ${view === 'teams' ? 'bg-caudal-electric text-slate-950' : ''}`}>Equipos · {assignments.players.length}</button></div> : null}
+      {!compact ? <div className={`mt-3 flex shrink-0 gap-1 rounded-xl bg-black/20 p-1 ${viewportFit && !expanded ? 'lg:mt-0 lg:w-64' : ''}`} role="tablist" aria-label="Vista del diseño"><button type="button" role="tab" aria-selected={view === 'board'} onClick={() => setView('board')} className={`${buttonClass} flex-1 ${view === 'board' ? 'bg-caudal-electric text-slate-950' : ''}`}>Pizarra</button><button type="button" role="tab" aria-selected={view === 'teams'} onClick={() => setView('teams')} className={`${buttonClass} flex-1 ${view === 'teams' ? 'bg-caudal-electric text-slate-950' : ''}`}>Equipos · {assignments.players.length}</button></div> : null}
+      </div>
       {view === 'teams' ? <div className={expanded ? 'min-h-0 flex-1 overflow-y-auto' : viewportFit ? 'lg:min-h-0 lg:flex-1 lg:overflow-y-auto' : ''}><TrainingTaskTeamsPanel players={players} assignments={assignments} elements={elements} readOnly={readOnly} onAssign={assignPlayer} onRemove={removeAssignment} onTeamColor={changeTeamColor} /></div> : null}
-      {view === 'board' && !readOnly ? <div className="mt-2 shrink-0"><TrainingTaskBoardToolbar activeTool={activeTool} onToolChange={(tool) => { setActiveTool(tool); if (tool !== 'select') setSelectedId(''); }} /><TrainingTaskRosterToolbar assignments={assignments} players={players} elements={elements} activeTool={activeTool} onToolChange={(tool) => { setActiveTool(tool); setSelectedId(''); }} /></div> : null}
-      {view === 'board' && !readOnly ? <div className="mt-2 flex shrink-0 flex-wrap items-center gap-1.5" aria-label="Acciones de la pizarra">
+      {view === 'board' && !readOnly ? <div className={`mt-2 shrink-0 ${viewportFit && !expanded ? 'lg:flex lg:items-center lg:gap-2' : ''}`}>
+        <div className={viewportFit && !expanded ? 'min-w-0 lg:flex-1' : ''}><TrainingTaskBoardToolbar activeTool={activeTool} onToolChange={(tool) => { setActiveTool(tool); if (tool !== 'select') setSelectedId(''); }} /><TrainingTaskRosterToolbar assignments={assignments} players={players} elements={elements} activeTool={activeTool} onToolChange={(tool) => { setActiveTool(tool); setSelectedId(''); }} /></div>
+        <div className={`mt-2 flex shrink-0 flex-wrap items-center gap-1.5 ${viewportFit && !expanded ? 'lg:mt-0' : ''}`} aria-label="Acciones de la pizarra">
         <button type="button" className={buttonClass} disabled={history.index <= 0} onClick={() => moveHistory('undo')}>Deshacer</button>
         <button type="button" className={buttonClass} disabled={history.index >= history.entries.length - 1} onClick={() => moveHistory('redo')}>Rehacer</button>
         <button type="button" className={buttonClass} aria-pressed={snap} onClick={() => setSnap((current) => !current)}>Imán</button>
         <button type="button" className={buttonClass} disabled={!selectedElement || Boolean(selectedElement?.playerRef)} onClick={() => { const copy = duplicateDiagramElement(selectedElement); updateElements([...elements, copy]); setSelectedId(copy.id); }}>Duplicar</button>
         <button type="button" className={`${buttonClass} text-amber-100`} disabled={!selectedElement} onClick={deleteSelected}>Borrar</button>
         <button type="button" className={`${buttonClass} text-red-200`} disabled={!elements.length} onClick={() => { updateElements([]); setSelectedId(''); }}>Limpiar</button>
+        </div>
       </div> : null}
 
       {view === 'board' && !readOnly && activeTool !== 'select' ? <p className="mt-1.5 text-center text-[10px] font-bold text-caudal-electric">{activeTool === 'zone' || TRACE_TYPES.has(activeTool) ? 'Arrastra sobre el campo para dibujar' : 'Haz clic en el campo para colocar · Escape para seleccionar'}</p> : null}
       {view === 'board' ? <div className={`${compact ? 'mt-1' : 'mt-2'} min-w-0 gap-2 ${expanded ? 'flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row' : viewportFit ? 'lg:flex lg:min-h-0 lg:flex-1 lg:overflow-hidden' : 'xl:flex'}`}>
-        <div className={`w-full min-w-0 flex-1 rounded-xl bg-[#0b1e16] p-1 shadow-[0_18px_45px_rgba(0,0,0,.25)] ${expanded ? 'flex min-h-0 items-center justify-center overflow-hidden' : scrollableEditBoard ? 'overflow-auto lg:min-h-0' : viewportFit ? 'overflow-auto lg:flex lg:min-h-0 lg:items-center lg:justify-center lg:overflow-hidden' : 'overflow-auto'}`}>
-          <div className={`${readOnly || expanded ? 'min-w-0' : 'min-w-[520px] lg:min-w-0'} overflow-hidden rounded-lg ${expanded ? 'flex h-full max-h-full w-full items-center justify-center' : scrollableEditBoard ? 'w-full' : viewportFit ? 'lg:flex lg:h-full lg:max-h-full lg:w-full lg:items-center lg:justify-center' : ''}`}>
+        <div className={`w-full min-w-0 flex-1 rounded-xl bg-[#0b1e16] p-1 shadow-[0_18px_45px_rgba(0,0,0,.25)] ${expanded ? 'flex min-h-0 items-center justify-center overflow-hidden' : viewportFit ? 'overflow-hidden lg:flex lg:min-h-0 lg:items-center lg:justify-center' : 'overflow-auto'}`}>
+          <div className={`${readOnly || expanded || viewportFit ? 'min-w-0' : 'min-w-[520px]'} overflow-hidden rounded-lg ${expanded ? 'flex h-full max-h-full w-full items-center justify-center' : viewportFit ? 'lg:flex lg:h-full lg:max-h-full lg:w-full lg:items-center lg:justify-center' : ''}`}>
           <TrainingTaskDiagramCanvas
             elements={elements}
             pitchType={scene.board.pitchType === 'penalty-area' ? 'half' : scene.board.pitchType}
@@ -292,7 +295,7 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
             readOnly={!editable}
             snap={snap}
             players={players}
-            fitViewport={expanded ? 'all' : viewportFit && readOnly ? 'desktop' : false}
+            fitViewport={expanded ? 'all' : viewportFit ? 'desktop' : false}
           />
           </div>
         </div>

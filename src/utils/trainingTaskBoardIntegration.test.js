@@ -89,7 +89,7 @@ const teamsSource = await readFile(new URL('../components/training/TrainingTaskT
 const appSource = await readFile(new URL('../App.jsx', import.meta.url), 'utf8');
 assert.match(sectionSource, /task\.author_user_id !== userId/, 'solo el autor abre edición');
 assert.match(detailSource, /TrainingTaskBoardEditor[^>]+readOnly/, 'el detalle, incluida una compartida, renderiza la pizarra readonly');
-assert.match(boardSource, /view === 'board' && !readOnly \? <div className="mt-2 shrink-0"><TrainingTaskBoardToolbar/, 'los controles solo aparecen en modo editable');
+assert.match(boardSource, /view === 'board' && !readOnly \? <div[\s\S]*?<TrainingTaskBoardToolbar/, 'los controles solo aparecen en modo editable');
 assert.match(appSource, /<TrainingTasksSection[^>]+players=\{players\}/, 'Tareas recibe la plantilla ya cargada por App');
 assert.match(sectionSource, /TrainingTaskBoardEditor viewportFit players=\{players\}/, 'la plantilla llega al editor ajustado al viewport');
 assert.match(detailSource, /TrainingTaskBoardEditor[^>]+players=\{players\}/, 'la misma plantilla llega a la consulta');
