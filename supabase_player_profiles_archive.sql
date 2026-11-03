@@ -1,5 +1,6 @@
 -- NEXO CLUB · Archivado seguro de perfiles globales.
--- PENDIENTE DE REVISION / INSTALACION MANUAL. No borra perfiles ni historial.
+-- BORRADOR: NO INSTALAR mientras authenticated conserve DELETE directo sobre
+-- players_database; la policy legacy STAFF permitiria borrar fuera de esta RPC.
 begin;
 
 do $preflight$
@@ -11,6 +12,9 @@ begin
      or to_regprocedure('public.is_app_staff()') is null then
     raise exception 'Faltan dependencias del archivado de perfiles';
   end if;
+  if has_table_privilege('authenticated', 'public.players_database', 'DELETE') then
+    raise exception 'Archivado bloqueado: authenticated conserva DELETE directo sobre players_database';
+  end if;
   if to_regclass('public.player_profile_archives') is not null
      and obj_description(to_regclass('public.player_profile_archives'), 'pg_class')
        is distinct from 'NEXO CLUB: archivos de perfiles globales sin alterar historial' then
@@ -20,6 +24,14 @@ begin
      and obj_description(to_regprocedure('public.archive_global_player_profile(uuid)'), 'pg_proc')
        is distinct from 'NEXO CLUB: archivado de perfil reservado al owner activo' then
     raise exception 'archive_global_player_profile(uuid) existe con otro contrato';
+  end if;
+  if exists (
+    select 1 from pg_policies p
+    where p.schemaname = 'public' and p.tablename = 'player_profile_archives'
+      and p.policyname = 'player_profile_archives_staff_read'
+      and (p.cmd <> 'SELECT' or p.permissive <> 'PERMISSIVE')
+  ) then
+    raise exception 'La politica de lectura existe con otro comando o modo';
   end if;
 end;
 $preflight$;

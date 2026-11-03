@@ -195,7 +195,7 @@ const buildPlayerPresentation = (player, teamById) => {
   return { memberships, currentMembership, currentTeam, positionModel, naturalPosition, specificPositions };
 };
 
-function QuickActions({ player, currentTeam, onEdit, onOpenProfile, onManageTeam, onOpenTeam, onViewHistory, onDelete, canDelete, list = false }) {
+function QuickActions({ player, currentTeam, onEdit, onOpenProfile, onManageTeam, onOpenTeam, onViewHistory, onDelete, canDelete, deleteAvailable, list = false }) {
   const buttonClass = list
     ? 'rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-[9px] font-black text-slate-300 transition hover:border-caudal-electric/30 hover:text-white'
     : 'rounded-lg border border-white/10 bg-slate-950/90 px-2 py-1.5 text-[9px] font-black text-slate-200 shadow transition hover:border-caudal-electric/35 hover:text-white';
@@ -213,7 +213,7 @@ function QuickActions({ player, currentTeam, onEdit, onOpenProfile, onManageTeam
           {!player.archivedAt ? <button type="button" onClick={(event) => run(event, onManageTeam)} className={buttonClass}>Cambiar equipo</button> : null}
           {currentTeam ? <button type="button" onClick={(event) => { event.stopPropagation(); onOpenTeam?.(currentTeam); }} className={buttonClass}>Abrir equipo</button> : null}
           <button type="button" onClick={(event) => run(event, onViewHistory)} className={buttonClass}>Ver historial</button>
-          {canDelete && !player.archivedAt && player.globalPlayerId ? <button type="button" onClick={(event) => run(event, onDelete)} className="rounded-lg px-2 py-1.5 text-left text-[9px] font-black text-red-300 hover:bg-red-500/15">Eliminar jugador</button> : null}
+          {canDelete && !player.archivedAt && player.globalPlayerId ? <button type="button" disabled={!deleteAvailable} title={!deleteAvailable ? 'Archivado pendiente de instalar y verificar en Supabase' : undefined} onClick={(event) => run(event, onDelete)} className="rounded-lg px-2 py-1.5 text-left text-[9px] font-black text-red-300 hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50">Eliminar jugador</button> : null}
         </div>
       </details>
     </div>
@@ -369,6 +369,7 @@ function GlobalPlayerDatabase({
   onOpenTeam,
   onDelete,
   canDelete = false,
+  deleteAvailable = false,
 }) {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState(EMPTY_FILTERS);
@@ -471,6 +472,7 @@ function GlobalPlayerDatabase({
         {advancedOpen ? <div className="mt-3 rounded-2xl border border-white/[0.07] bg-slate-950/20 p-3"><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5"><div className="grid grid-cols-2 gap-2"><input type="number" min="14" max="60" value={filters.ageMin} onChange={(event) => setFilter('ageMin', event.target.value)} className="field-input" placeholder="Edad mín." /><input type="number" min="14" max="60" value={filters.ageMax} onChange={(event) => setFilter('ageMax', event.target.value)} className="field-input" placeholder="Edad máx." /></div><select value={filters.foot} onChange={(event) => setFilter('foot', event.target.value)} className="field-input"><option value="">Cualquier pierna</option><option value="derech">Derecha</option><option value="izquierd">Izquierda</option><option value="ambid">Ambidiestro</option></select><div className="grid grid-cols-2 gap-2"><input type="number" min="140" max="220" value={filters.heightMin} onChange={(event) => setFilter('heightMin', event.target.value)} className="field-input" placeholder="Altura mín." /><input type="number" min="140" max="220" value={filters.heightMax} onChange={(event) => setFilter('heightMax', event.target.value)} className="field-input" placeholder="Altura máx." /></div></div><div className="mt-3 flex flex-wrap gap-2"><ToggleFilter active={filters.observed} label="Observado" onClick={() => setFilter('observed', !filters.observed)} /><ToggleFilter active={filters.isKey} label="Destacado" onClick={() => setFilter('isKey', !filters.isKey)} /><ToggleFilter active={filters.captain} label="Capitán" onClick={() => setFilter('captain', !filters.captain)} /><ToggleFilter active={filters.injured} label="Lesionado" onClick={() => setFilter('injured', !filters.injured)} /><ToggleFilter active={filters.suspended} label="Sancionado" onClick={() => setFilter('suspended', !filters.suspended)} /><ToggleFilter active={filters.hasHistory} label="Con historial" onClick={() => setFilter('hasHistory', !filters.hasHistory)} /><ToggleFilter active={filters.missingPhoto} label="Sin foto" onClick={() => setFilter('missingPhoto', !filters.missingPhoto)} /><ToggleFilter active={filters.incomplete} label="Perfil incompleto" onClick={() => setFilter('incomplete', !filters.incomplete)} /></div></div> : null}
 
         {filterNotice ? <p className="mt-3 rounded-xl border border-amber-300/15 bg-amber-300/[0.07] px-3 py-2 text-xs font-bold text-amber-100">{filterNotice}</p> : null}
+        {canDelete && !deleteAvailable ? <p className="mt-3 text-xs font-semibold text-amber-200">Eliminar jugador está pendiente de la revisión de seguridad del backend; el menú permanece desactivado.</p> : null}
         {error ? <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/[0.08] px-3 py-2 text-xs font-bold text-amber-100">{error}</p> : null}
         {status ? <p className="mt-3 rounded-xl border border-emerald-300/20 bg-emerald-300/[0.08] px-3 py-2 text-xs font-bold text-emerald-100">{status}</p> : null}
       </section>
@@ -480,8 +482,8 @@ function GlobalPlayerDatabase({
           {viewMode === 'list' ? <div className="hidden px-3 text-[9px] font-black uppercase tracking-[0.13em] text-slate-500 xl:grid xl:grid-cols-[minmax(190px,1.4fr)_minmax(145px,1fr)_minmax(130px,0.9fr)_70px_110px_88px_minmax(150px,auto)] xl:gap-3"><span>Jugador</span><span>Equipo actual</span><span>Posición</span><span>Edad</span><span>Procedencia</span><span>Perfil</span><span>Acciones</span></div> : null}
           <section className={viewMode === 'grid' ? 'grid gap-4 md:grid-cols-2 2xl:grid-cols-3' : 'space-y-2'}>
             {renderedPlayers.map((player) => viewMode === 'grid'
-              ? <PlayerGridCard key={player.id} player={player} teamById={teamById} onSelect={(item) => setSelectedPlayerId(item.id)} onEdit={onEdit} onOpenProfile={onOpenProfile} onManageTeam={onManageTeam} onOpenTeam={onOpenTeam} onViewHistory={(item) => setSelectedPlayerId(item.id)} onDelete={setPlayerToArchive} canDelete={canDelete} />
-              : <PlayerListRow key={player.id} player={player} teamById={teamById} onSelect={(item) => setSelectedPlayerId(item.id)} onEdit={onEdit} onOpenProfile={onOpenProfile} onManageTeam={onManageTeam} onOpenTeam={onOpenTeam} onViewHistory={(item) => setSelectedPlayerId(item.id)} onDelete={setPlayerToArchive} canDelete={canDelete} />)}
+              ? <PlayerGridCard key={player.id} player={player} teamById={teamById} onSelect={(item) => setSelectedPlayerId(item.id)} onEdit={onEdit} onOpenProfile={onOpenProfile} onManageTeam={onManageTeam} onOpenTeam={onOpenTeam} onViewHistory={(item) => setSelectedPlayerId(item.id)} onDelete={setPlayerToArchive} canDelete={canDelete} deleteAvailable={deleteAvailable} />
+              : <PlayerListRow key={player.id} player={player} teamById={teamById} onSelect={(item) => setSelectedPlayerId(item.id)} onEdit={onEdit} onOpenProfile={onOpenProfile} onManageTeam={onManageTeam} onOpenTeam={onOpenTeam} onViewHistory={(item) => setSelectedPlayerId(item.id)} onDelete={setPlayerToArchive} canDelete={canDelete} deleteAvailable={deleteAvailable} />)}
           </section>
           {visibleLimit < filteredPlayers.length ? <div className="flex justify-center"><button type="button" onClick={() => setVisibleLimit((current) => current + (viewMode === 'list' ? 200 : 120))} className="rounded-xl border border-white/10 bg-white/[0.04] px-5 py-2.5 text-xs font-black text-slate-200">Mostrar más · {filteredPlayers.length - visibleLimit} pendientes</button></div> : null}
         </>

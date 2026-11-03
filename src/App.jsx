@@ -31736,7 +31736,8 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             onEdit={(player) => openRivalPlayerModal(player, { standalone: true })}
             onOpenProfile={(player) => openRivalPlayerModal(player, { standalone: true })}
             onManageTeam={openPlayerTeamManager}
-            canDelete={identity?.membership?.role === 'owner' && identity?.membership?.is_active !== false && globalPlayerArchiveAvailable}
+            canDelete={identity?.membership?.role === 'owner' && identity?.membership?.is_active !== false}
+            deleteAvailable={globalPlayerArchiveAvailable}
             onDelete={async (player) => {
               await archiveGlobalPlayerProfile(supabase, player.globalPlayerId);
               setGlobalPlayers((current) => current.map((item) =>

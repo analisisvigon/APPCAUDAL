@@ -1,5 +1,8 @@
 -- Solo lectura. Ejecutar antes y despues de la migracion.
 with checks as (
+  select 'sin DELETE directo en players_database' as check_name,
+    not has_table_privilege('authenticated', 'public.players_database', 'DELETE') as ok
+  union all
   select 'tabla de archivado' as check_name,
          to_regclass('public.player_profile_archives') is not null as ok
   union all select 'RPC de archivado', to_regprocedure('public.archive_global_player_profile(uuid)') is not null
