@@ -35,6 +35,12 @@ begin
        'NEXO CLUB: limpieza privada de archivos de tareas ya eliminadas' then
     raise exception 'Tareas: helper de limpieza de Storage existe con otro contrato';
   end if;
+  if to_regprocedure('public.training_task_delete_ready_v1()') is not null
+     and obj_description(to_regprocedure('public.training_task_delete_ready_v1()'),
+       'pg_proc') is distinct from
+       'NEXO CLUB: disponibilidad del guard de borrado de tareas' then
+    raise exception 'Tareas: helper de disponibilidad existe con otro contrato';
+  end if;
   if exists (
     select 1 from pg_policies p
     where p.schemaname='storage' and p.tablename='objects'
@@ -57,6 +63,16 @@ begin
   end if;
   if (select count(*) from pg_constraint c
       where c.contype='f' and c.confrelid=to_regclass('public.training_tasks'))<>3
+     or exists (
+       select 1 from (values
+         (to_regclass('public.training_task_shares')),
+         (to_regclass('public.training_task_feedback')),
+         (to_regclass('public.training_task_media'))
+       ) expected(child_table)
+       where (select count(*) from pg_constraint c
+         where c.contype='f' and c.confrelid=to_regclass('public.training_tasks')
+           and c.conrelid=expected.child_table)<>1
+     )
      or exists (
        select 1 from pg_constraint c
        where c.contype='f' and c.confrelid=to_regclass('public.training_tasks')
@@ -181,6 +197,26 @@ begin
 end;
 $trigger$;
 
+-- El cliente no habilita «Eliminar» hasta que este guard esté instalado.
+create or replace function public.training_task_delete_ready_v1()
+returns boolean language sql stable security definer set search_path=pg_catalog as $function$
+  select auth.uid() is not null and exists (
+    select 1 from pg_trigger t
+    where t.tgrelid=to_regclass('public.training_tasks')
+      and t.tgname='training_task_delete_guard_v1'
+      and t.tgfoid=to_regprocedure('public.guard_training_task_delete_v1()')
+      and (t.tgtype::integer & 11)=11 and t.tgenabled='O'
+      and not t.tgisinternal
+  );
+$function$;
+comment on function public.training_task_delete_ready_v1() is
+  'NEXO CLUB: disponibilidad del guard de borrado de tareas';
+alter function public.training_task_delete_ready_v1() owner to postgres;
+revoke all on function public.training_task_delete_ready_v1()
+  from public, anon, authenticated, service_role;
+grant execute on function public.training_task_delete_ready_v1()
+  to authenticated;
+
 do $postflight$
 begin
   if not exists (
@@ -193,7 +229,7 @@ begin
     where t.tgrelid=to_regclass('public.training_tasks')
       and t.tgname='training_task_delete_guard_v1'
       and t.tgfoid=to_regprocedure('public.guard_training_task_delete_v1()')
-      and (t.tgtype & 11)=11 and not t.tgisinternal and t.tgenabled='O'
+      and (t.tgtype::integer & 11)=11 and not t.tgisinternal and t.tgenabled='O'
   ) or has_function_privilege('authenticated',
        'public.guard_training_task_delete_v1()','EXECUTE')
      or has_function_privilege('anon',
@@ -202,6 +238,10 @@ begin
        'public.training_task_orphan_storage_allowed(text)','EXECUTE')
      or has_function_privilege('anon',
        'public.training_task_orphan_storage_allowed(text)','EXECUTE')
+     or not has_function_privilege('authenticated',
+       'public.training_task_delete_ready_v1()','EXECUTE')
+     or has_function_privilege('anon',
+       'public.training_task_delete_ready_v1()','EXECUTE')
      or (select count(*) from pg_policies p where p.schemaname='storage'
          and p.tablename='objects' and p.policyname in
            ('training_task_orphan_select_v1','training_task_orphan_delete_v1'))<>2 then

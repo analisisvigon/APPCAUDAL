@@ -82,6 +82,10 @@ export const saveTrainingTaskWithFile = async (client, draft, context, existing 
 };
 
 export const deleteTrainingTaskWithFiles = async (client, task) => {
+  const { data: ready, error: readyError } = await client.rpc('training_task_delete_ready_v1');
+  if (readyError || ready !== true) {
+    throw new Error('Eliminar tarea no está disponible hasta instalar y verificar su protección en Supabase.');
+  }
   // La fila se borra primero: un rechazo de RLS, del guard o de una FK no debe
   // dejar una tarea existente con sus archivos privados ya eliminados.
   const { data: mediaRows, error: mediaError } = await client

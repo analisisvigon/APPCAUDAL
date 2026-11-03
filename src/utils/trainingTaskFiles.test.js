@@ -133,6 +133,7 @@ assert.equal(pdfUpdates[0].preview_path, null, 'reemplazar una imagen por PDF li
 await assert.rejects(removeTrainingTaskFiles({ storage: { from: () => ({ remove: async () => ({ error: new Error('Storage denied') }) }) } }, ['path']), /Storage denied/);
 const deleteCalls = [];
 const cleanupResult = await deleteTrainingTaskWithFiles({
+  rpc: async (name) => { assert.equal(name, 'training_task_delete_ready_v1'); return { data: true, error: null }; },
   storage: { from: () => ({ remove: async () => { deleteCalls.push('remove'); return { error: new Error('remove failed') }; } }) },
   from: (table) => {
     if (table === 'training_task_media') return { select: () => ({ eq: () => ({ eq: async () => {
@@ -152,6 +153,7 @@ assert.match(cleanupResult.cleanupError.message, /remove failed/);
 
 const rejectedDeleteCalls = [];
 await assert.rejects(deleteTrainingTaskWithFiles({
+  rpc: async (name) => { assert.equal(name, 'training_task_delete_ready_v1'); return { data: true, error: null }; },
   storage: { from: () => ({ remove: async () => { rejectedDeleteCalls.push('remove'); return { error: null }; } }) },
   from: (table) => {
     if (table === 'training_task_media') return { select: () => ({ eq: () => ({ eq: async () => ({
@@ -167,6 +169,7 @@ assert.deepEqual(rejectedDeleteCalls, ['delete'], 'el rechazo de la base de dato
 
 const successfulDeleteCalls = [];
 const deleted = await deleteTrainingTaskWithFiles({
+  rpc: async (name) => { assert.equal(name, 'training_task_delete_ready_v1'); return { data: true, error: null }; },
   storage: { from: () => ({ remove: async (paths) => { successfulDeleteCalls.push(['remove', paths]); return { error: null }; } }) },
   from: (table) => {
     if (table === 'training_task_media') return { select: () => ({ eq: () => ({ eq: async () => ({
@@ -186,5 +189,13 @@ assert.deepEqual(successfulDeleteCalls, [
   ['remove', ['preview-path', 'attachment-path', 'media-path']],
 ], 'el borrado de la fila se confirma antes de intentar limpiar Storage');
 assert.deepEqual(deleted.cleanupPending, []);
+
+let calledWithoutGuard = false;
+await assert.rejects(deleteTrainingTaskWithFiles({
+  rpc: async () => ({ data: null, error: new Error('RPC missing') }),
+  from: () => { calledWithoutGuard = true; throw new Error('No debe tocar tablas'); },
+  storage: { from: () => { calledWithoutGuard = true; throw new Error('No debe tocar Storage'); } },
+}, { id: 'task-id' }), /protección en Supabase/);
+assert.equal(calledWithoutGuard, false, 'sin el guard instalado no se intenta borrar nada');
 
 console.log('training task file lifecycle tests passed');

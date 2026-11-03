@@ -8,7 +8,9 @@ with facts as (
     to_regclass('public.planned_session_items') as session_items_table,
     to_regprocedure('public.guard_training_task_delete_v1()') as guard_function,
     to_regprocedure('public.training_task_orphan_storage_allowed(text)')
-      as orphan_function
+      as orphan_function,
+    to_regprocedure('public.training_task_delete_ready_v1()')
+      as ready_function
 ), checks as (
   select 'Tablas conocidas'::text as check_name,
     task_table is not null and shares_table is not null
@@ -17,7 +19,11 @@ with facts as (
     'Tarea, compartición, POST, multimedia y snapshots de Sesiones'::text as detail
   from facts
   union all
-  select 'FK conocidas', count(*)=3 and coalesce(bool_and(
+  select 'FK conocidas', count(*)=3
+    and count(*) filter (where c.conrelid=f.shares_table)=1
+    and count(*) filter (where c.conrelid=f.feedback_table)=1
+    and count(*) filter (where c.conrelid=f.media_table)=1
+    and coalesce(bool_and(
     c.conrelid in (f.shares_table,f.feedback_table,f.media_table)
       and c.confdeltype='c' and c.convalidated),false),
     'Tres FK validadas con CASCADE; ninguna relación adicional'
@@ -57,7 +63,7 @@ with facts as (
   select 'Trigger DELETE activo', exists (
     select 1 from pg_trigger t
     where t.tgrelid=f.task_table and t.tgname='training_task_delete_guard_v1'
-      and t.tgfoid=f.guard_function and (t.tgtype & 11)=11
+      and t.tgfoid=f.guard_function and (t.tgtype::integer & 11)=11
       and t.tgenabled='O' and not t.tgisinternal
   ), 'BEFORE DELETE de cada tarea'
   from facts f
@@ -97,6 +103,18 @@ with facts as (
     and p.tablename='objects' and p.policyname in
       ('training_task_orphan_select_v1','training_task_orphan_delete_v1')
   group by f.task_table
+  union all
+  select 'Señal de activación', f.ready_function is not null
+      and has_function_privilege('authenticated',f.ready_function,'EXECUTE')
+      and not has_function_privilege('anon',f.ready_function,'EXECUTE')
+      and coalesce((select p.prosecdef
+        and p.proconfig=array['search_path=pg_catalog']::text[]
+        and pg_get_userbyid(p.proowner)='postgres'
+        and obj_description(p.oid,'pg_proc')=
+          'NEXO CLUB: disponibilidad del guard de borrado de tareas'
+        from pg_proc p where p.oid=f.ready_function),false),
+    'La interfaz solo ofrece Eliminar después de detectar el guard instalado'
+  from facts f
 ), summary as (
   select case
     when bool_and(passed) then 'PASS'
@@ -104,6 +122,7 @@ with facts as (
       ('Tablas conocidas','FK conocidas','Snapshot sin FK a Biblioteca',
        'RLS de tareas','Política DELETE del autor'))
        and not (select guard_function is not null or orphan_function is not null
+                  or ready_function is not null
                 from facts)
       then 'READY_TO_APPLY'
     else 'BLOCKED' end as result

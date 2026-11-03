@@ -189,7 +189,8 @@ assert.match(store, /from\('training_task_feedback'\)[\s\S]*select\('task_id,rat
 assert.doesNotMatch(store, /TRAINING_TASK_RLS_DEBUG|insert-without-representation|safeDiagnostic|current_membership|can_edit_club_data/i);
 assert.match(trainingTasksSection, /canManage\s*\?\s*<>[\s\S]*onDelete\(task\)[\s\S]*>Eliminar<\/button>/i);
 assert.match(trainingTasksSection, /canManage=\{task\.author_user_id\s*===\s*userId\}/i);
-assert.match(trainingTasksSection, /task\.author_user_id\s*!==\s*userId\s*\|\|\s*!window\.confirm\('¿Eliminar esta tarea\? Esta acción no se puede deshacer\.'/i);
+assert.match(trainingTasksSection, /task\.author_user_id\s*!==\s*userId\s*\|\|\s*!window\.confirm\(`¿Eliminar definitivamente «\$\{task\.name\}»\? Esta acción no se puede deshacer\.`\)/i);
+assert.match(trainingTasksSection, /canDelete=\{deleteReady && membership\?\.is_active/i);
 assert.match(trainingTasksSection, /label="Código tarea"[\s\S]*placeholder="Ej\. Vigón"/i);
 assert.match(trainingTasksSection, /placeholder="Nº jugadores"[\s\S]*placeholder="Objetivo"[\s\S]*Limpiar filtros/i);
 assert.match(trainingTasksSection, /borderTopColor:\s*card\.type\.color[\s\S]*task\.taskCode\s*\?/i);
