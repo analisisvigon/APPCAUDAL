@@ -1,6 +1,5 @@
 -- NEXO CLUB · Archivado seguro de perfiles globales.
--- BORRADOR: NO INSTALAR mientras authenticated conserve DELETE directo sobre
--- players_database; la policy legacy STAFF permitiria borrar fuera de esta RPC.
+-- Instalar solo tras supabase_player_profiles_delete_lockdown.sql y su verificador.
 begin;
 
 do $preflight$
@@ -12,8 +11,36 @@ begin
      or to_regprocedure('public.is_app_staff()') is null then
     raise exception 'Faltan dependencias del archivado de perfiles';
   end if;
-  if has_table_privilege('authenticated', 'public.players_database', 'DELETE') then
+  if has_table_privilege('authenticated', 'public.players_database', 'DELETE')
+     or has_table_privilege('anon', 'public.players_database', 'DELETE') then
     raise exception 'Archivado bloqueado: authenticated conserva DELETE directo sobre players_database';
+  end if;
+  if not exists (
+    select 1 from pg_proc p
+    where p.oid = to_regprocedure('public.merge_global_player_profiles(uuid,uuid)')
+      and p.prosecdef and p.proconfig = array['search_path=pg_catalog']::text[]
+      and pg_get_userbyid(p.proowner) = 'nexo_profile_merge_executor'
+  ) or not exists (
+    select 1 from pg_roles r where r.rolname = 'nexo_profile_merge_executor'
+      and not r.rolcanlogin and not r.rolbypassrls
+      and has_table_privilege(r.rolname, 'public.players_database', 'DELETE')
+  ) or not exists (
+    select 1 from pg_policies p
+    where p.schemaname = 'public' and p.tablename = 'players_database'
+      and p.policyname = 'player_perimeter_staff_delete'
+      and p.cmd = 'DELETE'
+      and regexp_replace(lower(coalesce(p.qual, '')),
+        '[[:space:]()]', '', 'g') = 'false'
+  ) or not exists (
+    select 1 from pg_policies p
+    where p.schemaname = 'public' and p.tablename = 'players_database'
+      and p.policyname = 'player_profile_merge_delete'
+      and p.cmd = 'DELETE'
+      and p.roles = array['nexo_profile_merge_executor']::name[]
+      and regexp_replace(lower(coalesce(p.qual, '')),
+        '[[:space:]()]', '', 'g') in ('is_app_staff', 'public.is_app_staff')
+  ) then
+    raise exception 'Instala y verifica primero el cierre del DELETE directo';
   end if;
   if to_regclass('public.player_profile_archives') is not null
      and obj_description(to_regclass('public.player_profile_archives'), 'pg_class')

@@ -2,6 +2,32 @@
 with checks as (
   select 'sin DELETE directo en players_database' as check_name,
     not has_table_privilege('authenticated', 'public.players_database', 'DELETE') as ok
+  union all select 'anon sin DELETE directo en players_database',
+    not has_table_privilege('anon', 'public.players_database', 'DELETE')
+  union all select 'ejecutor de fusion aislado', exists (
+    select 1 from pg_roles r where r.rolname = 'nexo_profile_merge_executor'
+      and not r.rolcanlogin and not r.rolbypassrls
+      and has_table_privilege(r.rolname, 'public.players_database', 'DELETE'))
+  union all select 'merge protegida tras cierre DELETE', exists (
+    select 1 from pg_proc p
+    where p.oid = to_regprocedure('public.merge_global_player_profiles(uuid,uuid)')
+      and p.prosecdef and p.proconfig = array['search_path=pg_catalog']::text[]
+      and pg_get_userbyid(p.proowner) = 'nexo_profile_merge_executor')
+  union all select 'politica DELETE directa inerte', exists (
+    select 1 from pg_policies p where p.schemaname = 'public'
+      and p.tablename = 'players_database'
+      and p.policyname = 'player_perimeter_staff_delete'
+      and p.cmd = 'DELETE'
+      and regexp_replace(lower(coalesce(p.qual, '')),
+        '[[:space:]()]', '', 'g') = 'false')
+  union all select 'politica DELETE de fusion acotada', exists (
+    select 1 from pg_policies p where p.schemaname = 'public'
+      and p.tablename = 'players_database'
+      and p.policyname = 'player_profile_merge_delete'
+      and p.cmd = 'DELETE'
+      and p.roles = array['nexo_profile_merge_executor']::name[]
+      and regexp_replace(lower(coalesce(p.qual, '')),
+        '[[:space:]()]', '', 'g') in ('is_app_staff', 'public.is_app_staff'))
   union all
   select 'tabla de archivado' as check_name,
          to_regclass('public.player_profile_archives') is not null as ok
@@ -43,5 +69,7 @@ with checks as (
 select check_name, case when ok then 'PASS' else 'FAIL' end as result
 from checks
 union all
-select 'GLOBAL', case when bool_and(ok) then 'PASS' else 'BLOCKED' end
-from checks;
+select 'GLOBAL STRUCTURAL', case when bool_and(ok) then 'PASS' else 'BLOCKED' end
+from checks
+union all
+select 'IDENTITY owner/staff/player/anon', 'PENDING';

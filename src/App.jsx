@@ -5407,7 +5407,6 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [globalPlayers, setGlobalPlayers] = useState([]);
   const [globalPlayersAvailable, setGlobalPlayersAvailable] = useState(true);
-  const [globalPlayerArchiveAvailable, setGlobalPlayerArchiveAvailable] = useState(false);
   const [globalPlayersLoading, setGlobalPlayersLoading] = useState(false);
   const [globalPlayersError, setGlobalPlayersError] = useState('');
   const [globalPlayerStatus, setGlobalPlayerStatus] = useState('');
@@ -6248,7 +6247,6 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       if (syncHistoryResponse.error) console.warn('[RIVAL_SYNC_HISTORY_LOAD_WARNING]', syncHistoryResponse.error.message);
 
       setGlobalPlayersAvailable(globalDatabase.available);
-      setGlobalPlayerArchiveAvailable(Boolean(globalDatabase.archiveAvailable));
       if (!globalDatabase.available) {
         setGlobalPlayersError('Ejecuta supabase_global_players.sql para activar la base global. Mientras tanto se mantiene la lectura legacy.');
       }
@@ -31737,7 +31735,6 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             onOpenProfile={(player) => openRivalPlayerModal(player, { standalone: true })}
             onManageTeam={openPlayerTeamManager}
             canDelete={identity?.membership?.role === 'owner' && identity?.membership?.is_active !== false}
-            deleteAvailable={globalPlayerArchiveAvailable}
             onDelete={async (player) => {
               await archiveGlobalPlayerProfile(supabase, player.globalPlayerId);
               setGlobalPlayers((current) => current.map((item) =>
