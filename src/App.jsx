@@ -351,6 +351,7 @@ import {
   loadAuthenticatedExternalImage,
 } from './utils/playerSourceFunction';
 import {
+  archiveGlobalPlayerProfile,
   assignGlobalPlayerToTeam,
   buildOwnRosterGlobalEditorDraft,
   buildGlobalPlayerCoverage,
@@ -5406,6 +5407,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [globalPlayers, setGlobalPlayers] = useState([]);
   const [globalPlayersAvailable, setGlobalPlayersAvailable] = useState(true);
+  const [globalPlayerArchiveAvailable, setGlobalPlayerArchiveAvailable] = useState(false);
   const [globalPlayersLoading, setGlobalPlayersLoading] = useState(false);
   const [globalPlayersError, setGlobalPlayersError] = useState('');
   const [globalPlayerStatus, setGlobalPlayerStatus] = useState('');
@@ -6246,6 +6248,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       if (syncHistoryResponse.error) console.warn('[RIVAL_SYNC_HISTORY_LOAD_WARNING]', syncHistoryResponse.error.message);
 
       setGlobalPlayersAvailable(globalDatabase.available);
+      setGlobalPlayerArchiveAvailable(Boolean(globalDatabase.archiveAvailable));
       if (!globalDatabase.available) {
         setGlobalPlayersError('Ejecuta supabase_global_players.sql para activar la base global. Mientras tanto se mantiene la lectura legacy.');
       }
@@ -31733,6 +31736,13 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             onEdit={(player) => openRivalPlayerModal(player, { standalone: true })}
             onOpenProfile={(player) => openRivalPlayerModal(player, { standalone: true })}
             onManageTeam={openPlayerTeamManager}
+            canDelete={identity?.membership?.role === 'owner' && identity?.membership?.is_active !== false && globalPlayerArchiveAvailable}
+            onDelete={async (player) => {
+              await archiveGlobalPlayerProfile(supabase, player.globalPlayerId);
+              setGlobalPlayers((current) => current.map((item) =>
+                item.globalPlayerId === player.globalPlayerId ? { ...item, archivedAt: 'archived' } : item));
+              setGlobalPlayerStatus(`${player.name} se ha archivado. El historial permanece disponible en «Ver archivados».`);
+            }}
             onOpenTeam={(team) => {
               if (team.isOwnClub || team.teamKind === 'own') {
                 setActiveTab('Plantilla');

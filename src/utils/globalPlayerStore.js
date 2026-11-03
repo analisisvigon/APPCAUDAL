@@ -362,6 +362,7 @@ export const normalizeGlobalPlayer = (row = {}, related = {}) => {
     id: row.id,
     globalPlayerId: row.id,
     legacyOriginId: row.legacy_origin_id || null,
+    archivedAt: related.archivedPlayerIds?.has(String(row.id)) ? 'archived' : '',
     legacyOwnPlayerIds: ownRosterMappings.map((item) => item.legacy_player_id).filter(Boolean),
     ownRosterMappings,
     name: row.name || '',
@@ -443,16 +444,31 @@ export const loadGlobalPlayerDatabase = async (client) => {
   ]);
   const failed = [membershipsResponse, positionsResponse, sourcesResponse, traitsResponse, ownRosterMigrationsResponse].find((response) => response.error);
   if (failed) throw failed.error;
+  const archivesResponse = await client.from('player_profile_archives').select('player_id');
+  const archiveAvailable = !archivesResponse.error;
+  if (archivesResponse.error && !/player_profile_archives|relation .* does not exist|schema cache/i.test(archivesResponse.error.message || '')) {
+    throw archivesResponse.error;
+  }
   const related = {
     memberships: membershipsResponse.data || [], positions: positionsResponse.data || [],
     sources: sourcesResponse.data || [], traits: traitsResponse.data || [],
     ownRosterMigrations: ownRosterMigrationsResponse.data || [],
+    archivedPlayerIds: new Set((archivesResponse.data || []).map((row) => String(row.player_id))),
   };
   return {
     available: true,
+    archiveAvailable,
     players: (playersResponse.data || []).map((row) => normalizeGlobalPlayer(row, related)),
     ...related,
   };
+};
+
+export const archiveGlobalPlayerProfile = async (client, playerId) => {
+  if (!playerId || String(playerId).startsWith('legacy:')) throw new Error('Selecciona un perfil global válido.');
+  const { data, error } = await client.rpc('archive_global_player_profile', { p_player_id: playerId });
+  if (error) throw error;
+  if (data !== 'archived') throw new Error('El servidor no confirmó el archivado del perfil.');
+  return data;
 };
 
 export const findGlobalPlayerMatches = (candidate = {}, players = []) => {

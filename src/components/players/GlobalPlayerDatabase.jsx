@@ -195,7 +195,7 @@ const buildPlayerPresentation = (player, teamById) => {
   return { memberships, currentMembership, currentTeam, positionModel, naturalPosition, specificPositions };
 };
 
-function QuickActions({ player, currentTeam, onEdit, onOpenProfile, onManageTeam, onOpenTeam, onViewHistory, list = false }) {
+function QuickActions({ player, currentTeam, onEdit, onOpenProfile, onManageTeam, onOpenTeam, onViewHistory, onDelete, canDelete, list = false }) {
   const buttonClass = list
     ? 'rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-[9px] font-black text-slate-300 transition hover:border-caudal-electric/30 hover:text-white'
     : 'rounded-lg border border-white/10 bg-slate-950/90 px-2 py-1.5 text-[9px] font-black text-slate-200 shadow transition hover:border-caudal-electric/35 hover:text-white';
@@ -205,14 +205,15 @@ function QuickActions({ player, currentTeam, onEdit, onOpenProfile, onManageTeam
   };
   return (
     <div className={`flex items-center gap-1 ${list ? '' : 'pointer-events-none absolute right-3 top-3 z-20 opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100'}`}>
-      <button type="button" onClick={(event) => run(event, onOpenProfile)} className={buttonClass}>Abrir perfil</button>
+      {!player.archivedAt ? <button type="button" onClick={(event) => run(event, onOpenProfile)} className={buttonClass}>Abrir perfil</button> : null}
       <details onClick={(event) => event.stopPropagation()} className="relative">
         <summary className={`${buttonClass} cursor-pointer list-none`}>•••</summary>
         <div className="absolute right-0 top-full z-40 mt-1 grid min-w-36 gap-1 rounded-xl border border-white/10 bg-[#071225] p-1.5 shadow-2xl">
-          <button type="button" onClick={(event) => run(event, onEdit)} className={buttonClass}>Editar</button>
-          <button type="button" onClick={(event) => run(event, onManageTeam)} className={buttonClass}>Cambiar equipo</button>
+          {!player.archivedAt ? <button type="button" onClick={(event) => run(event, onEdit)} className={buttonClass}>Editar</button> : null}
+          {!player.archivedAt ? <button type="button" onClick={(event) => run(event, onManageTeam)} className={buttonClass}>Cambiar equipo</button> : null}
           {currentTeam ? <button type="button" onClick={(event) => { event.stopPropagation(); onOpenTeam?.(currentTeam); }} className={buttonClass}>Abrir equipo</button> : null}
           <button type="button" onClick={(event) => run(event, onViewHistory)} className={buttonClass}>Ver historial</button>
+          {canDelete && !player.archivedAt && player.globalPlayerId ? <button type="button" onClick={(event) => run(event, onDelete)} className="rounded-lg px-2 py-1.5 text-left text-[9px] font-black text-red-300 hover:bg-red-500/15">Eliminar jugador</button> : null}
         </div>
       </details>
     </div>
@@ -341,8 +342,8 @@ function PlayerQuickView({ player, teamById, onClose, onOpenProfile, onManageTea
           <section className="mt-4 rounded-2xl border border-dashed border-white/[0.08] p-4"><p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Último informe</p><p className="mt-2 text-xs font-semibold text-slate-500">{player.lastReport?.title || 'Sin informes vinculados al perfil global.'}</p></section>
 
           <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-white/10 pt-4">
-            <button type="button" onClick={() => { onClose(); onManageTeam(player); }} className="rounded-xl border border-white/10 px-4 py-2 text-xs font-black text-slate-200">Cambiar equipo</button>
-            <button type="button" onClick={() => { onClose(); onOpenProfile(player); }} className="rounded-xl bg-caudal-electric px-4 py-2 text-xs font-black text-slate-950">Abrir ficha completa</button>
+            {!player.archivedAt ? <button type="button" onClick={() => { onClose(); onManageTeam(player); }} className="rounded-xl border border-white/10 px-4 py-2 text-xs font-black text-slate-200">Cambiar equipo</button> : null}
+            {!player.archivedAt ? <button type="button" onClick={() => { onClose(); onOpenProfile(player); }} className="rounded-xl bg-caudal-electric px-4 py-2 text-xs font-black text-slate-950">Abrir ficha completa</button> : <span className="text-xs font-bold text-slate-400">Perfil archivado · consulta histórica</span>}
           </div>
         </div>
       </aside>
@@ -366,12 +367,18 @@ function GlobalPlayerDatabase({
   onOpenProfile,
   onManageTeam,
   onOpenTeam,
+  onDelete,
+  canDelete = false,
 }) {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [filterNotice, setFilterNotice] = useState('');
   const [selectedPlayerId, setSelectedPlayerId] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [playerToArchive, setPlayerToArchive] = useState(null);
+  const [archiveBusy, setArchiveBusy] = useState(false);
+  const [archiveError, setArchiveError] = useState('');
   const [viewMode, setViewMode] = useState(() => {
     if (typeof window === 'undefined') return 'grid';
     return window.localStorage.getItem(VIEW_STORAGE_KEY) === 'list' ? 'list' : 'grid';
@@ -391,7 +398,7 @@ function GlobalPlayerDatabase({
   const specificPositionGroups = useMemo(() => filters.naturalPosition
     ? [[filters.naturalPosition, SPECIFIC_POSITION_CATALOG[filters.naturalPosition] || []]]
     : Object.entries(SPECIFIC_POSITION_CATALOG), [filters.naturalPosition]);
-  const filteredPlayers = useMemo(() => filterGlobalPlayers(players, { ...filters, search, teams }), [players, filters, search, teams]);
+  const filteredPlayers = useMemo(() => filterGlobalPlayers(players.filter((player) => Boolean(player.archivedAt) === showArchived), { ...filters, search, teams }), [players, filters, search, teams, showArchived]);
   const selectedPlayer = useMemo(() => players.find((player) => String(player.id) === String(selectedPlayerId)) || null, [players, selectedPlayerId]);
   const renderedPlayers = filteredPlayers.slice(0, visibleLimit);
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
@@ -412,6 +419,20 @@ function GlobalPlayerDatabase({
     setFilters(EMPTY_FILTERS);
     setFilterNotice('');
   };
+  const confirmArchive = async () => {
+    if (!playerToArchive || archiveBusy) return;
+    setArchiveBusy(true);
+    setArchiveError('');
+    try {
+      await onDelete(playerToArchive);
+      setSelectedPlayerId('');
+      setPlayerToArchive(null);
+    } catch (cause) {
+      setArchiveError(cause?.message || 'No se pudo archivar el perfil.');
+    } finally {
+      setArchiveBusy(false);
+    }
+  };
 
   return (
     <main className="space-y-4">
@@ -424,6 +445,7 @@ function GlobalPlayerDatabase({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-black text-slate-300">{filteredPlayers.length} jugadores</span>
+            <button type="button" aria-pressed={showArchived} onClick={() => setShowArchived((current) => !current)} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-black text-slate-200">{showArchived ? 'Ver activos' : 'Ver archivados'}</button>
             <div className="flex rounded-xl border border-white/[0.08] bg-slate-950/30 p-1">
               <button type="button" aria-pressed={viewMode === 'grid'} onClick={() => setViewMode('grid')} className={`rounded-lg px-3 py-1.5 text-[10px] font-black ${viewMode === 'grid' ? 'bg-caudal-electric text-slate-950' : 'text-slate-400'}`}>Cuadrícula</button>
               <button type="button" aria-pressed={viewMode === 'list'} onClick={() => setViewMode('list')} className={`rounded-lg px-3 py-1.5 text-[10px] font-black ${viewMode === 'list' ? 'bg-caudal-electric text-slate-950' : 'text-slate-400'}`}>Lista</button>
@@ -458,14 +480,15 @@ function GlobalPlayerDatabase({
           {viewMode === 'list' ? <div className="hidden px-3 text-[9px] font-black uppercase tracking-[0.13em] text-slate-500 xl:grid xl:grid-cols-[minmax(190px,1.4fr)_minmax(145px,1fr)_minmax(130px,0.9fr)_70px_110px_88px_minmax(150px,auto)] xl:gap-3"><span>Jugador</span><span>Equipo actual</span><span>Posición</span><span>Edad</span><span>Procedencia</span><span>Perfil</span><span>Acciones</span></div> : null}
           <section className={viewMode === 'grid' ? 'grid gap-4 md:grid-cols-2 2xl:grid-cols-3' : 'space-y-2'}>
             {renderedPlayers.map((player) => viewMode === 'grid'
-              ? <PlayerGridCard key={player.id} player={player} teamById={teamById} onSelect={(item) => setSelectedPlayerId(item.id)} onEdit={onEdit} onOpenProfile={onOpenProfile} onManageTeam={onManageTeam} onOpenTeam={onOpenTeam} onViewHistory={(item) => setSelectedPlayerId(item.id)} />
-              : <PlayerListRow key={player.id} player={player} teamById={teamById} onSelect={(item) => setSelectedPlayerId(item.id)} onEdit={onEdit} onOpenProfile={onOpenProfile} onManageTeam={onManageTeam} onOpenTeam={onOpenTeam} onViewHistory={(item) => setSelectedPlayerId(item.id)} />)}
+              ? <PlayerGridCard key={player.id} player={player} teamById={teamById} onSelect={(item) => setSelectedPlayerId(item.id)} onEdit={onEdit} onOpenProfile={onOpenProfile} onManageTeam={onManageTeam} onOpenTeam={onOpenTeam} onViewHistory={(item) => setSelectedPlayerId(item.id)} onDelete={setPlayerToArchive} canDelete={canDelete} />
+              : <PlayerListRow key={player.id} player={player} teamById={teamById} onSelect={(item) => setSelectedPlayerId(item.id)} onEdit={onEdit} onOpenProfile={onOpenProfile} onManageTeam={onManageTeam} onOpenTeam={onOpenTeam} onViewHistory={(item) => setSelectedPlayerId(item.id)} onDelete={setPlayerToArchive} canDelete={canDelete} />)}
           </section>
           {visibleLimit < filteredPlayers.length ? <div className="flex justify-center"><button type="button" onClick={() => setVisibleLimit((current) => current + (viewMode === 'list' ? 200 : 120))} className="rounded-xl border border-white/10 bg-white/[0.04] px-5 py-2.5 text-xs font-black text-slate-200">Mostrar más · {filteredPlayers.length - visibleLimit} pendientes</button></div> : null}
         </>
       ) : <div className="empty-state">No hay jugadores que coincidan con los filtros.</div>}
 
       {selectedPlayer ? <PlayerQuickView player={selectedPlayer} teamById={teamById} onClose={() => setSelectedPlayerId('')} onOpenProfile={onOpenProfile} onManageTeam={onManageTeam} /> : null}
+      {playerToArchive ? <div role="presentation" className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/85 p-4"><div role="dialog" aria-modal="true" aria-labelledby="archive-player-title" className="w-full max-w-md rounded-2xl border border-red-300/20 bg-[#091428] p-5 shadow-2xl"><h3 id="archive-player-title" className="text-lg font-black text-white">Eliminar jugador · {playerToArchive.name}</h3><p className="mt-3 text-sm text-slate-300">Se archivará el perfil y dejará de aparecer en Perfiles activos. Sus equipos, partidos, sesiones y demás historial permanecerán intactos. Si aún pertenece a un equipo, debes usar primero «Quitar del equipo».</p>{archiveError ? <p role="alert" className="mt-3 text-sm text-red-300">{archiveError}</p> : null}<div className="mt-5 flex justify-end gap-2"><button type="button" disabled={archiveBusy} onClick={() => { setPlayerToArchive(null); setArchiveError(''); }} className="rounded-xl border border-white/10 px-4 py-2 text-xs font-black text-white">Cancelar</button><button type="button" disabled={archiveBusy} onClick={confirmArchive} className="rounded-xl bg-red-500/20 px-4 py-2 text-xs font-black text-red-100 disabled:opacity-50">{archiveBusy ? 'Archivando…' : 'Archivar perfil'}</button></div></div></div> : null}
     </main>
   );
 }
