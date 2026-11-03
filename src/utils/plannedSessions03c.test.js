@@ -24,10 +24,27 @@ const selected = createPlannedLibraryItem('library-1', task);
 const mixed = { ...draft, slots: [{ ...draft.slots[0], items: [draft.slots[0].items[0], selected] }] };
 assert.equal(hasPlannedLibraryItems(mixed), true);
 assert.equal(getPlannedDuration(mixed.slots), 20, 'las tareas simultáneas no duplican duración');
+const seriesSnapshot = { snapshot_version: 1, source_task_id: 'source-1',
+  source: { ...task, series_count: 2, minutes_per_series: 6 }, working: {} };
+const seriesSaved = hydratePlannedEditor({ ...session, revision: 7 }, [slot], [{
+  id: 'series-1', slot_id: slot.id, sort_order: 0, kind: 'library_task',
+  source_task_uuid_snapshot: 'source-1', task_snapshot: seriesSnapshot, activity_minutes: 12,
+}]);
+const seriesEdited = { ...seriesSaved, slots: [{ ...seriesSaved.slots[0], duration: '18',
+  items: [{ ...seriesSaved.slots[0].items[0], minutes: '18',
+    working: { series_count: 3, duration_minutes: 18 } }] }] };
+assert.deepEqual(getPlannedEditorIssues(seriesEdited, season), []);
+assert.deepEqual(buildPlannedSavePayload(seriesEdited, seriesSaved).p_slots[0].items[0].working,
+  { series_count: 3, duration_minutes: 18 }, 'PATCH conserva minutos por serie del snapshot');
+assert.equal(buildPlannedSavePayload(seriesEdited, seriesSaved).p_slots[0].items[0].activity_minutes, 18);
+assert.equal(getPlannedDuration(seriesEdited.slots), 18);
+assert.ok(getPlannedEditorIssues({ ...seriesEdited, slots: [{ ...seriesEdited.slots[0], items: [{
+  ...seriesEdited.slots[0].items[0], minutes: '17',
+}] }] }, season).some((issue) => issue.field === 'minutes'));
 assert.deepEqual(getPlannedEditorIssues(mixed, season), []);
 const importPayload = buildPlannedSavePayload(mixed, draft);
 assert.deepEqual(importPayload.p_slots[0].items[1], {
-  id: 'library-1', sort_order: 1, kind: 'library_task', activity_minutes: null,
+  id: 'library-1', sort_order: 1, kind: 'library_task', activity_minutes: 12,
   source_task_id: 'source-1',
 }, 'la selección no envía preview ni snapshots inventados en React');
 assert.equal(importPayload.p_slots[0].items[0].kind, 'free');
@@ -37,7 +54,7 @@ const serverSnapshot = { snapshot_version: 1, source_task_id: 'source-1',
 const hydrated = hydratePlannedEditor({ ...session, revision: 5 }, [slot], [
   { id: 'free-1', slot_id: slot.id, sort_order: 0, kind: 'free', free_title: 'Actividad libre' },
   { id: 'library-1', slot_id: slot.id, sort_order: 1, kind: 'library_task',
-    source_task_uuid_snapshot: 'source-1', task_snapshot: serverSnapshot },
+    source_task_uuid_snapshot: 'source-1', task_snapshot: serverSnapshot, activity_minutes: 12 },
 ]);
 assert.equal(hydrated.slots[0].items[1].snapshot.source.description, 'Biblioteca original');
 assert.doesNotThrow(() => assertPlanned03cReload(mixed, hydrated, 5));
@@ -60,7 +77,7 @@ const edited = { ...hydrated, slots: [{ ...hydrated.slots[0], items: [
 assert.equal(getPlannedLibraryValue(edited.slots[0].items[1], 'description'), 'Copia editada');
 assert.equal(serverSnapshot.source.description, 'Biblioteca original', 'el origen sigue intacto');
 assert.deepEqual(buildPlannedSavePayload(edited, hydrated).p_slots[0].items[1], {
-  id: 'library-1', sort_order: 1, kind: 'library_task', activity_minutes: null,
+  id: 'library-1', sort_order: 1, kind: 'library_task', activity_minutes: 12,
   working: { description: 'Copia editada' },
 }, 'las ediciones posteriores envían solo working PATCH');
 

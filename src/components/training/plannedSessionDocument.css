@@ -197,6 +197,9 @@
 .planned-sheet-task-details summary { cursor: pointer; padding: 1mm; color: #123b60; font-weight: 700; }
 .planned-sheet-library-task .planned-sheet-representation > small { font-size: 7pt; }
 .planned-sheet-task-foot { display: grid; grid-template-columns: 32% 68%; border-top: 1px solid #ddd; }
+.planned-sheet-task-foot:has(.planned-sheet-task-series) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.planned-sheet-task-series { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; }
+.planned-sheet-task-series .planned-sheet-field input { width: 100%; }
 .planned-sheet-task-foot .planned-sheet-field { border: 0; font-size: 7pt; }
 .planned-sheet-task-foot input { min-height: 5mm; font-size: 8pt; }
 .planned-sheet-exercise-foot { display: grid; grid-template-columns: 34mm minmax(0,1fr); align-items: stretch; border-top: 2px solid #111; }

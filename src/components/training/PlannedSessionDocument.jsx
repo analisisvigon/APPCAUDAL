@@ -101,7 +101,8 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
   moveSlot, phaseIndex, phaseCount, changePhase, removeSlot, addTask, removeTask,
   swapTasks, moveTaskToSlot, targets, fieldIssue, libraryTasks, libraryLoading,
   libraryError, selectLibraryTask, switchToFreeTask, openBoard,
-  exerciseDimensionsSupported, exerciseDimensions, onExerciseDimensionChange, exerciseDimensionIssue }) {
+  exerciseDimensionsSupported, exerciseDimensions, onExerciseDimensionChange, exerciseDimensionIssue,
+  seriesSupported }) {
   if (!slot) return <div className="planned-sheet-exercise planned-sheet-exercise-empty">
     <h3><PhaseName phase={phase} /></h3><p className="planned-sheet-reserved-hint">Sin ejercicio planificado en esta fase.</p>
   </div>;
@@ -123,6 +124,10 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
           ['tactical_content', 'Contenido táctico'], ['observations', 'Observaciones de la tarea'],
         ];
         const hasSecondary = secondary.some(([field]) => String(getPlannedLibraryValue(task, field) ?? '').trim());
+        const count = getPlannedLibraryValue(task, 'series_count');
+        const perSeries = getPlannedLibraryValue(task, 'minutes_per_series');
+        const hasSeries = count !== null && count !== undefined && count !== '' ||
+          perSeries !== null && perSeries !== undefined && perSeries !== '';
         return <div className={`planned-sheet-task ${task.kind === 'library_task' ? 'planned-sheet-library-task' : ''}`} key={task.id}>
         <div className="planned-sheet-task-head">Tarea {String.fromCharCode(65 + index)}{index === 0 ? ' · principal' : ' · simultánea'}</div>
         <LibraryTaskPicker task={task} slotId={slot.id} tasks={libraryTasks} loading={libraryLoading}
@@ -167,8 +172,15 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
             </div>
           </div>
           <div className="planned-sheet-task-foot">
+            {seriesSupported && (task.snapshot || hasSeries) ? <div className="planned-sheet-task-series">
+              <SheetField label="N.º series" type="number" positiveOptionalInteger value={count ?? ''}
+                disabled={!canEdit || busy || !task.snapshot} issue={fieldIssue('series', slot.id, task.id)}
+                onChange={(value) => updateTask(slot.id, task.id, 'series_count', value)} />
+              <SheetField label="Min/serie" type="number" positiveOptionalInteger value={perSeries ?? ''}
+                disabled={!canEdit || busy || !task.snapshot} onChange={(value) => updateTask(slot.id, task.id, 'minutes_per_series', value)} />
+            </div> : null}
             <SheetField label="Tiempo propio · min (opcional)" type="number" positiveOptionalInteger value={task.minutes}
-              disabled={!canEdit || busy} issue={fieldIssue('minutes', slot.id, task.id)}
+              disabled={!canEdit || busy || hasSeries} issue={fieldIssue('minutes', slot.id, task.id)}
               onChange={(value) => updateTask(slot.id, task.id, 'minutes', value)} />
             {!exerciseDimensionsSupported ? <div className="planned-sheet-copy-space">Espacio · {getPlannedLibrarySource(task).space_width_m ?? '—'} × {getPlannedLibrarySource(task).space_length_m ?? '—'} m</div> : null}
           </div>
@@ -249,7 +261,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   distribution, printedPlayerDistribution, printedSpaceDistribution, fieldDimensions, printedFieldDimensions,
   boardV11Enabled, onFieldDimensionsChange, onZoneMetresChange, onFixBoardDefault,
   playerDefaultBlockReason, fieldDefaultBlockReason,
-  exerciseDimensionsSupported, exerciseDimensions, printedExerciseDimensions,
+  exerciseDimensionsSupported, exerciseDimensions, printedExerciseDimensions, seriesSupported = false,
   onExerciseDimensionChange, exerciseDimensionIssue,
   boardsError, positionById, onFormationChange, onZoneChange, onPlayerMove,
   leagueLogoUrl, sessionValue, printedSessionValue, valueSupported, onValueChange,
@@ -314,7 +326,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
     const siblings = ordered.filter((entry) => entry.phase === phase);
     return <ExerciseBlock key={slot?.id || `empty-${phase}`} slot={slot} phase={phase}
       number={slot ? numberOf(slot.id) : 0} canEdit={canEdit} busy={busy}
-      issue={slot && ['duration', 'items', 'title', 'name', 'description', 'comments', 'url', 'minutes', 'library']
+      issue={slot && ['duration', 'items', 'title', 'name', 'description', 'comments', 'url', 'minutes', 'library', 'series']
         .some((key) => fieldIssue(key, slot.id) || slot.items.some((item) => fieldIssue(key, slot.id, item.id)))}
       updateSlot={updateSlot} updateTask={updateTask} moveSlot={moveSlot}
       phaseIndex={slot ? siblings.findIndex((entry) => entry.id === slot.id) : 0} phaseCount={siblings.length}
@@ -326,6 +338,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
       libraryError={libraryError} selectLibraryTask={selectLibraryTask}
       switchToFreeTask={switchToFreeTask} openBoard={setBoardTaskId}
       exerciseDimensionsSupported={exerciseDimensionsSupported}
+      seriesSupported={seriesSupported}
       exerciseDimensions={slot ? exerciseDimensions[slot.id] : null}
       onExerciseDimensionChange={onExerciseDimensionChange}
       exerciseDimensionIssue={slot ? exerciseDimensionIssue(slot.id) : ''} />;

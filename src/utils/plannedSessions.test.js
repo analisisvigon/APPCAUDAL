@@ -7,6 +7,9 @@ import {
   sessionMaterialStateFromInput,
   readSessionMaterialState,
   getPlannedDuration,
+  createPlannedLibraryItem,
+  plannedSeriesDuration,
+  plannedExerciseTaskDuration,
   hydratePlannedEditor,
   getPlannedEditorIssues,
   isPlannedMicrocycle,
@@ -16,6 +19,15 @@ import {
 } from './plannedSessions.js';
 
 const season = { starts_on: '2026-07-01', ends_on: '2027-06-30' };
+const seriesItem = createPlannedLibraryItem('series-item', {
+  id: 'library-task', series_count: 2, minutes_per_series: 6, duration_minutes: 12,
+});
+assert.equal(seriesItem.minutes, '12', 'la copia propuesta conserva la duración original');
+assert.equal(seriesItem.preview.series_count, 2);
+assert.equal(plannedSeriesDuration(2, 6), 12);
+assert.equal(plannedSeriesDuration(2, 0), null);
+assert.equal(plannedExerciseTaskDuration([seriesItem, { minutes: '9' }]), '12', 'dos tareas simultáneas no suman tiempos');
+assert.equal(plannedExerciseTaskDuration([], '15'), '15');
 const session = {
   id: 'session-1', revision: 3, planning_state: 'draft', session_number: null,
   session_date: '2026-10-18', starts_at: '10:00:00', objectives: 'Trabajo actual',

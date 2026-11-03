@@ -22,9 +22,10 @@ assert.match(navigationSource, /onClick=\{\(\) => onChange\(key\)\}/, 'cambiar d
 assert.doesNotMatch(navigationSource, /onSave|setDraft|saveTrainingTask/, 'navegar no guarda ni reconstruye el borrador');
 assert.match(sectionSource, /const \[activeSection, setActiveSection\] = useState\('information'\)/, 'el apartado activo no sustituye el estado del draft');
 
-for (const field of ['name', 'taskType', 'taskCode', 'objective', 'description', 'playersSpec', 'playersMin', 'playersMax', 'durationMinutes', 'spaceWidthM', 'spaceLengthM', 'material', 'gamePhase', 'gameMoment', 'technicalContent', 'tacticalContent', 'observations', 'stageKeys', 'variants']) {
+for (const field of ['name', 'taskType', 'taskCode', 'objective', 'description', 'playersSpec', 'seriesCount', 'minutesPerSeries', 'durationMinutes', 'spaceWidthM', 'spaceLengthM', 'material', 'gamePhase', 'gameMoment', 'technicalContent', 'tacticalContent', 'observations', 'stageKeys', 'variants']) {
   assert.match(sectionSource, new RegExp(`draft\\.${field}`), `se conserva el campo ${field}`);
 }
+assert.doesNotMatch(sectionSource, /draft\.playersMin|draft\.playersMax/, 'la edición ya no presenta los límites legacy como series');
 assert.match(sectionSource, /sticky bottom-2[\s\S]*onClick=\{onSave\}/, 'guardar y cancelar permanecen accesibles al final de apartados largos');
 assert.match(sectionSource, /disabled=\{saving\}/, 'el guardado mantiene su estado disabled');
 assert.match(sectionSource, /TrainingTaskBoardEditor viewportFit players=\{players\} payload=\{draft\.editorPayload\}[\s\S]*spaceWidthM=\{draft\.spaceWidthM\}[\s\S]*onPayloadChange=/, 'la pizarra editable mantiene el mismo editor_payload controlado y recibe el espacio de la tarea');

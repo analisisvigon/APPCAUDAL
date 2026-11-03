@@ -76,6 +76,13 @@ export const checkPlannedMaterialAutofill = async (client) => {
   throw result.error;
 };
 
+export const checkPlannedTaskSeries = async (client) => {
+  const result = await client.rpc('planned_task_series_ready_v1');
+  if (!result.error) return result.data === true;
+  if (['42883', 'PGRST202', 'PGRST205'].includes(result.error.code)) return false;
+  throw result.error;
+};
+
 export const savePlannedSessionMaterial = async (client, sessionId, revision, state) =>
   unwrap(await client.rpc('save_planned_session_material', {
     p_session_id: sessionId, p_expected_revision: revision, p_state: state,
@@ -167,10 +174,10 @@ export const loadPlannedSession = async (client, sessionId, clubTeamSeasonId) =>
 
 // La consulta del cliente respeta RLS de training_tasks; el filtro de club
 // impide ofrecer tareas ajenas al contexto aunque sean legibles por otra vía.
-export const listPlannedLibraryTasks = async (client, clubId) => {
+export const listPlannedLibraryTasks = async (client, clubId, seriesEnabled = false) => {
   if (!clubId) return [];
   return unwrap(await client.from('training_tasks')
-    .select('id,club_id,name,description,objective,material,technical_content,tactical_content,observations,editor_payload,duration_minutes,space_width_m,space_length_m,task_type,game_phase,game_moment')
+    .select(`id,club_id,name,description,objective,material,technical_content,tactical_content,observations,editor_payload,duration_minutes,space_width_m,space_length_m,task_type,game_phase,game_moment${seriesEnabled ? ',series_count,minutes_per_series' : ''}`)
     .eq('club_id', clubId).order('name', { ascending: true }))?.filter((row) => row.club_id === clubId) || [];
 };
 

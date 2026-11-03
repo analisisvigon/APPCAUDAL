@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {
-  confirmPlannedSession, listPlannedLibraryTasks, savePlannedSession,
+  confirmPlannedSession, listPlannedLibraryTasks, savePlannedSession, checkPlannedTaskSeries,
 } from './plannedSessionsStore.js';
 
 const calls = [];
@@ -25,6 +25,12 @@ const visible = await listPlannedLibraryTasks(client, 'current');
 assert.deepEqual(visible.map((row) => row.id), ['allowed'], 'defensa en profundidad del club');
 assert.ok(calls.some((call) => call[0] === 'eq' && call[1] === 'club_id' && call[2] === 'current'));
 assert.ok(calls.some((call) => call[0] === 'select' && call[1].includes('editor_payload')));
+assert.equal(calls.find((call) => call[0] === 'select')[1].includes('series_count'), false,
+  'antes de instalar SQL no se consultan columnas nuevas');
+await listPlannedLibraryTasks(client, 'current', true);
+assert.ok(calls.filter((call) => call[0] === 'select').at(-1)[1].includes('series_count'));
+assert.equal(await checkPlannedTaskSeries({ rpc: async () => ({ data: true, error: null }) }), true);
+assert.equal(await checkPlannedTaskSeries({ rpc: async () => ({ error: { code: 'PGRST202' } }) }), false);
 await savePlannedSession(client, { p_session_id: 'session-1' }, true);
 await confirmPlannedSession(client, 'session-1', 5, true);
 await savePlannedSession(client, { p_session_id: 'free-session' });

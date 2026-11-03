@@ -122,6 +122,8 @@ export const createTrainingTaskDraft = () => ({
   playersMin: '',
   playersMax: '',
   durationMinutes: '',
+  seriesCount: '',
+  minutesPerSeries: '',
   spaceWidthM: '',
   spaceLengthM: '',
   material: '',
@@ -151,6 +153,8 @@ export const normalizeTrainingTask = (row = {}) => ({
   playersMin: row.players_min ?? '',
   playersMax: row.players_max ?? '',
   durationMinutes: row.duration_minutes ?? '',
+  seriesCount: row.series_count ?? '',
+  minutesPerSeries: row.minutes_per_series ?? '',
   spaceWidthM: row.space_width_m ?? '',
   spaceLengthM: row.space_length_m ?? '',
   technicalContent: row.technical_content || '',
@@ -177,6 +181,8 @@ export const trainingTaskToDraft = (task) => ({
   playersMin: task.playersMin ?? '',
   playersMax: task.playersMax ?? '',
   durationMinutes: task.durationMinutes ?? '',
+  seriesCount: task.seriesCount ?? task.series_count ?? '',
+  minutesPerSeries: task.minutesPerSeries ?? task.minutes_per_series ?? '',
   spaceWidthM: task.spaceWidthM ?? '',
   spaceLengthM: task.spaceLengthM ?? '',
   material: task.material || '',
@@ -216,6 +222,13 @@ export const prepareTrainingTaskEditorPayload = (draft = {}, existing = null) =>
     : `La pizarra no es valida: ${result.error || 'payload desconocido'}`);
 };
 
+export const trainingTaskCalculatedDuration = (draft) =>
+  draft.seriesCount !== '' && draft.minutesPerSeries !== '' &&
+  draft.seriesCount != null && draft.minutesPerSeries != null &&
+  Number.isSafeInteger(Number(draft.seriesCount)) && Number(draft.seriesCount) > 0 &&
+  Number.isSafeInteger(Number(draft.minutesPerSeries)) && Number(draft.minutesPerSeries) > 0
+    ? Number(draft.seriesCount) * Number(draft.minutesPerSeries) : null;
+
 export const validateTrainingTaskDraft = (draft) => {
   const errors = {};
   if (!String(draft.name || '').trim()) errors.name = 'Indica un nombre.';
@@ -230,6 +243,15 @@ export const validateTrainingTaskDraft = (draft) => {
   numericFields.forEach(([field, message]) => {
     if (draft[field] !== '' && (!Number.isFinite(Number(draft[field])) || Number(draft[field]) < 0)) errors[field] = message;
   });
+  const series = draft.seriesCount;
+  const perSeries = draft.minutesPerSeries;
+  const hasSeries = series !== '' && series != null;
+  const hasMinutes = perSeries !== '' && perSeries != null;
+  if (hasSeries !== hasMinutes) errors[hasSeries ? 'minutesPerSeries' : 'seriesCount'] = 'Indica ambos valores de las series o deja ambos vacíos.';
+  if (hasSeries && (!Number.isSafeInteger(Number(series)) || Number(series) < 1)) errors.seriesCount = 'El número de series debe ser un entero positivo.';
+  if (hasMinutes && (!Number.isSafeInteger(Number(perSeries)) || Number(perSeries) < 1)) errors.minutesPerSeries = 'Los minutos por serie deben ser un entero positivo.';
+  if (hasSeries && hasMinutes && Number(series) * Number(perSeries) > 2147483647) errors.durationMinutes = 'La duración calculada supera el límite permitido.';
+  if (draft.durationMinutes !== '' && (!Number.isSafeInteger(Number(draft.durationMinutes)) || Number(draft.durationMinutes) < 1 || Number(draft.durationMinutes) > 2147483647)) errors.durationMinutes = 'La duración debe ser un entero positivo.';
   [['spaceWidthM', 'El ancho debe ser un número natural positivo.'], ['spaceLengthM', 'El largo debe ser un número natural positivo.']]
     .forEach(([field, message]) => {
       if (draft[field] !== '' && (!Number.isInteger(Number(draft[field])) || Number(draft[field]) <= 0)) errors[field] = message;
@@ -238,7 +260,7 @@ export const validateTrainingTaskDraft = (draft) => {
   return errors;
 };
 
-export const buildTrainingTaskPayload = (draft, { clubId, authorUserId, existing = null } = {}) => ({
+export const buildTrainingTaskPayload = (draft, { clubId, authorUserId, existing = null, seriesEnabled = false } = {}) => ({
   club_id: clubId,
   author_user_id: authorUserId,
   name: String(draft.name || '').trim(),
@@ -249,7 +271,13 @@ export const buildTrainingTaskPayload = (draft, { clubId, authorUserId, existing
   players_spec: String(draft.playersSpec || '').trim() || null,
   players_min: draft.playersMin === '' ? null : Number(draft.playersMin),
   players_max: draft.playersMax === '' ? null : Number(draft.playersMax),
-  duration_minutes: draft.durationMinutes === '' ? null : Number(draft.durationMinutes),
+  duration_minutes: draft.seriesCount !== '' && draft.minutesPerSeries !== '' && seriesEnabled
+    ? Number(draft.seriesCount) * Number(draft.minutesPerSeries)
+    : draft.durationMinutes === '' ? null : Number(draft.durationMinutes),
+  ...(seriesEnabled ? {
+    series_count: draft.seriesCount === '' ? null : Number(draft.seriesCount),
+    minutes_per_series: draft.minutesPerSeries === '' ? null : Number(draft.minutesPerSeries),
+  } : {}),
   space_width_m: draft.spaceWidthM === '' ? null : Number(draft.spaceWidthM),
   space_length_m: draft.spaceLengthM === '' ? null : Number(draft.spaceLengthM),
   material: String(draft.material || '').trim() || null,

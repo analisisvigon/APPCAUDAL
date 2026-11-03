@@ -13,6 +13,7 @@ import {
   TRAINING_TASK_STAGES,
   TRAINING_TASK_TYPES,
   createTrainingTaskDraft,
+  trainingTaskCalculatedDuration,
   createTrainingTaskFilters,
   filterTrainingTasks,
   getTrainingTaskTypeDefinition,
@@ -21,6 +22,7 @@ import {
 } from '../../utils/trainingTasks';
 import { duplicateTrainingTask, loadTrainingTasks, shareTrainingTask } from '../../utils/trainingTaskStore';
 import { deleteTrainingTaskWithFiles, saveTrainingTaskWithFile, TRAINING_TASK_BUCKET } from '../../utils/trainingTaskFiles';
+import { checkPlannedTaskSeries } from '../../data/plannedSessionsStore';
 import {
   createTrainingTaskFeedbackDraft,
   summarizeTrainingTaskRatings,
@@ -65,7 +67,7 @@ function SectionHeading({ eyebrow, title, description }) {
   return <div className="mb-4 lg:shrink-0"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">{eyebrow}</p><h3 className="mt-1 text-lg font-black text-white">{title}</h3>{description ? <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p> : null}</div>;
 }
 
-function TaskForm({ draft, setDraft, onCancel, onSave, saving, error, isEditing, players, task, onMediaChange, feedback }) {
+function TaskForm({ draft, setDraft, onCancel, onSave, saving, error, isEditing, players, task, onMediaChange, feedback, seriesSupported }) {
   const [activeSection, setActiveSection] = useState('information');
   const moments = TRAINING_TASK_MOMENTS[draft.gamePhase] || [];
   const inputClass = 'min-h-10 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white outline-none placeholder:text-slate-600 focus:border-caudal-electric/60';
@@ -74,7 +76,18 @@ function TaskForm({ draft, setDraft, onCancel, onSave, saving, error, isEditing,
     {error ? <p role="alert" className="mt-3 rounded-xl border border-red-200/20 bg-red-400/10 px-3 py-2 text-xs font-bold text-red-100">{error}</p> : null}
     <TaskSectionNavigation active={activeSection} onChange={setActiveSection} prefix="task-form" />
     <TaskSectionPanel active={activeSection} section="information" prefix="task-form"><SectionHeading eyebrow="1 · Información" title="Identidad de la tarea" description="Nombre, clasificación y etapas de aplicación." /><div className="grid gap-3 md:grid-cols-2"><div className="md:col-span-2"><Field label="Nombre *"><input className={`${inputClass} min-h-12 text-base font-black`} value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Ej. Rondo de tercer hombre" /></Field></div><Field label="Código tarea"><input className={inputClass} value={draft.taskCode} maxLength={40} onChange={(event) => setDraft((current) => ({ ...current, taskCode: event.target.value }))} placeholder="Ej. Vigón" /></Field><Field label="Tipo"><select className={inputClass} value={draft.taskType} onChange={(event) => setDraft((current) => ({ ...current, taskType: event.target.value }))}>{isEditing && getTrainingTaskTypeDefinition(draft.taskType).legacy ? <option value={draft.taskType}>{getTrainingTaskTypeDefinition(draft.taskType).label} (tipo anterior)</option> : null}{TRAINING_TASK_TYPES.map((type) => <option key={type.key} value={type.key}>{type.label}</option>)}</select></Field><fieldset className="grid gap-2 md:col-span-2"><legend className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Etapas</legend><div className="flex flex-wrap gap-2">{TRAINING_TASK_STAGES.map((stage) => { const selected = draft.stageKeys.includes(stage.key); return <button key={stage.key} type="button" aria-pressed={selected} onClick={() => setDraft((current) => ({ ...current, stageKeys: selected ? current.stageKeys.filter((key) => key !== stage.key) : [...current.stageKeys, stage.key] }))} className={`min-h-10 rounded-xl border px-3 py-2 text-xs font-black ${selected ? 'border-caudal-electric bg-caudal-electric/15 text-caudal-electric' : 'border-white/10 bg-black/20 text-slate-400'}`}>{selected ? '✓ ' : ''}{stage.label}</button>; })}</div></fieldset></div></TaskSectionPanel>
-    <TaskSectionPanel active={activeSection} section="organization" prefix="task-form"><SectionHeading eyebrow="2 · Organización" title="Formato y espacio" description="Jugadores, tiempo y dimensiones de trabajo." /><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><div className="sm:col-span-2 xl:col-span-2"><Field label="Número de jugadores" hint="Admite formatos como 4v4+3"><input className={inputClass} value={draft.playersSpec} onChange={(event) => setDraft((current) => ({ ...current, playersSpec: event.target.value }))} placeholder="8v8+2" /></Field></div><div className="grid grid-cols-2 gap-2"><Field label="Mín."><input type="number" min="0" inputMode="numeric" className={inputClass} value={draft.playersMin} onChange={(event) => setDraft((current) => ({ ...current, playersMin: event.target.value }))} /></Field><Field label="Máx."><input type="number" min="0" inputMode="numeric" className={inputClass} value={draft.playersMax} onChange={(event) => setDraft((current) => ({ ...current, playersMax: event.target.value }))} /></Field></div><Field label="Duración (min)"><input type="number" min="1" inputMode="numeric" className={inputClass} value={draft.durationMinutes} onChange={(event) => setDraft((current) => ({ ...current, durationMinutes: event.target.value }))} /></Field><Field label="Ancho (m)"><input type="number" min="1" step="1" inputMode="numeric" className={inputClass} value={draft.spaceWidthM} onChange={(event) => setDraft((current) => ({ ...current, spaceWidthM: event.target.value }))} /></Field><Field label="Largo (m)"><input type="number" min="1" step="1" inputMode="numeric" className={inputClass} value={draft.spaceLengthM} onChange={(event) => setDraft((current) => ({ ...current, spaceLengthM: event.target.value }))} /></Field></div></TaskSectionPanel>
+    <TaskSectionPanel active={activeSection} section="organization" prefix="task-form">
+      <SectionHeading eyebrow="2 · Organización" title="Formato y espacio" description="Jugadores, tiempo y dimensiones de trabajo." />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="sm:col-span-2"><Field label="Número de jugadores" hint="Admite formatos como 4v4+3"><input className={inputClass} value={draft.playersSpec} onChange={(event) => setDraft((current) => ({ ...current, playersSpec: event.target.value }))} placeholder="8v8+2" /></Field></div>
+        <Field label="N.º de series"><input type="number" min="1" step="1" inputMode="numeric" className={inputClass} value={draft.seriesCount} disabled={!seriesSupported} onChange={(event) => setDraft((current) => ({ ...current, seriesCount: event.target.value }))} /></Field>
+        <Field label="Minutos por serie"><input type="number" min="1" step="1" inputMode="numeric" className={inputClass} value={draft.minutesPerSeries} disabled={!seriesSupported} onChange={(event) => setDraft((current) => ({ ...current, minutesPerSeries: event.target.value }))} /></Field>
+        <Field label="Duración total (min)" hint={draft.seriesCount || draft.minutesPerSeries ? 'Calculada como series × minutos.' : 'Si no hay series, introduce una duración simple.'}><input type="number" min="1" step="1" inputMode="numeric" className={inputClass} value={trainingTaskCalculatedDuration(draft) ?? (draft.seriesCount || draft.minutesPerSeries ? '' : draft.durationMinutes)} readOnly={Boolean(draft.seriesCount || draft.minutesPerSeries)} onChange={(event) => setDraft((current) => ({ ...current, durationMinutes: event.target.value }))} /></Field>
+        <Field label="Ancho (m)"><input type="number" min="1" step="1" inputMode="numeric" className={inputClass} value={draft.spaceWidthM} onChange={(event) => setDraft((current) => ({ ...current, spaceWidthM: event.target.value }))} /></Field>
+        <Field label="Largo (m)"><input type="number" min="1" step="1" inputMode="numeric" className={inputClass} value={draft.spaceLengthM} onChange={(event) => setDraft((current) => ({ ...current, spaceLengthM: event.target.value }))} /></Field>
+      </div>
+      {!seriesSupported ? <p className="mt-2 text-xs text-amber-200">Las series estarán disponibles después de instalar y verificar la migración. La duración simple sigue funcionando.</p> : null}
+    </TaskSectionPanel>
     <TaskSectionPanel active={activeSection} section="content" prefix="task-form"><SectionHeading eyebrow="3 · Contenido" title="Qué se entrena" description="Objetivo, explicación y contenidos de apoyo." /><div className="grid gap-3 md:grid-cols-2"><Field label="Objetivo principal *"><textarea rows="3" className={`${inputClass} min-h-24 resize-y`} value={draft.objective} onChange={(event) => setDraft((current) => ({ ...current, objective: event.target.value }))} placeholder="Qué queremos entrenar" /></Field><Field label="Descripción"><textarea rows="3" className={`${inputClass} min-h-24 resize-y`} value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Organización y consignas" /></Field><Field label="Fase del juego"><select className={inputClass} value={draft.gamePhase} onChange={(event) => setDraft((current) => ({ ...current, gamePhase: event.target.value, gameMoment: '' }))}>{TRAINING_TASK_PHASES.map((phase) => <option key={phase.value} value={phase.value}>{phase.label}</option>)}</select></Field>{moments.length ? <Field label="Momento / subfase"><select className={inputClass} value={draft.gameMoment} onChange={(event) => setDraft((current) => ({ ...current, gameMoment: event.target.value }))}><option value="">Sin momento</option>{moments.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field> : <div />}<Field label="Contenido técnico"><textarea rows="2" className={`${inputClass} min-h-20 resize-y`} value={draft.technicalContent} onChange={(event) => setDraft((current) => ({ ...current, technicalContent: event.target.value }))} /></Field><Field label="Contenido táctico"><textarea rows="2" className={`${inputClass} min-h-20 resize-y`} value={draft.tacticalContent} onChange={(event) => setDraft((current) => ({ ...current, tacticalContent: event.target.value }))} /></Field><Field label="Material"><input className={inputClass} value={draft.material} onChange={(event) => setDraft((current) => ({ ...current, material: event.target.value }))} placeholder="Conos, petos..." /></Field><Field label="Observaciones"><textarea rows="2" className={`${inputClass} min-h-16 resize-y`} value={draft.observations} onChange={(event) => setDraft((current) => ({ ...current, observations: event.target.value }))} /></Field><div className="md:col-span-2"><Field label="Variantes"><textarea rows="2" className={`${inputClass} min-h-20 resize-y`} maxLength={10000} value={draft.variants} onChange={(event) => setDraft((current) => ({ ...current, variants: event.target.value }))} placeholder="Modificaciones previstas del ejercicio" /></Field></div>{draft.attachmentName ? <div className="md:col-span-2"><Field label="Adjunto anterior" hint="Se conserva mediante el sistema legacy actual."><span className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-slate-300">{draft.attachmentName} {draft.attachmentSize ? `· ${formatFileSize(draft.attachmentSize)}` : ''}</span></Field></div> : null}</div></TaskSectionPanel>
     <TaskSectionPanel active={activeSection} section="design" prefix="task-form" className="lg:mt-2 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden"><div className="lg:hidden"><SectionHeading eyebrow="4 · Diseño de la tarea" title="Pizarra, equipos y jugadores" description="Usa el ancho y largo de Organización para acreditar zonas y referencias espaciales." /></div><TrainingTaskBoardEditor viewportFit players={players} payload={draft.editorPayload} spaceWidthM={draft.spaceWidthM} spaceLengthM={draft.spaceLengthM} onPayloadChange={(editorPayload) => setDraft((current) => ({ ...current, editorPayload }))} /></TaskSectionPanel>
     <TaskSectionPanel active={activeSection} section="media" prefix="task-form"><SectionHeading eyebrow="5 · Multimedia" title="Material visual y documentos" description="Imágenes, PDF, vídeos y enlaces de apoyo." />{task ? <TrainingTaskMediaPanel client={supabase} task={task} canManage onChange={onMediaChange} embedded /> : <div className="rounded-2xl border border-dashed border-white/10 bg-black/15 p-4"><p className="text-sm font-black text-white">Multimedia</p><p className="mt-1 text-xs text-slate-500">Guarda la tarea para añadir contenido multimedia.</p></div>}</TaskSectionPanel>
@@ -142,6 +155,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [deleteReady, setDeleteReady] = useState(false);
+  const [seriesSupported, setSeriesSupported] = useState(false);
   const [shareTask, setShareTask] = useState(null);
   const [shareIds, setShareIds] = useState([]);
   const [feedbackRows, setFeedbackRows] = useState([]);
@@ -156,6 +170,12 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
 
   const refresh = async () => { if (!clubId) return; setLoading(true); setError(''); try { const [loaded, members, deletion] = await Promise.all([loadTrainingTasks(supabase, clubId), supabase.from('club_memberships').select('id,user_id,role,is_active').eq('club_id', clubId).eq('is_active', true).in('role', ['owner', 'admin', 'staff']), supabase.rpc('training_task_delete_ready_v1')]); if (members.error) throw members.error; setTasks(loaded); setMemberships(members.data || []); setDeleteReady(!deletion.error && deletion.data === true); } catch (loadError) { setError(loadError.message || 'No se pudieron cargar las tareas.'); setDeleteReady(false); } finally { setLoading(false); } };
   useEffect(() => { refresh(); }, [clubId]);
+  useEffect(() => {
+    let active = true;
+    checkPlannedTaskSeries(supabase).then((ready) => { if (active) setSeriesSupported(ready); })
+      .catch(() => { if (active) setSeriesSupported(false); });
+    return () => { active = false; };
+  }, []);
 
   const visibleTasks = useMemo(() => filterTrainingTasks(tasks, filters, userId), [tasks, filters, userId]);
   const advancedFilterCount = countActiveTrainingTaskAdvancedFilters(filters);
@@ -193,13 +213,16 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     return () => window.removeEventListener('beforeunload', warnBeforeUnload);
   }, [draftDirty]);
   const save = async () => {
+    if (!seriesSupported && (draft?.seriesCount || draft?.minutesPerSeries)) {
+      setError('Instala y verifica la migración de series antes de guardar esta tarea.'); return;
+    }
     const validation = validateTrainingTaskDraft(draft || {});
     if (Object.keys(validation).length) { setError(Object.values(validation)[0]); return; }
     setSaving(true);
     setError('');
     try {
       const { task: saved, cleanupPending, cleanupError } = await saveTrainingTaskWithFile(
-        supabase, draft, { clubId, authorUserId: userId }, selected
+        supabase, draft, { clubId, authorUserId: userId, seriesEnabled: seriesSupported }, selected
       );
       const savedTask = selected
         ? { ...selected, ...saved, media: selected.media || [] }
@@ -224,7 +247,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     await loadFeedback(task);
   };
   const download = async (task) => { const { data, error: urlError } = await supabase.storage.from(BUCKET).createSignedUrl(task.attachmentPath, 3600, { download: task.attachmentName || true }); if (urlError) { setError(urlError.message); return; } window.open(data.signedUrl, '_blank', 'noopener,noreferrer'); };
-  const duplicate = async (task) => { try { const copy = await duplicateTrainingTask(supabase, task, { clubId, authorUserId: userId }); setTasks((current) => [copy, ...current]); setStatus('Tarea duplicada en tu biblioteca.'); } catch (duplicateError) { setError(duplicateError.message || 'No se pudo duplicar.'); } };
+  const duplicate = async (task) => { if (!seriesSupported && (task.seriesCount || task.minutesPerSeries)) { setError('No se ha verificado la compatibilidad de series; vuelve a cargar antes de duplicar.'); return; } try { const copy = await duplicateTrainingTask(supabase, task, { clubId, authorUserId: userId, seriesEnabled: seriesSupported }); setTasks((current) => [copy, ...current]); setStatus('Tarea duplicada en tu biblioteca.'); } catch (duplicateError) { setError(duplicateError.message || 'No se pudo duplicar.'); } };
   const remove = async (task) => {
     if (task.author_user_id !== userId || !window.confirm(`¿Eliminar definitivamente «${task.name}»? Esta acción no se puede deshacer.`)) return;
     setError('');
@@ -286,7 +309,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     {!draft && !selected ? <header className="rounded-[1.35rem] border border-white/10 bg-white/[0.04] p-4 shadow-[0_16px_48px_rgba(0,0,0,0.16)] sm:p-5"><div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric">Biblioteca operativa</p><h1 className="mt-1 text-2xl font-black text-white">Tareas</h1><p className="mt-1 text-sm text-slate-400">Biblioteca de tareas de entrenamiento para el cuerpo técnico.</p></div><button type="button" onClick={openNew} className="rounded-xl bg-caudal-electric px-4 py-2.5 text-xs font-black text-slate-950">+ Nueva tarea</button></div>{status ? <p className="mt-3 rounded-xl bg-emerald-400/10 px-3 py-2 text-xs font-bold text-emerald-100">{status}</p> : null}{error ? <p role="alert" className="mt-3 rounded-xl bg-red-400/10 px-3 py-2 text-xs font-bold text-red-100">{error}</p> : null}</header> : null}
     {(draft || selected) && status ? <p className="rounded-xl bg-emerald-400/10 px-3 py-2 text-xs font-bold text-emerald-100">{status}</p> : null}
     {selected && !draft && error ? <p role="alert" className="rounded-xl bg-red-400/10 px-3 py-2 text-xs font-bold text-red-100">{error}</p> : null}
-    {draft ? <TaskForm players={players} draft={draft} setDraft={setDraft} task={selected} onMediaChange={(media) => selected && applyTaskMedia(selected.id, media)} feedback={{ rows: feedbackRows, loading: feedbackLoading, error: feedbackError, draft: feedbackDraft, setDraft: setFeedbackDraft, editingId: feedbackEditingId, saving: feedbackSaving, userId, onSave: saveFeedback, onEdit: editFeedback, onCancelEdit: resetFeedbackDraft, onDelete: removeFeedback, canManage: true }} onCancel={closeEditor} onSave={save} saving={saving} error={error} isEditing={Boolean(selected?.id)} /> : null}
+    {draft ? <TaskForm seriesSupported={seriesSupported} players={players} draft={draft} setDraft={setDraft} task={selected} onMediaChange={(media) => selected && applyTaskMedia(selected.id, media)} feedback={{ rows: feedbackRows, loading: feedbackLoading, error: feedbackError, draft: feedbackDraft, setDraft: setFeedbackDraft, editingId: feedbackEditingId, saving: feedbackSaving, userId, onSave: saveFeedback, onEdit: editFeedback, onCancelEdit: resetFeedbackDraft, onDelete: removeFeedback, canManage: true }} onCancel={closeEditor} onSave={save} saving={saving} error={error} isEditing={Boolean(selected?.id)} /> : null}
     {selected && !draft ? <TrainingTaskDetail
       key={selected.id}
       task={selected}

@@ -39,6 +39,8 @@ function PrintTask({ item, index, hasExerciseDimensions }) {
   const payload = library ? getPlannedLibraryValue(item, 'editor_payload') || {} : {};
   const teams = library ? getPlannedSessionBoardTeams(payload) : [];
   const source = library ? getPlannedLibrarySource(item) : {};
+  const seriesCount = library ? getPlannedLibraryValue(item, 'series_count') : null;
+  const minutesPerSeries = library ? getPlannedLibraryValue(item, 'minutes_per_series') : null;
   const hasBoard = library && Boolean(payload && Object.keys(payload).length);
   return <div className="planned-print-task" data-print-task-id={item.id}>
     <div className="planned-print-task-name"><b>Tarea {String.fromCharCode(65 + index)}</b><strong>{value(name)}</strong></div>
@@ -55,6 +57,8 @@ function PrintTask({ item, index, hasExerciseDimensions }) {
           </div>)}</div> : null}
       </div>
     </div>
+    {seriesCount != null && minutesPerSeries != null ?
+      <div className="planned-print-task-space">{seriesCount} series × {minutesPerSeries} min = {value(item.minutes)} min</div> : null}
     {library && !hasExerciseDimensions && (source.space_width_m != null || source.space_length_m != null) ?
       <div className="planned-print-task-space">Espacio · {source.space_width_m ?? '—'} × {source.space_length_m ?? '—'} m</div> : null}
   </div>;

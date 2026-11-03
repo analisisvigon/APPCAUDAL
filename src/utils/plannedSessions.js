@@ -39,6 +39,18 @@ export const getPlannedLibraryValue = (item, field) =>
   Object.prototype.hasOwnProperty.call(item?.working || {}, field)
     ? item.working[field] : getPlannedLibrarySource(item)[field];
 
+export const plannedSeriesDuration = (count, minutes) => {
+  const a = positiveInteger(count);
+  const b = positiveInteger(minutes);
+  const total = a && b ? a * b : null;
+  return total && total <= 2147483647 ? total : null;
+};
+
+export const plannedExerciseTaskDuration = (items, fallback = '') => {
+  const durations = items.map((item) => positiveInteger(item.minutes)).filter(Boolean);
+  return durations.length ? String(Math.max(...durations)) : fallback;
+};
+
 export const parseSessionMaterial = (value) => {
   const found = new Set();
   const materials = [];
@@ -134,9 +146,10 @@ export const createPlannedLibraryItem = (id, task) => ({
   preview: Object.fromEntries([
     'name', 'description', 'objective', 'material', 'technical_content',
     'tactical_content', 'observations', 'editor_payload', 'duration_minutes',
+    'series_count', 'minutes_per_series',
     'space_width_m', 'space_length_m',
   ].map((field) => [field, task[field]])),
-  working: {}, minutes: '',
+  working: {}, minutes: task.duration_minutes == null ? '' : String(task.duration_minutes),
 });
 
 export const createEmptyPlannedEditor = () => ({
@@ -236,6 +249,15 @@ export const getPlannedEditorIssues = (editor, season) => {
         const name = text(getPlannedLibraryValue(item, 'name'));
         if (!name.trim() || name.length > 160)
           add(`${task}: escribe un nombre de hasta 160 caracteres.`, 'name', slot.id, item.id);
+        const count = getPlannedLibraryValue(item, 'series_count');
+        const perSeries = getPlannedLibraryValue(item, 'minutes_per_series');
+        const hasCount = count !== null && count !== undefined && count !== '';
+        const hasPerSeries = perSeries !== null && perSeries !== undefined && perSeries !== '';
+        if (hasCount !== hasPerSeries || (hasCount && !plannedSeriesDuration(count, perSeries)))
+          add(`${task}: indica series y minutos por serie como enteros positivos.`, 'series', slot.id, item.id);
+        if (hasCount && hasPerSeries && plannedSeriesDuration(count, perSeries) &&
+            Number(item.minutes) !== plannedSeriesDuration(count, perSeries))
+          add(`${task}: el tiempo propio debe coincidir con la duración por series.`, 'minutes', slot.id, item.id);
       } else if (item.kind !== 'free') {
         add(`${task}: tipo de tarea no admitido.`, 'library', slot.id, item.id);
       } else {

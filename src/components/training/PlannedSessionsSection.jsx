@@ -7,6 +7,9 @@ import {
   createEmptyPlannedEditor,
   getPlannedDuration,
   getPlannedEditorIssues,
+  getPlannedLibraryValue,
+  plannedSeriesDuration,
+  plannedExerciseTaskDuration,
   hydratePlannedEditor,
   hasPlannedLibraryItems,
   isPlannedMicrocycle,
@@ -21,6 +24,7 @@ import {
   createPlannedDraft,
   checkPlannedMicrocycleV4,
   checkPlannedMaterialAutofill,
+  checkPlannedTaskSeries,
   listPlannedSessions,
   listPlannedSessionsForExport,
   listPlannedLocations,
@@ -110,6 +114,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [libraryTasks, setLibraryTasks] = useState([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryError, setLibraryError] = useState('');
+  const [seriesSupported, setSeriesSupported] = useState(false);
   const [locationOptions, setLocationOptions] = useState([]);
   const [opponentOptions, setOpponentOptions] = useState([]);
   const [suggestionsError, setSuggestionsError] = useState('');
@@ -239,6 +244,12 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       if (!cancelled) setMaterialSupported(ready);
     }).catch(() => { if (!cancelled) setMaterialSupported(false); });
     return () => { cancelled = true; };
+  }, [client]);
+  useEffect(() => {
+    let active = true;
+    checkPlannedTaskSeries(client).then((ready) => { if (active) setSeriesSupported(ready); })
+      .catch(() => { if (active) setSeriesSupported(false); });
+    return () => { active = false; };
   }, [client]);
   useEffect(() => {
     let cancelled = false;
@@ -452,13 +463,13 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setLibraryTasks([]); setLibraryError('');
     if (!selected?.club_id || !editor) return undefined;
     setLibraryLoading(true);
-    listPlannedLibraryTasks(client, selected.club_id).then((rows) => {
+    listPlannedLibraryTasks(client, selected.club_id, seriesSupported).then((rows) => {
       if (!cancelled) setLibraryTasks(rows.filter((row) => row.club_id === selected.club_id));
     }).catch((cause) => {
       if (!cancelled) setLibraryError(`${errorKind(cause)}: ${readError(cause)}`);
     }).finally(() => { if (!cancelled) setLibraryLoading(false); });
     return () => { cancelled = true; };
-  }, [client, selected?.club_id, Boolean(editor), userId]);
+  }, [client, selected?.club_id, Boolean(editor), userId, seriesSupported]);
 
   const requestDiscard = () => !dirty || window.confirm('Hay cambios sin guardar. ¿Descartarlos?');
   const changeContext = (nextId) => {
@@ -1055,12 +1066,32 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         { id: slotId, phase }]) } : current);
     setExpandedSlotId(slotId);
   };
-  const updateTask = (slotId, itemId, key, value) => updateSlot(slotId, (slot) => ({
-    ...slot, items: slot.items.map((item) => item.id !== itemId ? item :
-      item.kind === 'library_task' && key !== 'minutes'
-        ? { ...item, working: { ...item.working, [key]: value } }
-        : { ...item, [key]: value }),
-  }));
+  const updateTask = (slotId, itemId, key, value) => updateSlot(slotId, (slot) => {
+    const items = slot.items.map((item) => {
+      if (item.id !== itemId) return item;
+      if (item.kind !== 'library_task') return { ...item, [key]: value };
+      if (key === 'series_count' || key === 'minutes_per_series') {
+        const working = { ...item.working, [key]: value === '' ? null : Number(value) };
+        const count = Object.prototype.hasOwnProperty.call(working, 'series_count')
+          ? working.series_count : getPlannedLibraryValue(item, 'series_count');
+        const minutes = Object.prototype.hasOwnProperty.call(working, 'minutes_per_series')
+          ? working.minutes_per_series : getPlannedLibraryValue(item, 'minutes_per_series');
+        const total = plannedSeriesDuration(count, minutes);
+        if (total) { working.duration_minutes = total; return { ...item, working, minutes: String(total) }; }
+        if (count == null && minutes == null) working.duration_minutes = item.minutes === '' ? null : Number(item.minutes);
+        return { ...item, working };
+      }
+      if (key === 'minutes') return { ...item, minutes: value,
+        working: { ...item.working, duration_minutes: value === '' ? null : Number(value) } };
+      return { ...item, working: { ...item.working, [key]: value } };
+    });
+    const changed = items.find((item) => item.id === itemId);
+    const recalculate = changed?.kind === 'library_task' &&
+      ['series_count', 'minutes_per_series', 'minutes'].includes(key) &&
+      (key === 'minutes' || plannedSeriesDuration(
+        getPlannedLibraryValue(changed, 'series_count'), getPlannedLibraryValue(changed, 'minutes_per_series')));
+    return { ...slot, items, duration: recalculate ? plannedExerciseTaskDuration(items, slot.duration) : slot.duration };
+  });
   const selectLibraryTask = (slotId, itemId, taskId) => {
     const task = libraryTasks.find((entry) => entry.id === taskId && entry.club_id === selected?.club_id);
     if (!task) { setError('La tarea no está disponible en la Biblioteca autorizada de este club.'); return; }
@@ -1072,8 +1103,10 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     }
     const id = baseline?.slots.some((slot) => slot.items.some((item) => item.id === itemId)) ? createId() : itemId;
     if (!id) { setError('Este navegador no puede crear UUID seguros.'); return; }
-    updateSlot(slotId, (slot) => ({ ...slot, items: slot.items.map((item) => item.id === itemId
-      ? createPlannedLibraryItem(id, task) : item) }));
+    updateSlot(slotId, (slot) => {
+      const items = slot.items.map((item) => item.id === itemId ? createPlannedLibraryItem(id, task) : item);
+      return { ...slot, items, duration: plannedExerciseTaskDuration(items, slot.duration) };
+    });
     const slot = editor.slots.find((entry) => entry.id === slotId);
     const zone = distribution?.space_zones.find((entry) => entry.slot_id === slotId);
     const prospective = slot && { ...slot, items: slot.items.map((entry) => entry.id === itemId
@@ -1104,7 +1137,10 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   };
   const removeTask = (slotId, itemId) => {
     if (!window.confirm('¿Retirar la segunda tarea al guardar? Sus datos dejarán de formar parte de este ejercicio.')) return;
-    updateSlot(slotId, (slot) => ({ ...slot, items: slot.items.filter((item) => item.id !== itemId) }));
+    updateSlot(slotId, (slot) => {
+      const items = slot.items.filter((item) => item.id !== itemId);
+      return { ...slot, items, duration: plannedExerciseTaskDuration(items, slot.duration) };
+    });
   };
   const removeSlot = (slotId, number) => {
     const slot = editor?.slots.find((entry) => entry.id === slotId);
@@ -1577,6 +1613,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           {availabilityDirty ? <p>La disponibilidad visible se guardará con «Guardar cambios».</p> : null}
         </div> : null}
         <PlannedSessionDocument editor={editor} selected={selected} canEdit={canEdit} busy={busy}
+          seriesSupported={seriesSupported}
           mcEnabled={mcV4Supported} mcNumber={mcNumber} printedMcNumber={mcBaseline}
           mcOptions={mcOptions} onMcChange={setMcNumber}
           locationOptions={locationOptions} opponentOptions={opponentOptions} suggestionsError={suggestionsError}

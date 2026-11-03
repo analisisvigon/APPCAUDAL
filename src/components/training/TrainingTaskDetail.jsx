@@ -115,7 +115,9 @@ export default function TrainingTaskDetail({ task = null, currentUserId = '', pl
     <div className="space-y-3 p-3.5 sm:p-4 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,0.43fr)_minmax(0,0.57fr)] lg:grid-rows-[auto_minmax(0,1.2fr)_minmax(0,0.8fr)] lg:gap-3 lg:space-y-0">
       <section aria-label="Resumen de la tarea" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <Metric label="Jugadores" value={playersLabel} detail={assignments.length ? `${assignments.length} asignados${assignedTeams ? ` · ${assignedTeams} grupos` : ''}` : ''} />
-        <Metric kind="time" label="Duración" value={hasValue(task.durationMinutes) ? `${task.durationMinutes} min` : ''} />
+        <Metric kind="time" label="Duración" value={hasValue(task.durationMinutes) ? `${task.durationMinutes} min` : ''}
+          detail={hasValue(task.seriesCount) && hasValue(task.minutesPerSeries)
+            ? `${task.seriesCount} series × ${task.minutesPerSeries} min` : ''} />
         <Metric kind="space" label="Espacio" value={spaceLabel} />
         <Metric kind="rating" label="Valoración POST" value={ratingLabel} detail={Number(task.feedbackCount) > 0 ? `${task.feedbackCount} ${Number(task.feedbackCount) === 1 ? 'experiencia' : 'experiencias'}` : ''} />
       </section>

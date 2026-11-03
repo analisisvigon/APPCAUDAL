@@ -15,6 +15,7 @@ import {
   TRAINING_TASK_STAGES,
   TRAINING_TASK_TYPES,
   validateTrainingTaskDraft,
+  trainingTaskCalculatedDuration,
 } from './trainingTasks.js';
 
 const draft = createTrainingTaskDraft();
@@ -29,6 +30,19 @@ draft.stageKeys = ['juvenil', 'senior'];
 draft.variants = 'Limitar a dos contactos.';
 
 assert.deepEqual(validateTrainingTaskDraft(draft), {}, 'una tarea mínima válida no genera errores');
+assert.equal(trainingTaskCalculatedDuration({ seriesCount: '2', minutesPerSeries: '6' }), 12);
+assert.equal(trainingTaskCalculatedDuration({ seriesCount: '', minutesPerSeries: '' }), null);
+const seriesDraft = { ...draft, seriesCount: '2', minutesPerSeries: '6' };
+assert.deepEqual(validateTrainingTaskDraft(seriesDraft), {});
+assert.equal(buildTrainingTaskPayload(seriesDraft, { seriesEnabled: true }).duration_minutes, 12);
+assert.equal(buildTrainingTaskPayload(seriesDraft, { seriesEnabled: true }).series_count, 2);
+assert.equal(buildTrainingTaskPayload(seriesDraft, { seriesEnabled: true }).minutes_per_series, 6);
+assert.ok(!('series_count' in buildTrainingTaskPayload(seriesDraft)), 'sin backend no se escriben columnas nuevas');
+assert.ok(validateTrainingTaskDraft({ ...seriesDraft, minutesPerSeries: '' }).minutesPerSeries);
+assert.ok(validateTrainingTaskDraft({ ...seriesDraft, seriesCount: '0' }).seriesCount);
+assert.ok(validateTrainingTaskDraft({ ...seriesDraft, seriesCount: '1.5' }).seriesCount);
+assert.ok(validateTrainingTaskDraft({ ...draft, durationMinutes: '0' }).durationMinutes);
+assert.equal(trainingTaskToDraft(normalizeTrainingTask({ series_count: 3, minutes_per_series: 5 })).seriesCount, 3);
 assert.equal(formatTrainingTaskPlayers(draft), '4v4+3', 'se conserva el formato flexible de jugadores');
 assert.equal(buildTrainingTaskPayload(draft, { clubId: 'club-1', authorUserId: 'user-1' }).author_user_id, 'user-1', 'la identidad usa el UUID del autor');
 assert.equal(buildTrainingTaskPayload(draft, { clubId: 'club-1', authorUserId: 'user-1' }).task_code, 'Vigón', 'el código se recorta sin perder tilde ni mayúscula');
