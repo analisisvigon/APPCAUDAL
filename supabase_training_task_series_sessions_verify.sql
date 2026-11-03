@@ -11,6 +11,16 @@ with objects as (
        from pg_catalog.pg_proc p where p.oid=o.snapshot_rpc::oid) as snapshot_hash,
     (select md5(pg_catalog.regexp_replace(p.prosrc,'[[:space:]]+','','g'))
        from pg_catalog.pg_proc p where p.oid=o.save_rpc::oid) as save_hash,
+    (select p.prosecdef and p.proowner='postgres'::regrole and
+       p.proconfig @> array['search_path=pg_catalog']
+       from pg_catalog.pg_proc p where p.oid=o.snapshot_rpc::oid) as snapshot_secure,
+    (select p.prosecdef and p.proowner='postgres'::regrole and
+       p.proconfig @> array['search_path=pg_catalog']
+       from pg_catalog.pg_proc p where p.oid=o.save_rpc::oid) as save_secure,
+    (select not p.prosecdef and p.provolatile='s' and
+       p.proowner='postgres'::regrole and p.proconfig @> array['search_path=pg_catalog']
+       and pg_catalog.regexp_replace(p.prosrc,'[[:space:]]+','','g')='selecttrue'
+       from pg_catalog.pg_proc p where p.oid=o.ready_rpc::oid) as ready_secure,
     (select count(*) from pg_catalog.pg_attribute a where a.attrelid=o.task_table
        and a.attname in ('series_count','minutes_per_series') and not a.attisdropped
        and a.atttypid='pg_catalog.int4'::regtype and not a.attnotnull) as series_columns,
@@ -27,11 +37,14 @@ with objects as (
   union all select 'Funciones 03C reconocidas',
     snapshot_hash in ('27cb3f0ecb53a2cb02aeeb82c61327f7','dc709201ad400bca07da23e6a3ee33dc') and
     save_hash in ('d4838f0ee66a2d653d34f412d27994b7','42ca2b394d5545da2789c9b687f99ed8'), true from signatures
+  union all select 'Seguridad original de funciones 03C',
+    snapshot_secure is true and save_secure is true, true from signatures
   union all select 'Columnas de series', series_columns=2, true from signatures
   union all select 'Restricción validada y compatible', series_constraints=1, true from signatures
   union all select 'Snapshot del servidor actualizado', snapshot_hash='dc709201ad400bca07da23e6a3ee33dc', true from signatures
   union all select 'PATCH de copia actualizado', save_hash='42ca2b394d5545da2789c9b687f99ed8', true from signatures
   union all select 'Capacidad anunciada', ready_rpc is not null, true from signatures
+  union all select 'Capacidad con propietario y search_path seguros', ready_secure is true, true from signatures
   union all select 'EXECUTE authenticated',
     case when ready_rpc is null then false else
       pg_catalog.has_function_privilege('authenticated',ready_rpc::oid,'EXECUTE') end, true from signatures
@@ -48,6 +61,7 @@ with objects as (
     when bool_and(passed) then 'PASS'
     when (select snapshot_hash='27cb3f0ecb53a2cb02aeeb82c61327f7' and
            save_hash='d4838f0ee66a2d653d34f412d27994b7' and
+           snapshot_secure is true and save_secure is true and
            series_columns=0 and series_constraints=0 and ready_rpc is null from signatures)
       then 'READY_TO_APPLY'
     else 'BLOCKED' end as global_status from checks where required

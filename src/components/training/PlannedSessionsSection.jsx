@@ -674,9 +674,17 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     const target = current.slots.find((slot) => slot.id === targetId);
     const item = source?.items.find((entry) => entry.id === itemId);
     if (!item || !target || source.items.length < 2 || target.items.length >= 2) return current;
-    return { ...current, slots: current.slots.map((slot) => slot.id === sourceId
-      ? { ...slot, items: slot.items.filter((entry) => entry.id !== itemId) }
-      : slot.id === targetId ? { ...slot, items: [...slot.items, item] } : slot) };
+    return { ...current, slots: current.slots.map((slot) => {
+      if (slot.id === sourceId) {
+        const items = slot.items.filter((entry) => entry.id !== itemId);
+        return { ...slot, items, duration: plannedExerciseTaskDuration(items, slot.duration) };
+      }
+      if (slot.id === targetId) {
+        const items = [...slot.items, item];
+        return { ...slot, items, duration: plannedExerciseTaskDuration(items, slot.duration) };
+      }
+      return slot;
+    }) };
   });
 
   const save = async () => {

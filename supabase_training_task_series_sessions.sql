@@ -36,6 +36,15 @@ begin
       raise exception 'Función 03C divergente o configuración insegura: %',v_name;
     end if;
   end loop;
+  if to_regprocedure('public.planned_task_series_ready_v1()') is not null and
+     not exists(select 1 from pg_catalog.pg_proc p
+       where p.oid=to_regprocedure('public.planned_task_series_ready_v1()')::oid
+         and not p.prosecdef and p.provolatile='s'
+         and p.proowner='postgres'::regrole
+         and p.proconfig @> array['search_path=pg_catalog']
+         and pg_catalog.regexp_replace(p.prosrc,'[[:space:]]+','','g')='selecttrue') then
+    raise exception 'Capacidad de series preexistente incompatible';
+  end if;
 end $pre$;
 
 alter table public.training_tasks add column if not exists series_count integer;
@@ -540,6 +549,7 @@ end $fn$;
 create or replace function public.planned_task_series_ready_v1()
 returns boolean language sql stable security invoker set search_path=pg_catalog
 as $ready$ select true $ready$;
+alter function public.planned_task_series_ready_v1() owner to postgres;
 revoke all on function public.planned_task_series_ready_v1() from public,anon,authenticated,service_role;
 grant execute on function public.planned_task_series_ready_v1() to authenticated;
 
@@ -552,7 +562,13 @@ begin
       from pg_catalog.pg_proc where oid=to_regprocedure('public.save_planned_session_03c(uuid,integer,date,jsonb,jsonb,integer,uuid[],uuid[])')::oid)
        is distinct from '42ca2b394d5545da2789c9b687f99ed8' or
      not pg_catalog.has_function_privilege('authenticated','public.planned_task_series_ready_v1()','EXECUTE') or
-     pg_catalog.has_function_privilege('anon','public.planned_task_series_ready_v1()','EXECUTE') then
+     pg_catalog.has_function_privilege('anon','public.planned_task_series_ready_v1()','EXECUTE') or
+     not exists(select 1 from pg_catalog.pg_proc p
+       where p.oid=to_regprocedure('public.planned_task_series_ready_v1()')::oid
+         and not p.prosecdef and p.provolatile='s'
+         and p.proowner='postgres'::regrole
+         and p.proconfig @> array['search_path=pg_catalog']
+         and pg_catalog.regexp_replace(p.prosrc,'[[:space:]]+','','g')='selecttrue') then
     raise exception 'Postflight de series fallido';
   end if;
 end $post$;
