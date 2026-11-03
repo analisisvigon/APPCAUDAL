@@ -127,8 +127,11 @@ export const createTrainingTaskDraft = () => ({
   spaceWidthM: '',
   spaceLengthM: '',
   material: '',
+  exerciseRules: '',
   technicalContent: '',
   tacticalContent: '',
+  tacticalOffensiveContent: '',
+  tacticalDefensiveContent: '',
   gamePhase: '',
   gameMoment: '',
   observations: '',
@@ -159,6 +162,9 @@ export const normalizeTrainingTask = (row = {}) => ({
   spaceLengthM: row.space_length_m ?? '',
   technicalContent: row.technical_content || '',
   tacticalContent: row.tactical_content || '',
+  exerciseRules: row.exercise_rules || '',
+  tacticalOffensiveContent: row.tactical_content_offensive || '',
+  tacticalDefensiveContent: row.tactical_content_defensive || '',
   gamePhase: row.game_phase || '',
   gameMoment: row.game_moment || '',
   previewPath: row.preview_path || '',
@@ -188,6 +194,9 @@ export const trainingTaskToDraft = (task) => ({
   material: task.material || '',
   technicalContent: task.technical_content || task.technicalContent || '',
   tacticalContent: task.tactical_content || task.tacticalContent || '',
+  exerciseRules: task.exercise_rules || task.exerciseRules || '',
+  tacticalOffensiveContent: task.tactical_content_offensive || task.tacticalOffensiveContent || '',
+  tacticalDefensiveContent: task.tactical_content_defensive || task.tacticalDefensiveContent || '',
   gamePhase: task.gamePhase || '',
   gameMoment: task.gameMoment || '',
   observations: task.observations || '',
@@ -202,6 +211,7 @@ export const trainingTaskToDraft = (task) => ({
 });
 
 const jsonEquals = (left, right) => JSON.stringify(left ?? {}) === JSON.stringify(right ?? {});
+const optionalMultiline = (value) => String(value ?? '').trim() ? String(value) : null;
 
 export const prepareTrainingTaskEditorPayload = (draft = {}, existing = null) => {
   const candidate = cloneJson(draft.editorPayload ?? existing?.editorPayload ?? existing?.editor_payload ?? {});
@@ -235,6 +245,9 @@ export const validateTrainingTaskDraft = (draft) => {
   if (!String(draft.objective || '').trim()) errors.objective = 'Indica el objetivo principal.';
   if (String(draft.taskCode || '').trim().length > 40) errors.taskCode = 'El código de tarea no puede superar 40 caracteres.';
   if (String(draft.variants || '').trim().length > 10000) errors.variants = 'Las variantes no pueden superar 10000 caracteres.';
+  for (const field of ['exerciseRules', 'tacticalOffensiveContent', 'tacticalDefensiveContent']) {
+    if (String(draft[field] || '').length > 10000) errors[field] = 'Este campo no puede superar 10000 caracteres.';
+  }
   const numericFields = [
     ['durationMinutes', 'La duración debe ser un número positivo.'],
     ['playersMin', 'El mínimo de jugadores no es válido.'],
@@ -260,7 +273,7 @@ export const validateTrainingTaskDraft = (draft) => {
   return errors;
 };
 
-export const buildTrainingTaskPayload = (draft, { clubId, authorUserId, existing = null, seriesEnabled = false } = {}) => ({
+export const buildTrainingTaskPayload = (draft, { clubId, authorUserId, existing = null, seriesEnabled = false, contentEnabled = false } = {}) => ({
   club_id: clubId,
   author_user_id: authorUserId,
   name: String(draft.name || '').trim(),
@@ -282,7 +295,12 @@ export const buildTrainingTaskPayload = (draft, { clubId, authorUserId, existing
   space_length_m: draft.spaceLengthM === '' ? null : Number(draft.spaceLengthM),
   material: String(draft.material || '').trim() || null,
   technical_content: String(draft.technicalContent || '').trim() || null,
-  tactical_content: String(draft.tacticalContent || '').trim() || null,
+  tactical_content: optionalMultiline(draft.tacticalContent),
+  ...(contentEnabled ? {
+    exercise_rules: optionalMultiline(draft.exerciseRules),
+    tactical_content_offensive: optionalMultiline(draft.tacticalOffensiveContent),
+    tactical_content_defensive: optionalMultiline(draft.tacticalDefensiveContent),
+  } : {}),
   game_phase: draft.gamePhase || null,
   game_moment: String(draft.gameMoment || '').trim() || null,
   observations: String(draft.observations || '').trim() || null,

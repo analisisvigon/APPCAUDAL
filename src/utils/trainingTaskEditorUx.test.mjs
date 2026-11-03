@@ -22,7 +22,7 @@ assert.match(navigationSource, /onClick=\{\(\) => onChange\(key\)\}/, 'cambiar d
 assert.doesNotMatch(navigationSource, /onSave|setDraft|saveTrainingTask/, 'navegar no guarda ni reconstruye el borrador');
 assert.match(sectionSource, /const \[activeSection, setActiveSection\] = useState\('information'\)/, 'el apartado activo no sustituye el estado del draft');
 
-for (const field of ['name', 'taskType', 'taskCode', 'objective', 'description', 'playersSpec', 'seriesCount', 'minutesPerSeries', 'durationMinutes', 'spaceWidthM', 'spaceLengthM', 'material', 'gamePhase', 'gameMoment', 'technicalContent', 'tacticalContent', 'observations', 'stageKeys', 'variants']) {
+for (const field of ['name', 'taskType', 'taskCode', 'objective', 'description', 'playersSpec', 'seriesCount', 'minutesPerSeries', 'durationMinutes', 'spaceWidthM', 'spaceLengthM', 'material', 'gamePhase', 'gameMoment', 'technicalContent', 'tacticalContent', 'exerciseRules', 'tacticalOffensiveContent', 'tacticalDefensiveContent', 'observations', 'stageKeys', 'variants']) {
   assert.match(sectionSource, new RegExp(`draft\\.${field}`), `se conserva el campo ${field}`);
 }
 assert.doesNotMatch(sectionSource, /draft\.playersMin|draft\.playersMax/, 'la edición ya no presenta los límites legacy como series');

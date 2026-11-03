@@ -21,6 +21,13 @@ const task = { id: 'source-1', name: 'Rondo', description: 'Biblioteca original'
 const draft = hydratePlannedEditor(session, [slot], [{ id: 'free-1', slot_id: slot.id,
   sort_order: 0, kind: 'free', free_title: 'Actividad libre' }]);
 const selected = createPlannedLibraryItem('library-1', task);
+const selectedContent = createPlannedLibraryItem('library-content', { ...task,
+  exercise_rules: 'Dos toques\nGol doble', tactical_content: 'General heredado',
+  tactical_content_offensive: 'Crear\nFinalizar', tactical_content_defensive: 'Cerrar centro' });
+assert.equal(getPlannedLibraryValue(selectedContent, 'exercise_rules'), 'Dos toques\nGol doble');
+assert.equal(getPlannedLibraryValue(selectedContent, 'tactical_content'), 'General heredado');
+assert.equal(getPlannedLibraryValue(selectedContent, 'tactical_content_offensive'), 'Crear\nFinalizar');
+assert.equal(getPlannedLibraryValue(selectedContent, 'tactical_content_defensive'), 'Cerrar centro');
 const mixed = { ...draft, slots: [{ ...draft.slots[0], items: [draft.slots[0].items[0], selected] }] };
 assert.equal(hasPlannedLibraryItems(mixed), true);
 assert.equal(getPlannedDuration(mixed.slots), 20, 'las tareas simultáneas no duplican duración');
@@ -50,13 +57,16 @@ assert.deepEqual(importPayload.p_slots[0].items[1], {
 assert.equal(importPayload.p_slots[0].items[0].kind, 'free');
 
 const serverSnapshot = { snapshot_version: 1, source_task_id: 'source-1',
-  source_club_id: 'club-1', source: { ...task }, working: {}, media: [] };
+  source_club_id: 'club-1', source: { ...task, exercise_rules: 'Dos toques',
+    tactical_content: 'General', tactical_content_offensive: 'Crear',
+    tactical_content_defensive: 'Cerrar' }, working: {}, media: [] };
 const hydrated = hydratePlannedEditor({ ...session, revision: 5 }, [slot], [
   { id: 'free-1', slot_id: slot.id, sort_order: 0, kind: 'free', free_title: 'Actividad libre' },
   { id: 'library-1', slot_id: slot.id, sort_order: 1, kind: 'library_task',
     source_task_uuid_snapshot: 'source-1', task_snapshot: serverSnapshot, activity_minutes: 12 },
 ]);
 assert.equal(hydrated.slots[0].items[1].snapshot.source.description, 'Biblioteca original');
+assert.equal(getPlannedLibraryValue(hydrated.slots[0].items[1], 'exercise_rules'), 'Dos toques');
 assert.doesNotThrow(() => assertPlanned03cReload(mixed, hydrated, 5));
 assert.throws(() => assertPlanned03cReload(mixed, draft, 5), /lectura posterior/,
   'no se acepta una recarga que oculte el snapshot recién incorporado');
@@ -76,6 +86,16 @@ const edited = { ...hydrated, slots: [{ ...hydrated.slots[0], items: [
 ] }] };
 assert.equal(getPlannedLibraryValue(edited.slots[0].items[1], 'description'), 'Copia editada');
 assert.equal(serverSnapshot.source.description, 'Biblioteca original', 'el origen sigue intacto');
+const contentEdited = { ...hydrated, slots: [{ ...hydrated.slots[0], items: [
+  hydrated.slots[0].items[0], { ...hydrated.slots[0].items[1], working: {
+    exercise_rules: 'Tres toques\nGol doble', tactical_content_offensive: 'Crear por fuera',
+  } },
+] }] };
+assert.equal(getPlannedLibraryValue(contentEdited.slots[0].items[1], 'exercise_rules'), 'Tres toques\nGol doble');
+assert.equal(getPlannedLibraryValue(contentEdited.slots[0].items[1], 'tactical_content_defensive'), 'Cerrar');
+assert.equal(serverSnapshot.source.exercise_rules, 'Dos toques', 'Biblioteca histórica permanece intacta');
+assert.deepEqual(buildPlannedSavePayload(contentEdited, hydrated).p_slots[0].items[1].working,
+  { exercise_rules: 'Tres toques\nGol doble', tactical_content_offensive: 'Crear por fuera' });
 assert.deepEqual(buildPlannedSavePayload(edited, hydrated).p_slots[0].items[1], {
   id: 'library-1', sort_order: 1, kind: 'library_task', activity_minutes: 12,
   working: { description: 'Copia editada' },

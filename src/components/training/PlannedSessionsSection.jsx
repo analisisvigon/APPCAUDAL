@@ -25,6 +25,7 @@ import {
   checkPlannedMicrocycleV4,
   checkPlannedMaterialAutofill,
   checkPlannedTaskSeries,
+  checkPlannedTaskContent,
   listPlannedSessions,
   listPlannedSessionsForExport,
   listPlannedLocations,
@@ -115,6 +116,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryError, setLibraryError] = useState('');
   const [seriesSupported, setSeriesSupported] = useState(false);
+  const [contentSupported, setContentSupported] = useState(false);
   const [locationOptions, setLocationOptions] = useState([]);
   const [opponentOptions, setOpponentOptions] = useState([]);
   const [suggestionsError, setSuggestionsError] = useState('');
@@ -249,6 +251,12 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     let active = true;
     checkPlannedTaskSeries(client).then((ready) => { if (active) setSeriesSupported(ready); })
       .catch(() => { if (active) setSeriesSupported(false); });
+    return () => { active = false; };
+  }, [client]);
+  useEffect(() => {
+    let active = true;
+    checkPlannedTaskContent(client).then((ready) => { if (active) setContentSupported(ready); })
+      .catch(() => { if (active) setContentSupported(false); });
     return () => { active = false; };
   }, [client]);
   useEffect(() => {
@@ -463,13 +471,13 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setLibraryTasks([]); setLibraryError('');
     if (!selected?.club_id || !editor) return undefined;
     setLibraryLoading(true);
-    listPlannedLibraryTasks(client, selected.club_id, seriesSupported).then((rows) => {
+    listPlannedLibraryTasks(client, selected.club_id, seriesSupported, contentSupported).then((rows) => {
       if (!cancelled) setLibraryTasks(rows.filter((row) => row.club_id === selected.club_id));
     }).catch((cause) => {
       if (!cancelled) setLibraryError(`${errorKind(cause)}: ${readError(cause)}`);
     }).finally(() => { if (!cancelled) setLibraryLoading(false); });
     return () => { cancelled = true; };
-  }, [client, selected?.club_id, Boolean(editor), userId, seriesSupported]);
+  }, [client, selected?.club_id, Boolean(editor), userId, seriesSupported, contentSupported]);
 
   const requestDiscard = () => !dirty || window.confirm('Hay cambios sin guardar. ¿Descartarlos?');
   const changeContext = (nextId) => {
@@ -1622,6 +1630,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         </div> : null}
         <PlannedSessionDocument editor={editor} selected={selected} canEdit={canEdit} busy={busy}
           seriesSupported={seriesSupported}
+          contentSupported={contentSupported}
           mcEnabled={mcV4Supported} mcNumber={mcNumber} printedMcNumber={mcBaseline}
           mcOptions={mcOptions} onMcChange={setMcNumber}
           locationOptions={locationOptions} opponentOptions={opponentOptions} suggestionsError={suggestionsError}

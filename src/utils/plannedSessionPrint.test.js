@@ -31,5 +31,12 @@ const excess = [...normal, exercise('m4', 'main')];
 assert.equal(planPlannedSessionPrintSheets(excess).length, 3,
   'el contenido realmente excesivo se conserva y pasa a otra hoja');
 assert.deepEqual(ids(planPlannedSessionPrintSheets(excess)), excess.map((slot) => slot.id));
+const detailed = exercise('detailed', 'activation');
+detailed.items = [{ id: 'copy-1', kind: 'library_task', snapshot: {
+  source: { description: 'Breve', exercise_rules: 'Norma larga '.repeat(150) }, working: {} },
+  working: {} }];
+assert.equal(planPlannedSessionPrintSheets([detailed])[0].activation, null,
+  'las reglas largas se conservan en una hoja de continuación');
+assert.deepEqual(ids(planPlannedSessionPrintSheets([detailed])), ['detailed']);
 
 console.log('planned session print pagination tests passed');

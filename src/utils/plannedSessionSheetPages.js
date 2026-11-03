@@ -1,5 +1,14 @@
+import { getPlannedLibraryValue } from './plannedSessions.js';
+
 const estimatedPrintLines = (description) => String(description || '').split(/\r?\n/)
   .reduce((lines, paragraph) => lines + Math.max(1, Math.ceil(paragraph.length / 55)), 0);
+const printableTaskText = (item) => item.kind === 'library_task'
+  ? ['description','exercise_rules','tactical_content','tactical_content_offensive',
+    'tactical_content_defensive','material'].map((field) =>
+    getPlannedLibraryValue(item, field) || '').join('\n')
+  : item.description || '';
+export const needsPlannedPrintContinuation = (slot) => slot.items.some((item) =>
+  estimatedPrintLines(printableTaskText(item)) > (slot.items.length > 1 ? 12 : 18));
 const needsTextContinuation = (description) => estimatedPrintLines(description) > 6;
 export const needsPlannedTextFragmentation = (slot) => slot.items.some((item) =>
   item.kind === 'free' && estimatedPrintLines(item.description) > 40);
@@ -61,13 +70,14 @@ export const planPlannedSessionPrintSheets = (slots = []) => {
     slots.filter((slot) => slot.phase === phase));
   const firstActivation = ordered[0]?.phase === 'activation' ? ordered[0] : null;
   const activationOnCover = firstActivation && firstActivation.items.length <= 1 &&
-    !needsPlannedTextFragmentation(firstActivation) ? firstActivation : null;
+    !needsPlannedTextFragmentation(firstActivation) &&
+    !needsPlannedPrintContinuation(firstActivation) ? firstActivation : null;
   const remaining = activationOnCover ? ordered.slice(1) : ordered;
   const pages = [{ kind: 'cover', activation: activationOnCover }];
   let group = [];
   let units = 0;
   for (const slot of remaining) {
-    const weight = slot.items.length > 1 ? 2 : 1;
+    const weight = needsPlannedPrintContinuation(slot) ? 4 : slot.items.length > 1 ? 2 : 1;
     if (group.length && units + weight > 4) {
       pages.push({ kind: 'exercises', slots: group });
       group = [];

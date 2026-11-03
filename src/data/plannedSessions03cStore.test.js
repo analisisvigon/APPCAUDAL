@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   confirmPlannedSession, listPlannedLibraryTasks, savePlannedSession, checkPlannedTaskSeries,
+  checkPlannedTaskContent,
 } from './plannedSessionsStore.js';
 
 const calls = [];
@@ -29,6 +30,10 @@ assert.equal(calls.find((call) => call[0] === 'select')[1].includes('series_coun
   'antes de instalar SQL no se consultan columnas nuevas');
 await listPlannedLibraryTasks(client, 'current', true);
 assert.ok(calls.filter((call) => call[0] === 'select').at(-1)[1].includes('series_count'));
+await listPlannedLibraryTasks(client, 'current', true, true);
+assert.ok(calls.filter((call) => call[0] === 'select').at(-1)[1].includes('exercise_rules'));
+assert.equal(await checkPlannedTaskContent({ rpc: async () => ({ data: true, error: null }) }), true);
+assert.equal(await checkPlannedTaskContent({ rpc: async () => ({ error: { code: 'PGRST202' } }) }), false);
 assert.equal(await checkPlannedTaskSeries({ rpc: async () => ({ data: true, error: null }) }), true);
 assert.equal(await checkPlannedTaskSeries({ rpc: async () => ({ error: { code: 'PGRST202' } }) }), false);
 await savePlannedSession(client, { p_session_id: 'session-1' }, true);

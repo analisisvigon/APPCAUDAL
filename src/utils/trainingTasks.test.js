@@ -43,6 +43,22 @@ assert.ok(validateTrainingTaskDraft({ ...seriesDraft, seriesCount: '0' }).series
 assert.ok(validateTrainingTaskDraft({ ...seriesDraft, seriesCount: '1.5' }).seriesCount);
 assert.ok(validateTrainingTaskDraft({ ...draft, durationMinutes: '0' }).durationMinutes);
 assert.equal(trainingTaskToDraft(normalizeTrainingTask({ series_count: 3, minutes_per_series: 5 })).seriesCount, 3);
+const contentDraft = { ...draft, tacticalContent: 'General heredado',
+  exerciseRules: 'Dos toques\nGol doble', tacticalOffensiveContent: 'Crear espacios\nFinalizar',
+  tacticalDefensiveContent: 'Cerrar el centro' };
+const contentPayload = buildTrainingTaskPayload(contentDraft, { contentEnabled: true });
+assert.equal(contentPayload.exercise_rules, 'Dos toques\nGol doble');
+assert.equal(contentPayload.tactical_content_offensive, 'Crear espacios\nFinalizar');
+assert.equal(contentPayload.tactical_content_defensive, 'Cerrar el centro');
+assert.equal(contentPayload.tactical_content, 'General heredado');
+assert.equal(buildTrainingTaskPayload({ ...contentDraft, tacticalContent: 'General\n\nHeredado  ' },
+  { contentEnabled: true }).tactical_content, 'General\n\nHeredado  ',
+  'el texto táctico heredado conserva saltos de línea y espacios existentes');
+assert.equal('exercise_rules' in buildTrainingTaskPayload(contentDraft), false,
+  'sin la migración no se escriben columnas nuevas');
+assert.equal(trainingTaskToDraft(normalizeTrainingTask(contentPayload)).exerciseRules,
+  'Dos toques\nGol doble', 'la edición recupera los saltos de línea');
+assert.ok(validateTrainingTaskDraft({ ...contentDraft, exerciseRules: 'x'.repeat(10001) }).exerciseRules);
 assert.equal(formatTrainingTaskPlayers(draft), '4v4+3', 'se conserva el formato flexible de jugadores');
 assert.equal(buildTrainingTaskPayload(draft, { clubId: 'club-1', authorUserId: 'user-1' }).author_user_id, 'user-1', 'la identidad usa el UUID del autor');
 assert.equal(buildTrainingTaskPayload(draft, { clubId: 'club-1', authorUserId: 'user-1' }).task_code, 'Vigón', 'el código se recorta sin perder tilde ni mayúscula');

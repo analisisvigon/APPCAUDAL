@@ -80,6 +80,7 @@
 .planned-print-development { min-width: 0; padding: 1mm 1.5mm; border-right: 1px dashed #555; overflow-wrap: anywhere; white-space: pre-wrap; }
 .planned-print-development > b, .planned-print-graphic > b { display: block; margin-bottom: .5mm; font-size: 7pt; font-weight: 500; text-align: center; }
 .planned-print-development p { margin: 0; }
+.planned-print-development .planned-print-content-line { margin-top: 1mm; white-space: pre-wrap; overflow-wrap: anywhere; }
 .planned-print-development .planned-print-material { margin-top: 2mm; }
 .planned-print-graphic { display: flex; flex-direction: column; min-width: 0; padding: .5mm; }
 .planned-print-board { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 43mm; }

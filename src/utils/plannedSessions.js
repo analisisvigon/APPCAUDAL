@@ -146,6 +146,7 @@ export const createPlannedLibraryItem = (id, task) => ({
   preview: Object.fromEntries([
     'name', 'description', 'objective', 'material', 'technical_content',
     'tactical_content', 'observations', 'editor_payload', 'duration_minutes',
+    'exercise_rules', 'tactical_content_offensive', 'tactical_content_defensive',
     'series_count', 'minutes_per_series',
     'space_width_m', 'space_length_m',
   ].map((field) => [field, task[field]])),
@@ -249,6 +250,10 @@ export const getPlannedEditorIssues = (editor, season) => {
         const name = text(getPlannedLibraryValue(item, 'name'));
         if (!name.trim() || name.length > 160)
           add(`${task}: escribe un nombre de hasta 160 caracteres.`, 'name', slot.id, item.id);
+        for (const field of ['exercise_rules', 'tactical_content_offensive', 'tactical_content_defensive']) {
+          if (String(getPlannedLibraryValue(item, field) ?? '').length > 10000)
+            add(`${task}: el contenido supera 10000 caracteres.`, field, slot.id, item.id);
+        }
         const count = getPlannedLibraryValue(item, 'series_count');
         const perSeries = getPlannedLibraryValue(item, 'minutes_per_series');
         const hasCount = count !== null && count !== undefined && count !== '';

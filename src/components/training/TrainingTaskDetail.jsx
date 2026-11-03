@@ -85,7 +85,9 @@ export default function TrainingTaskDetail({ task = null, currentUserId = '', pl
   const mediaCount = Array.isArray(task.media) ? task.media.length : 0;
   const featuredMedia = selectTrainingTaskFeaturedMedia(Array.isArray(task.media) ? task.media : []);
   const hasOrganization = [task.playersSpec, task.playersMin, task.playersMax, task.spaceWidthM, task.spaceLengthM].some(hasValue);
-  const hasTechnicalContent = [task.gamePhase, task.gameMoment, task.technicalContent, task.tacticalContent, task.material].some(hasValue);
+  const hasTechnicalContent = [task.gamePhase, task.gameMoment, task.technicalContent,
+    task.tacticalContent, task.exerciseRules, task.tacticalOffensiveContent,
+    task.tacticalDefensiveContent, task.material].some(hasValue);
   const hasOrganizationDetails = assignments.length > 0;
   const hasContentDetails = hasValue(task.variants);
   const mediaSummary = `${mediaCount} ${mediaCount === 1 ? 'recurso' : 'recursos'}${task.attachmentPath ? ' · adjunto legacy' : ''}`;
@@ -145,7 +147,10 @@ export default function TrainingTaskDetail({ task = null, currentUserId = '', pl
               <LabeledValue label="Fase del juego" value={phaseLabel} />
               <LabeledValue label="Momento / subfase" value={momentLabel} />
               <LabeledValue label="Contenido técnico" value={task.technicalContent} />
-              <LabeledValue label="Contenido táctico" value={task.tacticalContent} />
+              {hasValue(task.tacticalContent) ? <LabeledValue label="Contenido táctico general (heredado)" value={task.tacticalContent} /> : null}
+              {hasValue(task.exerciseRules) ? <LabeledValue label="Reglas del ejercicio" value={task.exerciseRules} className="sm:col-span-2" /> : null}
+              {hasValue(task.tacticalOffensiveContent) ? <LabeledValue label="Contenido táctico ofensivo" value={task.tacticalOffensiveContent} /> : null}
+              {hasValue(task.tacticalDefensiveContent) ? <LabeledValue label="Contenido táctico defensivo" value={task.tacticalDefensiveContent} /> : null}
               <LabeledValue label="Material" value={task.material} className="sm:col-span-2" />
             </div>
           </section> : null}

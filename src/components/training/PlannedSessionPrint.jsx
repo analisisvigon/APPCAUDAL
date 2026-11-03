@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import { getPlannedDuration, getPlannedLibrarySource, getPlannedLibraryValue, PLANNED_PHASES, plannedMicrocycleDisplay } from '../../utils/plannedSessions';
-import { planPlannedSessionPrintSheets } from '../../utils/plannedSessionSheetPages';
+import { needsPlannedPrintContinuation, planPlannedSessionPrintSheets } from '../../utils/plannedSessionSheetPages';
 import { getPlannedSessionBoardTeams } from '../../utils/plannedSessionBoardTeams';
 import TrainingTaskBoardPreview from './TrainingTaskBoardPreview';
 import PlannedSessionRoster from './PlannedSessionRoster';
@@ -36,6 +36,13 @@ function PrintTask({ item, index, hasExerciseDimensions }) {
   const name = library ? getPlannedLibraryValue(item, 'name') : item.title;
   const description = library ? getPlannedLibraryValue(item, 'description') : item.description;
   const material = library ? getPlannedLibraryValue(item, 'material') : '';
+  const extraContent = library ? [
+    ['Reglas del ejercicio', 'exercise_rules'],
+    ['Contenido táctico general', 'tactical_content'],
+    ['Contenido táctico ofensivo', 'tactical_content_offensive'],
+    ['Contenido táctico defensivo', 'tactical_content_defensive'],
+  ].map(([label, field]) => ({ label, text: getPlannedLibraryValue(item, field) }))
+    .filter((entry) => value(entry.text)) : [];
   const payload = library ? getPlannedLibraryValue(item, 'editor_payload') || {} : {};
   const teams = library ? getPlannedSessionBoardTeams(payload) : [];
   const source = library ? getPlannedLibrarySource(item) : {};
@@ -46,6 +53,8 @@ function PrintTask({ item, index, hasExerciseDimensions }) {
     <div className="planned-print-task-name"><b>Tarea {String.fromCharCode(65 + index)}</b><strong>{value(name)}</strong></div>
     <div className="planned-print-task-content">
       <div className="planned-print-development"><b>DESARROLLO</b><p>{value(description)}</p>
+        {extraContent.map((entry) => <p className="planned-print-content-line" key={entry.label}>
+          <b>{entry.label}:</b> {entry.text}</p>)}
         {value(material) ? <p className="planned-print-material"><b>Material:</b> {value(material)}</p> : null}
       </div>
       <div className="planned-print-graphic"><b>REPRESENTACIÓN GRÁFICA</b>
@@ -66,8 +75,7 @@ function PrintTask({ item, index, hasExerciseDimensions }) {
 
 function PrintExercise({ slot, number, dimensions }) {
   if (!slot) return <div className="planned-print-empty-activation">ACTIVACIÓN</div>;
-  const longContent = slot.items.some((item) => value(item.kind === 'library_task'
-    ? getPlannedLibraryValue(item, 'description') : item.description).length > 900);
+  const longContent = needsPlannedPrintContinuation(slot);
   return <section className={`planned-print-exercise ${slot.items.length > 1 ? 'planned-print-dual' : ''} ${longContent ? 'planned-print-exercise-overflow' : ''}`}
     data-print-slot-id={slot.id}>
     <div className="planned-print-exercise-head"><strong>{phaseName(slot.phase).toLocaleUpperCase('es')} · Ejercicio {number}</strong>
