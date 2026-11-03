@@ -132,20 +132,41 @@ assert.equal(pdfUpdates[0].preview_path, null, 'reemplazar una imagen por PDF li
 
 await assert.rejects(removeTrainingTaskFiles({ storage: { from: () => ({ remove: async () => ({ error: new Error('Storage denied') }) }) } }, ['path']), /Storage denied/);
 const deleteCalls = [];
-await assert.rejects(deleteTrainingTaskWithFiles({
+const cleanupResult = await deleteTrainingTaskWithFiles({
   storage: { from: () => ({ remove: async () => { deleteCalls.push('remove'); return { error: new Error('remove failed') }; } }) },
   from: (table) => {
-    assert.equal(table, 'training_task_media');
-    return { select: () => ({ eq: () => ({ eq: async () => {
+    if (table === 'training_task_media') return { select: () => ({ eq: () => ({ eq: async () => {
       deleteCalls.push('media-query');
       return { data: [{ storage_path: 'media-path' }], error: null };
     } }) }) };
+    assert.equal(table, 'training_tasks');
+    return { delete: () => ({ eq: () => ({ select: async () => {
+      deleteCalls.push('delete');
+      return { data: [{ id: 'task-id' }], error: null };
+    } }) }) };
   },
-}, { id: 'task-id', attachmentPath: 'path' }), /remove failed/);
-assert.deepEqual(deleteCalls, ['media-query', 'remove']);
+}, { id: 'task-id', attachmentPath: 'path' });
+assert.deepEqual(deleteCalls, ['media-query', 'delete', 'remove']);
+assert.deepEqual(cleanupResult.cleanupPending, ['path', 'media-path']);
+assert.match(cleanupResult.cleanupError.message, /remove failed/);
+
+const rejectedDeleteCalls = [];
+await assert.rejects(deleteTrainingTaskWithFiles({
+  storage: { from: () => ({ remove: async () => { rejectedDeleteCalls.push('remove'); return { error: null }; } }) },
+  from: (table) => {
+    if (table === 'training_task_media') return { select: () => ({ eq: () => ({ eq: async () => ({
+      data: [], error: null,
+    }) }) }) };
+    return { delete: () => ({ eq: () => ({ select: async () => {
+      rejectedDeleteCalls.push('delete');
+      return { data: null, error: new Error('La tarea tiene aportaciones de otros usuarios') };
+    } }) }) };
+  },
+}, { id: 'shared-task', attachmentPath: 'private-path' }), /aportaciones/);
+assert.deepEqual(rejectedDeleteCalls, ['delete'], 'el rechazo de la base de datos no elimina archivos');
 
 const successfulDeleteCalls = [];
-await deleteTrainingTaskWithFiles({
+const deleted = await deleteTrainingTaskWithFiles({
   storage: { from: () => ({ remove: async (paths) => { successfulDeleteCalls.push(['remove', paths]); return { error: null }; } }) },
   from: (table) => {
     if (table === 'training_task_media') return { select: () => ({ eq: () => ({ eq: async () => ({
@@ -161,8 +182,9 @@ await deleteTrainingTaskWithFiles({
   },
 }, { id: 'own-task', previewPath: 'preview-path', attachmentPath: 'attachment-path' });
 assert.deepEqual(successfulDeleteCalls, [
-  ['remove', ['preview-path', 'attachment-path', 'media-path']],
   ['delete', 'id', 'own-task', 'id'],
-], 'el borrado correcto limpia Storage antes de eliminar la fila');
+  ['remove', ['preview-path', 'attachment-path', 'media-path']],
+], 'el borrado de la fila se confirma antes de intentar limpiar Storage');
+assert.deepEqual(deleted.cleanupPending, []);
 
 console.log('training task file lifecycle tests passed');

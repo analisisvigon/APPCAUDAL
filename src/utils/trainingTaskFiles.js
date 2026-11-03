@@ -82,18 +82,26 @@ export const saveTrainingTaskWithFile = async (client, draft, context, existing 
 };
 
 export const deleteTrainingTaskWithFiles = async (client, task) => {
-  // Storage exige tarea existente. Si falla el borrado DB, la fila sigue visible
-  // y el usuario recibe un error; no hay transacción distribuida con Storage.
+  // La fila se borra primero: un rechazo de RLS, del guard o de una FK no debe
+  // dejar una tarea existente con sus archivos privados ya eliminados.
   const { data: mediaRows, error: mediaError } = await client
     .from('training_task_media')
     .select('storage_path')
     .eq('task_id', task.id)
     .eq('source', 'upload');
   if (mediaError) throw mediaError;
-  await removeTrainingTaskFiles(client, [
+  const paths = [
     task.previewPath,
     task.attachmentPath,
     ...(mediaRows || []).map((row) => row.storage_path),
-  ]);
+  ].filter(Boolean);
   await deleteTrainingTask(client, task.id);
+  try {
+    await removeTrainingTaskFiles(client, paths);
+    return { cleanupPending: [] };
+  } catch (cleanupError) {
+    // Storage y Postgres no comparten transacción. Tras borrar la fila, la
+    // política de Storage puede impedir limpiar objetos huérfanos.
+    return { cleanupPending: [...new Set(paths)], cleanupError };
+  }
 };
