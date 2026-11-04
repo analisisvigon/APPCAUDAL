@@ -114,6 +114,37 @@ with policy_rows as (
            'using',p.using_expr,'with_check',p.check_expr)
   from policy_rows p
   union all
+  select 'SUBSTITUTION_CHILD_POLICY', 'REVIEW',
+         relation.relname || ':' || policy.polname,
+         pg_catalog.jsonb_build_object(
+           'command',policy.polcmd::text,
+           'permissive',policy.polpermissive,
+           'roles',policy.polroles,
+           'using',pg_catalog.pg_get_expr(policy.polqual,policy.polrelid),
+           'with_check',pg_catalog.pg_get_expr(policy.polwithcheck,policy.polrelid))
+  from pg_catalog.pg_policy policy
+  join pg_catalog.pg_class relation on relation.oid = policy.polrelid
+  join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+  where namespace.nspname = 'public'
+    and relation.relname in (
+      'partido_eventos_sustitucion','partido_estadisticas_jugador')
+  union all
+  select 'SUBSTITUTION_CHILD_GRANT', 'REVIEW', relation.relname,
+         pg_catalog.jsonb_build_object(
+           'authenticated_select',pg_catalog.has_table_privilege(
+             'authenticated',relation.oid,'SELECT'),
+           'authenticated_insert',pg_catalog.has_table_privilege(
+             'authenticated',relation.oid,'INSERT'),
+           'authenticated_update',pg_catalog.has_table_privilege(
+             'authenticated',relation.oid,'UPDATE'),
+           'authenticated_delete',pg_catalog.has_table_privilege(
+             'authenticated',relation.oid,'DELETE'))
+  from pg_catalog.pg_class relation
+  join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+  where namespace.nspname = 'public'
+    and relation.relname in (
+      'partido_eventos_sustitucion','partido_estadisticas_jugador')
+  union all
   select 'FUNCTION_REQUIRED',
          case when pg_catalog.to_regprocedure(expected.signature) is null
            then 'BLOCKED' else 'REVIEW' end,
@@ -140,8 +171,13 @@ with policy_rows as (
   union all
   select 'SECURITY_DEFINER_MATCH_ROUTE',
          case when routine.proname = 'mutate_match_substitution_atomic'
+                   and pg_catalog.md5(pg_catalog.replace(
+                     routine.prosrc,E'\r\n',E'\n')) <>
+                     '745bd5f2d80cef1815a33698d30b2f2b'
+              then 'BLOCKED'
+              when routine.proname = 'get_match_substitution_events'
                    and routine.prosrc ilike '%is_app_staff%'
-                   and routine.prosrc not ilike '%can_write_match%'
+                   and routine.prosrc not ilike '%can_read_match%'
               then 'BLOCKED' else 'REVIEW' end,
          routine.proname || '(' ||
            pg_catalog.pg_get_function_identity_arguments(routine.oid) || ')',
@@ -155,6 +191,8 @@ with policy_rows as (
            'mentions_is_app_staff',routine.prosrc ilike '%is_app_staff%',
            'mentions_can_write_match',routine.prosrc ilike '%can_write_match%',
            'source_md5',pg_catalog.md5(routine.prosrc),
+           'normalized_source_md5',pg_catalog.md5(pg_catalog.replace(
+             routine.prosrc,E'\r\n',E'\n')),
            'definition',pg_catalog.pg_get_functiondef(routine.oid),
            'classification','Textual candidate; review the deployed function body')
   from pg_catalog.pg_proc routine

@@ -57,21 +57,63 @@ begin
         v_helper.signature;
     end if;
   end loop;
-  -- Esta RPC SECURITY DEFINER del repositorio escribe sustituciones y
-  -- estadisticas hijas con un control global is_app_staff(). RLS del padre
-  -- no limita esas escrituras. Detener el corte si sigue expuesta asi.
-  if exists (
-    select 1 from pg_catalog.pg_proc routine
-    join pg_catalog.pg_namespace namespace
-      on namespace.oid = routine.pronamespace
-    where namespace.nspname = 'public'
-      and routine.proname = 'mutate_match_substitution_atomic'
-      and routine.prosecdef
-      and pg_catalog.has_function_privilege('authenticated',routine.oid,'EXECUTE')
-      and routine.prosrc ilike '%is_app_staff%'
-      and routine.prosrc not ilike '%can_write_match%'
-  ) then
-    raise exception 'Videoanalisis 01 BLOQUEADA: RPC de sustituciones SECURITY DEFINER sin autorizacion por partido';
+  -- No basta detectar el nombre del helper en el texto: exigir la huella
+  -- completa de la RPC 01A revisada y ausencia de sobrecargas.
+  if (select count(*) from pg_catalog.pg_proc routine
+      join pg_catalog.pg_namespace namespace
+        on namespace.oid = routine.pronamespace
+      where namespace.nspname = 'public'
+        and routine.proname = 'mutate_match_substitution_atomic') <> 1
+     or not exists (
+       select 1 from pg_catalog.pg_proc routine
+       where routine.oid = to_regprocedure(
+         'public.mutate_match_substitution_atomic(text,uuid,uuid,jsonb,integer)')
+         and routine.prosecdef
+         and routine.proowner = 'postgres'::regrole
+         and pg_catalog.md5(pg_catalog.replace(
+           routine.prosrc, E'\r\n', E'\n'))
+           = '745bd5f2d80cef1815a33698d30b2f2b'
+         and pg_catalog.has_function_privilege(
+           'authenticated',routine.oid,'EXECUTE')
+         and not pg_catalog.has_function_privilege(
+           'anon',routine.oid,'EXECUTE')
+     ) then
+    raise exception 'Videoanalisis 01 BLOQUEADA: instalar y verificar primero la RPC de sustituciones 01A';
+  end if;
+  if (select count(*) from pg_catalog.pg_proc routine
+      join pg_catalog.pg_namespace namespace
+        on namespace.oid = routine.pronamespace
+      where namespace.nspname = 'public'
+        and routine.proname = 'get_match_substitution_events') <> 1
+     or not exists (
+       select 1 from pg_catalog.pg_proc routine
+       where routine.oid = to_regprocedure(
+         'public.get_match_substitution_events(uuid)')
+         and routine.prosecdef
+         and routine.proowner = 'postgres'::regrole
+         and pg_catalog.md5(pg_catalog.replace(
+           routine.prosrc,E'\r\n',E'\n')) =
+           '5abccd5fdb69b1476268d72a1a2b3180'
+         and pg_catalog.has_function_privilege(
+           'authenticated',routine.oid,'EXECUTE')
+         and not pg_catalog.has_function_privilege(
+           'anon',routine.oid,'EXECUTE'))
+     or (select count(*) from pg_catalog.pg_policy policy
+         where policy.polrelid = to_regclass(
+           'public.partido_eventos_sustitucion')) <> 1
+     or not exists (
+       select 1 from pg_catalog.pg_policy policy
+       where policy.polrelid = to_regclass(
+           'public.partido_eventos_sustitucion')
+         and policy.polname = 'substitution_staff_select'
+         and policy.polcmd::text = 'r'
+         and policy.polpermissive
+         and policy.polroles = array['authenticated'::regrole::oid]
+         and lower(pg_catalog.regexp_replace(replace(
+           pg_catalog.pg_get_expr(policy.polqual,policy.polrelid),
+           'public.',''),'[[:space:]()]','','g')) =
+           'can_read_matchpartido_id') then
+    raise exception 'Videoanalisis 01 BLOQUEADA: consulta de sustituciones 01A no verificada';
   end if;
   if not (select c.relrowsecurity from pg_catalog.pg_class c
           where c.oid = 'public.partidos'::regclass) then

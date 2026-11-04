@@ -71,16 +71,54 @@ with policies as (
     and not pg_catalog.has_table_privilege('authenticated','public.partidos','TRIGGER')
     and not pg_catalog.has_table_privilege('anon','public.partidos','TRIGGER')
   union all
-  select 'RPC de sustituciones sin bypass staff conocido', not exists (
+  select 'RPC de sustituciones 01A verificada',
+    (select count(*)=1 from pg_catalog.pg_proc routine
+      join pg_catalog.pg_namespace namespace
+        on namespace.oid=routine.pronamespace
+      where namespace.nspname='public'
+        and routine.proname='mutate_match_substitution_atomic')
+    and exists (
     select 1 from pg_catalog.pg_proc routine
-    join pg_catalog.pg_namespace namespace
-      on namespace.oid=routine.pronamespace
-    where namespace.nspname='public'
-      and routine.proname='mutate_match_substitution_atomic'
+    where routine.oid=pg_catalog.to_regprocedure(
+      'public.mutate_match_substitution_atomic(text,uuid,uuid,jsonb,integer)')
       and routine.prosecdef
+      and routine.proowner='postgres'::regrole
+      and pg_catalog.md5(pg_catalog.replace(
+        routine.prosrc,E'\r\n',E'\n'))=
+        '745bd5f2d80cef1815a33698d30b2f2b'
       and pg_catalog.has_function_privilege('authenticated',routine.oid,'EXECUTE')
-      and routine.prosrc ilike '%is_app_staff%'
-      and routine.prosrc not ilike '%can_write_match%')
+      and not pg_catalog.has_function_privilege('anon',routine.oid,'EXECUTE'))
+  union all
+  select 'Lectura de sustituciones 01A verificada',
+    (select count(*)=1 from pg_catalog.pg_proc routine
+      join pg_catalog.pg_namespace namespace
+        on namespace.oid=routine.pronamespace
+      where namespace.nspname='public'
+        and routine.proname='get_match_substitution_events')
+    and exists (select 1 from pg_catalog.pg_proc routine
+      where routine.oid=pg_catalog.to_regprocedure(
+        'public.get_match_substitution_events(uuid)')
+        and routine.prosecdef and routine.proowner='postgres'::regrole
+        and pg_catalog.md5(pg_catalog.replace(
+          routine.prosrc,E'\r\n',E'\n'))=
+          '5abccd5fdb69b1476268d72a1a2b3180'
+        and pg_catalog.has_function_privilege(
+          'authenticated',routine.oid,'EXECUTE')
+        and not pg_catalog.has_function_privilege(
+          'anon',routine.oid,'EXECUTE'))
+    and (select count(*)=1 from pg_catalog.pg_policy policy
+      where policy.polrelid=pg_catalog.to_regclass(
+        'public.partido_eventos_sustitucion'))
+    and exists (select 1 from pg_catalog.pg_policy policy
+      where policy.polrelid=pg_catalog.to_regclass(
+          'public.partido_eventos_sustitucion')
+        and policy.polname='substitution_staff_select'
+        and policy.polcmd::text='r' and policy.polpermissive
+        and policy.polroles=array['authenticated'::regrole::oid]
+        and lower(pg_catalog.regexp_replace(replace(
+          pg_catalog.pg_get_expr(policy.polqual,policy.polrelid),
+          'public.',''),'[[:space:]()]','','g'))=
+          'can_read_matchpartido_id')
 ), result as (
   select check_name,case when ok then 'PASS' else 'FAIL' end as status,
          case when ok then 'Contrato estructural presente.'
