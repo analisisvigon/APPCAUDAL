@@ -119,6 +119,35 @@ with policies as (
           pg_catalog.pg_get_expr(policy.polqual,policy.polrelid),
           'public.',''),'[[:space:]()]','','g'))=
           'can_read_matchpartido_id')
+  union all
+  select 'Estadisticas de jugador protegidas por CTS',
+    coalesce((select relation.relrowsecurity
+      from pg_catalog.pg_class relation
+      where relation.oid=pg_catalog.to_regclass(
+        'public.partido_estadisticas_jugador')),false)
+    and (select count(*) from pg_catalog.pg_policy policy
+      where policy.polrelid=pg_catalog.to_regclass(
+        'public.partido_estadisticas_jugador'))=4
+    and (select count(*) from (values
+      ('player_sports_staff_select','r','can_read_matchpartido_id',''),
+      ('player_sports_staff_insert','a','','can_write_matchpartido_id'),
+      ('player_sports_staff_update','w','can_write_matchpartido_id',
+        'can_write_matchpartido_id'),
+      ('player_sports_staff_delete','d','can_write_matchpartido_id','')
+    ) as expected(name,command_code,using_expr,check_expr)
+      join pg_catalog.pg_policy policy
+        on policy.polrelid=pg_catalog.to_regclass(
+          'public.partido_estadisticas_jugador')
+       and policy.polname=expected.name
+       and policy.polcmd::text=expected.command_code
+       and policy.polpermissive
+       and policy.polroles=array['authenticated'::regrole::oid]
+       and lower(pg_catalog.regexp_replace(replace(coalesce(
+         pg_catalog.pg_get_expr(policy.polqual,policy.polrelid),''),
+         'public.',''),'[[:space:]()]','','g'))=expected.using_expr
+       and lower(pg_catalog.regexp_replace(replace(coalesce(
+         pg_catalog.pg_get_expr(policy.polwithcheck,policy.polrelid),''),
+         'public.',''),'[[:space:]()]','','g'))=expected.check_expr)=4
 ), result as (
   select check_name,case when ok then 'PASS' else 'FAIL' end as status,
          case when ok then 'Contrato estructural presente.'

@@ -4,12 +4,19 @@
 
 begin;
 lock table public.partido_eventos_sustitucion in share row exclusive mode;
+lock table public.partido_estadisticas_jugador in share row exclusive mode;
 
 do $pre$
 declare
   v_routine pg_catalog.pg_proc%rowtype;
   v_read pg_catalog.pg_proc%rowtype;
   v_policy record;
+  v_helper record;
+  v_stats_policy record;
+  v_stats_old_count integer := 0;
+  v_stats_new_count integer := 0;
+  v_is_old boolean;
+  v_is_new boolean;
   v_source_md5 text;
 begin
   if current_user <> 'postgres' or auth.uid() is not null then
@@ -22,6 +29,34 @@ begin
      or pg_catalog.to_regprocedure('public.can_read_match(uuid)') is null then
     raise exception 'Videoanalisis 01A: faltan tablas o helper de autorizacion';
   end if;
+  for v_helper in
+    select expected.signature, expected.source_md5, routine.oid,
+           routine.prosrc, routine.proowner, routine.prosecdef, routine.proconfig
+    from (values
+      ('public.can_read_club_team_season(uuid)',
+        'bbb2e5a9a81767749a2a26504a890442'),
+      ('public.can_write_club_team_season(uuid)',
+        'fc4a0e2c43689095da249ca834a2bde1'),
+      ('public.can_read_match(uuid)',
+        'ff69e4e15caed0a5e65f856ddfd94e61'),
+      ('public.can_write_match(uuid)',
+        '6bab76b45b9983a45a3a3dcb378a0096')
+    ) as expected(signature,source_md5)
+    left join pg_catalog.pg_proc routine
+      on routine.oid = pg_catalog.to_regprocedure(expected.signature)
+  loop
+    if v_helper.oid is null or not v_helper.prosecdef
+       or v_helper.proowner <> 'postgres'::regrole
+       or v_helper.proconfig is distinct from array['search_path=pg_catalog']::text[]
+       or pg_catalog.md5(pg_catalog.replace(
+         v_helper.prosrc,E'\r\n',E'\n')) <> v_helper.source_md5
+       or not pg_catalog.has_function_privilege(
+         'authenticated',v_helper.oid,'EXECUTE')
+       or pg_catalog.has_function_privilege('anon',v_helper.oid,'EXECUTE') then
+      raise exception 'Videoanalisis 01A: helper desplegado incompatible: %',
+        v_helper.signature;
+    end if;
+  end loop;
   if (select count(*) from pg_catalog.pg_proc routine
       join pg_catalog.pg_namespace namespace
         on namespace.oid = routine.pronamespace
@@ -36,7 +71,7 @@ begin
   if not found or v_routine.prokind <> 'f'
      or v_routine.prorettype <> 'jsonb'::regtype
      or v_routine.pronargdefaults <> 1
-     or v_routine.proargnames <> array[
+     or v_routine.proargnames is distinct from array[
        'p_operation','p_partido_id','p_event_id','p_event','p_match_duration']::text[]
      or v_routine.prolang <> (select language.oid
        from pg_catalog.pg_language language where language.lanname = 'plpgsql')
@@ -75,7 +110,7 @@ begin
     'public.get_match_substitution_events(uuid)');
   if not found or v_read.prokind <> 'f'
      or v_read.prorettype <> 'jsonb'::regtype
-     or v_read.proargnames <> array['p_partido_id']::text[]
+     or v_read.proargnames is distinct from array['p_partido_id']::text[]
      or v_read.pronargdefaults <> 0
      or v_read.prolang <> (select language.oid
        from pg_catalog.pg_language language where language.lanname = 'plpgsql')
@@ -132,6 +167,75 @@ begin
      or v_policy.normalized_using not in (
        'is_app_staff','can_read_matchpartido_id') then
     raise exception 'Videoanalisis 01A: policy SELECT de sustituciones incompatible';
+  end if;
+
+  if not (select relation.relrowsecurity from pg_catalog.pg_class relation
+          where relation.oid = 'public.partido_estadisticas_jugador'::regclass)
+     or not (pg_catalog.has_table_privilege(
+       'authenticated','public.partido_estadisticas_jugador','SELECT')
+       and pg_catalog.has_table_privilege(
+       'authenticated','public.partido_estadisticas_jugador','INSERT')
+       and pg_catalog.has_table_privilege(
+       'authenticated','public.partido_estadisticas_jugador','UPDATE')
+       and pg_catalog.has_table_privilege(
+       'authenticated','public.partido_estadisticas_jugador','DELETE'))
+     or pg_catalog.has_table_privilege(
+       'authenticated','public.partido_estadisticas_jugador','TRUNCATE')
+     or pg_catalog.has_table_privilege(
+       'authenticated','public.partido_estadisticas_jugador','TRIGGER')
+     or pg_catalog.has_table_privilege(
+       'anon','public.partido_estadisticas_jugador','TRUNCATE')
+     or (select count(*) from pg_catalog.pg_policy policy
+         where policy.polrelid = 'public.partido_estadisticas_jugador'::regclass) <> 4 then
+    raise exception 'Videoanalisis 01A: RLS o grants de estadisticas incompatibles';
+  end if;
+  for v_stats_policy in
+    select policy.polname, policy.polcmd::text as command_code,
+           policy.polpermissive, policy.polroles,
+           lower(pg_catalog.regexp_replace(replace(coalesce(
+             pg_catalog.pg_get_expr(policy.polqual,policy.polrelid),''),
+             'public.',''),'[[:space:]()]','','g')) as using_normalized,
+           lower(pg_catalog.regexp_replace(replace(coalesce(
+             pg_catalog.pg_get_expr(policy.polwithcheck,policy.polrelid),''),
+             'public.',''),'[[:space:]()]','','g')) as check_normalized
+    from pg_catalog.pg_policy policy
+    where policy.polrelid = 'public.partido_estadisticas_jugador'::regclass
+  loop
+    if not v_stats_policy.polpermissive
+       or v_stats_policy.polroles <> array['authenticated'::regrole::oid]
+       or (v_stats_policy.polname,v_stats_policy.command_code) not in (
+         ('player_sports_staff_select','r'),
+         ('player_sports_staff_insert','a'),
+         ('player_sports_staff_update','w'),
+         ('player_sports_staff_delete','d')) then
+      raise exception 'Videoanalisis 01A: policy de estadisticas inesperada: %',
+        v_stats_policy.polname;
+    end if;
+    v_is_old := case v_stats_policy.command_code
+      when 'r' then v_stats_policy.using_normalized = 'is_app_staff'
+                    and v_stats_policy.check_normalized = ''
+      when 'a' then v_stats_policy.using_normalized = ''
+                    and v_stats_policy.check_normalized = 'is_app_staff'
+      when 'w' then v_stats_policy.using_normalized = 'is_app_staff'
+                    and v_stats_policy.check_normalized = 'is_app_staff'
+      when 'd' then v_stats_policy.using_normalized = 'is_app_staff'
+                    and v_stats_policy.check_normalized = ''
+      else false end;
+    v_is_new := case v_stats_policy.command_code
+      when 'r' then v_stats_policy.using_normalized = 'can_read_matchpartido_id'
+                    and v_stats_policy.check_normalized = ''
+      when 'a' then v_stats_policy.using_normalized = ''
+                    and v_stats_policy.check_normalized = 'can_write_matchpartido_id'
+      when 'w' then v_stats_policy.using_normalized = 'can_write_matchpartido_id'
+                    and v_stats_policy.check_normalized = 'can_write_matchpartido_id'
+      when 'd' then v_stats_policy.using_normalized = 'can_write_matchpartido_id'
+                    and v_stats_policy.check_normalized = ''
+      else false end;
+    if v_is_old then v_stats_old_count := v_stats_old_count + 1; end if;
+    if v_is_new then v_stats_new_count := v_stats_new_count + 1; end if;
+  end loop;
+  if v_stats_old_count <> 4 and v_stats_new_count <> 4 then
+    raise exception 'Videoanalisis 01A: policies de estadisticas mixtas o incompatibles';
   end if;
 end
 $pre$;
@@ -625,10 +729,24 @@ $read_function$;
 alter policy substitution_staff_select on public.partido_eventos_sustitucion
   to authenticated using (public.can_read_match(partido_id));
 
+-- La RPC recalcula estas estadisticas con privilegios de postgres. Cerrar
+-- tambien la via directa autenticada hacia las mismas filas.
+alter policy player_sports_staff_select on public.partido_estadisticas_jugador
+  to authenticated using (public.can_read_match(partido_id));
+alter policy player_sports_staff_insert on public.partido_estadisticas_jugador
+  to authenticated with check (public.can_write_match(partido_id));
+alter policy player_sports_staff_update on public.partido_estadisticas_jugador
+  to authenticated
+  using (public.can_write_match(partido_id))
+  with check (public.can_write_match(partido_id));
+alter policy player_sports_staff_delete on public.partido_estadisticas_jugador
+  to authenticated using (public.can_write_match(partido_id));
+
 do $post$
 declare
   v_routine pg_catalog.pg_proc%rowtype;
   v_read pg_catalog.pg_proc%rowtype;
+  v_stats_policy_count integer;
 begin
   select * into v_routine from pg_catalog.pg_proc
   where oid = pg_catalog.to_regprocedure(
@@ -697,6 +815,55 @@ begin
      or pg_catalog.has_table_privilege(
        'anon','public.partido_eventos_sustitucion','TRUNCATE') then
     raise exception 'Videoanalisis 01A: privilegios de sustituciones cambiaron';
+  end if;
+  select count(*) into v_stats_policy_count
+  from pg_catalog.pg_policy policy
+  where policy.polrelid = 'public.partido_estadisticas_jugador'::regclass
+    and policy.polpermissive
+    and policy.polroles = array['authenticated'::regrole::oid]
+    and (
+      (policy.polname = 'player_sports_staff_select'
+        and policy.polcmd::text = 'r'
+        and lower(pg_catalog.regexp_replace(replace(coalesce(
+          pg_catalog.pg_get_expr(policy.polqual,policy.polrelid),''),
+          'public.',''),'[[:space:]()]','','g')) = 'can_read_matchpartido_id')
+      or (policy.polname = 'player_sports_staff_insert'
+        and policy.polcmd::text = 'a'
+        and lower(pg_catalog.regexp_replace(replace(coalesce(
+          pg_catalog.pg_get_expr(policy.polwithcheck,policy.polrelid),''),
+          'public.',''),'[[:space:]()]','','g')) = 'can_write_matchpartido_id')
+      or (policy.polname = 'player_sports_staff_update'
+        and policy.polcmd::text = 'w'
+        and lower(pg_catalog.regexp_replace(replace(coalesce(
+          pg_catalog.pg_get_expr(policy.polqual,policy.polrelid),''),
+          'public.',''),'[[:space:]()]','','g')) = 'can_write_matchpartido_id'
+        and lower(pg_catalog.regexp_replace(replace(coalesce(
+          pg_catalog.pg_get_expr(policy.polwithcheck,policy.polrelid),''),
+          'public.',''),'[[:space:]()]','','g')) = 'can_write_matchpartido_id')
+      or (policy.polname = 'player_sports_staff_delete'
+        and policy.polcmd::text = 'd'
+        and lower(pg_catalog.regexp_replace(replace(coalesce(
+          pg_catalog.pg_get_expr(policy.polqual,policy.polrelid),''),
+          'public.',''),'[[:space:]()]','','g')) = 'can_write_matchpartido_id')
+    );
+  if v_stats_policy_count <> 4
+     or (select count(*) from pg_catalog.pg_policy policy
+         where policy.polrelid = 'public.partido_estadisticas_jugador'::regclass) <> 4
+     or not (select relation.relrowsecurity from pg_catalog.pg_class relation
+         where relation.oid = 'public.partido_estadisticas_jugador'::regclass)
+     or not (pg_catalog.has_table_privilege(
+       'authenticated','public.partido_estadisticas_jugador','SELECT')
+       and pg_catalog.has_table_privilege(
+       'authenticated','public.partido_estadisticas_jugador','INSERT')
+       and pg_catalog.has_table_privilege(
+       'authenticated','public.partido_estadisticas_jugador','UPDATE')
+       and pg_catalog.has_table_privilege(
+       'authenticated','public.partido_estadisticas_jugador','DELETE'))
+     or pg_catalog.has_table_privilege(
+       'authenticated','public.partido_estadisticas_jugador','TRUNCATE')
+     or pg_catalog.has_table_privilege(
+       'authenticated','public.partido_estadisticas_jugador','TRIGGER') then
+    raise exception 'Videoanalisis 01A: postcondicion RLS de estadisticas incumplida';
   end if;
 end
 $post$;

@@ -115,6 +115,38 @@ begin
            'can_read_matchpartido_id') then
     raise exception 'Videoanalisis 01 BLOQUEADA: consulta de sustituciones 01A no verificada';
   end if;
+  -- 01A debe haber cerrado tambien la escritura directa de estadisticas.
+  -- Una policy permisiva antigua seguiria siendo una via alternativa.
+  if not coalesce((select relation.relrowsecurity
+       from pg_catalog.pg_class relation
+       where relation.oid = to_regclass(
+         'public.partido_estadisticas_jugador')),false)
+     or (select count(*) from pg_catalog.pg_policy policy
+       where policy.polrelid = to_regclass(
+         'public.partido_estadisticas_jugador')) <> 4
+     or (select count(*) from (values
+       ('player_sports_staff_select','r','can_read_matchpartido_id',''),
+       ('player_sports_staff_insert','a','','can_write_matchpartido_id'),
+       ('player_sports_staff_update','w','can_write_matchpartido_id',
+         'can_write_matchpartido_id'),
+       ('player_sports_staff_delete','d','can_write_matchpartido_id','')
+     ) as expected(name,command_code,using_expr,check_expr)
+       join pg_catalog.pg_policy policy
+         on policy.polrelid = to_regclass(
+           'public.partido_estadisticas_jugador')
+        and policy.polname = expected.name
+        and policy.polcmd::text = expected.command_code
+        and policy.polpermissive
+        and policy.polroles = array['authenticated'::regrole::oid]
+        and lower(pg_catalog.regexp_replace(replace(coalesce(
+          pg_catalog.pg_get_expr(policy.polqual,policy.polrelid),''),
+          'public.',''),'[[:space:]()]','','g')) = expected.using_expr
+        and lower(pg_catalog.regexp_replace(replace(coalesce(
+          pg_catalog.pg_get_expr(policy.polwithcheck,policy.polrelid),''),
+          'public.',''),'[[:space:]()]','','g')) = expected.check_expr
+     ) <> 4 then
+    raise exception 'Videoanalisis 01 BLOQUEADA: policies directas de estadisticas no protegidas por 01A';
+  end if;
   if not (select c.relrowsecurity from pg_catalog.pg_class c
           where c.oid = 'public.partidos'::regclass) then
     raise exception 'Videoanalisis 01: RLS de partidos no esta activado';
