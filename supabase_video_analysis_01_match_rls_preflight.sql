@@ -1,5 +1,7 @@
 -- NEXO CLUB / Videoanalisis 01. SOLO SELECT. Ejecutar antes de revisar el corte.
 -- Una tabla para exportar completa a CSV. No incluye texto tactico ni notas.
+-- OWNER_HISTORICAL_ACCESS enumera owners activos del club; no identifica
+-- por si solo al propietario permanente de la aplicacion.
 with policy_rows as (
   select p.polname, p.polcmd::text as command_code, p.polpermissive,
          p.polroles,
@@ -20,6 +22,27 @@ with policy_rows as (
     pg_catalog.to_regprocedure('public.can_read_match(uuid)'),
     pg_catalog.to_regprocedure('public.can_write_match(uuid)')
   )
+), historical_cts as (
+  select cts.id, cts.club_id, cts.team_id, cts.season_id,
+         club.id is not null as club_exists,
+         team.id is not null as team_in_club,
+         season.id is not null as season_in_club,
+         season.status as season_status,
+         count(*) as match_count
+  from public.partidos match_row
+  join public.club_team_seasons cts
+    on cts.id = match_row.club_team_season_id
+  left join public.clubs club on club.id = cts.club_id
+  left join public.club_teams team
+    on team.id = cts.team_id and team.club_id = cts.club_id
+  left join public.club_seasons season
+    on season.id = cts.season_id and season.club_id = cts.club_id
+  group by cts.id, cts.club_id, cts.team_id, cts.season_id,
+           club.id, team.id, season.id, season.status
+), owner_candidates as (
+  select distinct membership.user_id
+  from public.club_memberships membership
+  where membership.role = 'owner'
 ), rows as (
   select 'PARTIDO_SIN_CTS'::text as finding, 'BLOCKED'::text as status,
          p.id::text as object_id,
@@ -30,38 +53,65 @@ with policy_rows as (
            as details
   from public.partidos p where p.club_team_season_id is null
   union all
-  select 'OPERATIONAL_OWNER',
-         case when count(*) = 1 then 'REVIEW' else 'BLOCKED' end,
+  select 'PARTIDO_CTS_INVALIDO', 'BLOCKED', match_row.id::text,
+         pg_catalog.jsonb_build_object(
+           'club_team_season_id',match_row.club_team_season_id)
+  from public.partidos match_row
+  left join public.club_team_seasons cts
+    on cts.id = match_row.club_team_season_id
+  where match_row.club_team_season_id is not null and cts.id is null
+  union all
+  select 'MIGRATION_DEPENDENCY',
+         case when pg_catalog.to_regclass('public.operational_cts_v1') is null
+           then 'BLOCKED' else 'REVIEW' end,
          'public.operational_cts_v1',
-         pg_catalog.jsonb_build_object('designation_count',count(*),
-           'owner_user_ids',pg_catalog.jsonb_agg(active.owner_user_id))
-  from public.operational_cts_v1 active
+         pg_catalog.jsonb_build_object(
+           'exists',pg_catalog.to_regclass('public.operational_cts_v1') is not null,
+           'note','The current cutover SQL requires this object; this preflight does not read it')
+  union all
+  select 'OWNER_CANDIDATES',
+         case when count(*) > 0 then 'REVIEW' else 'BLOCKED' end,
+         'public.club_memberships',
+         pg_catalog.jsonb_build_object('distinct_owner_user_count',count(*),
+           'permanent_app_owner_identified',false)
+  from owner_candidates
   union all
   select 'OWNER_HISTORICAL_ACCESS',
-         case when exists (
+         case when cts.club_exists and cts.team_in_club and cts.season_in_club
+           and exists (
            select 1 from public.club_memberships membership
-           where membership.user_id = active.owner_user_id
-             and membership.club_id = cts.club_id
+           where membership.club_id = cts.club_id
              and membership.role = 'owner' and membership.is_active
          ) then 'REVIEW' else 'BLOCKED' end,
          cts.id::text,
          pg_catalog.jsonb_build_object('club_id',cts.club_id,
-           'match_count',count(*), 'operational_owner_user_id',active.owner_user_id,
-           'active_owner_membership',exists (
-             select 1 from public.club_memberships membership
-             where membership.user_id = active.owner_user_id
-               and membership.club_id = cts.club_id
-               and membership.role = 'owner' and membership.is_active
-           ))
-  from public.partidos match_row
-  join public.club_team_seasons cts on cts.id = match_row.club_team_season_id
-  cross join public.operational_cts_v1 active
-  group by cts.id, cts.club_id, active.owner_user_id
+           'team_id',cts.team_id, 'season_id',cts.season_id,
+           'club_exists',cts.club_exists,
+           'team_in_club',cts.team_in_club,
+           'season_in_club',cts.season_in_club,
+           'season_status',cts.season_status,
+           'match_count',cts.match_count,
+           'permanent_app_owner_identified',false,
+           'active_owner_user_ids',(
+             select pg_catalog.jsonb_agg(owner_row.user_id order by owner_row.user_id)
+             from (
+               select distinct membership.user_id
+               from public.club_memberships membership
+               where membership.club_id = cts.club_id
+                 and membership.role = 'owner' and membership.is_active
+             ) owner_row))
+  from historical_cts cts
   union all
   select 'OWNER_MEMBERSHIP', 'REVIEW', m.id::text,
          pg_catalog.jsonb_build_object('user_id',m.user_id,'club_id',m.club_id,
            'role',m.role,'active',m.is_active)
   from public.club_memberships m where m.role = 'owner'
+  union all
+  select 'POLICY_COUNT',
+         case when count(*) = 4 then 'REVIEW' else 'BLOCKED' end,
+         'public.partidos',
+         pg_catalog.jsonb_build_object('count',count(*))
+  from policy_rows
   union all
   select 'POLICY', 'REVIEW', p.polname,
          pg_catalog.jsonb_build_object('command',p.command_code,
@@ -72,6 +122,21 @@ with policy_rows as (
            'using',p.using_expr,'with_check',p.check_expr)
   from policy_rows p
   union all
+  select 'FUNCTION_REQUIRED',
+         case when pg_catalog.to_regprocedure(expected.signature) is null
+           then 'BLOCKED' else 'REVIEW' end,
+         expected.signature,
+         pg_catalog.jsonb_build_object(
+           'exists',pg_catalog.to_regprocedure(expected.signature) is not null)
+  from (values
+    ('public.is_app_staff()'),
+    ('public.current_membership()'),
+    ('public.can_read_club_team_season(uuid)'),
+    ('public.can_write_club_team_season(uuid)'),
+    ('public.can_read_match(uuid)'),
+    ('public.can_write_match(uuid)')
+  ) as expected(signature)
+  union all
   select 'FUNCTION', 'REVIEW', r.proname || '(' || r.arguments || ')',
          pg_catalog.jsonb_build_object('owner',pg_catalog.pg_get_userbyid(r.proowner),
            'security_definer',r.prosecdef,'volatility',r.provolatile::text,
@@ -80,6 +145,12 @@ with policy_rows as (
            'execute_anon',pg_catalog.has_function_privilege('anon',r.oid,'EXECUTE'),
            'definition',r.definition)
   from routine_rows r
+  union all
+  select 'TRIGGER_COUNT', 'REVIEW', 'public.partidos',
+         pg_catalog.jsonb_build_object('count',count(*))
+  from pg_catalog.pg_trigger t
+  where t.tgrelid = pg_catalog.to_regclass('public.partidos')
+    and not t.tgisinternal
   union all
   select 'TRIGGER', 'REVIEW', t.tgname,
          pg_catalog.jsonb_build_object('definition',pg_catalog.pg_get_triggerdef(t.oid),
