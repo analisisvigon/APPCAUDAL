@@ -53,11 +53,27 @@ with policies as (
       and not pg_catalog.has_function_privilege('authenticated',p.oid,'EXECUTE')
       and not pg_catalog.has_function_privilege('anon',p.oid,'EXECUTE'))
   union all
-  select 'Helpers de lectura y escritura presentes',
-    pg_catalog.to_regprocedure('public.can_read_club_team_season(uuid)') is not null
-    and pg_catalog.to_regprocedure('public.can_write_club_team_season(uuid)') is not null
-    and pg_catalog.to_regprocedure('public.can_read_match(uuid)') is not null
-    and pg_catalog.to_regprocedure('public.can_write_match(uuid)') is not null
+  select 'Cuatro helpers de lectura y escritura verificados',
+    (select count(*)=4 from (values
+      ('public.can_read_club_team_season(uuid)',
+       'bbb2e5a9a81767749a2a26504a890442'),
+      ('public.can_write_club_team_season(uuid)',
+       'fc4a0e2c43689095da249ca834a2bde1'),
+      ('public.can_read_match(uuid)',
+       'ff69e4e15caed0a5e65f856ddfd94e61'),
+      ('public.can_write_match(uuid)',
+       '6bab76b45b9983a45a3a3dcb378a0096')
+    ) as expected(signature,source_md5)
+    join pg_catalog.pg_proc helper
+      on helper.oid=pg_catalog.to_regprocedure(expected.signature)
+    where helper.prosecdef and helper.proowner='postgres'::regrole
+      and helper.proconfig=array['search_path=pg_catalog']::text[]
+      and pg_catalog.md5(pg_catalog.replace(
+        helper.prosrc,E'\r\n',E'\n'))=expected.source_md5
+      and pg_catalog.has_function_privilege(
+        'authenticated',helper.oid,'EXECUTE')
+      and not pg_catalog.has_function_privilege(
+        'anon',helper.oid,'EXECUTE'))
   union all
   select 'Privilegios SQL authenticated conservados',
     pg_catalog.has_table_privilege('authenticated','public.partidos','SELECT')
@@ -71,7 +87,7 @@ with policies as (
     and not pg_catalog.has_table_privilege('authenticated','public.partidos','TRIGGER')
     and not pg_catalog.has_table_privilege('anon','public.partidos','TRIGGER')
   union all
-  select 'RPC de sustituciones 01A verificada',
+  select 'RPC desplegada de sustituciones verificada',
     (select count(*)=1 from pg_catalog.pg_proc routine
       join pg_catalog.pg_namespace namespace
         on namespace.oid=routine.pronamespace
@@ -85,11 +101,11 @@ with policies as (
       and routine.proowner='postgres'::regrole
       and pg_catalog.md5(pg_catalog.replace(
         routine.prosrc,E'\r\n',E'\n'))=
-        '745bd5f2d80cef1815a33698d30b2f2b'
+        '97269e30607ddad0a54900f1b05f5f63'
       and pg_catalog.has_function_privilege('authenticated',routine.oid,'EXECUTE')
       and not pg_catalog.has_function_privilege('anon',routine.oid,'EXECUTE'))
   union all
-  select 'Lectura de sustituciones 01A verificada',
+  select 'Lectura y policy de sustituciones 01A verificadas',
     (select count(*)=1 from pg_catalog.pg_proc routine
       join pg_catalog.pg_namespace namespace
         on namespace.oid=routine.pronamespace
@@ -101,7 +117,7 @@ with policies as (
         and routine.prosecdef and routine.proowner='postgres'::regrole
         and pg_catalog.md5(pg_catalog.replace(
           routine.prosrc,E'\r\n',E'\n'))=
-          '5abccd5fdb69b1476268d72a1a2b3180'
+          'f86960348fed755eecee4315b75858b8'
         and pg_catalog.has_function_privilege(
           'authenticated',routine.oid,'EXECUTE')
         and not pg_catalog.has_function_privilege(

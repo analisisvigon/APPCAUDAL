@@ -36,20 +36,27 @@ begin
     raise exception 'Videoanalisis 01: faltan helpers de autorizacion';
   end if;
   for v_helper in
-    select expected.signature, proc.oid, proc.prosecdef, proc.proowner,
+    select expected.signature, expected.source_md5,
+           proc.oid, proc.prosrc, proc.prosecdef, proc.proowner,
            proc.proconfig
     from (values
-      ('public.can_read_club_team_season(uuid)'),
-      ('public.can_write_club_team_season(uuid)'),
-      ('public.can_read_match(uuid)'),
-      ('public.can_write_match(uuid)')
-    ) as expected(signature)
+      ('public.can_read_club_team_season(uuid)',
+       'bbb2e5a9a81767749a2a26504a890442'),
+      ('public.can_write_club_team_season(uuid)',
+       'fc4a0e2c43689095da249ca834a2bde1'),
+      ('public.can_read_match(uuid)',
+       'ff69e4e15caed0a5e65f856ddfd94e61'),
+      ('public.can_write_match(uuid)',
+       '6bab76b45b9983a45a3a3dcb378a0096')
+    ) as expected(signature,source_md5)
     left join pg_catalog.pg_proc proc
       on proc.oid = to_regprocedure(expected.signature)
   loop
     if v_helper.oid is null or not v_helper.prosecdef
        or v_helper.proowner <> 'postgres'::regrole
        or not coalesce('search_path=pg_catalog' = any(v_helper.proconfig), false)
+       or pg_catalog.md5(pg_catalog.replace(
+         v_helper.prosrc,E'\r\n',E'\n')) <> v_helper.source_md5
        or not pg_catalog.has_function_privilege(
          'authenticated', v_helper.oid, 'EXECUTE')
        or pg_catalog.has_function_privilege('anon', v_helper.oid, 'EXECUTE') then
@@ -57,8 +64,8 @@ begin
         v_helper.signature;
     end if;
   end loop;
-  -- No basta detectar el nombre del helper en el texto: exigir la huella
-  -- completa de la RPC 01A revisada y ausencia de sobrecargas.
+  -- Exigir la huella completa de las RPC ya desplegadas y revisadas;
+  -- 01A solo modifica sus policies hijas.
   if (select count(*) from pg_catalog.pg_proc routine
       join pg_catalog.pg_namespace namespace
         on namespace.oid = routine.pronamespace
@@ -72,13 +79,13 @@ begin
          and routine.proowner = 'postgres'::regrole
          and pg_catalog.md5(pg_catalog.replace(
            routine.prosrc, E'\r\n', E'\n'))
-           = '745bd5f2d80cef1815a33698d30b2f2b'
+           = '97269e30607ddad0a54900f1b05f5f63'
          and pg_catalog.has_function_privilege(
            'authenticated',routine.oid,'EXECUTE')
          and not pg_catalog.has_function_privilege(
            'anon',routine.oid,'EXECUTE')
      ) then
-    raise exception 'Videoanalisis 01 BLOQUEADA: instalar y verificar primero la RPC de sustituciones 01A';
+    raise exception 'Videoanalisis 01 BLOQUEADA: RPC de sustituciones desplegada incompatible';
   end if;
   if (select count(*) from pg_catalog.pg_proc routine
       join pg_catalog.pg_namespace namespace
@@ -93,7 +100,7 @@ begin
          and routine.proowner = 'postgres'::regrole
          and pg_catalog.md5(pg_catalog.replace(
            routine.prosrc,E'\r\n',E'\n')) =
-           '5abccd5fdb69b1476268d72a1a2b3180'
+           'f86960348fed755eecee4315b75858b8'
          and pg_catalog.has_function_privilege(
            'authenticated',routine.oid,'EXECUTE')
          and not pg_catalog.has_function_privilege(
@@ -113,7 +120,7 @@ begin
            pg_catalog.pg_get_expr(policy.polqual,policy.polrelid),
            'public.',''),'[[:space:]()]','','g')) =
            'can_read_matchpartido_id') then
-    raise exception 'Videoanalisis 01 BLOQUEADA: consulta de sustituciones 01A no verificada';
+    raise exception 'Videoanalisis 01 BLOQUEADA: lectura o policy de sustituciones 01A no verificada';
   end if;
   -- 01A debe haber cerrado tambien la escritura directa de estadisticas.
   -- Una policy permisiva antigua seguiria siendo una via alternativa.

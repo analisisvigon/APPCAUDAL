@@ -173,11 +173,12 @@ with policy_rows as (
          case when routine.proname = 'mutate_match_substitution_atomic'
                    and pg_catalog.md5(pg_catalog.replace(
                      routine.prosrc,E'\r\n',E'\n')) <>
-                     '745bd5f2d80cef1815a33698d30b2f2b'
+                     '97269e30607ddad0a54900f1b05f5f63'
               then 'BLOCKED'
               when routine.proname = 'get_match_substitution_events'
-                   and routine.prosrc ilike '%is_app_staff%'
-                   and routine.prosrc not ilike '%can_read_match%'
+                   and pg_catalog.md5(pg_catalog.replace(
+                     routine.prosrc,E'\r\n',E'\n')) <>
+                     'f86960348fed755eecee4315b75858b8'
               then 'BLOCKED' else 'REVIEW' end,
          routine.proname || '(' ||
            pg_catalog.pg_get_function_identity_arguments(routine.oid) || ')',

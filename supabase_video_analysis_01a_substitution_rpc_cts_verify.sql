@@ -1,5 +1,5 @@
 -- NEXO CLUB / Videoanalisis 01A. Solo SELECT; valido antes y despues.
--- PASS confirma estas RPC y las dos tablas hijas de sustituciones; las demas
+-- PASS confirma las RPC desplegadas y las dos tablas hijas; las demas
 -- tablas deportivas requieren su propio corte RLS.
 with routine as (
   select proc.oid, proc.prosrc, proc.proowner, proc.prosecdef,
@@ -12,7 +12,7 @@ with routine as (
     'public.mutate_match_substitution_atomic(text,uuid,uuid,jsonb,integer)')
 ), read_routine as (
   select proc.oid, proc.proowner, proc.prosecdef, proc.provolatile,
-         proc.proconfig, proc.proargnames, proc.pronargdefaults,
+         proc.proconfig, proc.proacl, proc.proargnames, proc.pronargdefaults,
          proc.prorettype, proc.prolang,
          pg_catalog.md5(pg_catalog.replace(proc.prosrc,E'\r\n',E'\n'))
            as normalized_source_md5
@@ -22,6 +22,7 @@ with routine as (
 ), child_policy as (
   select policy.polname, policy.polcmd::text as command_code,
          policy.polpermissive, policy.polroles,
+         policy.polwithcheck is null as no_with_check,
          pg_catalog.lower(pg_catalog.regexp_replace(
            pg_catalog.replace(coalesce(pg_catalog.pg_get_expr(
              policy.polqual,policy.polrelid),''),'public.',''),
@@ -60,11 +61,8 @@ with routine as (
         and proc.proname = 'mutate_match_substitution_atomic') = 1
       as unique_signature,
     coalesce((select normalized_source_md5 =
-      'd5961a8a85c1fe340e5bb160fe4c6b28' from routine),false)
-      as old_body,
-    coalesce((select normalized_source_md5 =
-      '745bd5f2d80cef1815a33698d30b2f2b' from routine),false)
-      as new_body,
+      '97269e30607ddad0a54900f1b05f5f63' from routine),false)
+      as verified_write_body,
     (select count(*) from pg_catalog.pg_proc proc
       join pg_catalog.pg_namespace namespace
         on namespace.oid = proc.pronamespace
@@ -72,11 +70,8 @@ with routine as (
         and proc.proname = 'get_match_substitution_events') = 1
       as unique_read_signature,
     coalesce((select normalized_source_md5 =
-      '6ee09faf368fa5fba7e2b90032207e2a' from read_routine),false)
-      as old_read_body,
-    coalesce((select normalized_source_md5 =
-      '5abccd5fdb69b1476268d72a1a2b3180' from read_routine),false)
-      as new_read_body,
+      'f86960348fed755eecee4315b75858b8' from read_routine),false)
+      as verified_read_body,
     coalesce((select prosecdef and proowner = 'postgres'::regrole
       and provolatile::text = 'v' and pronargdefaults = 1
       and prorettype = 'jsonb'::regtype
@@ -90,6 +85,9 @@ with routine as (
       'authenticated',oid,'EXECUTE')
       and pg_catalog.has_function_privilege('service_role',oid,'EXECUTE')
       and not pg_catalog.has_function_privilege('anon',oid,'EXECUTE')
+      and not exists (select 1 from pg_catalog.aclexplode(coalesce(
+        proacl,pg_catalog.acldefault('f',proowner))) acl
+        where acl.grantee=0 and acl.privilege_type='EXECUTE')
       from routine),false) as execute_contract,
     coalesce((select prosecdef and proowner = 'postgres'::regrole
       and provolatile::text = 's' and pronargdefaults = 0
@@ -101,16 +99,19 @@ with routine as (
       and pg_catalog.has_function_privilege('authenticated',oid,'EXECUTE')
       and pg_catalog.has_function_privilege('service_role',oid,'EXECUTE')
       and not pg_catalog.has_function_privilege('anon',oid,'EXECUTE')
+      and not exists (select 1 from pg_catalog.aclexplode(coalesce(
+        proacl,pg_catalog.acldefault('f',proowner))) acl
+        where acl.grantee=0 and acl.privilege_type='EXECUTE')
       from read_routine),false) as read_contract,
     (select count(*) = 1 from child_policy) as unique_child_policy,
     exists(select 1 from child_policy
       where polname = 'substitution_staff_select'
-        and command_code = 'r' and polpermissive
+        and command_code = 'r' and polpermissive and no_with_check
         and polroles = array['authenticated'::regrole::oid]
         and normalized_using = 'is_app_staff') as old_child_policy,
     exists(select 1 from child_policy
       where polname = 'substitution_staff_select'
-        and command_code = 'r' and polpermissive
+        and command_code = 'r' and polpermissive and no_with_check
         and polroles = array['authenticated'::regrole::oid]
         and normalized_using = 'can_read_matchpartido_id') as new_child_policy,
     coalesce(pg_catalog.has_table_privilege(
@@ -214,15 +215,13 @@ with routine as (
   from checks
   union all
   select 'Cuerpo de autorizacion',
-         case when new_body then 'PASS'
-              when old_body then 'READY_TO_APPLY' else 'BLOCKED' end,
-         'Huella normalizada: antiguo o corregido; otra huella requiere revision.'
+         case when verified_write_body then 'PASS' else 'BLOCKED' end,
+         'Huella completa de la RPC de escritura desplegada y revisada.'
   from state
   union all
   select 'Cuerpo de consulta de sustituciones',
-         case when new_read_body then 'PASS'
-              when old_read_body then 'READY_TO_APPLY' else 'BLOCKED' end,
-         'Huella de la RPC de lectura: antigua o corregida.'
+         case when verified_read_body then 'PASS' else 'BLOCKED' end,
+         'Huella completa de la RPC de lectura desplegada y revisada.'
   from state
   union all
   select 'Policy SELECT de sustituciones',
@@ -242,11 +241,11 @@ with routine as (
   union all
   select 'GLOBAL_RPC',
          case when (select pg_catalog.bool_and(ok) from checks)
-                   and (select new_body and new_read_body
+                   and (select verified_write_body and verified_read_body
                         and new_child_policy and new_stats_policies from state)
                    then 'PASS'
               when (select pg_catalog.bool_and(ok) from checks)
-                   and (select old_body and old_read_body
+                   and (select verified_write_body and verified_read_body
                         and old_child_policy and old_stats_policies from state)
                    then 'READY_TO_APPLY'
               else 'BLOCKED' end,
