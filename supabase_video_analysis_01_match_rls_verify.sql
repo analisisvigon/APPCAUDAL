@@ -25,17 +25,17 @@ with policies as (
   union all
   select 'Sin partido sin CTS', not exists (select 1 from public.partidos where club_team_season_id is null)
   union all
-  select 'Owner operativo unico', (select count(*)=1 from public.operational_cts_v1)
-  union all
-  select 'Owner operativo conserva lectura historica', not exists (
+  select 'Club equipo y temporada canonicos validos', not exists (
     select 1 from public.partidos match_row
-    join public.club_team_seasons cts on cts.id=match_row.club_team_season_id
-    cross join public.operational_cts_v1 active
-    where not exists (
-      select 1 from public.club_memberships membership
-      where membership.user_id=active.owner_user_id
-        and membership.club_id=cts.club_id
-        and membership.role='owner' and membership.is_active))
+    left join public.club_team_seasons cts
+      on cts.id=match_row.club_team_season_id
+    left join public.clubs club on club.id=cts.club_id
+    left join public.club_teams team
+      on team.id=cts.team_id and team.club_id=cts.club_id
+    left join public.club_seasons season
+      on season.id=cts.season_id and season.club_id=cts.club_id
+    where cts.id is null or club.id is null
+       or team.id is null or season.id is null)
   union all
   select 'Trigger de identidad CTS', exists (
     select 1 from pg_catalog.pg_trigger t
@@ -64,6 +64,23 @@ with policies as (
     and pg_catalog.has_table_privilege('authenticated','public.partidos','INSERT')
     and pg_catalog.has_table_privilege('authenticated','public.partidos','UPDATE')
     and pg_catalog.has_table_privilege('authenticated','public.partidos','DELETE')
+  union all
+  select 'Sin TRUNCATE ni TRIGGER de clientes',
+    not pg_catalog.has_table_privilege('authenticated','public.partidos','TRUNCATE')
+    and not pg_catalog.has_table_privilege('anon','public.partidos','TRUNCATE')
+    and not pg_catalog.has_table_privilege('authenticated','public.partidos','TRIGGER')
+    and not pg_catalog.has_table_privilege('anon','public.partidos','TRIGGER')
+  union all
+  select 'RPC de sustituciones sin bypass staff conocido', not exists (
+    select 1 from pg_catalog.pg_proc routine
+    join pg_catalog.pg_namespace namespace
+      on namespace.oid=routine.pronamespace
+    where namespace.nspname='public'
+      and routine.proname='mutate_match_substitution_atomic'
+      and routine.prosecdef
+      and pg_catalog.has_function_privilege('authenticated',routine.oid,'EXECUTE')
+      and routine.prosrc ilike '%is_app_staff%'
+      and routine.prosrc not ilike '%can_write_match%')
 ), result as (
   select check_name,case when ok then 'PASS' else 'FAIL' end as status,
          case when ok then 'Contrato estructural presente.'

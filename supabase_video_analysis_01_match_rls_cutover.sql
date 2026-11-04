@@ -1,7 +1,7 @@
 -- NEXO CLUB / Videoanalisis 01: aislamiento RLS de public.partidos.
--- PENDIENTE DE REVISION. NO EJECUTAR mientras existan partidos sin CTS
--- o el owner operativo no conserve membresia activa en todos los clubes
--- historicos afectados. Las precondiciones abortan en ambos casos.
+-- PENDIENTE DE REVISION. NO EJECUTAR mientras existan partidos sin CTS.
+-- El acceso historico depende de memberships activas en el club de cada CTS;
+-- no se presupone un propietario global de la aplicacion.
 -- No modifica datos, hijos de partidos ni funciones de autorizacion existentes.
 begin;
 -- Congela las escrituras mientras se comprueba que no entran nuevos partidos
@@ -22,10 +22,11 @@ begin
     raise exception 'Videoanalisis 01: ejecutar como postgres para conservar el propietario previsto del trigger';
   end if;
   if to_regclass('public.partidos') is null
+     or to_regclass('public.clubs') is null
+     or to_regclass('public.club_teams') is null
      or to_regclass('public.club_team_seasons') is null
      or to_regclass('public.club_seasons') is null
-     or to_regclass('public.club_memberships') is null
-     or to_regclass('public.operational_cts_v1') is null then
+     or to_regclass('public.club_memberships') is null then
     raise exception 'Videoanalisis 01: faltan tablas canónicas';
   end if;
   if to_regprocedure('public.can_read_club_team_season(uuid)') is null
@@ -56,9 +57,37 @@ begin
         v_helper.signature;
     end if;
   end loop;
+  -- Esta RPC SECURITY DEFINER del repositorio escribe sustituciones y
+  -- estadisticas hijas con un control global is_app_staff(). RLS del padre
+  -- no limita esas escrituras. Detener el corte si sigue expuesta asi.
+  if exists (
+    select 1 from pg_catalog.pg_proc routine
+    join pg_catalog.pg_namespace namespace
+      on namespace.oid = routine.pronamespace
+    where namespace.nspname = 'public'
+      and routine.proname = 'mutate_match_substitution_atomic'
+      and routine.prosecdef
+      and pg_catalog.has_function_privilege('authenticated',routine.oid,'EXECUTE')
+      and routine.prosrc ilike '%is_app_staff%'
+      and routine.prosrc not ilike '%can_write_match%'
+  ) then
+    raise exception 'Videoanalisis 01 BLOQUEADA: RPC de sustituciones SECURITY DEFINER sin autorizacion por partido';
+  end if;
   if not (select c.relrowsecurity from pg_catalog.pg_class c
           where c.oid = 'public.partidos'::regclass) then
     raise exception 'Videoanalisis 01: RLS de partidos no esta activado';
+  end if;
+  if not (pg_catalog.has_table_privilege('authenticated', 'public.partidos', 'SELECT')
+      and pg_catalog.has_table_privilege('authenticated', 'public.partidos', 'INSERT')
+      and pg_catalog.has_table_privilege('authenticated', 'public.partidos', 'UPDATE')
+      and pg_catalog.has_table_privilege('authenticated', 'public.partidos', 'DELETE')) then
+    raise exception 'Videoanalisis 01: faltan privilegios SQL CRUD de authenticated';
+  end if;
+  if pg_catalog.has_table_privilege('authenticated', 'public.partidos', 'TRUNCATE')
+     or pg_catalog.has_table_privilege('anon', 'public.partidos', 'TRUNCATE')
+     or pg_catalog.has_table_privilege('authenticated', 'public.partidos', 'TRIGGER')
+     or pg_catalog.has_table_privilege('anon', 'public.partidos', 'TRIGGER') then
+    raise exception 'Videoanalisis 01 BLOQUEADA: cliente con TRUNCATE o TRIGGER sobre partidos';
   end if;
   if not exists (
     select 1 from pg_catalog.pg_attribute a
@@ -83,25 +112,22 @@ begin
   if exists (select 1 from public.partidos p where p.club_team_season_id is null) then
     raise exception 'Videoanalisis 01 BLOQUEADA: existen partidos sin CTS; conciliarlos expresamente antes del corte';
   end if;
-  -- can_read_club_team_season exige membresia activa en el club del CTS.
-  -- Este guard impide ocultar partidos historicos al owner operativo.
-  if (select count(*) from public.operational_cts_v1) <> 1 then
-    raise exception 'Videoanalisis 01 BLOQUEADA: owner operativo no designado univocamente';
-  end if;
+  -- El CTS de cada partido debe resolver el mismo club, equipo y temporada.
+  -- can_read_club_team_season evalua las memberships reales de ese club.
   if exists (
     select 1
     from public.partidos match_row
-    join public.club_team_seasons cts
+    left join public.club_team_seasons cts
       on cts.id = match_row.club_team_season_id
-    cross join public.operational_cts_v1 active
-    where not exists (
-      select 1 from public.club_memberships membership
-      where membership.user_id = active.owner_user_id
-        and membership.club_id = cts.club_id
-        and membership.role = 'owner' and membership.is_active
-    )
+    left join public.clubs club on club.id = cts.club_id
+    left join public.club_teams team
+      on team.id = cts.team_id and team.club_id = cts.club_id
+    left join public.club_seasons season
+      on season.id = cts.season_id and season.club_id = cts.club_id
+    where cts.id is null or club.id is null
+       or team.id is null or season.id is null
   ) then
-    raise exception 'Videoanalisis 01 BLOQUEADA: owner operativo perderia acceso a partidos historicos de otro club';
+    raise exception 'Videoanalisis 01 BLOQUEADA: partido con club, equipo o temporada canonica incompatible';
   end if;
   select count(*) into v_expected_count
   from pg_catalog.pg_policy p where p.polrelid = 'public.partidos'::regclass;

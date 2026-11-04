@@ -61,14 +61,6 @@ with policy_rows as (
     on cts.id = match_row.club_team_season_id
   where match_row.club_team_season_id is not null and cts.id is null
   union all
-  select 'MIGRATION_DEPENDENCY',
-         case when pg_catalog.to_regclass('public.operational_cts_v1') is null
-           then 'BLOCKED' else 'REVIEW' end,
-         'public.operational_cts_v1',
-         pg_catalog.jsonb_build_object(
-           'exists',pg_catalog.to_regclass('public.operational_cts_v1') is not null,
-           'note','The current cutover SQL requires this object; this preflight does not read it')
-  union all
   select 'OWNER_CANDIDATES',
          case when count(*) > 0 then 'REVIEW' else 'BLOCKED' end,
          'public.club_memberships',
@@ -146,6 +138,31 @@ with policy_rows as (
            'definition',r.definition)
   from routine_rows r
   union all
+  select 'SECURITY_DEFINER_MATCH_ROUTE',
+         case when routine.proname = 'mutate_match_substitution_atomic'
+                   and routine.prosrc ilike '%is_app_staff%'
+                   and routine.prosrc not ilike '%can_write_match%'
+              then 'BLOCKED' else 'REVIEW' end,
+         routine.proname || '(' ||
+           pg_catalog.pg_get_function_identity_arguments(routine.oid) || ')',
+         pg_catalog.jsonb_build_object(
+           'owner',pg_catalog.pg_get_userbyid(routine.proowner),
+           'search_path',routine.proconfig,
+           'execute_authenticated',pg_catalog.has_function_privilege(
+             'authenticated',routine.oid,'EXECUTE'),
+           'execute_anon',pg_catalog.has_function_privilege(
+             'anon',routine.oid,'EXECUTE'),
+           'mentions_is_app_staff',routine.prosrc ilike '%is_app_staff%',
+           'mentions_can_write_match',routine.prosrc ilike '%can_write_match%',
+           'source_md5',pg_catalog.md5(routine.prosrc),
+           'definition',pg_catalog.pg_get_functiondef(routine.oid),
+           'classification','Textual candidate; review the deployed function body')
+  from pg_catalog.pg_proc routine
+  join pg_catalog.pg_namespace namespace
+    on namespace.oid = routine.pronamespace
+  where namespace.nspname = 'public' and routine.prosecdef
+    and routine.prosrc ~* '(partidos|partido_[a-z_]+|match_[a-z_]+)'
+  union all
   select 'TRIGGER_COUNT', 'REVIEW', 'public.partidos',
          pg_catalog.jsonb_build_object('count',count(*))
   from pg_catalog.pg_trigger t
@@ -162,7 +179,9 @@ with policy_rows as (
          pg_catalog.jsonb_build_object('select',pg_catalog.has_table_privilege(role_name.name,'public.partidos','SELECT'),
            'insert',pg_catalog.has_table_privilege(role_name.name,'public.partidos','INSERT'),
            'update',pg_catalog.has_table_privilege(role_name.name,'public.partidos','UPDATE'),
-           'delete',pg_catalog.has_table_privilege(role_name.name,'public.partidos','DELETE'))
+           'delete',pg_catalog.has_table_privilege(role_name.name,'public.partidos','DELETE'),
+           'truncate',pg_catalog.has_table_privilege(role_name.name,'public.partidos','TRUNCATE'),
+           'trigger',pg_catalog.has_table_privilege(role_name.name,'public.partidos','TRIGGER'))
   from (values ('authenticated'),('anon'),('service_role')) as role_name(name)
   where pg_catalog.to_regrole(role_name.name) is not null
 )
