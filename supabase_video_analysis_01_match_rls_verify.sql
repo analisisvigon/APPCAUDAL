@@ -25,11 +25,24 @@ with policies as (
   union all
   select 'Sin partido sin CTS', not exists (select 1 from public.partidos where club_team_season_id is null)
   union all
+  select 'Owner operativo unico', (select count(*)=1 from public.operational_cts_v1)
+  union all
+  select 'Owner operativo conserva lectura historica', not exists (
+    select 1 from public.partidos match_row
+    join public.club_team_seasons cts on cts.id=match_row.club_team_season_id
+    cross join public.operational_cts_v1 active
+    where not exists (
+      select 1 from public.club_memberships membership
+      where membership.user_id=active.owner_user_id
+        and membership.club_id=cts.club_id
+        and membership.role='owner' and membership.is_active))
+  union all
   select 'Trigger de identidad CTS', exists (
     select 1 from pg_catalog.pg_trigger t
     where t.tgrelid=pg_catalog.to_regclass('public.partidos')
       and t.tgname='video_analysis_01_guard_match_cts'
       and not t.tgisinternal and t.tgenabled in ('O','A')
+      and t.tgtype=17
       and t.tgfoid=pg_catalog.to_regprocedure('public.video_analysis_01_guard_match_cts()'))
   union all
   select 'Funcion del trigger sin EXECUTE cliente', exists (

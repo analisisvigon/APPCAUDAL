@@ -30,6 +30,34 @@ with policy_rows as (
            as details
   from public.partidos p where p.club_team_season_id is null
   union all
+  select 'OPERATIONAL_OWNER',
+         case when count(*) = 1 then 'REVIEW' else 'BLOCKED' end,
+         'public.operational_cts_v1',
+         pg_catalog.jsonb_build_object('designation_count',count(*),
+           'owner_user_ids',pg_catalog.jsonb_agg(active.owner_user_id))
+  from public.operational_cts_v1 active
+  union all
+  select 'OWNER_HISTORICAL_ACCESS',
+         case when exists (
+           select 1 from public.club_memberships membership
+           where membership.user_id = active.owner_user_id
+             and membership.club_id = cts.club_id
+             and membership.role = 'owner' and membership.is_active
+         ) then 'REVIEW' else 'BLOCKED' end,
+         cts.id::text,
+         pg_catalog.jsonb_build_object('club_id',cts.club_id,
+           'match_count',count(*), 'operational_owner_user_id',active.owner_user_id,
+           'active_owner_membership',exists (
+             select 1 from public.club_memberships membership
+             where membership.user_id = active.owner_user_id
+               and membership.club_id = cts.club_id
+               and membership.role = 'owner' and membership.is_active
+           ))
+  from public.partidos match_row
+  join public.club_team_seasons cts on cts.id = match_row.club_team_season_id
+  cross join public.operational_cts_v1 active
+  group by cts.id, cts.club_id, active.owner_user_id
+  union all
   select 'OWNER_MEMBERSHIP', 'REVIEW', m.id::text,
          pg_catalog.jsonb_build_object('user_id',m.user_id,'club_id',m.club_id,
            'role',m.role,'active',m.is_active)

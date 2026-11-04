@@ -1,13 +1,17 @@
 -- NEXO CLUB / Videoanalisis 01: aislamiento RLS de public.partidos.
--- PENDIENTE DE REVISION. NO EJECUTAR mientras existan partidos sin CTS.
--- La precondicion aborta expresamente en ese caso: no oculta el historico ni
--- mantiene una excepcion global basada en is_app_staff().
+-- PENDIENTE DE REVISION. NO EJECUTAR mientras existan partidos sin CTS
+-- o el owner operativo no conserve membresia activa en todos los clubes
+-- historicos afectados. Las precondiciones abortan en ambos casos.
 -- No modifica datos, hijos de partidos ni funciones de autorizacion existentes.
 begin;
+-- Congela las escrituras mientras se comprueba que no entran nuevos partidos
+-- sin CTS entre el preflight y el cambio de politica.
+lock table public.partidos in share row exclusive mode;
 
 do $pre$
 declare
   v_policy record;
+  v_helper record;
   v_old text;
   v_expected_count integer;
 begin
@@ -20,7 +24,8 @@ begin
   if to_regclass('public.partidos') is null
      or to_regclass('public.club_team_seasons') is null
      or to_regclass('public.club_seasons') is null
-     or to_regclass('public.club_memberships') is null then
+     or to_regclass('public.club_memberships') is null
+     or to_regclass('public.operational_cts_v1') is null then
     raise exception 'Videoanalisis 01: faltan tablas canónicas';
   end if;
   if to_regprocedure('public.can_read_club_team_season(uuid)') is null
@@ -29,6 +34,28 @@ begin
      or to_regprocedure('public.can_write_match(uuid)') is null then
     raise exception 'Videoanalisis 01: faltan helpers de autorizacion';
   end if;
+  for v_helper in
+    select expected.signature, proc.oid, proc.prosecdef, proc.proowner,
+           proc.proconfig
+    from (values
+      ('public.can_read_club_team_season(uuid)'),
+      ('public.can_write_club_team_season(uuid)'),
+      ('public.can_read_match(uuid)'),
+      ('public.can_write_match(uuid)')
+    ) as expected(signature)
+    left join pg_catalog.pg_proc proc
+      on proc.oid = to_regprocedure(expected.signature)
+  loop
+    if v_helper.oid is null or not v_helper.prosecdef
+       or v_helper.proowner <> 'postgres'::regrole
+       or not coalesce('search_path=pg_catalog' = any(v_helper.proconfig), false)
+       or not pg_catalog.has_function_privilege(
+         'authenticated', v_helper.oid, 'EXECUTE')
+       or pg_catalog.has_function_privilege('anon', v_helper.oid, 'EXECUTE') then
+      raise exception 'Videoanalisis 01: contrato de seguridad incompatible: %',
+        v_helper.signature;
+    end if;
+  end loop;
   if not (select c.relrowsecurity from pg_catalog.pg_class c
           where c.oid = 'public.partidos'::regclass) then
     raise exception 'Videoanalisis 01: RLS de partidos no esta activado';
@@ -55,6 +82,26 @@ begin
   end if;
   if exists (select 1 from public.partidos p where p.club_team_season_id is null) then
     raise exception 'Videoanalisis 01 BLOQUEADA: existen partidos sin CTS; conciliarlos expresamente antes del corte';
+  end if;
+  -- can_read_club_team_season exige membresia activa en el club del CTS.
+  -- Este guard impide ocultar partidos historicos al owner operativo.
+  if (select count(*) from public.operational_cts_v1) <> 1 then
+    raise exception 'Videoanalisis 01 BLOQUEADA: owner operativo no designado univocamente';
+  end if;
+  if exists (
+    select 1
+    from public.partidos match_row
+    join public.club_team_seasons cts
+      on cts.id = match_row.club_team_season_id
+    cross join public.operational_cts_v1 active
+    where not exists (
+      select 1 from public.club_memberships membership
+      where membership.user_id = active.owner_user_id
+        and membership.club_id = cts.club_id
+        and membership.role = 'owner' and membership.is_active
+    )
+  ) then
+    raise exception 'Videoanalisis 01 BLOQUEADA: owner operativo perderia acceso a partidos historicos de otro club';
   end if;
   select count(*) into v_expected_count
   from pg_catalog.pg_policy p where p.polrelid = 'public.partidos'::regclass;
@@ -104,8 +151,8 @@ begin
 end
 $pre$;
 
--- Una politica UPDATE no puede comparar OLD y NEW. Este trigger impide que
--- una escritura directa reubique un partido en otro CTS autorizado.
+-- Una politica UPDATE no puede comparar OLD y NEW. AFTER UPDATE observa la
+-- fila final, incluso si otro trigger BEFORE modifica el CTS indirectamente.
 create function public.video_analysis_01_guard_match_cts()
 returns trigger language plpgsql set search_path = pg_catalog
 as $function$
@@ -119,7 +166,7 @@ $function$;
 revoke all on function public.video_analysis_01_guard_match_cts()
   from public, anon, authenticated, service_role;
 create trigger video_analysis_01_guard_match_cts
-before update of club_team_season_id on public.partidos
+after update on public.partidos
 for each row execute function public.video_analysis_01_guard_match_cts();
 
 alter policy player_sports_staff_select on public.partidos
@@ -155,10 +202,14 @@ begin
                       where p.polrelid = 'public.partidos'::regclass) <> 4 then
     raise exception 'Videoanalisis 01: postcondicion RLS incumplida';
   end if;
+  if exists (select 1 from public.partidos where club_team_season_id is null) then
+    raise exception 'Videoanalisis 01: partido sin CTS detectado en postcondicion';
+  end if;
   if not exists (select 1 from pg_catalog.pg_trigger t
                  where t.tgrelid = 'public.partidos'::regclass
                    and t.tgname = 'video_analysis_01_guard_match_cts'
                    and not t.tgisinternal and t.tgenabled in ('O','A')
+                   and t.tgtype = 17
                    and t.tgfoid = 'public.video_analysis_01_guard_match_cts()'::regprocedure)
   then raise exception 'Videoanalisis 01: trigger de identidad CTS ausente'; end if;
 end
