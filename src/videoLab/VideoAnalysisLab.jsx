@@ -4,6 +4,10 @@ import {
   clipOutReached, createClip, formatTime, isMp4File, normalizedPoint,
   removeClipFromDraft, updateClip, validRange,
 } from './model';
+import {
+  ANALYSIS_VERSION, findLocalAnalysisByFingerprint, fingerprintLocalFile, listLocalAnalyses,
+  newLocalAnalysis, saveLocalAnalysis, snapshotLocalAnalysis,
+} from './localAnalysisStore';
 import './videoLab.css';
 
 const uid = () => crypto.randomUUID();
@@ -32,6 +36,9 @@ export default function VideoAnalysisLab({ embedded = false }) {
   const videoRef = useRef(null);
   const stageRef = useRef(null);
   const fileRef = useRef(null);
+  const fileSelectionModeRef = useRef('relink');
+  const fileBusyRef = useRef(false);
+  const saveQueueRef = useRef(Promise.resolve());
   const activeRangeRef = useRef(null);
   const drawingRef = useRef(null);
   const [source, setSource] = useState(null);
@@ -44,7 +51,11 @@ export default function VideoAnalysisLab({ embedded = false }) {
   const [inPoint, setInPoint] = useState(0);
   const [outPoint, setOutPoint] = useState(0);
   const [draftTitle, setDraftTitle] = useState('');
-  const [clips, setClips] = useState([]);
+  const [draft, setDraft] = useState(null);
+  const [savedAnalyses, setSavedAnalyses] = useState([]);
+  const [libraryReady, setLibraryReady] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('loading');
+  const [fingerprintProgress, setFingerprintProgress] = useState(0);
   const [selectedId, setSelectedId] = useState(null);
   const [clipDraft, setClipDraft] = useState(null);
   const [tool, setTool] = useState('select');
@@ -54,6 +65,74 @@ export default function VideoAnalysisLab({ embedded = false }) {
   const [selectedDrawingId, setSelectedDrawingId] = useState(null);
   const [history, setHistory] = useState({ past: [], future: [] });
   const [message, setMessage] = useState('');
+  const analysis = draft?.analysis || null;
+  const clips = draft?.clips || [];
+  const sourceVerified = Boolean(source && analysis && source.id === analysis.id);
+  const canEdit = sourceVerified && duration > 0 && saveStatus !== 'verifying';
+  const propertiesDirty = Boolean(selectedId && clipDraft && clips.some((clip) => clip.id === selectedId &&
+    (clip.title !== clipDraft.title || clip.in !== Number(clipDraft.in) ||
+      clip.out !== Number(clipDraft.out) || clip.observations !== clipDraft.observations)));
+  const draftRef = useRef(null);
+  draftRef.current = draft;
+
+  const queueSave = (record) => {
+    const next = saveQueueRef.current.catch(() => {}).then(() => saveLocalAnalysis(record));
+    saveQueueRef.current = next;
+    return next;
+  };
+  const setClips = (update) => setDraft((current) => {
+    if (!current || !sourceVerified) return current;
+    const nextClips = typeof update === 'function' ? update(current.clips) : update;
+    return { ...current, clips: nextClips, revision: current.revision + 1 };
+  });
+
+  useEffect(() => {
+    let active = true;
+    listLocalAnalyses().then((rows) => {
+      if (!active) return;
+      setSavedAnalyses(rows);
+      if (rows.length) setDraft({ analysis: rows[0], clips: rows[0].clips, revision: 0 });
+      setSaveStatus(rows.length ? 'saved' : 'idle');
+      setLibraryReady(true);
+    }).catch(() => {
+      if (!active) return;
+      setMessage('No se pudo abrir el almacenamiento local. No se iniciará un análisis sin guardado.');
+      setSaveStatus('error');
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!draft?.revision) return;
+    const currentDraft = draft;
+    setSaveStatus('saving');
+    queueSave(snapshotLocalAnalysis(draft.analysis, draft.clips))
+      .then(async () => {
+        if (draftRef.current === currentDraft) setSaveStatus('saved');
+        const rows = await listLocalAnalyses();
+        setSavedAnalyses(rows);
+      }).catch(() => {
+        if (draftRef.current === currentDraft) {
+          setSaveStatus('error');
+          setMessage('Error al guardar en este navegador. Conserva la pestaña abierta y vuelve a intentarlo.');
+        }
+      });
+  }, [draft]);
+
+  useEffect(() => {
+    if (!['saving', 'error'].includes(saveStatus)) return undefined;
+    const warnBeforeExit = (event) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warnBeforeExit);
+    return () => window.removeEventListener('beforeunload', warnBeforeExit);
+  }, [saveStatus]);
+
+  useEffect(() => () => {
+    const current = draftRef.current;
+    if (current?.revision) {
+      const record = snapshotLocalAnalysis(current.analysis, current.clips);
+      saveQueueRef.current = saveQueueRef.current.catch(() => {}).then(() => saveLocalAnalysis(record));
+    }
+  }, []);
 
   const selectedClip = useMemo(() => clips.find((item) => item.id === selectedId) || null,
     [clips, selectedId]);
@@ -87,26 +166,105 @@ export default function VideoAnalysisLab({ embedded = false }) {
     setHistory({ past: [], future: [] });
   }, [selectedId]); // Clip edits are staged locally until the user applies them.
 
-  const pickFile = (file) => {
+  const openFilePicker = (mode) => {
+    fileSelectionModeRef.current = mode;
+    fileRef.current?.click();
+  };
+
+  const pickFile = async (file, mode = 'relink') => {
     if (!file) return;
     if (!isMp4File(file)) {
       setMessage('Selecciona un archivo MP4 local. No se subirá a ningún servidor.');
       return;
     }
-    videoRef.current?.pause();
-    activeRangeRef.current = null;
-    setSource({ id: uid(), url: URL.createObjectURL(file), name: file.name });
-    setDuration(0);
-    setVideoSize({ width: 0, height: 0 });
-    setTime(0);
-    setInPoint(0);
-    setOutPoint(0);
-    setClips([]);
-    setSelectedId(null);
-    setDraftTitle('');
-    setDrawing(null);
-    setHistory({ past: [], future: [] });
-    setMessage('Vídeo cargado solo en este navegador. Los cortes se perderán al recargar.');
+    if (!libraryReady || fileBusyRef.current) return;
+    if (mode === 'switch' && propertiesDirty &&
+        !window.confirm('Hay cambios del corte sin aplicar. ¿Descartarlos y cambiar de vídeo?')) return;
+    fileBusyRef.current = true;
+    const previousStatus = saveStatus;
+    setSaveStatus('verifying');
+    setFingerprintProgress(0);
+    let fingerprint;
+    try {
+      fingerprint = await fingerprintLocalFile(file, setFingerprintProgress);
+      if (mode === 'relink' && analysis && fingerprint !== analysis.source.fingerprint) {
+        setMessage('Este MP4 no coincide con el vídeo original. Los cortes siguen protegidos; selecciona el archivo correcto o pulsa «Otro vídeo».');
+        setSaveStatus(previousStatus);
+        return;
+      }
+      if (mode === 'switch' && analysis && fingerprint !== analysis.source.fingerprint &&
+          !window.confirm('¿Cambiar de vídeo? El análisis actual se conservará por separado en este navegador.')) {
+        setSaveStatus(previousStatus);
+        return;
+      }
+      if (draft) {
+        await queueSave(snapshotLocalAnalysis(draft.analysis, draft.clips));
+      }
+      const found = await findLocalAnalysisByFingerprint(fingerprint);
+      const nextAnalysis = found || newLocalAnalysis({ id: uid(), file, fingerprint });
+      if (found && (found.version !== ANALYSIS_VERSION || !Array.isArray(found.clips))) {
+        throw new Error('Versión de análisis local no compatible.');
+      }
+      if (!found || found.id !== analysis?.id) {
+        setDraft({ analysis: nextAnalysis, clips: nextAnalysis.clips, revision: found ? 0 : 1 });
+        setSelectedId(null);
+      }
+      videoRef.current?.pause();
+      activeRangeRef.current = null;
+      setSource({ id: nextAnalysis.id, url: URL.createObjectURL(file), name: file.name });
+      setDuration(0);
+      setVideoSize({ width: 0, height: 0 });
+      setTime(0);
+      setInPoint(0);
+      setOutPoint(0);
+      setDraftTitle('');
+      setDrawing(null);
+      setHistory({ past: [], future: [] });
+      setSaveStatus(found ? 'saved' : 'saving');
+      setMessage(found ? 'MP4 verificado. Análisis local recuperado.' : 'Nuevo análisis local creado. El MP4 no se almacenará.');
+    } catch (error) {
+      setSaveStatus('error');
+      setMessage(`No se pudo abrir o guardar el análisis local: ${error.message}`);
+    } finally {
+      fileBusyRef.current = false;
+    }
+  };
+
+  const selectSavedAnalysis = async (row) => {
+    if (row.id === analysis?.id) return;
+    if (propertiesDirty &&
+        !window.confirm('Hay cambios del corte sin aplicar. ¿Descartarlos y abrir otro análisis?')) return;
+    try {
+      if (draft) await queueSave(snapshotLocalAnalysis(draft.analysis, draft.clips));
+      videoRef.current?.pause();
+      activeRangeRef.current = null;
+      setSource(null);
+      setDraft({ analysis: row, clips: row.clips, revision: 0 });
+      setSelectedId(null);
+      setDuration(0);
+      setTime(0);
+      setVideoSize({ width: 0, height: 0 });
+      setSaveStatus('saved');
+      setMessage('Análisis recuperado. Selecciona su MP4 original para editar o reproducir los cortes.');
+    } catch {
+      setSaveStatus('error');
+      setMessage('No se pudo guardar el análisis actual; se ha cancelado el cambio.');
+    }
+  };
+
+  const retrySave = async () => {
+    if (!draft) return;
+    const current = draft;
+    setSaveStatus('saving');
+    try {
+      await queueSave(snapshotLocalAnalysis(current.analysis, current.clips));
+      if (draftRef.current === current) setSaveStatus('saved');
+      setSavedAnalyses(await listLocalAnalyses());
+      setMessage('Análisis guardado en este navegador.');
+    } catch {
+      setSaveStatus('error');
+      setMessage('El guardado local sigue fallando. Mantén abierta esta pestaña.');
+    }
   };
 
   const seek = (seconds) => {
@@ -141,7 +299,7 @@ export default function VideoAnalysisLab({ embedded = false }) {
   };
 
   const addClip = () => {
-    if (!source || !validRange(inPoint, outPoint, duration)) {
+    if (!canEdit || !validRange(inPoint, outPoint, duration)) {
       setMessage('El corte necesita un IN y OUT válidos, separados al menos 0,1 s.');
       return;
     }
@@ -156,6 +314,7 @@ export default function VideoAnalysisLab({ embedded = false }) {
   };
 
   const chooseClip = (clip) => {
+    if (!canEdit) return;
     videoRef.current?.pause();
     activeRangeRef.current = null;
     setSelectedId(clip.id);
@@ -165,11 +324,11 @@ export default function VideoAnalysisLab({ embedded = false }) {
   };
 
   const saveClipProperties = () => {
-    if (!selectedClip || !clipDraft) return;
+    if (!canEdit || !selectedClip || !clipDraft) return;
     const next = updateClip(selectedClip, {
       title: clipDraft.title,
-      in: Number(clipDraft.in),
-      out: Number(clipDraft.out),
+      in: clipDraft.in === '' ? NaN : Number(clipDraft.in),
+      out: clipDraft.out === '' ? NaN : Number(clipDraft.out),
       observations: clipDraft.observations,
     }, duration);
     if (!next) {
@@ -182,7 +341,21 @@ export default function VideoAnalysisLab({ embedded = false }) {
     setMessage('Propiedades del corte actualizadas en memoria.');
   };
 
+  const changeClipProperty = (field, value) => {
+    if (!canEdit || !selectedClip || !clipDraft) return;
+    const nextDraft = { ...clipDraft, [field]: value };
+    setClipDraft(nextDraft);
+    const next = updateClip(selectedClip, {
+      title: nextDraft.title,
+      in: nextDraft.in === '' ? NaN : Number(nextDraft.in),
+      out: nextDraft.out === '' ? NaN : Number(nextDraft.out),
+      observations: nextDraft.observations,
+    }, duration);
+    if (next) setClips((current) => current.map((item) => item.id === next.id ? next : item));
+  };
+
   const removeClip = (clipId) => {
+    if (!canEdit) return;
     if (activeRangeRef.current?.id === clipId) {
       videoRef.current?.pause();
       activeRangeRef.current = null;
@@ -193,7 +366,7 @@ export default function VideoAnalysisLab({ embedded = false }) {
   };
 
   const commitAnnotations = (next) => {
-    if (!selectedClip) return;
+    if (!canEdit || !selectedClip) return;
     setHistory((current) => ({ past: [...current.past, selectedClip.annotations], future: [] }));
     setClips((current) => current.map((item) => item.id === selectedClip.id
       ? { ...item, annotations: next } : item));
@@ -251,7 +424,7 @@ export default function VideoAnalysisLab({ embedded = false }) {
       setSelectedDrawingId(null);
       return;
     }
-    if (!selectedClip || !imageRect) {
+    if (!canEdit || !selectedClip || !imageRect) {
       setMessage('Selecciona primero un corte para asociar el dibujo.');
       return;
     }
@@ -269,7 +442,7 @@ export default function VideoAnalysisLab({ embedded = false }) {
     setDrawing(drawingRef.current);
   };
   const finishDrawing = (event) => {
-    if (!drawingRef.current || !selectedClip) return;
+    if (!canEdit || !drawingRef.current || !selectedClip) return;
     const next = createAnnotation({ id: uid(), type: tool,
       start: drawingRef.current.start, end: pointAt(event),
       color, width: Number(lineWidth), clip: selectedClip,
@@ -284,7 +457,7 @@ export default function VideoAnalysisLab({ embedded = false }) {
   };
 
   const updateDrawingTiming = (field, value) => {
-    if (!selectedClip || !selectedDrawing) return;
+    if (!canEdit || !selectedClip || !selectedDrawing) return;
     const number = Number(value);
     if (!Number.isFinite(number)) return;
     const timing = { ...selectedDrawing.timing, [field]: number };
@@ -303,20 +476,32 @@ export default function VideoAnalysisLab({ embedded = false }) {
       <div className="brand"><span className="brand-mark">N</span>
         <div><strong>NEXO CLUB</strong><small>Laboratorio · Videoanálisis</small></div></div>
       <div className="header-center"><span className="live-dot" /> PROTOTIPO LOCAL <span className="header-divider">/</span> SIN CONEXIÓN</div>
-      <span className="memory-notice">Borrador en memoria · se perderá al recargar</span>
+      <span className="memory-notice">Metadatos guardados en este navegador · MP4 externo</span>
     </header>}
 
     <main className="lab-grid">
       <section className="workspace" aria-label="Mesa de análisis">
         <div className="workspace-heading">
-          <div><span className="eyebrow">FUENTE DE VÍDEO</span><h1>{source?.name || 'Nuevo análisis'}</h1></div>
-          <button className="button button-secondary" onClick={() => fileRef.current?.click()}>Abrir MP4 local</button>
+          <div><span className="eyebrow">FUENTE DE VÍDEO</span><h1>{analysis?.source?.name || 'Nuevo análisis'}</h1>
+            <span className={`save-indicator ${saveStatus}`}>{saveStatus === 'verifying'
+              ? `Verificando MP4 · ${Math.round(fingerprintProgress * 100)} %`
+              : ({ loading: 'Abriendo almacenamiento local…', idle: 'Sin análisis', saving: 'Guardando cambios…',
+                saved: 'Guardado en este navegador', error: 'Guardado pendiente · error' })[saveStatus]}</span>
+          </div>
+          <div className="source-actions">
+            <button className="button button-secondary" disabled={!libraryReady || saveStatus === 'verifying'}
+              onClick={() => openFilePicker(analysis ? 'relink' : 'switch')}>
+              {analysis ? 'Seleccionar MP4 original' : 'Abrir MP4 local'}
+            </button>
+            {analysis && <button className="button button-secondary" disabled={!libraryReady || saveStatus === 'verifying'}
+              onClick={() => openFilePicker('switch')}>Otro vídeo</button>}
+          </div>
           <input ref={fileRef} className="visually-hidden" type="file" accept="video/mp4,.mp4"
-            onChange={(event) => { pickFile(event.target.files?.[0]); event.target.value = ''; }} />
+            onChange={(event) => { void pickFile(event.target.files?.[0], fileSelectionModeRef.current); event.target.value = ''; }} />
         </div>
 
         <div className="stage-wrap" onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => { event.preventDefault(); pickFile(event.dataTransfer.files?.[0]); }}>
+          onDrop={(event) => { event.preventDefault(); void pickFile(event.dataTransfer.files?.[0], sourceVerified ? 'switch' : 'relink'); }}>
           <div className="video-stage" ref={stageRef}>
             {source ? <video ref={videoRef} src={source.url} playsInline preload="metadata"
               onLoadedMetadata={(event) => {
@@ -330,11 +515,12 @@ export default function VideoAnalysisLab({ embedded = false }) {
               onPause={() => setPlaying(false)} onEnded={() => {
                 activeRangeRef.current = null; setPlaying(false);
               }} onError={() => setMessage('No se puede reproducir este MP4 con el códec disponible en el navegador.')} />
-              : <div className="stage-empty" onClick={() => fileRef.current?.click()} role="button" tabIndex={0}
-                onKeyDown={(event) => { if (event.key === 'Enter') fileRef.current?.click(); }}>
-                <span className="stage-empty-icon">▶</span><h2>Tu mesa de análisis empieza aquí</h2>
-                <p>Arrastra un MP4 al campo o selecciónalo desde el equipo.</p>
-                <span>El archivo no se sube ni se guarda fuera del navegador.</span>
+              : <div className="stage-empty" onClick={() => openFilePicker(analysis ? 'relink' : 'switch')} role="button" tabIndex={0}
+                onKeyDown={(event) => { if (event.key === 'Enter') openFilePicker(analysis ? 'relink' : 'switch'); }}>
+                <span className="stage-empty-icon">▶</span><h2>{analysis ? 'Vuelve a seleccionar el MP4 original' : 'Tu mesa de análisis empieza aquí'}</h2>
+                <p>{analysis ? `${clips.length} cortes recuperados. El archivo se verificará antes de habilitarlos.`
+                  : 'Arrastra un MP4 al campo o selecciónalo desde el equipo.'}</p>
+                <span>El MP4 no se sube ni se copia a IndexedDB.</span>
               </div>}
             {source && imageRect && <svg className={`video-overlay ${tool === 'select' ? 'select-mode' : 'draw-mode'}`}
               style={{ left: imageRect.left, top: imageRect.top,
@@ -365,7 +551,7 @@ export default function VideoAnalysisLab({ embedded = false }) {
           <span className="strip-label">ANOTAR</span>
           {[['select', 'Seleccionar'], ['arrow', 'Flecha'], ['ellipse', 'Círculo / elipse']]
             .map(([key, label]) => <button key={key} className={`tool-button ${tool === key ? 'active' : ''}`}
-              onClick={() => setTool(key)} title={label}>{label}</button>)}
+              onClick={() => setTool(key)} title={label} disabled={!canEdit}>{label}</button>)}
           <span className="strip-separator" />
           <div className="color-row" aria-label="Color del dibujo">{COLORS.map((item) =>
             <button key={item} className={`color-dot ${color === item ? 'active' : ''}`}
@@ -376,9 +562,9 @@ export default function VideoAnalysisLab({ embedded = false }) {
             {[2, 3, 4, 6, 8].map((value) => <option key={value} value={value}>{value}px</option>)}
           </select></label>
           <span className="strip-separator" />
-          <button className="tool-button" onClick={undo} disabled={!history.past.length}>Deshacer</button>
-          <button className="tool-button" onClick={redo} disabled={!history.future.length}>Rehacer</button>
-          <button className="tool-button danger" onClick={removeDrawing} disabled={!selectedDrawing}>Eliminar dibujo</button>
+          <button className="tool-button" onClick={undo} disabled={!canEdit || !history.past.length}>Deshacer</button>
+          <button className="tool-button" onClick={redo} disabled={!canEdit || !history.future.length}>Rehacer</button>
+          <button className="tool-button danger" onClick={removeDrawing} disabled={!canEdit || !selectedDrawing}>Eliminar dibujo</button>
         </div>
 
         <div className="transport">
@@ -421,16 +607,25 @@ export default function VideoAnalysisLab({ embedded = false }) {
       </section>
 
       <aside className="side-panel" aria-label="Biblioteca de cortes">
+        <div className="local-analyses">
+          <span className="eyebrow">ANÁLISIS EN ESTE NAVEGADOR</span>
+          {savedAnalyses.length ? savedAnalyses.map((row) =>
+            <button key={row.id} className={`local-analysis-item ${row.id === analysis?.id ? 'active' : ''}`}
+              onClick={() => void selectSavedAnalysis(row)} disabled={row.id === analysis?.id || saveStatus === 'verifying'}>
+              <strong>{row.source.name}</strong><small>{row.clips.length} cortes · {new Date(row.updatedAt).toLocaleString('es-ES')}</small>
+            </button>) : <p>Aún no hay análisis guardados.</p>}
+          {saveStatus === 'error' && draft && <button className="retry-save" onClick={() => void retrySave()}>Reintentar guardado</button>}
+        </div>
         <div className="side-heading"><div><span className="eyebrow">BORRADOR ACTUAL</span>
           <h2>Biblioteca de cortes</h2></div><span className="count-badge">{clips.length}</span></div>
         <div className="clip-list">
           {clips.length ? clips.map((clip, index) => <div key={clip.id}
             className={`clip-card ${clip.id === selectedId ? 'active' : ''}`}>
-            <button className="clip-select" onClick={() => chooseClip(clip)}>
+            <button className="clip-select" onClick={() => chooseClip(clip)} disabled={!canEdit}>
               <span className="clip-index">{String(index + 1).padStart(2, '0')}</span>
               <span><strong>{clip.title}</strong><small>{formatTime(clip.in)} → {formatTime(clip.out)} · {(clip.out - clip.in).toFixed(1)} s</small></span>
             </button>
-            <button className="clip-play" title={`Reproducir ${clip.title}`} onClick={() => {
+            <button className="clip-play" title={`Reproducir ${clip.title}`} disabled={!canEdit} onClick={() => {
               chooseClip(clip); play({ id: clip.id, in: clip.in, out: clip.out });
             }}>▶</button>
           </div>) : <div className="side-empty"><span>✂</span><p>Marca IN y OUT en la línea temporal para crear el primer corte.</p></div>}
@@ -438,27 +633,28 @@ export default function VideoAnalysisLab({ embedded = false }) {
 
         {selectedClip && clipDraft && <div className="properties">
           <div className="properties-heading"><span className="eyebrow">CORTE SELECCIONADO</span><h3>Propiedades</h3></div>
-          <label>Título<input value={clipDraft.title}
-            onChange={(event) => setClipDraft({ ...clipDraft, title: event.target.value })} /></label>
-          <div className="property-times"><label>IN · segundos<input type="number" min="0" max={duration}
+          {propertiesDirty && <p className="property-pending">Cambios del corte sin aplicar</p>}
+          <label>Título<input value={clipDraft.title} disabled={!canEdit}
+            onChange={(event) => changeClipProperty('title', event.target.value)} /></label>
+          <div className="property-times"><label>IN · segundos<input type="number" min="0" max={duration} disabled={!canEdit}
             step="0.1" value={clipDraft.in}
-            onChange={(event) => setClipDraft({ ...clipDraft, in: event.target.value })} /></label>
-            <label>OUT · segundos<input type="number" min="0" max={duration}
+            onChange={(event) => changeClipProperty('in', event.target.value)} /></label>
+            <label>OUT · segundos<input type="number" min="0" max={duration} disabled={!canEdit}
               step="0.1" value={clipDraft.out}
-              onChange={(event) => setClipDraft({ ...clipDraft, out: event.target.value })} /></label></div>
-          <label>Observaciones del clip<textarea rows="3" value={clipDraft.observations}
+              onChange={(event) => changeClipProperty('out', event.target.value)} /></label></div>
+          <label>Observaciones del clip<textarea rows="3" value={clipDraft.observations} disabled={!canEdit}
             placeholder="Análisis particular de este corte…"
-            onChange={(event) => setClipDraft({ ...clipDraft, observations: event.target.value })} /></label>
-          <div className="property-actions"><button className="button button-primary" onClick={saveClipProperties}>Aplicar cambios</button>
-            <button className="button button-secondary" onClick={() => play({ id: selectedClip.id,
+            onChange={(event) => changeClipProperty('observations', event.target.value)} /></label>
+          <div className="property-actions"><button className="button button-primary" onClick={saveClipProperties} disabled={!canEdit}>Aplicar cambios</button>
+            <button className="button button-secondary" disabled={!canEdit} onClick={() => play({ id: selectedClip.id,
               in: selectedClip.in, out: selectedClip.out })}>Reproducir corte</button></div>
-          <button className="text-danger" onClick={() => removeClip(selectedClip.id)}>Eliminar corte del borrador</button>
+          <button className="text-danger" disabled={!canEdit} onClick={() => removeClip(selectedClip.id)}>Eliminar corte del borrador</button>
           <div className="annotation-panel"><span className="eyebrow">DIBUJOS DEL CORTE · {selectedClip.annotations.length}</span>
             {selectedDrawing ? <><strong>{selectedDrawing.type === 'arrow' ? 'Flecha' : 'Elipse'} seleccionada</strong>
-              <div className="property-times"><label>Desde · s<input type="number" step="0.1"
+              <div className="property-times"><label>Desde · s<input type="number" step="0.1" disabled={!canEdit}
                 value={selectedDrawing.timing.start}
                 onChange={(event) => updateDrawingTiming('start', event.target.value)} /></label>
-                <label>Hasta · s<input type="number" step="0.1"
+                <label>Hasta · s<input type="number" step="0.1" disabled={!canEdit}
                   value={selectedDrawing.timing.end}
                   onChange={(event) => updateDrawingTiming('end', event.target.value)} /></label></div></>
               : <p>Pausa el vídeo, elige Flecha o Elipse y dibuja sobre la imagen. Cada dibujo pertenece a este corte.</p>}
