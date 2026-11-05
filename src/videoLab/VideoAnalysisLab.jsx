@@ -65,6 +65,7 @@ export default function VideoAnalysisLab({ embedded = false }) {
   const [selectedDrawingId, setSelectedDrawingId] = useState(null);
   const [history, setHistory] = useState({ past: [], future: [] });
   const [message, setMessage] = useState('');
+  const [fileMismatch, setFileMismatch] = useState(false);
   const analysis = draft?.analysis || null;
   const clips = draft?.clips || [];
   const sourceVerified = Boolean(source && analysis && source.id === analysis.id);
@@ -188,6 +189,7 @@ export default function VideoAnalysisLab({ embedded = false }) {
     try {
       fingerprint = await fingerprintLocalFile(file, setFingerprintProgress);
       if (mode === 'relink' && analysis && fingerprint !== analysis.source.fingerprint) {
+        setFileMismatch(true);
         setMessage('Este MP4 no coincide con el vídeo original. Los cortes siguen protegidos; selecciona el archivo correcto o pulsa «Otro vídeo».');
         setSaveStatus(previousStatus);
         return;
@@ -221,6 +223,7 @@ export default function VideoAnalysisLab({ embedded = false }) {
       setDrawing(null);
       setHistory({ past: [], future: [] });
       setSaveStatus(found ? 'saved' : 'saving');
+      setFileMismatch(false);
       setMessage(found ? 'MP4 verificado. Análisis local recuperado.' : 'Nuevo análisis local creado. El MP4 no se almacenará.');
     } catch (error) {
       setSaveStatus('error');
@@ -245,6 +248,7 @@ export default function VideoAnalysisLab({ embedded = false }) {
       setTime(0);
       setVideoSize({ width: 0, height: 0 });
       setSaveStatus('saved');
+      setFileMismatch(false);
       setMessage('Análisis recuperado. Selecciona su MP4 original para editar o reproducir los cortes.');
     } catch {
       setSaveStatus('error');
@@ -488,16 +492,17 @@ export default function VideoAnalysisLab({ embedded = false }) {
               : ({ loading: 'Abriendo almacenamiento local…', idle: 'Sin análisis', saving: 'Guardando cambios…',
                 saved: 'Guardado en este navegador', error: 'Guardado pendiente · error' })[saveStatus]}</span>
           </div>
-          <div className="source-actions">
-            <button className="button button-secondary" disabled={!libraryReady || saveStatus === 'verifying'}
-              onClick={() => openFilePicker(analysis ? 'relink' : 'switch')}>
-              {analysis ? 'Seleccionar MP4 original' : 'Abrir MP4 local'}
-            </button>
-            {analysis && <button className="button button-secondary" disabled={!libraryReady || saveStatus === 'verifying'}
-              onClick={() => openFilePicker('switch')}>Otro vídeo</button>}
-          </div>
           <input ref={fileRef} className="visually-hidden" type="file" accept="video/mp4,.mp4"
             onChange={(event) => { void pickFile(event.target.files?.[0], fileSelectionModeRef.current); event.target.value = ''; }} />
+        </div>
+
+        <div className="source-actions" aria-label="Gestión de vídeos locales">
+          <button className="button button-secondary" disabled={!libraryReady || saveStatus === 'verifying'}
+            onClick={() => openFilePicker(analysis ? 'relink' : 'switch')}>
+            {analysis ? 'Seleccionar MP4 original' : 'Abrir MP4 local'}
+          </button>
+          {analysis && <button className="button button-primary" disabled={!libraryReady || saveStatus === 'verifying'}
+            onClick={() => openFilePicker('switch')}>Otro vídeo</button>}
         </div>
 
         <div className="stage-wrap" onDragOver={(event) => event.preventDefault()}
@@ -602,7 +607,10 @@ export default function VideoAnalysisLab({ embedded = false }) {
               value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} />
             <button className="button button-primary" disabled={!duration} onClick={addClip}>+ Crear corte</button>
           </div>
-          {message && <p className="status-message" role="status">{message}</p>}
+          {message && <div className="status-message" role="status">{message}
+            {fileMismatch && <button type="button" className="button button-primary mismatch-switch"
+              onClick={() => openFilePicker('switch')}>Otro vídeo</button>}
+          </div>}
         </div>
       </section>
 
