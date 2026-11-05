@@ -12,8 +12,8 @@ export function formatTime(seconds) {
 }
 
 export function isMp4File(file) {
-  return Boolean(file && (file.type === 'video/mp4' ||
-    (!file.type && /\.mp4$/i.test(file.name || ''))));
+  return Boolean(file && /\.mp4$/i.test(file.name || '') &&
+    (!file.type || file.type === 'video/mp4'));
 }
 
 export function validRange(start, end, duration) {
@@ -41,11 +41,21 @@ export function createClip({ id, sourceId, title, start, end, duration }) {
 export function updateClip(clip, patch, duration) {
   if (!clip) return null;
   const next = { ...clip, ...patch, id: clip.id, sourceId: clip.sourceId };
-  if (!String(next.title || '').trim() || !validRange(next.in, next.out, duration)) {
+  if (!String(next.title || '').trim() || !validRange(next.in, next.out, duration) ||
+      clip.annotations.some((annotation) =>
+        annotation.timing.start < next.in || annotation.timing.end > next.out)) {
     return null;
   }
   next.title = String(next.title).trim();
   return next;
+}
+
+export function removeClipFromDraft(clips, clipId) {
+  return clips.filter((clip) => clip.id !== clipId);
+}
+
+export function clipOutReached(range, time) {
+  return Boolean(range && Number.isFinite(time) && time >= range.out - 0.04);
 }
 
 export function containedVideoRect(containerWidth, containerHeight, videoWidth, videoHeight) {

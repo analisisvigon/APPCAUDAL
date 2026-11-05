@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   annotationVisible, clamp, containedVideoRect, createAnnotation,
-  createClip, formatTime, isMp4File, normalizedPoint, updateClip, validRange,
+  clipOutReached, createClip, formatTime, isMp4File, normalizedPoint,
+  removeClipFromDraft, updateClip, validRange,
 } from './model';
 import './videoLab.css';
 
@@ -87,6 +88,7 @@ export default function VideoAnalysisLab() {
   }, [selectedId]); // Clip edits are staged locally until the user applies them.
 
   const pickFile = (file) => {
+    if (!file) return;
     if (!isMp4File(file)) {
       setMessage('Selecciona un archivo MP4 local. No se subirá a ningún servidor.');
       return;
@@ -117,6 +119,7 @@ export default function VideoAnalysisLab() {
     if (!videoRef.current || !duration) return;
     activeRangeRef.current = range;
     if (range) seek(range.in);
+    else if (videoRef.current.currentTime >= duration) seek(0);
     try {
       await videoRef.current.play();
       setMessage('');
@@ -129,7 +132,7 @@ export default function VideoAnalysisLab() {
     const video = videoRef.current;
     if (!video) return;
     const range = activeRangeRef.current;
-    if (range && video.currentTime >= range.out - 0.04) {
+    if (clipOutReached(range, video.currentTime)) {
       video.pause();
       video.currentTime = range.out;
       activeRangeRef.current = null;
@@ -170,7 +173,7 @@ export default function VideoAnalysisLab() {
       observations: clipDraft.observations,
     }, duration);
     if (!next) {
-      setMessage('Revisa el título y los tiempos: IN debe ser menor que OUT y estar dentro del vídeo.');
+      setMessage('Revisa título y tiempos. Los dibujos existentes deben permanecer dentro del corte.');
       return;
     }
     setClips((current) => current.map((item) => item.id === next.id ? next : item));
@@ -184,7 +187,7 @@ export default function VideoAnalysisLab() {
       videoRef.current?.pause();
       activeRangeRef.current = null;
     }
-    setClips((current) => current.filter((item) => item.id !== clipId));
+    setClips((current) => removeClipFromDraft(current, clipId));
     if (selectedId === clipId) setSelectedId(null);
     setMessage('Corte eliminado del borrador.');
   };

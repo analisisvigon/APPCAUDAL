@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import {
-  annotationVisible, containedVideoRect, createAnnotation, createClip,
-  formatTime, isMp4File, normalizedPoint, updateClip, validRange,
+  annotationVisible, clipOutReached, containedVideoRect, createAnnotation,
+  createClip, formatTime, isMp4File, normalizedPoint, removeClipFromDraft,
+  updateClip, validRange,
 } from './model.js';
 
 assert.equal(formatTime(3661.9), '01:01:01');
 assert.equal(isMp4File({ type: 'video/mp4', name: 'partido.mp4' }), true);
 assert.equal(isMp4File({ type: 'video/quicktime', name: 'partido.mov' }), false);
+assert.equal(isMp4File({ type: 'video/mp4', name: 'partido.mov' }), false);
 assert.equal(validRange(12, 16, 30), true);
 assert.equal(validRange(16, 12, 30), false);
 
@@ -14,6 +16,9 @@ const clip = createClip({ id: 'stable-1', sourceId: 'local-1', title: ' Presión
 assert.equal(clip.title, 'Presión alta');
 assert.equal(updateClip(clip, { title: 'Transición', in: 10 }, 30).id, 'stable-1');
 assert.equal(updateClip(clip, { out: 11 }, 30), null);
+assert.deepEqual(removeClipFromDraft([clip, { ...clip, id: 'stable-2' }], clip.id).map((item) => item.id), ['stable-2']);
+assert.equal(clipOutReached(clip, 15.95), false);
+assert.equal(clipOutReached(clip, 15.97), true);
 assert.equal(createClip({ id: 'x', sourceId: 'y', title: ' ', start: 1, end: 2, duration: 5 }), null);
 
 const wide = containedVideoRect(1200, 800, 1920, 1080);
@@ -33,5 +38,7 @@ assert.deepEqual(annotation.geometry, { x1: 0.2, y1: 0.3, x2: 0.6, y2: 0.5 });
 assert.equal(annotation.timing.start, 13);
 assert.equal(annotationVisible(annotation, 14), true);
 assert.equal(annotationVisible(annotation, 12), false);
+assert.equal(updateClip({ ...clip, annotations: [annotation] }, { out: 14 }, 30), null);
+assert.equal(updateClip({ ...clip, annotations: [annotation] }, { out: 16 }, 30).id, clip.id);
 assert.equal(createAnnotation({ ...annotation, id: 'x', type: 'ellipse', start: { x: 0.5, y: 0.5 }, end: { x: 0.5, y: 0.5 }, clip, at: 13 }), null);
 console.log('Video lab model: OK');

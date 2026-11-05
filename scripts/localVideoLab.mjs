@@ -1,4 +1,4 @@
-import { build, createServer } from 'vite';
+import { build, preview } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 
@@ -10,14 +10,21 @@ const config = {
   envDir: root,
   publicDir: false,
   plugins: [react()],
-  server: { host: '127.0.0.1', port: 5178, strictPort: true },
+  preview: { host: '127.0.0.1', port: 5178, strictPort: true },
   build: { outDir, emptyOutDir: true },
 };
 
 if (process.argv.includes('--build')) {
   await build(config);
 } else {
-  const server = await createServer(config);
-  await server.listen();
+  const watcher = await build({ ...config, build: { ...config.build, watch: {} } });
+  await new Promise((resolve, reject) => {
+    watcher.on('event', (event) => {
+      if (event.code === 'END') resolve();
+      if (event.code === 'ERROR') reject(event.error);
+    });
+  });
+  const server = await preview(config);
   server.printUrls();
+  console.log('Los cambios se recompilan automáticamente; actualiza el navegador para verlos.');
 }
