@@ -19,6 +19,7 @@ import TrainingTasksSection from './components/training/TrainingTasksSection';
 import PlannedSessionsSection from './components/training/PlannedSessionsSection';
 import TeamCalendarSection from './components/calendar/TeamCalendarSection';
 import AppSidebar from './components/navigation/AppSidebar';
+import { LOCAL_VIDEO_LAB_ENABLED } from './components/navigation/appNavigation.js';
 import SeasonMemoryPanel from './seasonMemory/SeasonMemoryPanel';
 import { calendarTime } from './utils/teamCalendar';
 import MatchVideoPlayer, { detectMatchVideoProvider } from './components/matches/MatchVideoPlayer';
@@ -41,6 +42,9 @@ import LoadEvolutionSection from './components/performance/LoadEvolutionSection'
 import DelegatedStatsDashboard from './components/delegated/DelegatedStatsDashboard';
 import FinesManagementPage from './components/fines/FinesManagementPage';
 import PhysioPage from './components/physio/PhysioPage';
+const LocalVideoAnalysisLab = import.meta.env.DEV
+  ? React.lazy(() => import('./videoLab/VideoAnalysisLab'))
+  : null;
 import AccordionSection from './components/shared/AccordionSection';
 import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
@@ -33528,6 +33532,14 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             userId={session?.user?.id || ''} onDirtyChange={setPlannedSessionsDirty}
             openSessionRequest={calendarSessionTarget}
             leagueLogoUrl={competitions.find((competition) => competition.key === 'league')?.logoUrl || ''} />
+        ) : null}
+
+        {LOCAL_VIDEO_LAB_ENABLED && activeTab === 'Videoanálisis' && LocalVideoAnalysisLab ? (
+          <main className="min-w-0 pb-8">
+            <React.Suspense fallback={<p className="p-5 text-sm text-slate-300">Cargando Videoanálisis local…</p>}>
+              <LocalVideoAnalysisLab embedded />
+            </React.Suspense>
+          </main>
         ) : null}
 
         {activeTab === 'Rendimiento' ? (

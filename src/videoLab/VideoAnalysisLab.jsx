@@ -28,7 +28,7 @@ function Drawing({ annotation, selected = false, onSelect }) {
     x2={x2 * 1000} y2={y2 * 1000} markerEnd="url(#arrow-tip)" />;
 }
 
-export default function VideoAnalysisLab() {
+export default function VideoAnalysisLab({ embedded = false }) {
   const videoRef = useRef(null);
   const stageRef = useRef(null);
   const fileRef = useRef(null);
@@ -298,13 +298,13 @@ export default function VideoAnalysisLab() {
     setMessage('');
   };
 
-  return <div className="lab-shell">
-    <header className="lab-header">
+  return <div className={`lab-shell${embedded ? ' is-embedded' : ''}`}>
+    {!embedded && <header className="lab-header">
       <div className="brand"><span className="brand-mark">N</span>
         <div><strong>NEXO CLUB</strong><small>Laboratorio · Videoanálisis</small></div></div>
       <div className="header-center"><span className="live-dot" /> PROTOTIPO LOCAL <span className="header-divider">/</span> SIN CONEXIÓN</div>
       <span className="memory-notice">Borrador en memoria · se perderá al recargar</span>
-    </header>
+    </header>}
 
     <main className="lab-grid">
       <section className="workspace" aria-label="Mesa de análisis">

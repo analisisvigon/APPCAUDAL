@@ -1,4 +1,13 @@
 // Solo presentación. App.jsx conserva la selección y las transiciones entre módulos.
+export function isLocalVideoLabEnvironment({ dev, hostname }) {
+  return Boolean(dev && ['localhost', '127.0.0.1', '[::1]'].includes(hostname));
+}
+
+export const LOCAL_VIDEO_LAB_ENABLED = isLocalVideoLabEnvironment({
+  dev: import.meta.env?.DEV,
+  hostname: typeof window === 'undefined' ? '' : window.location.hostname,
+});
+
 export const STAFF_NAV_GROUPS = Object.freeze([
   { title: 'PRINCIPAL', items: [{ name: 'Inicio', icon: 'home' }] },
   { title: 'EQUIPO', items: [
@@ -15,6 +24,7 @@ export const STAFF_NAV_GROUPS = Object.freeze([
     { name: 'Equipos', icon: 'shield' },
     { name: 'Perfiles', icon: 'profile' },
     { name: 'Partidos', icon: 'ball' },
+    ...(LOCAL_VIDEO_LAB_ENABLED ? [{ name: 'Videoanálisis', icon: 'video' }] : []),
   ] },
   { title: 'ANÁLISIS', items: [
     { name: 'Rendimiento', icon: 'chart' },

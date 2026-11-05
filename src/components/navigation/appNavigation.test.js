@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
-import { STAFF_NAV_GROUPS, STAFF_NAV_TABS } from './appNavigation.js';
+import { STAFF_NAV_GROUPS, STAFF_NAV_TABS, isLocalVideoLabEnvironment } from './appNavigation.js';
+
+assert.equal(isLocalVideoLabEnvironment({ dev: true, hostname: 'localhost' }), true);
+assert.equal(isLocalVideoLabEnvironment({ dev: true, hostname: '127.0.0.1' }), true);
+assert.equal(isLocalVideoLabEnvironment({ dev: false, hostname: 'localhost' }), false);
+assert.equal(isLocalVideoLabEnvironment({ dev: true, hostname: 'nexoclub.example' }), false);
 
 assert.deepEqual(STAFF_NAV_GROUPS.map((group) => [group.title, group.items.map((item) => item.name)]), [
   ['PRINCIPAL', ['Inicio']],

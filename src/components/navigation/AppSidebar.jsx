@@ -12,6 +12,7 @@ const paths = {
   tasks: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="m7 9 1.5 1.5L11 8m2 1h4m-10 7 1.5 1.5L11 15m2 1h4" /></>,
   library: <><path d="M4 4h5v16H4zm5 0h5v16H9zm7 1 4-1 2 16-4 1z" /></>,
   ball: <><circle cx="12" cy="12" r="9" /><path d="m12 8 4 3-1.5 4h-5L8 11zm0 0-2-5m6 8 5-1m-6 5 3 5m-9-5-3 5m2-9-5-1" /></>,
+  video: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m10 9 5 3-5 3z" /></>,
   chart: <><path d="M3 20h18M5 17v-5h3v5m3 0V7h3v10m3 0v-8h3v8" /></>,
   group: <><circle cx="8" cy="8" r="2.5" /><circle cx="16" cy="8" r="2.5" /><path d="M2 20v-2a6 6 0 0 1 12 0v2m-1-7a6 6 0 0 1 9 5v2h-5" /></>,
   clipboard: <><rect x="5" y="4" width="14" height="18" rx="2" /><path d="M9 4V2h6v2m-6 7h6m-6 4h6m-6 4h4" /></>,
