@@ -10,7 +10,7 @@
     "dev": "vite",
     "dev:video-lab": "node scripts/localVideoLab.mjs",
     "build:video-lab": "node scripts/localVideoLab.mjs --build",
-    "test:video-lab": "node src/videoLab/model.test.js && node src/videoLab/localAnalysisStore.test.js && node src/videoLab/matchAssociations.test.js && node scripts/videoLabIsolation.test.mjs && node scripts/videoLabSwitchUi.test.mjs",
+    "test:video-lab": "node src/videoLab/model.test.js && node src/videoLab/localAnalysisStore.test.js && node src/videoLab/matchAssociations.test.js && node scripts/videoLabIsolation.test.mjs && node scripts/videoLabSwitchUi.test.mjs && node scripts/videoLabAuthorizedScope.test.mjs",
     "dev:preview": "node scripts/localPreview.mjs",
     "dev:staging": "node scripts/checkStagingEnv.mjs",
     "dev:libya": "node scripts/checkLibyaEnv.mjs",

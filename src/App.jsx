@@ -38296,7 +38296,8 @@ function CtsWorkspace({ controlledSession, selectedCtsId, availableContexts = []
           </section>}
           {LOCAL_VIDEO_LAB_ENABLED && activeTab === 'Videoanálisis' && LocalVideoAnalysisLab &&
             <React.Suspense fallback={<p role="status">Cargando Videoanálisis local…</p>}>
-              <LocalVideoAnalysisLab key={context.id} embedded context={context} matches={matches}
+              <LocalVideoAnalysisLab key={`${controlledSession?.user?.id || ''}:${context.id}:${context.role}:${context.seasonStatus}`}
+                embedded context={context} matches={matches}
                 userId={controlledSession?.user?.id || ''} />
             </React.Suspense>}
           {activeTab === 'Mi historial' && <section>

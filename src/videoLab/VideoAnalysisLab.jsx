@@ -242,7 +242,7 @@ export default function VideoAnalysisLab({ embedded = false, context = null, mat
         setSaveStatus(previousStatus);
         return;
       }
-      if (draft) {
+      if (draft?.revision) {
         await queueSave(snapshotLocalAnalysis(draft.analysis, draft.clips));
       }
       const found = await findLocalAnalysisByFingerprint(fingerprint);
@@ -299,7 +299,7 @@ export default function VideoAnalysisLab({ embedded = false, context = null, mat
     transitionBusyRef.current = true;
     setSaveStatus('switching');
     try {
-      if (draft) await queueSave(snapshotLocalAnalysis(draft.analysis, draft.clips));
+      if (draft?.revision) await queueSave(snapshotLocalAnalysis(draft.analysis, draft.clips));
       videoRef.current?.pause();
       activeRangeRef.current = null;
       setSource(null);
@@ -350,7 +350,7 @@ export default function VideoAnalysisLab({ embedded = false, context = null, mat
     transitionBusyRef.current = true;
     setSaveStatus('switching');
     try {
-      if (draft) await queueSave(snapshotLocalAnalysis(draft.analysis, draft.clips));
+      if (draft?.revision) await queueSave(snapshotLocalAnalysis(draft.analysis, draft.clips));
       videoRef.current?.pause();
       activeRangeRef.current = null;
       setSource(null);

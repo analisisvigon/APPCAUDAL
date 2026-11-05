@@ -67,7 +67,8 @@ export default function AuthorizedVideoAnalysis({ client, userId, preferredConte
       {scope.status === 'error' && <span role="alert" className="text-amber-200">No se pudo verificar este contexto y sus partidos.</span>}
       {scope.status === 'empty' && <span>No hay equipos y temporadas autorizados.</span>}
     </div>
-    {scope.status === 'ready' && <VideoAnalysisLab key={scope.context.id} embedded
+    {scope.status === 'ready' && <VideoAnalysisLab
+      key={`${userId}:${scope.context.id}:${scope.context.role}:${scope.context.seasonStatus}`} embedded
       context={scope.context} matches={scope.matches} userId={userId} />}
   </div>;
 }
