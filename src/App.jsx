@@ -45,6 +45,9 @@ import PhysioPage from './components/physio/PhysioPage';
 const LocalVideoAnalysisLab = import.meta.env.DEV
   ? React.lazy(() => import('./videoLab/VideoAnalysisLab'))
   : null;
+const AuthorizedVideoAnalysis = import.meta.env.DEV
+  ? React.lazy(() => import('./components/video/AuthorizedVideoAnalysis'))
+  : null;
 import AccordionSection from './components/shared/AccordionSection';
 import PlayerNameTooltip from './components/shared/PlayerNameTooltip';
 import StatusMessage from './components/shared/StatusMessage';
@@ -33534,10 +33537,11 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             leagueLogoUrl={competitions.find((competition) => competition.key === 'league')?.logoUrl || ''} />
         ) : null}
 
-        {LOCAL_VIDEO_LAB_ENABLED && activeTab === 'Videoanálisis' && LocalVideoAnalysisLab ? (
+        {LOCAL_VIDEO_LAB_ENABLED && activeTab === 'Videoanálisis' && AuthorizedVideoAnalysis ? (
           <main className="min-w-0 pb-8">
             <React.Suspense fallback={<p className="p-5 text-sm text-slate-300">Cargando Videoanálisis local…</p>}>
-              <LocalVideoAnalysisLab embedded />
+              <AuthorizedVideoAnalysis client={supabase} userId={session?.user?.id || ''}
+                preferredContextId={selectedCtsId || ''} />
             </React.Suspense>
           </main>
         ) : null}
@@ -38036,8 +38040,10 @@ const CTS_NAV_TABS = [
   'Inicio', 'Plantilla', 'Perfiles', 'Equipos', 'Partidos', 'Biblioteca',
   'Tareas', 'Sesiones', 'Rendimiento', 'Fisio', 'Multas',
   'Registro Delegado', 'Análisis Grupal', 'Mi historial',
+  ...(LOCAL_VIDEO_LAB_ENABLED ? ['Videoanálisis'] : []),
 ];
-const CTS_READ_TABS = new Set(['Inicio', 'Plantilla', 'Partidos']);
+const CTS_READ_TABS = new Set(['Inicio', 'Plantilla', 'Partidos',
+  ...(LOCAL_VIDEO_LAB_ENABLED ? ['Videoanálisis'] : [])]);
 
 function CtsPlayerForm({ player, busy, error, onCancel, onSave }) {
   const [draft, setDraft] = useState({
@@ -38288,6 +38294,11 @@ function CtsWorkspace({ controlledSession, selectedCtsId, availableContexts = []
             </article>)}</div>
             {!matches.length && <p className="mt-4 rounded-2xl bg-white/5 p-5 text-slate-400">No hay partidos vinculados a este CTS.</p>}
           </section>}
+          {LOCAL_VIDEO_LAB_ENABLED && activeTab === 'Videoanálisis' && LocalVideoAnalysisLab &&
+            <React.Suspense fallback={<p role="status">Cargando Videoanálisis local…</p>}>
+              <LocalVideoAnalysisLab key={context.id} embedded context={context} matches={matches}
+                userId={controlledSession?.user?.id || ''} />
+            </React.Suspense>}
           {activeTab === 'Mi historial' && <section>
             <h2 className="text-2xl font-black">Mi historial</h2>
             <p className="mt-2 text-sm text-slate-400">Otros contextos autorizados. La apertura de cada temporada cerrada se verifica de nuevo en el backend.</p>

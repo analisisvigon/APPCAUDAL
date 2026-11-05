@@ -8,6 +8,9 @@ import {
   ANALYSIS_VERSION, findLocalAnalysisByFingerprint, fingerprintLocalFile, listLocalAnalyses,
   newLocalAnalysis, saveLocalAnalysis, snapshotLocalAnalysis,
 } from './localAnalysisStore';
+import {
+  associateLocalAnalysis, canSeeLocalAnalysis, isAnalysisForMatch, preparePreMatches,
+} from './matchAssociations';
 import './videoLab.css';
 
 const uid = () => crypto.randomUUID();
@@ -32,12 +35,13 @@ function Drawing({ annotation, selected = false, onSelect }) {
     x2={x2 * 1000} y2={y2 * 1000} markerEnd="url(#arrow-tip)" />;
 }
 
-export default function VideoAnalysisLab({ embedded = false }) {
+export default function VideoAnalysisLab({ embedded = false, context = null, matches = [], userId = '' }) {
   const videoRef = useRef(null);
   const stageRef = useRef(null);
   const fileRef = useRef(null);
   const fileSelectionModeRef = useRef('relink');
   const fileBusyRef = useRef(false);
+  const transitionBusyRef = useRef(false);
   const saveQueueRef = useRef(Promise.resolve());
   const activeRangeRef = useRef(null);
   const drawingRef = useRef(null);
@@ -66,15 +70,29 @@ export default function VideoAnalysisLab({ embedded = false }) {
   const [history, setHistory] = useState({ past: [], future: [] });
   const [message, setMessage] = useState('');
   const [fileMismatch, setFileMismatch] = useState(false);
+  const [selectedMatchId, setSelectedMatchId] = useState('');
+  const preMatches = useMemo(() => preparePreMatches(matches, context), [matches, context]);
+  const selectedMatch = preMatches.find((match) => match.id === selectedMatchId) || null;
+  const scopedMode = embedded;
+  const scopeWritable = !scopedMode || context?.seasonStatus === 'open';
   const analysis = draft?.analysis || null;
   const clips = draft?.clips || [];
   const sourceVerified = Boolean(source && analysis && source.id === analysis.id);
-  const canEdit = sourceVerified && duration > 0 && saveStatus !== 'verifying';
+  const canView = sourceVerified && duration > 0 &&
+    (!scopedMode || (selectedMatch && (!analysis.matchPreId || isAnalysisForMatch(analysis, selectedMatch.id, context))));
+  const canEdit = canView && scopeWritable && !transitionBusyRef.current &&
+    !['verifying', 'switching'].includes(saveStatus);
   const propertiesDirty = Boolean(selectedId && clipDraft && clips.some((clip) => clip.id === selectedId &&
     (clip.title !== clipDraft.title || clip.in !== Number(clipDraft.in) ||
       clip.out !== Number(clipDraft.out) || clip.observations !== clipDraft.observations)));
   const draftRef = useRef(null);
   draftRef.current = draft;
+  const visibleRows = (rows) => scopedMode
+    ? rows.filter((row) => canSeeLocalAnalysis(row, { userId, ownerRole: context?.role, context }))
+    : rows;
+  const displayedAnalyses = scopedMode
+    ? savedAnalyses.filter((row) => selectedMatch && (isAnalysisForMatch(row, selectedMatch.id, context) || !row.matchPreId))
+    : savedAnalyses;
 
   const queueSave = (record) => {
     const next = saveQueueRef.current.catch(() => {}).then(() => saveLocalAnalysis(record));
@@ -82,18 +100,33 @@ export default function VideoAnalysisLab({ embedded = false }) {
     return next;
   };
   const setClips = (update) => setDraft((current) => {
-    if (!current || !sourceVerified) return current;
+    if (!current || !sourceVerified || transitionBusyRef.current || fileBusyRef.current) return current;
     const nextClips = typeof update === 'function' ? update(current.clips) : update;
     return { ...current, clips: nextClips, revision: current.revision + 1 };
   });
 
   useEffect(() => {
     let active = true;
+    const previous = draftRef.current;
+    if (previous?.revision) void queueSave(snapshotLocalAnalysis(previous.analysis, previous.clips));
+    setSource(null);
+    setDraft(null);
+    setSavedAnalyses([]);
+    setSelectedMatchId('');
+    setSelectedId(null);
+    if (scopedMode && (!context?.id || !userId)) {
+      setSaveStatus('error');
+      setMessage('No se pudo verificar la identidad y el equipo-temporada.');
+      return undefined;
+    }
     listLocalAnalyses().then((rows) => {
       if (!active) return;
-      setSavedAnalyses(rows);
-      if (rows.length) setDraft({ analysis: rows[0], clips: rows[0].clips, revision: 0 });
-      setSaveStatus(rows.length ? 'saved' : 'idle');
+      const accessible = visibleRows(rows);
+      setSavedAnalyses(accessible);
+      if (!scopedMode && accessible.length) {
+        setDraft({ analysis: accessible[0], clips: accessible[0].clips, revision: 0 });
+      }
+      setSaveStatus(!scopedMode && accessible.length ? 'saved' : 'idle');
       setLibraryReady(true);
     }).catch(() => {
       if (!active) return;
@@ -101,7 +134,7 @@ export default function VideoAnalysisLab({ embedded = false }) {
       setSaveStatus('error');
     });
     return () => { active = false; };
-  }, []);
+  }, [scopedMode, context?.id, context?.role, context?.seasonStatus, userId]);
 
   useEffect(() => {
     if (!draft?.revision) return;
@@ -111,7 +144,7 @@ export default function VideoAnalysisLab({ embedded = false }) {
       .then(async () => {
         if (draftRef.current === currentDraft) setSaveStatus('saved');
         const rows = await listLocalAnalyses();
-        setSavedAnalyses(rows);
+        setSavedAnalyses(visibleRows(rows));
       }).catch(() => {
         if (draftRef.current === currentDraft) {
           setSaveStatus('error');
@@ -121,7 +154,7 @@ export default function VideoAnalysisLab({ embedded = false }) {
   }, [draft]);
 
   useEffect(() => {
-    if (!['saving', 'error'].includes(saveStatus)) return undefined;
+    if (!['saving', 'switching', 'error'].includes(saveStatus)) return undefined;
     const warnBeforeExit = (event) => { event.preventDefault(); event.returnValue = ''; };
     window.addEventListener('beforeunload', warnBeforeExit);
     return () => window.removeEventListener('beforeunload', warnBeforeExit);
@@ -178,7 +211,15 @@ export default function VideoAnalysisLab({ embedded = false }) {
       setMessage('Selecciona un archivo MP4 local. No se subirá a ningún servidor.');
       return;
     }
-    if (!libraryReady || fileBusyRef.current) return;
+    if (!libraryReady || fileBusyRef.current || transitionBusyRef.current) return;
+    if (scopedMode && !selectedMatch) {
+      setMessage('Selecciona primero el partido PRE de este equipo y temporada.');
+      return;
+    }
+    if (scopedMode && !scopeWritable && mode === 'switch') {
+      setMessage('Temporada cerrada: puedes consultar vídeos asociados, pero no añadir otro análisis.');
+      return;
+    }
     if (mode === 'switch' && propertiesDirty &&
         !window.confirm('Hay cambios del corte sin aplicar. ¿Descartarlos y cambiar de vídeo?')) return;
     fileBusyRef.current = true;
@@ -190,7 +231,9 @@ export default function VideoAnalysisLab({ embedded = false }) {
       fingerprint = await fingerprintLocalFile(file, setFingerprintProgress);
       if (mode === 'relink' && analysis && fingerprint !== analysis.source.fingerprint) {
         setFileMismatch(true);
-        setMessage('Este MP4 no coincide con el vídeo original. Los cortes siguen protegidos; selecciona el archivo correcto o pulsa «Otro vídeo».');
+        setMessage(scopeWritable
+          ? 'Este MP4 no coincide con el vídeo original. Los cortes siguen protegidos; selecciona el archivo correcto o pulsa «Otro vídeo».'
+          : 'Este MP4 no coincide con el vídeo original. La temporada cerrada permite consultar solo el archivo correcto.');
         setSaveStatus(previousStatus);
         return;
       }
@@ -203,10 +246,25 @@ export default function VideoAnalysisLab({ embedded = false }) {
         await queueSave(snapshotLocalAnalysis(draft.analysis, draft.clips));
       }
       const found = await findLocalAnalysisByFingerprint(fingerprint);
-      const nextAnalysis = found || newLocalAnalysis({ id: uid(), file, fingerprint });
       if (found && (found.version !== ANALYSIS_VERSION || !Array.isArray(found.clips))) {
         throw new Error('Versión de análisis local no compatible.');
       }
+      if (scopedMode && found && !canSeeLocalAnalysis(found,
+        { userId, ownerRole: context?.role, context })) {
+        throw new Error('Este análisis local pertenece a otra identidad o a otro equipo-temporada.');
+      }
+      if (scopedMode && found?.matchPreId && !isAnalysisForMatch(found, selectedMatch.id, context)) {
+        throw new Error('Este MP4 ya está asociado a otro partido PRE. Selecciona ese partido para abrirlo.');
+      }
+      if (scopedMode && !scopeWritable && !found?.matchPreId) {
+        throw new Error('Temporada cerrada: no se pueden vincular análisis nuevos o sin partido.');
+      }
+      const freshAnalysis = newLocalAnalysis({ id: uid(), file, fingerprint,
+        ownerUserId: scopedMode ? userId : null });
+      const nextAnalysis = found || (scopedMode
+        ? associateLocalAnalysis(freshAnalysis, selectedMatch, context, userId)
+        : freshAnalysis);
+      if (!nextAnalysis) throw new Error('El partido no coincide con el equipo-temporada autorizado.');
       if (!found || found.id !== analysis?.id) {
         setDraft({ analysis: nextAnalysis, clips: nextAnalysis.clips, revision: found ? 0 : 1 });
         setSelectedId(null);
@@ -233,10 +291,64 @@ export default function VideoAnalysisLab({ embedded = false }) {
     }
   };
 
+  const chooseMatch = async (matchId) => {
+    if (transitionBusyRef.current || fileBusyRef.current) return;
+    if (matchId === selectedMatchId) return;
+    if (matchId && !preMatches.some((match) => match.id === matchId)) return;
+    if (propertiesDirty && !window.confirm('Hay cambios del corte sin aplicar. ¿Descartarlos y cambiar de partido?')) return;
+    transitionBusyRef.current = true;
+    setSaveStatus('switching');
+    try {
+      if (draft) await queueSave(snapshotLocalAnalysis(draft.analysis, draft.clips));
+      videoRef.current?.pause();
+      activeRangeRef.current = null;
+      setSource(null);
+      setDraft(null);
+      setSelectedId(null);
+      setDuration(0);
+      setTime(0);
+      setVideoSize({ width: 0, height: 0 });
+      setSelectedMatchId(matchId);
+      setSaveStatus('idle');
+      setFileMismatch(false);
+      setMessage(matchId ? 'Selecciona un vídeo del partido o añade un MP4 local.' : 'Selecciona un partido PRE.');
+    } catch {
+      setSaveStatus('error');
+      setMessage('No se pudo guardar el análisis actual; se ha cancelado el cambio de partido.');
+    } finally {
+      transitionBusyRef.current = false;
+    }
+  };
+
+  const attachCurrentAnalysis = () => {
+    if (!scopeWritable || !scopedMode || !selectedMatch || !draft || analysis.matchPreId ||
+        transitionBusyRef.current || fileBusyRef.current) return;
+    const linked = associateLocalAnalysis(analysis, selectedMatch, context, userId);
+    if (!linked) {
+      setMessage('No se pudo vincular este análisis al partido y equipo-temporada seleccionados.');
+      return;
+    }
+    setDraft((current) => ({ ...current, analysis: linked, revision: current.revision + 1 }));
+    setMessage('Análisis anterior vinculado a este PRE. Se está guardando localmente.');
+  };
+
+  const changeOriginalEncounter = (value) => {
+    if (!scopeWritable || !draft || !analysis || transitionBusyRef.current || fileBusyRef.current) return;
+    setDraft((current) => ({ ...current,
+      analysis: { ...current.analysis, originalEncounterName: value },
+      revision: current.revision + 1 }));
+  };
+
   const selectSavedAnalysis = async (row) => {
+    if (transitionBusyRef.current || fileBusyRef.current) return;
     if (row.id === analysis?.id) return;
+    if (scopedMode && (!selectedMatch || !canSeeLocalAnalysis(row,
+      { userId, ownerRole: context?.role, context }) ||
+      (row.matchPreId && !isAnalysisForMatch(row, selectedMatch.id, context)))) return;
     if (propertiesDirty &&
         !window.confirm('Hay cambios del corte sin aplicar. ¿Descartarlos y abrir otro análisis?')) return;
+    transitionBusyRef.current = true;
+    setSaveStatus('switching');
     try {
       if (draft) await queueSave(snapshotLocalAnalysis(draft.analysis, draft.clips));
       videoRef.current?.pause();
@@ -253,6 +365,8 @@ export default function VideoAnalysisLab({ embedded = false }) {
     } catch {
       setSaveStatus('error');
       setMessage('No se pudo guardar el análisis actual; se ha cancelado el cambio.');
+    } finally {
+      transitionBusyRef.current = false;
     }
   };
 
@@ -263,7 +377,7 @@ export default function VideoAnalysisLab({ embedded = false }) {
     try {
       await queueSave(snapshotLocalAnalysis(current.analysis, current.clips));
       if (draftRef.current === current) setSaveStatus('saved');
-      setSavedAnalyses(await listLocalAnalyses());
+      setSavedAnalyses(visibleRows(await listLocalAnalyses()));
       setMessage('Análisis guardado en este navegador.');
     } catch {
       setSaveStatus('error');
@@ -318,7 +432,7 @@ export default function VideoAnalysisLab({ embedded = false }) {
   };
 
   const chooseClip = (clip) => {
-    if (!canEdit) return;
+    if (!canView) return;
     videoRef.current?.pause();
     activeRangeRef.current = null;
     setSelectedId(clip.id);
@@ -485,11 +599,27 @@ export default function VideoAnalysisLab({ embedded = false }) {
 
     <main className="lab-grid">
       <section className="workspace" aria-label="Mesa de análisis">
+        {scopedMode && <div className="match-scope">
+          <div><span className="eyebrow">PARTIDO PRE · EQUIPO Y TEMPORADA AUTORIZADOS</span>
+            <strong>{context.teamName} · {context.seasonLabel}</strong>
+            <small>{context.seasonStatus === 'closed' ? 'Temporada cerrada · consulta local' : 'Temporada abierta · edición local'}</small>
+          </div>
+          <label>Partido que estás preparando
+            <select value={selectedMatchId} onChange={(event) => { void chooseMatch(event.target.value); }}>
+              <option value="">Selecciona un partido PRE</option>
+              {preMatches.map((match) => <option key={match.id} value={match.id}>
+                {match.date || 'Sin fecha'} · {match.opponent} · {match.status}
+              </option>)}
+            </select>
+          </label>
+          {!preMatches.length && <span className="match-scope-empty">No hay partidos vinculados a este equipo-temporada. Videoanálisis no crea partidos.</span>}
+        </div>}
         <div className="workspace-heading">
           <div><span className="eyebrow">FUENTE DE VÍDEO</span><h1>{analysis?.source?.name || 'Nuevo análisis'}</h1>
             <span className={`save-indicator ${saveStatus}`}>{saveStatus === 'verifying'
               ? `Verificando MP4 · ${Math.round(fingerprintProgress * 100)} %`
               : ({ loading: 'Abriendo almacenamiento local…', idle: 'Sin análisis', saving: 'Guardando cambios…',
+                switching: 'Guardando antes de cambiar…',
                 saved: 'Guardado en este navegador', error: 'Guardado pendiente · error' })[saveStatus]}</span>
           </div>
           <input ref={fileRef} className="visually-hidden" type="file" accept="video/mp4,.mp4"
@@ -497,13 +627,25 @@ export default function VideoAnalysisLab({ embedded = false }) {
         </div>
 
         <div className="source-actions" aria-label="Gestión de vídeos locales">
-          <button className="button button-secondary" disabled={!libraryReady || saveStatus === 'verifying'}
+          <button className="button button-secondary" disabled={!libraryReady || ['verifying', 'switching'].includes(saveStatus) ||
+            (scopedMode && (!selectedMatch || (!scopeWritable && !analysis)))}
             onClick={() => openFilePicker(analysis ? 'relink' : 'switch')}>
             {analysis ? 'Seleccionar MP4 original' : 'Abrir MP4 local'}
           </button>
-          {analysis && <button className="button button-primary" disabled={!libraryReady || saveStatus === 'verifying'}
+          {(analysis || (scopedMode && selectedMatch && scopeWritable)) && <button className="button button-primary"
+            disabled={!libraryReady || ['verifying', 'switching'].includes(saveStatus) || (scopedMode && !scopeWritable)}
             onClick={() => openFilePicker('switch')}>Otro vídeo</button>}
         </div>
+        {scopedMode && analysis && <div className="video-link-details">
+          {analysis.matchPreId ? <span>Asociado a PRE: {selectedMatch?.opponent || analysis.matchPre?.opponent}</span>
+            : <button className="button button-primary" disabled={!scopeWritable || !selectedMatch}
+              onClick={attachCurrentAnalysis}>Vincular este análisis anterior al PRE</button>}
+          <label>Encuentro original del vídeo (opcional)
+            <input value={analysis.originalEncounterName || ''} disabled={!scopeWritable}
+              placeholder="Ej.: Rival contra otro equipo · no se crea un partido"
+              onChange={(event) => changeOriginalEncounter(event.target.value)} />
+          </label>
+        </div>}
 
         <div className="stage-wrap" onDragOver={(event) => event.preventDefault()}
           onDrop={(event) => { event.preventDefault(); void pickFile(event.dataTransfer.files?.[0], sourceVerified ? 'switch' : 'relink'); }}>
@@ -520,11 +662,15 @@ export default function VideoAnalysisLab({ embedded = false }) {
               onPause={() => setPlaying(false)} onEnded={() => {
                 activeRangeRef.current = null; setPlaying(false);
               }} onError={() => setMessage('No se puede reproducir este MP4 con el códec disponible en el navegador.')} />
-              : <div className="stage-empty" onClick={() => openFilePicker(analysis ? 'relink' : 'switch')} role="button" tabIndex={0}
-                onKeyDown={(event) => { if (event.key === 'Enter') openFilePicker(analysis ? 'relink' : 'switch'); }}>
+              : <div className="stage-empty" onClick={() => {
+                if (!scopedMode || (selectedMatch && scopeWritable)) openFilePicker(analysis ? 'relink' : 'switch');
+              }} role="button" tabIndex={0}
+                onKeyDown={(event) => { if (event.key === 'Enter' && (!scopedMode || (selectedMatch && scopeWritable)))
+                  openFilePicker(analysis ? 'relink' : 'switch'); }}>
                 <span className="stage-empty-icon">▶</span><h2>{analysis ? 'Vuelve a seleccionar el MP4 original' : 'Tu mesa de análisis empieza aquí'}</h2>
-                <p>{analysis ? `${clips.length} cortes recuperados. El archivo se verificará antes de habilitarlos.`
-                  : 'Arrastra un MP4 al campo o selecciónalo desde el equipo.'}</p>
+                <p>{scopedMode && !selectedMatch ? 'Selecciona primero el partido PRE.'
+                  : analysis ? `${clips.length} cortes recuperados. El archivo se verificará antes de habilitarlos.`
+                    : 'Arrastra un MP4 al campo o selecciónalo desde el equipo.'}</p>
                 <span>El MP4 no se sube ni se copia a IndexedDB.</span>
               </div>}
             {source && imageRect && <svg className={`video-overlay ${tool === 'select' ? 'select-mode' : 'draw-mode'}`}
@@ -575,10 +721,10 @@ export default function VideoAnalysisLab({ embedded = false }) {
         <div className="transport">
           <div className="transport-top">
             <div className="transport-actions">
-              <button className="play-button" disabled={!duration}
+              <button className="play-button" disabled={!canView}
                 onClick={() => playing ? videoRef.current?.pause() : play()}>{playing ? 'Ⅱ' : '▶'}</button>
-              <button disabled={!duration} onClick={() => seek(time - 5)}>− 5 s</button>
-              <button disabled={!duration} onClick={() => seek(time + 5)}>+ 5 s</button>
+              <button disabled={!canView} onClick={() => seek(time - 5)}>− 5 s</button>
+              <button disabled={!canView} onClick={() => seek(time + 5)}>+ 5 s</button>
               <span className="timecode">{formatTime(time)} <em>/ {formatTime(duration)}</em></span>
             </div>
             <label className="speed-control">Velocidad <select value={speed} onChange={(event) => {
@@ -595,20 +741,20 @@ export default function VideoAnalysisLab({ embedded = false }) {
               {duration > 0 && <><span className="mark in" style={{ left: `${inPoint / duration * 100}%` }} />
                 <span className="mark out" style={{ left: `${outPoint / duration * 100}%` }} /></>}
               <input type="range" aria-label="Línea temporal" min="0" max={duration || 1}
-                value={Math.min(time, duration || 1)} step="0.04" disabled={!duration}
+                value={Math.min(time, duration || 1)} step="0.04" disabled={!canView}
                 onChange={(event) => seek(event.target.value)} />
             </div>
             <div className="timeline-scale"><span>00:00</span><span>{formatTime(duration / 2)}</span><span>{formatTime(duration)}</span></div>
           </div>
           <div className="mark-controls">
-            <button disabled={!duration} onClick={() => setInPoint(time)}>Marcar IN <strong>{formatTime(inPoint)}</strong></button>
-            <button disabled={!duration} onClick={() => setOutPoint(time)}>Marcar OUT <strong>{formatTime(outPoint)}</strong></button>
+            <button disabled={!canEdit} onClick={() => setInPoint(time)}>Marcar IN <strong>{formatTime(inPoint)}</strong></button>
+            <button disabled={!canEdit} onClick={() => setOutPoint(time)}>Marcar OUT <strong>{formatTime(outPoint)}</strong></button>
             <input aria-label="Título del nuevo corte" placeholder="Título del nuevo corte (opcional)"
-              value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} />
-            <button className="button button-primary" disabled={!duration} onClick={addClip}>+ Crear corte</button>
+              value={draftTitle} disabled={!canEdit} onChange={(event) => setDraftTitle(event.target.value)} />
+            <button className="button button-primary" disabled={!canEdit} onClick={addClip}>+ Crear corte</button>
           </div>
           {message && <div className="status-message" role="status">{message}
-            {fileMismatch && <button type="button" className="button button-primary mismatch-switch"
+            {fileMismatch && scopeWritable && <button type="button" className="button button-primary mismatch-switch"
               onClick={() => openFilePicker('switch')}>Otro vídeo</button>}
           </div>}
         </div>
@@ -616,12 +762,15 @@ export default function VideoAnalysisLab({ embedded = false }) {
 
       <aside className="side-panel" aria-label="Biblioteca de cortes">
         <div className="local-analyses">
-          <span className="eyebrow">ANÁLISIS EN ESTE NAVEGADOR</span>
-          {savedAnalyses.length ? savedAnalyses.map((row) =>
+          <span className="eyebrow">{scopedMode ? 'VÍDEOS DEL PARTIDO Y ANÁLISIS SIN VINCULAR' : 'ANÁLISIS EN ESTE NAVEGADOR'}</span>
+          {displayedAnalyses.length ? displayedAnalyses.map((row) =>
             <button key={row.id} className={`local-analysis-item ${row.id === analysis?.id ? 'active' : ''}`}
-              onClick={() => void selectSavedAnalysis(row)} disabled={row.id === analysis?.id || saveStatus === 'verifying'}>
-              <strong>{row.source.name}</strong><small>{row.clips.length} cortes · {new Date(row.updatedAt).toLocaleString('es-ES')}</small>
-            </button>) : <p>Aún no hay análisis guardados.</p>}
+              onClick={() => void selectSavedAnalysis(row)} disabled={row.id === analysis?.id || ['verifying', 'switching'].includes(saveStatus)}>
+              <strong>{row.source.name}</strong>
+              <small>{scopedMode ? (row.matchPreId ? 'Vinculado al PRE' : 'Sin partido · selecciónalo para vincular') + ' · ' : ''}
+                {row.clips.length} cortes · {new Date(row.updatedAt).toLocaleString('es-ES')}</small>
+            </button>) : <p>{scopedMode && !selectedMatch ? 'Selecciona primero un partido PRE.'
+              : 'Aún no hay vídeos asociados a este partido.'}</p>}
           {saveStatus === 'error' && draft && <button className="retry-save" onClick={() => void retrySave()}>Reintentar guardado</button>}
         </div>
         <div className="side-heading"><div><span className="eyebrow">BORRADOR ACTUAL</span>
@@ -629,11 +778,11 @@ export default function VideoAnalysisLab({ embedded = false }) {
         <div className="clip-list">
           {clips.length ? clips.map((clip, index) => <div key={clip.id}
             className={`clip-card ${clip.id === selectedId ? 'active' : ''}`}>
-            <button className="clip-select" onClick={() => chooseClip(clip)} disabled={!canEdit}>
+            <button className="clip-select" onClick={() => chooseClip(clip)} disabled={!canView}>
               <span className="clip-index">{String(index + 1).padStart(2, '0')}</span>
               <span><strong>{clip.title}</strong><small>{formatTime(clip.in)} → {formatTime(clip.out)} · {(clip.out - clip.in).toFixed(1)} s</small></span>
             </button>
-            <button className="clip-play" title={`Reproducir ${clip.title}`} disabled={!canEdit} onClick={() => {
+            <button className="clip-play" title={`Reproducir ${clip.title}`} disabled={!canView} onClick={() => {
               chooseClip(clip); play({ id: clip.id, in: clip.in, out: clip.out });
             }}>▶</button>
           </div>) : <div className="side-empty"><span>✂</span><p>Marca IN y OUT en la línea temporal para crear el primer corte.</p></div>}
@@ -654,7 +803,7 @@ export default function VideoAnalysisLab({ embedded = false }) {
             placeholder="Análisis particular de este corte…"
             onChange={(event) => changeClipProperty('observations', event.target.value)} /></label>
           <div className="property-actions"><button className="button button-primary" onClick={saveClipProperties} disabled={!canEdit}>Aplicar cambios</button>
-            <button className="button button-secondary" disabled={!canEdit} onClick={() => play({ id: selectedClip.id,
+            <button className="button button-secondary" disabled={!canView} onClick={() => play({ id: selectedClip.id,
               in: selectedClip.in, out: selectedClip.out })}>Reproducir corte</button></div>
           <button className="text-danger" disabled={!canEdit} onClick={() => removeClip(selectedClip.id)}>Eliminar corte del borrador</button>
           <div className="annotation-panel"><span className="eyebrow">DIBUJOS DEL CORTE · {selectedClip.annotations.length}</span>

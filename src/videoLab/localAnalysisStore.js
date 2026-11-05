@@ -73,7 +73,7 @@ export async function fingerprintLocalFile(file, onProgress = () => {}) {
   return `${file.size}:${Array.from(chain, (value) => value.toString(16).padStart(2, '0')).join('')}`;
 }
 
-export function newLocalAnalysis({ id, file, fingerprint }) {
+export function newLocalAnalysis({ id, file, fingerprint, ownerUserId = null }) {
   const now = new Date().toISOString();
   return {
     id,
@@ -81,6 +81,9 @@ export function newLocalAnalysis({ id, file, fingerprint }) {
     source: { name: file.name, size: file.size, lastModified: file.lastModified,
       type: file.type || 'video/mp4', fingerprint },
     matchPreId: null,
+    matchPre: null,
+    ownerUserId,
+    originalEncounterName: '',
     clips: [],
     createdAt: now,
     updatedAt: now,
