@@ -1,0 +1,28 @@
+.task-export-portal { position: absolute; left: -20000px; top: 0; width: 210mm; visibility: hidden; pointer-events: none; }
+.task-export-sheet { box-sizing: border-box; width: 210mm; min-height: 297mm; padding: 10mm 12mm; background: #fff; color: #111827; font-family: Inter, Arial, sans-serif; break-after: page; page-break-after: always; }
+.task-export-sheet:last-child { break-after: auto; page-break-after: auto; }
+.task-export-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8mm; padding-bottom: 4mm; border-bottom: 1.5pt solid #111827; }
+.task-export-header p { margin: 0 0 1.5mm; color: #475569; font-size: 7.5pt; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+.task-export-header h1 { margin: 0; font-size: 18pt; line-height: 1.15; overflow-wrap: anywhere; }
+.task-export-page { flex: none; text-align: right; }
+.task-export-page strong { display: block; font-size: 11pt; }
+.task-export-page span { display: block; margin-top: 1mm; color: #475569; font-size: 7.5pt; }
+.task-export-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2mm; margin-top: 4mm; }
+.task-export-summary .task-export-field { border: 1pt solid #cbd5e1; padding: 2mm; }
+.task-export-content { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3mm 5mm; margin-top: 5mm; }
+.task-export-field { min-width: 0; break-inside: auto; page-break-inside: auto; }
+.task-export-field-wide { grid-column: 1 / -1; }
+.task-export-field h3, .task-export-board h2 { margin: 0 0 1mm; color: #334155; font-size: 7.5pt; font-weight: 900; letter-spacing: .09em; text-transform: uppercase; }
+.task-export-field p { margin: 0; font-size: 9pt; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; }
+.task-export-board { margin-top: 6mm; break-inside: avoid; page-break-inside: avoid; }
+.task-export-board > div { display: flex; align-items: center; justify-content: center; width: 100%; height: auto; min-height: 75mm; overflow: visible; background: #0b1e16; }
+.task-export-board svg { display: block; width: 100%; height: auto; max-height: 125mm; aspect-ratio: 100 / 72; }
+.task-export-board-empty { box-sizing: border-box; border: 1pt dashed #94a3b8; background: #f8fafc !important; color: #64748b; font-size: 9pt; }
+
+@media print {
+  html:has(body > .task-export-portal), body:has(> .task-export-portal) { width: 210mm !important; margin: 0 !important; padding: 0 !important; }
+  body:has(> .task-export-portal) > :not(.task-export-portal):not(script):not(style) { display: none !important; }
+  body > .task-export-portal, body > .task-export-portal * { visibility: visible !important; }
+  body > .task-export-portal { position: static !important; left: auto !important; top: auto !important; width: 210mm !important; pointer-events: auto !important; }
+  .task-export-sheet, .task-export-sheet * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+}
