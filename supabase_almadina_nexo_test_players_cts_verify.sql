@@ -12,7 +12,9 @@ target as (
     team.id as team_id, team.code as team_code,
     legacy_team.name as team_name, legacy_team.team_kind,
     season.id as season_id, season.label as season_label,
-    season.status as season_status
+    season.status as season_status,
+    season.starts_on as season_starts_on,
+    season.ends_on as season_ends_on
   from public.club_team_seasons cts
   join public.clubs club on club.id = cts.club_id
   join public.club_teams team
@@ -36,6 +38,8 @@ diagnostics as (
     target.season_id as target_season_id,
     target.season_label,
     target.season_status,
+    target.season_starts_on,
+    target.season_ends_on,
     coalesce(stages.row_count, 0) as stage_count,
     coalesce(stages.rows, '[]'::jsonb) as stage_rows,
     coalesce(fichas.row_count, 0) as legacy_player_count,
@@ -141,8 +145,16 @@ select diagnostics.*,
       select 1
       from jsonb_array_elements(stage_rows) as stage(item)
       where stage.item->>'team_id' = target_team_id::text
-        and stage.item->>'season' = season_label
+        and (
+          stage.item->>'season' is null
+          or stage.item->>'season' = season_label
+        )
         and stage.item->>'is_current' = 'true'
+        and stage.item->>'end_date' is null
+        and (
+          stage.item->>'start_date' is null
+          or (stage.item->>'start_date')::date between season_starts_on and season_ends_on
+        )
     ) then 'REVIEW_STAGE_NOT_TARGET_CURRENT_TEAM_SEASON'
     when legacy_player_count <> 1 then 'REVIEW_LEGACY_PLAYER_COUNT'
     when not exists (
@@ -161,6 +173,8 @@ select diagnostics.*,
         on migration.item->>'legacy_player_id' = ficha.item->>'id'
        and migration.item->>'membership_id' = ficha.item->>'membership_id'
        and migration.item->>'global_player_id' = player_id::text
+      where migration.item->>'match_basis' = 'atomic_own_player_create'
+        and migration.item->>'review_status' = 'confirmed'
     ) then 'REVIEW_MIGRATION_IDENTITY_MISMATCH'
     when binding_count <> 0 then 'REVIEW_EXISTING_CTS_BINDING'
     when all_cts_row_count <> 0 then 'REVIEW_EXISTING_CTS_MEMBERSHIP'

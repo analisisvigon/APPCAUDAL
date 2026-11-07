@@ -46,6 +46,8 @@ declare
   target_team_name text;
   target_season_label text;
   target_season_status text;
+  target_season_starts_on date;
+  target_season_ends_on date;
   actor_membership_id uuid;
   actor_membership_count integer;
   profile_name text;
@@ -76,9 +78,10 @@ begin
   end if;
 
   select cts.team_id, cts.club_id, club.name, legacy_team.name,
-    season.label, season.status
+    season.label, season.status, season.starts_on, season.ends_on
     into target_team_id, target_club_id, target_club_name, target_team_name,
-      target_season_label, target_season_status
+      target_season_label, target_season_status, target_season_starts_on,
+      target_season_ends_on
   from public.club_team_seasons cts
   join public.clubs club on club.id = cts.club_id
   join public.club_teams team
@@ -128,9 +131,15 @@ begin
 
   select count(*),
     count(*) filter (where stage.team_id = target_team_id
-      and stage.season = target_season_label and stage.is_current),
+      and (stage.season is null or stage.season = target_season_label)
+      and stage.is_current and stage.end_date is null
+      and (stage.start_date is null
+        or stage.start_date between target_season_starts_on and target_season_ends_on)),
     (min(stage.id::text) filter (where stage.team_id = target_team_id
-      and stage.season = target_season_label and stage.is_current))::uuid
+      and (stage.season is null or stage.season = target_season_label)
+      and stage.is_current and stage.end_date is null
+      and (stage.start_date is null
+        or stage.start_date between target_season_starts_on and target_season_ends_on)))::uuid
     into all_stage_count, stage_count, stage_id
   from public.player_team_memberships stage
   where stage.player_id = p_global_player_id;
@@ -156,7 +165,9 @@ begin
 
   select count(*),
     count(*) filter (where migration.legacy_player_id = ficha_id
-      and migration.membership_id = stage_id)
+      and migration.membership_id = stage_id
+      and migration.match_basis = 'atomic_own_player_create'
+      and migration.review_status = 'confirmed')
     into all_migration_count, migration_count
   from public.legacy_own_player_migration migration
   where migration.global_player_id = p_global_player_id;
