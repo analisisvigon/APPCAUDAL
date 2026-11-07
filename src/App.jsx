@@ -6,7 +6,7 @@ import { supabase } from './lib/supabase';
 import { deleteOwnPlayer } from './data/ownPlayerDeletion';
 import { SportsContextCoordinator, loadAuthorizedSportsContexts, loadOperationalPreferredContextId, verifySelectableSportsContext, verifySportsContext } from './sports/authorizedContext';
 import {
-  assertCtsCreate, assertCtsMatchWrite, canWriteOperationalCts,
+  assertCreatedPlayerInCtsRoster, assertCtsCreate, assertCtsMatchWrite, canWriteOperationalCts,
   createOperationalMatch, createOperationalPlayer, editOperationalMatch,
   editOperationalPlayer, loadCtsMatches, loadCtsRoster,
 } from './sports/ctsSportsData';
@@ -24463,6 +24463,9 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       const draftTeam = teams.find((team) => String(team.id) === String(draft.teamId));
       const isOwnTeamDraft = Boolean(draftTeam?.isOwnClub || draftTeam?.teamKind === 'own');
       const sportsSnapshot = sportsSnapshotRef.current;
+      if (selectedCtsId && sportsSnapshot?.context.id !== selectedCtsId) {
+        throw new Error('El equipo y temporada todavía no están verificados. No se guardó el jugador.');
+      }
       if (sportsSnapshot) {
         if (rivalPlayerModal.mode !== 'create' || !isOwnTeamDraft) {
           throw new Error('Esta edición global todavía no está disponible en el modo por equipo y temporada.');
@@ -24493,9 +24496,10 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       }
       let globalId;
       let membershipId;
+      let atomicIdentity = null;
       if (rivalPlayerModal.mode === 'create' && isOwnTeamDraft) {
         if (sportsSnapshot) sportsContextCoordinatorRef.current.assertWritable(sportsSnapshot);
-        const atomicIdentity = await createOwnPlayerProfileAtomic(supabase, {
+        atomicIdentity = await createOwnPlayerProfileAtomic(supabase, {
           ...draft,
           clubTeamSeasonId: sportsSnapshot?.context.id || null,
         });
@@ -24537,6 +24541,12 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       }
       await loadTeams();
       const ownPlayers = await getScopedJugadores();
+      if (sportsSnapshot && rivalPlayerModal.mode === 'create' && isOwnTeamDraft
+        && !ownPlayers.some((player) => String(player.id) === String(atomicIdentity?.ownPlayerId)
+          && String(player.globalPlayerId || player.global_player_id) === String(globalId)
+          && String(player.membershipId || player.membership_id) === String(membershipId))) {
+        throw new Error('El perfil se creó, pero no se confirmó su vinculación a la plantilla seleccionada. No se completó el alta.');
+      }
       setPlayers(ownPlayers);
       setEmpty(ownPlayers.length === 0);
       const genericSourceSaved = safeArray(draft.sources).some((source) => !['transfermarkt', 'besoccer'].includes(normalizePlayerIdentityName(source.sourceName)));
@@ -38180,12 +38190,18 @@ function CtsWorkspace({ controlledSession, selectedCtsId, availableContexts = []
       } else {
         const positions = { Portero: 'goalkeeper', Defensa: 'defender',
           Centrocampista: 'midfielder', Delantero: 'forward' };
-        await createOperationalPlayer(supabase, coordinatorRef.current, token,
-          crypto.randomUUID(), { name: draft.name.trim(), number: String(patch.number), foot: draft.foot },
+        const playerId = crypto.randomUUID();
+        const result = await createOperationalPlayer(supabase, coordinatorRef.current, token,
+          playerId, { name: draft.name.trim(), number: String(patch.number), foot: draft.foot },
           positions[draft.position] ? [{ position_type: 'natural', position_key: positions[draft.position], is_primary: true }] : []);
+        const roster = await loadCtsRoster(supabase, coordinatorRef.current, token);
+        assertCreatedPlayerInCtsRoster(roster, result, playerId);
+        setSnapshot((current) => coordinatorRef.current.isCurrent(token)
+          ? { ...current, players: roster }
+          : current);
       }
       setEditing(null);
-      setRevision((value) => value + 1);
+      if (editing.row || editing.type === 'match') setRevision((value) => value + 1);
     } catch (error) { setMutationError(error?.message || 'No se pudo guardar la ficha.'); }
     finally { setMutationBusy(false); }
   };

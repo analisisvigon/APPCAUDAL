@@ -61,6 +61,24 @@ export const createOperationalPlayer = (client, coordinator, snapshot, playerId,
     p_jugador_id: playerId, p_player: player, p_positions: positions,
   });
 
+export function assertCreatedPlayerInCtsRoster(roster, result, requestedPlayerId) {
+  const ownPlayerId = String(result?.ownPlayerId || '');
+  const globalPlayerId = String(result?.globalPlayerId || '');
+  const membershipId = String(result?.membershipId || '');
+  if (result?.status !== 'created' || !ownPlayerId || ownPlayerId !== String(requestedPlayerId || '')
+    || !globalPlayerId || !membershipId) {
+    throw new Error('Supabase no confirmó el alta completa del jugador en el equipo y temporada.');
+  }
+  const visible = (Array.isArray(roster) ? roster : []).some((player) => (
+    String(player?.id || '') === ownPlayerId
+    && String(player?.global_player_id || '') === globalPlayerId
+    && String(player?.membership_id || '') === membershipId
+  ));
+  if (!visible) {
+    throw new Error('El perfil se creó, pero no se confirmó su vinculación a la plantilla seleccionada. No se completó el alta.');
+  }
+}
+
 export const editOperationalPlayer = (client, coordinator, snapshot, playerId, patch) =>
   operationalMutation(client, coordinator, snapshot, 'edit_operational_player_v1', {
     p_jugador_id: playerId, p_patch: patch,

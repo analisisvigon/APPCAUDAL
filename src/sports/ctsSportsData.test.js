@@ -3,7 +3,7 @@ import { loadAuthorizedSportsContexts, loadOperationalPreferredContextId,
   SportsContextCoordinator,
   verifySelectableSportsContext } from './authorizedContext.js';
 import {
-  assertCtsCreate, assertCtsMatchWrite, canWriteOperationalCts,
+  assertCreatedPlayerInCtsRoster, assertCtsCreate, assertCtsMatchWrite, canWriteOperationalCts,
   createOperationalMatch, createOperationalPlayer, editOperationalMatch,
   editOperationalPlayer, loadCtsMatches, loadCtsRoster,
 } from './ctsSportsData.js';
@@ -62,6 +62,20 @@ await createOperationalPlayer(client, coordinator, snapshot, 'j-new', { name: 'F
 await editOperationalPlayer(client, coordinator, snapshot, 'j-a', { number: 7 });
 await createOperationalMatch(client, coordinator, snapshot, { date: '2026-10-23', opponent: 'Ficticio B' });
 await editOperationalMatch(client, coordinator, snapshot, 'p-a', { round: '2' });
+assert.doesNotThrow(() => assertCreatedPlayerInCtsRoster([
+  { id: 'j-new', global_player_id: 'global-new', membership_id: 'stage-new' },
+], {
+  status: 'created', ownPlayerId: 'j-new',
+  globalPlayerId: 'global-new', membershipId: 'stage-new',
+}, 'j-new'));
+assert.throws(() => assertCreatedPlayerInCtsRoster([], {
+  status: 'created', ownPlayerId: 'j-new',
+  globalPlayerId: 'global-new', membershipId: 'stage-new',
+}, 'j-new'), /no se confirmó su vinculación/);
+assert.throws(() => assertCreatedPlayerInCtsRoster([], {
+  status: 'created', ownPlayerId: 'j-other',
+  globalPlayerId: 'global-new', membershipId: 'stage-new',
+}, 'j-new'), /alta completa/);
 for (const [name, args] of calls.filter(([name]) =>
   name.startsWith('create_operational_') || name.startsWith('edit_operational_'))) {
   assert.equal(args.p_cts_id, 'cts-a');
