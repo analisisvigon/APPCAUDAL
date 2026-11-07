@@ -59,7 +59,7 @@ export function TrainingTaskDetailAccordion({ sectionKey, title, summary, isOpen
   </section>;
 }
 
-export default function TrainingTaskDetail({ task = null, currentUserId = '', players = [], client, feedbackContent = null, onEdit, onDuplicate, onDownload, onMediaChange, onClose }) {
+export default function TrainingTaskDetail({ task = null, currentUserId = '', players = [], client, feedbackContent = null, onEdit, onDuplicate, onDownload, onMediaChange, onClose, onPdf, pdfBusy = false }) {
   const [openSections, setOpenSections] = useState({});
   const toggleSection = (sectionKey) => setOpenSections((current) => ({ ...current, [sectionKey]: !current[sectionKey] }));
 
@@ -107,6 +107,7 @@ export default function TrainingTaskDetail({ task = null, currentUserId = '', pl
           <p className="mt-1 text-[11px] text-slate-500"><span className="font-bold text-slate-300">{displayValue(task.taskCode, 'Sin código')}</span> · {author} · {ownership}</p>
         </div>
         <div className="flex w-full flex-wrap gap-2 lg:w-auto lg:justify-end">
+          <button type="button" disabled={pdfBusy} onClick={() => onPdf?.(task)} className="min-h-10 rounded-xl border border-white/10 bg-white/[0.07] px-4 text-xs font-black text-white disabled:opacity-50">PDF</button>
           {canEdit ? <button type="button" onClick={() => onEdit?.(task)} className="min-h-10 flex-1 rounded-xl bg-caudal-electric px-4 text-xs font-black text-slate-950 sm:flex-none">Editar tarea</button> : null}
           <button type="button" onClick={() => onDuplicate?.(task)} className="min-h-10 flex-1 rounded-xl border border-white/10 bg-white/[0.07] px-4 text-xs font-black text-white sm:flex-none">Duplicar</button>
           <button type="button" onClick={onClose} className="min-h-10 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-4 text-xs font-black text-slate-300 sm:flex-none">Volver</button>

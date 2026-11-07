@@ -5,6 +5,7 @@ import TrainingTaskCardPreview from './TrainingTaskCardPreview';
 import TrainingTaskDetail from './TrainingTaskDetail';
 import TrainingTaskMediaPanel from './TrainingTaskMediaPanel';
 import TrainingTaskBatchPrint from './TrainingTaskBatchPrint';
+import { loadTrainingTaskPrintData } from '../../utils/trainingTaskPrintData';
 import { buildTrainingTaskCardPresentation } from '../../utils/trainingTaskCardPresentation';
 import { createTrainingTaskPlayerLookup } from '../../utils/trainingTaskRoster';
 import { countActiveTrainingTaskAdvancedFilters } from '../../utils/trainingTaskFilterPresentation';
@@ -134,11 +135,11 @@ function MetricIcon({ kind }) {
   return <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="8" r="3" /><circle cx="17" cy="9" r="2" /><path d="M3 20c0-4 2-6 6-6s6 2 6 6M15 15c3 0 5 2 5 5" /></svg>;
 }
 
-function TaskCard({ task, canManage, canDelete, userId, playerLookup, onOpen, onEdit, onDuplicate, onDelete, onShare, onDownload }) {
+function TaskCard({ task, canManage, canDelete, userId, playerLookup, onOpen, onEdit, onDuplicate, onDelete, onShare, onDownload, onPdf, pdfBusy }) {
   const card = buildTrainingTaskCardPresentation(task, userId);
   return <article className="group relative self-start overflow-visible rounded-[1.25rem] border border-white/10 border-t-2 bg-[#091428]/92 shadow-[0_12px_34px_rgba(0,0,0,0.16)] transition duration-200 hover:z-30 hover:-translate-y-0.5 hover:border-white/20 hover:shadow-[0_18px_44px_rgba(0,0,0,.28)] focus-within:z-30" style={{ borderTopColor: card.type.color }}>
     <button type="button" onClick={() => onOpen(task)} aria-label={`Abrir tarea ${task.name}`} className="block w-full overflow-hidden bg-[#081321] text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-caudal-electric"><TrainingTaskCardPreview task={task} playerLookup={playerLookup} /></button>
-    <div className="p-4"><div className="flex items-start justify-between gap-2"><button type="button" onClick={() => onOpen(task)} className="line-clamp-2 min-w-0 text-left text-xl font-black leading-6 text-white outline-none hover:text-caudal-electric focus-visible:underline">{task.name}</button><details className="relative shrink-0"><summary className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-base font-black text-slate-300 hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-caudal-electric" aria-label={`Acciones de ${task.name}`}>•••</summary><div className="absolute right-0 z-20 mt-1 grid min-w-36 gap-1 rounded-xl border border-white/10 bg-[#050d18] p-1.5 shadow-2xl"><button type="button" onClick={() => onOpen(task)} className="rounded-lg px-3 py-2 text-left text-xs font-bold text-white hover:bg-white/10">Abrir</button><button type="button" onClick={() => onDuplicate(task)} className="rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-300 hover:bg-white/10">Duplicar</button>{task.attachmentPath ? <button type="button" onClick={() => onDownload(task)} className="rounded-lg px-3 py-2 text-left text-xs font-bold text-caudal-electric hover:bg-white/10">Descargar adjunto</button> : null}{canManage ? <><button type="button" onClick={() => onEdit(task)} className="rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-300 hover:bg-white/10">Editar</button><button type="button" onClick={() => onShare(task)} className="rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-300 hover:bg-white/10">Compartir</button>{canDelete ? <button type="button" onClick={() => onDelete(task)} className="rounded-lg px-3 py-2 text-left text-xs font-bold text-red-200 hover:bg-red-500/10">Eliminar</button> : null}</> : null}</div></details></div>
+    <div className="p-4"><button type="button" disabled={pdfBusy} onClick={() => onPdf(task)} className="mb-2 rounded-lg border border-white/15 px-3 py-2 text-xs font-bold text-slate-200 disabled:opacity-50">PDF</button><div className="flex items-start justify-between gap-2"><button type="button" onClick={() => onOpen(task)} className="line-clamp-2 min-w-0 text-left text-xl font-black leading-6 text-white outline-none hover:text-caudal-electric focus-visible:underline">{task.name}</button><details className="relative shrink-0"><summary className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-base font-black text-slate-300 hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-caudal-electric" aria-label={`Acciones de ${task.name}`}>•••</summary><div className="absolute right-0 z-20 mt-1 grid min-w-36 gap-1 rounded-xl border border-white/10 bg-[#050d18] p-1.5 shadow-2xl"><button type="button" onClick={() => onOpen(task)} className="rounded-lg px-3 py-2 text-left text-xs font-bold text-white hover:bg-white/10">Abrir</button><button type="button" onClick={() => onDuplicate(task)} className="rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-300 hover:bg-white/10">Duplicar</button>{task.attachmentPath ? <button type="button" onClick={() => onDownload(task)} className="rounded-lg px-3 py-2 text-left text-xs font-bold text-caudal-electric hover:bg-white/10">Descargar adjunto</button> : null}{canManage ? <><button type="button" onClick={() => onEdit(task)} className="rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-300 hover:bg-white/10">Editar</button><button type="button" onClick={() => onShare(task)} className="rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-300 hover:bg-white/10">Compartir</button>{canDelete ? <button type="button" onClick={() => onDelete(task)} className="rounded-lg px-3 py-2 text-left text-xs font-bold text-red-200 hover:bg-red-500/10">Eliminar</button> : null}</> : null}</div></details></div>
       <div className="mt-2 flex flex-wrap items-center gap-2"><span className="inline-flex rounded-lg border px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em]" style={{ color: card.type.color, borderColor: `${card.type.color}55`, backgroundColor: `${card.type.color}18` }}>{card.type.label}</span>{card.rating ? <span className="inline-flex items-center gap-1 text-xs font-black text-amber-300" aria-label={`Valoración media ${card.rating}`}><svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true"><path d="m12 2.5 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.1l6.2-.9Z" /></svg>{card.rating}</span> : null}</div>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wide text-slate-500"><span className="flex flex-wrap gap-x-2">{task.taskCode ? <span className="text-slate-300">{task.taskCode}</span> : null}{card.stages ? <span>{card.stages}</span> : null}</span><span className="rounded-full bg-white/[0.05] px-2 py-1 normal-case tracking-normal text-slate-400">{card.ownership}</span></div>
       <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-black text-slate-300">{card.players ? <span className="inline-flex items-center gap-1 rounded-lg bg-white/[0.06] px-2 py-1"><MetricIcon />{card.players}</span> : null}{card.duration ? <span className="inline-flex items-center gap-1 rounded-lg bg-white/[0.06] px-2 py-1"><MetricIcon kind="time" />{card.duration}</span> : null}{card.space ? <span className="inline-flex items-center gap-1 rounded-lg bg-white/[0.06] px-2 py-1"><MetricIcon kind="space" />{card.space}</span> : null}</div>
@@ -228,6 +229,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     openPrint().catch((cause) => {
       if (cancelled) return;
       setExportError(`No se generó ningún PDF: ${cause.message || 'error desconocido'}`);
+      setError(`No se pudo abrir la impresión: ${cause.message || 'error desconocido'}`);
       setExportBusy(false); setBatchPrint(null);
     });
     return () => {
@@ -254,12 +256,26 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     setExportTo(localDate(now));
     setExportResult(null); setExportError(''); setExportProgress(''); setExportOpen(true);
   };
+  const prepareTaskPdf = async (rows, fileName) => {
+    if (exportBusy) return;
+    setExportBusy(true); setExportError(''); setError('');
+    try {
+      const complete = [];
+      for (const row of rows) {
+        setExportProgress(`Preparando ficha ${complete.length + 1} de ${rows.length}…`);
+        complete.push(await loadTrainingTaskPrintData(supabase, row.id, clubId));
+      }
+      setBatchPrint({ tasks: complete, fileName });
+    } catch (cause) {
+      const message = `No se pudo preparar el PDF completo. ${cause.message || 'Error de lectura.'}`;
+      setExportError(message); setError(message); setExportBusy(false); setExportProgress('');
+    }
+  };
+  const exportSingleTask = (task) => prepareTaskPdf([task], `Tarea_${task.taskCode || task.id}.pdf`);
   const exportTasksPdf = () => {
     if (exportBusy || exportLoading || exportResult?.clubId !== clubId ||
         exportResult?.from !== exportFrom || exportResult?.to !== exportTo || !exportResult.rows.length) return;
-    setExportBusy(true); setExportError('');
-    setExportProgress(`Componiendo ${exportResult.rows.length} fichas A4…`);
-    setBatchPrint({ tasks: exportResult.rows, fileName: trainingTaskExportFileName(exportFrom, exportTo) });
+    prepareTaskPdf(exportResult.rows, trainingTaskExportFileName(exportFrom, exportTo));
   };
   const applyTaskMedia = (taskId, media) => {
     setTasks((current) => current.map((task) => task.id === taskId ? { ...task, media } : task));
@@ -409,6 +425,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
         <div className="mt-5 flex justify-end gap-2"><button type="button" disabled={exportBusy} onClick={() => setExportOpen(false)} className="rounded-xl border border-white/15 px-4 py-2.5 text-xs font-black text-slate-200">Cancelar</button><button type="button" onClick={exportTasksPdf} disabled={exportBusy || exportLoading || exportResult?.clubId !== clubId || exportResult?.from !== exportFrom || exportResult?.to !== exportTo || !exportResult?.rows.length} className="rounded-xl bg-caudal-electric px-4 py-2.5 text-xs font-black text-slate-950 disabled:opacity-40">{exportBusy ? 'Preparando…' : 'Generar PDF'}</button></div>
       </section>
     </div> : null}
+    {exportBusy && !exportOpen ? <p role="status" className="text-sm text-caudal-electric">{exportProgress || 'Preparando PDF…'}</p> : null}
     {(draft || selected) && status ? <p className="rounded-xl bg-emerald-400/10 px-3 py-2 text-xs font-bold text-emerald-100">{status}</p> : null}
     {selected && !draft && error ? <p role="alert" className="rounded-xl bg-red-400/10 px-3 py-2 text-xs font-bold text-red-100">{error}</p> : null}
     {draft ? <TaskForm seriesSupported={seriesSupported} contentSupported={contentSupported} players={players} draft={draft} setDraft={setDraft} task={selected} onMediaChange={(media) => selected && applyTaskMedia(selected.id, media)} feedback={{ rows: feedbackRows, loading: feedbackLoading, error: feedbackError, draft: feedbackDraft, setDraft: setFeedbackDraft, editingId: feedbackEditingId, saving: feedbackSaving, userId, onSave: saveFeedback, onEdit: editFeedback, onCancelEdit: resetFeedbackDraft, onDelete: removeFeedback, canManage: true }} onCancel={closeEditor} onSave={save} saving={saving} error={error} isEditing={Boolean(selected?.id)} /> : null}
@@ -421,6 +438,8 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
       onEdit={openEdit}
       onDuplicate={duplicate}
       onDownload={download}
+      onPdf={exportSingleTask}
+      pdfBusy={exportBusy}
       onMediaChange={(media) => applyTaskMedia(selected.id, media)}
       onClose={() => { setSelected(null); setFeedbackRows([]); resetFeedbackDraft(); setError(''); }}
       feedbackContent={<FeedbackPanel rows={feedbackRows} loading={feedbackLoading} error={feedbackError} draft={feedbackDraft} setDraft={setFeedbackDraft} editingId={feedbackEditingId} saving={feedbackSaving} userId={userId} onSave={saveFeedback} onEdit={editFeedback} onCancelEdit={resetFeedbackDraft} onDelete={removeFeedback} canManage={false} />}
@@ -443,7 +462,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
       </div> : null}
       <div className="mt-3 flex items-center justify-between gap-3"><p className="text-xs font-bold text-slate-400">{visibleTasks.length} {visibleTasks.length === 1 ? 'resultado' : 'resultados'}</p><button type="button" onClick={clearFilters} className="rounded-lg bg-white/[0.06] px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-300 hover:bg-white/10">Limpiar filtros</button></div>
     </section>
-    {loading ? <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm text-slate-500">Cargando tareas…</div> : error && !tasks.length ? <div role="alert" className="rounded-2xl border border-red-300/20 bg-red-400/10 p-8 text-center text-sm text-red-100">No se pudieron cargar las tareas.</div> : visibleTasks.length ? <div className="grid items-stretch gap-4 md:grid-cols-2 2xl:grid-cols-3">{visibleTasks.map((task) => <TaskCard key={task.id} task={task} userId={userId} playerLookup={playerLookup} canManage={task.author_user_id === userId} canDelete={deleteReady && membership?.is_active && ['owner', 'admin', 'staff'].includes(membership.role) && task.club_id === clubId} onOpen={openTask} onEdit={openEdit} onDuplicate={duplicate} onDelete={remove} onShare={startShare} onDownload={download} />)}</div> : <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] p-8 text-center"><p className="text-sm font-black text-white">No hay tareas todavía</p><p className="mt-1 text-xs text-slate-500">Crea la primera tarea de entrenamiento para tu biblioteca.</p><button type="button" onClick={openNew} className="mt-4 rounded-xl bg-caudal-electric px-4 py-2 text-xs font-black text-slate-950">+ Nueva tarea</button></div>}
+    {loading ? <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm text-slate-500">Cargando tareas…</div> : error && !tasks.length ? <div role="alert" className="rounded-2xl border border-red-300/20 bg-red-400/10 p-8 text-center text-sm text-red-100">No se pudieron cargar las tareas.</div> : visibleTasks.length ? <div className="grid items-stretch gap-4 md:grid-cols-2 2xl:grid-cols-3">{visibleTasks.map((task) => <TaskCard key={task.id} task={task} userId={userId} playerLookup={playerLookup} canManage={task.author_user_id === userId} canDelete={deleteReady && membership?.is_active && ['owner', 'admin', 'staff'].includes(membership.role) && task.club_id === clubId} onOpen={openTask} onEdit={openEdit} onDuplicate={duplicate} onDelete={remove} onShare={startShare} onDownload={download} onPdf={exportSingleTask} pdfBusy={exportBusy} />)}</div> : <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] p-8 text-center"><p className="text-sm font-black text-white">No hay tareas todavía</p><p className="mt-1 text-xs text-slate-500">Crea la primera tarea de entrenamiento para tu biblioteca.</p><button type="button" onClick={openNew} className="mt-4 rounded-xl bg-caudal-electric px-4 py-2 text-xs font-black text-slate-950">+ Nueva tarea</button></div>}
     </> : null}
     {shareTask ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"><section className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#071327] p-5 shadow-2xl"><h2 className="text-lg font-black text-white">Compartir tarea</h2><p className="mt-1 text-xs text-slate-500">Selecciona miembros STAFF del mismo club. No se comparte con jugadores.</p><div className="mt-4 grid max-h-64 gap-2 overflow-y-auto">{memberships.filter((member) => member.user_id !== userId).map((member) => <label key={member.id} className="flex items-center gap-3 rounded-xl bg-white/[0.04] px-3 py-2 text-xs text-slate-300"><input type="checkbox" checked={shareIds.includes(member.id)} onChange={(event) => setShareIds((current) => event.target.checked ? [...current, member.id] : current.filter((id) => id !== member.id))} />{member.role.toUpperCase()} · {member.user_id}</label>)}</div><div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => setShareTask(null)} className="rounded-xl bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-300">Cancelar</button><button type="button" onClick={saveShare} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black text-slate-950">Guardar compartición</button></div></section></div> : null}
     {batchPrint ? <TrainingTaskBatchPrint tasks={batchPrint.tasks} playerLookup={playerLookup} printRef={batchPrintRef} /> : null}
