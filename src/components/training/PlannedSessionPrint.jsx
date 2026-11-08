@@ -159,7 +159,6 @@ export default function PlannedSessionPrint({ editor, selected, pages, printRef,
   exerciseDimensions, mcNumber }) {
   if (typeof document === 'undefined') return null;
   return createPortal(<div className="planned-print-portal" ref={printRef}>
-    <style media="print">{'@page { size: A4 landscape; margin: 0; }'}</style>
     <PlannedSessionPrintPages editor={editor} selected={selected} pages={pages}
       roster={roster} availability={availability} distribution={distribution}
       playerDistribution={playerDistribution}

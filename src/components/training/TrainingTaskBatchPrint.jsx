@@ -14,7 +14,7 @@ const date = (input) => {
 };
 function PrintText({ label, children }) {
   if (!has(children)) return null;
-  return <div className="task-export-field"><h3>{label}</h3><p>{children}</p></div>;
+  return <div className={`task-export-field${label === 'Objetivo principal' ? ' task-export-objective' : ''}`}><h3>{label}</h3><p>{children}</p></div>;
 }
 export function TrainingTaskPrintSheet({ task, index = 0, total = 1, playerLookup }) {
   const phase = TRAINING_TASK_PHASES.find((entry) => entry.value === task.gamePhase)?.label || task.gamePhase;
@@ -72,12 +72,12 @@ export function TrainingTaskPrintSheet({ task, index = 0, total = 1, playerLooku
           <p>{[media.kind, media.provider, media.mimeType, media.sizeBytes ? Math.ceil(media.sizeBytes / 1024) + ' KB' : '', media.isPrimary ? 'Recurso principal' : ''].filter(has).join(' · ')}</p>
           {media.originalName && media.title ? <p>{media.originalName}</p> : null}
           {media.caption ? <p>{media.caption}</p> : null}
-          {url ? <a href={url}>{url}</a> : <p>Consultar este recurso desde Multimedia en NEXO CLUB con una cuenta autorizada.</p>}
+          {url ? <a href={url}>{media.kind === 'video' ? 'Ver vídeo' : 'Ver recurso'}</a> : <p>Consultar este recurso desde Multimedia en NEXO CLUB con una cuenta autorizada.</p>}
         </div>;
       })}
       {task.attachmentName ? <PrintText label="Adjunto anterior">{[task.attachmentName, task.attachmentMime, task.attachmentSize ? Math.ceil(task.attachmentSize / 1024) + ' KB' : '', 'Disponible en la ficha con acceso autorizado.'].filter(has).join(' · ')}</PrintText> : null}
     </section> : null}
-    {task.feedback?.length ? <section><h2>POST · Evaluación posterior</h2>
+    {task.feedback?.length ? <section className="task-export-post"><h2>POST · Evaluación posterior</h2>
       {task.feedback.map((entry, feedbackIndex) => <div className="task-export-feedback" key={entry.id}>
         <h3>Registro {feedbackIndex + 1} · {date(entry.usedOn)}{has(entry.rating) ? ' · Valoración ' + entry.rating + '/5' : ''}</h3>
         {entry.post ? <p>{entry.post}</p> : null}
@@ -92,7 +92,6 @@ export function TrainingTaskBatchPrintPages({ tasks = [], playerLookup }) {
 export default function TrainingTaskBatchPrint({ tasks = [], playerLookup, printRef }) {
   if (!tasks.length || typeof document === 'undefined') return null;
   return createPortal(<div className="task-export-portal" ref={printRef}>
-    <style media="print">{'@page task-library { size: A4 landscape; margin: 0; }'}</style>
     <TrainingTaskBatchPrintPages tasks={tasks} playerLookup={playerLookup} />
   </div>, document.body);
 }

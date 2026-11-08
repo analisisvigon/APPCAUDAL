@@ -1,3 +1,4 @@
+@page task-library { size: 297mm 210mm; margin: 0; page-orientation: upright; }
 .task-export-portal { position: absolute; left: -20000px; top: 0; width: 297mm; visibility: hidden; pointer-events: none; }
 .task-export-sheet { page: task-library; box-sizing: border-box; width: 297mm; height: 210mm; padding: 8mm; display: flex; flex-direction: column; gap: 3mm; background: white; color: #172334; font: 10pt/1.25 Arial, sans-serif; overflow-wrap: anywhere; break-inside: avoid; }
 .task-export-sheet + .task-export-sheet { break-before: page; }
@@ -13,6 +14,10 @@
 .task-export-no-board .task-export-visual { display: none; }
 .task-export-no-board .task-export-content { border-left: 0; padding-left: 0; columns: 2; column-gap: 6mm; column-fill: auto; }
 .task-export-field { margin: 0 0 2mm; }
+.task-export-content .task-export-field + .task-export-field { border-top: .5pt solid #dce4e8; padding-top: 1mm; }
+.task-export-content .task-export-objective { background: #eef5f7; border-left: 2pt solid #153b52; padding: 1.5mm 2mm; }
+.task-export-post { background: #f1f5f7; border-left: 2pt solid #153b52; padding: 1.5mm 2mm; }
+.task-export-feedback + .task-export-feedback { border-top: .5pt solid #cbd5e1; padding-top: 1mm; }
 .task-export-sheet h2 { font-size: 10pt; color: #153b52; border-bottom: .5pt solid #b9ccd5; padding-bottom: 1mm; margin: 0 0 1.5mm; }
 .task-export-sheet h3 { font-size: 9pt; color: #153b52; font-weight: 700; margin: 0 0 .5mm; }
 .task-export-sheet p { margin: 0; white-space: pre-wrap; }

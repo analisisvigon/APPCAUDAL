@@ -14,7 +14,6 @@ export function PlannedSessionBatchPrintPages({ sessions, selected, leagueLogoUr
 export default function PlannedSessionBatchPrint({ sessions, selected, leagueLogoUrl, printRef }) {
   if (!sessions.length || typeof document === 'undefined') return null;
   return createPortal(<div className="planned-print-portal planned-print-batch-portal" ref={printRef}>
-    <style media="print">{'@page { size: A4 landscape; margin: 0; }'}</style>
     <PlannedSessionBatchPrintPages sessions={sessions} selected={selected} leagueLogoUrl={leagueLogoUrl} />
   </div>, document.body);
 }

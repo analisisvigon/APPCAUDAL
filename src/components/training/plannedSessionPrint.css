@@ -2,7 +2,8 @@
    para comprobar desbordamientos antes de abrir la impresión del navegador. */
 .planned-print-portal { position: absolute; left: -20000px; top: 0; width: 297mm; visibility: hidden; pointer-events: none; }
 .planned-print-pages { width: 297mm; color: #111; font: 8pt/1.2 Arial, Helvetica, sans-serif; }
-.planned-print-sheet { box-sizing: border-box; width: 297mm; min-height: 209mm; padding: 5mm; background: #fff; }
+@page nexo-session { size: 297mm 210mm; margin: 0; page-orientation: upright; }
+.planned-print-sheet { page: nexo-session; box-sizing: border-box; width: 297mm; min-height: 209mm; padding: 5mm; background: #fff; }
 .planned-print-sheet-exercises { padding: 4mm 5mm; }
 .planned-print-sheet-exercises .planned-print-identity { height: 15mm; }
 .planned-print-sheet-exercises .planned-print-identity img,
@@ -95,7 +96,7 @@
 .planned-print-task-space { padding: 0 1.5mm; border-top: 1px solid #aaa; font-size: 7pt; }
 .planned-print-exercise-foot { display: flex; justify-content: space-between; gap: 2mm; padding: .5mm 1.5mm; border-top: 1px solid #111; font-style: italic; }
 
-/* @page se monta solo junto al portal de Sesiones; no afecta a otros módulos. */
+/* Página con nombre exclusivo: no cambia la orientación de otros módulos. */
 @media print {
   html:has(body > .planned-print-portal), body:has(> .planned-print-portal) { width: 297mm !important; margin: 0 !important; padding: 0 !important; }
   body:has(> .planned-print-portal) > :not(.planned-print-portal):not(script):not(style) { display: none !important; }
