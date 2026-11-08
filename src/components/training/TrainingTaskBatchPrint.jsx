@@ -20,6 +20,11 @@ export function TrainingTaskPrintSheet({ task, index = 0, total = 1, playerLooku
   const phase = TRAINING_TASK_PHASES.find((entry) => entry.value === task.gamePhase)?.label || task.gamePhase;
   const moment = getTrainingTaskMomentLabel(task.gamePhase, task.gameMoment) || task.gameMoment;
   const parsed = readTrainingTaskEditorPayload(task.editorPayload);
+  const pitchType = parsed.kind === 'v1' ? (parsed.scene.board.pitchType === 'penalty-area' ? 'half' : parsed.scene.board.pitchType) : '';
+  const spaceRatio = Number(task.spaceWidthM) > 0 && Number(task.spaceLengthM) > 0
+    ? Number(task.spaceWidthM) / Number(task.spaceLengthM) : null;
+  const boardLayout = spaceRatio && spaceRatio >= 0.82 && spaceRatio <= 1.18 ? 'square'
+    : pitchType === 'half' ? 'half' : 'wide';
   const teams = getPlannedSessionBoardTeams(task.editorPayload);
   const content = [
     ['Objetivo principal', task.objective], ['Descripción y desarrollo', task.description],
@@ -50,10 +55,10 @@ export function TrainingTaskPrintSheet({ task, index = 0, total = 1, playerLooku
     {organization.length ? <section className="task-export-summary" aria-label="Organización">
       {organization.map(([label, text]) => <PrintText key={label} label={label}>{text}</PrintText>)}
     </section> : null}
-    <div className={`task-export-main${parsed.kind === 'empty' && !teams.length ? ' task-export-no-board' : ''}`}>
+    <div className={`task-export-main${parsed.kind === 'empty' && !teams.length ? ' task-export-no-board' : ''}`} data-board-layout={boardLayout}>
     <div className="task-export-visual">
-    {parsed.kind === 'v1' ? <section className="task-export-board"><h2>Diseño de la tarea</h2>
-      <TrainingTaskDiagramCanvas elements={parsed.scene.board.elements} pitchType={parsed.scene.board.pitchType === 'penalty-area' ? 'half' : parsed.scene.board.pitchType}
+    {parsed.kind === 'v1' ? <section className="task-export-board" data-pitch-type={pitchType}><h2>Diseño de la tarea</h2>
+      <TrainingTaskDiagramCanvas elements={parsed.scene.board.elements} pitchType={pitchType}
         players={playerLookup} readOnly renderMode="preview" />
     </section> : parsed.kind !== 'empty' ? <p>Pizarra guardada en un formato no compatible con esta versión.</p> : null}
     {teams.map((team) => <PrintText key={team.key} label={team.teamName + ' · ' + team.colorName}>{team.players.join(', ')}</PrintText>)}

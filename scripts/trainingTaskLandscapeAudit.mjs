@@ -39,15 +39,24 @@ try {
           editor_payload: task.editorPayload, material: task.material }, working: {} } }] }] },
     roster: [], availability: {}, distribution: { formation_key: null, player_layout: [], space_zones: [] }, positionById: new Map() });
   const selected = { team_name: 'Equipo de prueba', label: '2026/27' };
+  const halfTask = { ...task, id: 'half', name: 'Descargas y finalizaciones — medio campo', spaceWidthM: 45, spaceLengthM: 60,
+    editorPayload: { ...task.editorPayload, board: { ...task.editorPayload.board, pitchType: 'half' } } };
+  const squareTask = { ...task, id: 'square', name: 'Posesión en espacio cuadrado', spaceWidthM: 24, spaceLengthM: 24,
+    editorPayload: { ...task.editorPayload, board: { ...task.editorPayload.board, pitchType: 'blank' } } };
+  const longTask = { ...task, id: 'long', name: 'Tarea con desarrollo extenso',
+    description: Array.from({ length: 32 }, (_, index) => `Principio ${index + 1}: conservar estructura, orientar el control y reconocer la presión rival.`).join('\n') };
   const render = (component, props) => renderToStaticMarkup(React.createElement(component, props));
   const globalCss = await readFile('src/styles/print.css', 'utf8');
   const sessionCss = await readFile('src/components/training/plannedSessionDocument.css', 'utf8') + await readFile('src/components/training/plannedSessionPrint.css', 'utf8');
   const makeHtml = (markup, portal, key) => '<!doctype html><meta charset="utf-8"><style>' + globalCss + sessionCss + css +
     '</style><div class="' + portal + '">' + markup + '</div><script type="module">' + layout +
-    '\nwindow.auditFit = () => fitTrainingTaskPrintSheets(document.querySelectorAll(".task-export-sheet")); window.auditReady = "' + key + '";</script>';
+    '\nwindow.auditFit = () => fitTrainingTaskPrintSheets(document.querySelectorAll(".task-export-sheet:not(.task-export-continuation)")); window.auditReady = "' + key + '";</script>';
   const cases = {
     'task-single': { count: 1, portal: 'task-export-portal', markup: render(TrainingTaskBatchPrintPages, { tasks: [task] }) },
-    'task-batch': { count: 2, portal: 'task-export-portal', markup: render(TrainingTaskBatchPrintPages, { tasks: [task, { ...task, id: 'second', name: 'Segunda tarea' }] }) },
+    'task-half': { count: 1, portal: 'task-export-portal', markup: render(TrainingTaskBatchPrintPages, { tasks: [halfTask] }) },
+    'task-square': { count: 1, portal: 'task-export-portal', markup: render(TrainingTaskBatchPrintPages, { tasks: [squareTask] }) },
+    'task-long': { count: 2, portal: 'task-export-portal', markup: render(TrainingTaskBatchPrintPages, { tasks: [longTask] }) },
+    'task-batch': { count: 5, portal: 'task-export-portal', markup: render(TrainingTaskBatchPrintPages, { tasks: [task, halfTask, squareTask, longTask] }) },
     'session-single': { count: 1, portal: 'planned-print-portal', markup: render(PlannedSessionPrintPages, { ...session(1), selected }) },
     'session-batch': { count: 2, portal: 'planned-print-portal planned-print-batch-portal', markup: render(PlannedSessionBatchPrintPages, { sessions: [session(1), session(2)], selected }) },
   };
@@ -80,6 +89,15 @@ try {
   await evaluate('document.fonts.ready.then(() => window.auditFit())');
   await send('Emulation.setEmulatedMedia', { media: 'print' });
   await evaluate('window.auditFit()');
+  const visual = await evaluate(`(() => ({
+    clipped: [...document.querySelectorAll('.task-export-main,.task-export-continuation-content')].some(node => node.scrollHeight > node.clientHeight + 2 || node.scrollWidth > node.clientWidth + 2),
+    boards: [...document.querySelectorAll('.task-export-board svg')].map(svg => { const rect = svg.getBoundingClientRect(); const box = svg.viewBox.baseVal; const ratio = box.width / box.height; const fittedWidth = Math.min(rect.width, rect.height * ratio); return { width: fittedWidth, height: fittedWidth / ratio, ratio, preserve: svg.preserveAspectRatio.baseVal.align, pitch: svg.closest('.task-export-board').dataset.pitchType }; }),
+    continuations: document.querySelectorAll('.task-export-continuation').length,
+  }))()`);
+  assert.equal(visual.clipped, false, key + ': sin desbordamientos ocultos');
+  assert.ok(visual.boards.every(board => board.width > 0 && board.height > 0 && board.preserve !== 1 && Math.abs(board.width / board.height - board.ratio) < .03), key + ': pizarras sin deformación');
+  if (key === 'task-half') assert.equal(visual.boards[0].pitch, 'half');
+  if (key === 'task-long') assert.equal(visual.continuations, 1, 'la tarea larga recibe una sola continuación');
   const pdf = await send('Page.printToPDF', { preferCSSPageSize: true, printBackground: true, displayHeaderFooter: false });
   pdfBuffer = Buffer.from(pdf.data, 'base64');
   const pdfText = pdfBuffer.toString('latin1');
@@ -89,10 +107,6 @@ try {
   assert.ok([...pdfText.matchAll(/\/Rotate\s+(-?\d+)/g)].every(match => Number(match[1]) % 360 === 0), 'Sin rotaciones de 90 grados');
   if (key.startsWith('task')) assert.match(pdfText, /\/URI \(https:\/\/www.youtube.com/, 'Enlace activo en el PDF');
   await writeFile(join(dir, key + '.pdf'), pdfBuffer);
-  if (key.startsWith('task')) {
-  const overflow = await evaluate(`(() => { document.querySelector('.task-export-content p').textContent = 'Texto muy largo '.repeat(6000); try { window.auditFit(); return ''; } catch(e) { return e.message; } })()`);
-  assert.match(overflow, /Mantenimiento cuadrado.*Reduce o selecciona/s);
-  }
   await send('Emulation.setEmulatedMedia', { media: 'screen' });
   await send('Emulation.setDeviceMetricsOverride', { width: 1500, height: 1100, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: 'http://127.0.0.1:' + server.address().port + '/tasks.pdf' });

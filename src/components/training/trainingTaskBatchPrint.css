@@ -8,6 +8,8 @@
 .task-export-summary { flex: none; display: flex; flex-wrap: wrap; gap: 2mm; }
 .task-export-summary .task-export-field { flex: 1 1 30mm; margin: 0; padding: 1.5mm 2mm; border: .5pt solid #cbd5e1; border-radius: 1mm; }
 .task-export-main { display: grid; grid-template-columns: 53% minmax(0,1fr); gap: 5mm; flex: 1 1 0; min-height: 0; }
+.task-export-main[data-board-layout="half"] { grid-template-columns: 48% minmax(0,1fr); }
+.task-export-main[data-board-layout="square"] { grid-template-columns: 46% minmax(0,1fr); }
 .task-export-visual { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .task-export-content { min-width: 0; min-height: 0; border-left: .5pt solid #cbd5e1; padding-left: 4mm; }
 .task-export-no-board { grid-template-columns: minmax(0,1fr); }
@@ -24,6 +26,17 @@
 .task-export-sheet a { color: #075985; text-decoration: underline; overflow-wrap: anywhere; }
 .task-export-board { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; break-inside: avoid; }
 .task-export-board svg { display: block; width: 100%; height: 100%; flex: 1 1 0; min-height: 0; }
+.task-export-sheet[data-layout="continued"] .task-export-main { grid-template-columns: minmax(0,1fr); }
+.task-export-continuation { height: 210mm; }
+.task-export-continuation .task-export-header { padding: 1.5mm 0; }
+.task-export-continuation .task-export-header h1 { font-size: 16pt; }
+.task-export-continuation-content { min-height: 0; flex: 1 1 0; columns: 2; column-gap: 7mm; column-rule: .5pt solid #dce4e8; }
+.task-export-continuation-content .task-export-content { border-left: 0; padding-left: 0; }
+.task-export-continuation-content .task-export-field,
+.task-export-continuation-content .task-export-resource,
+.task-export-continuation-content .task-export-feedback { break-inside: avoid; }
+.task-export-continuation-content .task-export-footer { display: block; border-top: 0; padding-top: 0; }
+.task-export-continuation[data-overflow="true"] { height: auto; min-height: 210mm; break-inside: auto; }
 .task-export-footer { flex: none; display: flex; gap: 5mm; border-top: 1pt solid #b9ccd5; padding-top: 2mm; }
 .task-export-footer:empty { display: none; }
 .task-export-footer > section { flex: 1 1 0; min-width: 0; }
