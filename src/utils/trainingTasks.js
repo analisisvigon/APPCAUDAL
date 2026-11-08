@@ -64,10 +64,16 @@ export const createTrainingTaskFilters = () => ({
   taskType: '',
   taskCode: '',
   players: '',
+  playersMin: '',
+  playersMax: '',
   objective: '',
   gamePhase: '',
   scope: '',
   duration: '',
+  spaceWidthMin: '',
+  spaceWidthMax: '',
+  spaceLengthMin: '',
+  spaceLengthMax: '',
   stage: '',
   ratingMin: '',
 });
@@ -314,26 +320,111 @@ export const buildTrainingTaskPayload = (draft, { clubId, authorUserId, existing
   editor_payload: prepareTrainingTaskEditorPayload(draft, existing),
 });
 
+const SEARCH_EXCLUDED_KEYS = /(^|_)(id|uuid|club|author|user|membership|created|updated|deleted|path|url|mime|size|color|schema|coordinate|x|y|x1|x2|y1|y2|controlx|controly)(_|$)/i;
+const SEARCH_TEXT_KEYS = /^(name|title|label|text|caption|description|objective|material|observations|variants|rules|content|post_text|original_name|task_code|players_spec)$/i;
+
+const collectSearchText = (value, key = '', depth = 0, output = []) => {
+  if (value == null || depth > 8 || SEARCH_EXCLUDED_KEYS.test(key)) return output;
+  if (typeof value === 'string') {
+    if (depth <= 1 || SEARCH_TEXT_KEYS.test(key) || /(_name|_title|_label|_text|_caption|_description|_content|_rules|_spec)$/i.test(key)) output.push(value);
+    return output;
+  }
+  if (typeof value !== 'object') return output;
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectSearchText(entry, key, depth + 1, output));
+    return output;
+  }
+  Object.entries(value).forEach(([entryKey, entry]) => collectSearchText(entry, entryKey, depth + 1, output));
+  return output;
+};
+
+const numericValue = (value) => {
+  if (value === '' || value === null || value === undefined) return null;
+  const number = Number(String(value).replace(',', '.'));
+  return Number.isFinite(number) ? number : null;
+};
+
+export const getTrainingTaskPlayerRange = (task = {}) => {
+  const structuredMin = numericValue(task.playersMin ?? task.players_min);
+  const structuredMax = numericValue(task.playersMax ?? task.players_max);
+  if (structuredMin !== null || structuredMax !== null) return { min: structuredMin, max: structuredMax };
+  const spec = normalizeTrainingTaskSearch(task.playersSpec ?? task.players_spec).replace(/\s+/g, '');
+  const range = spec.match(/^(\d+)(?:-|a)(\d+)(?:jugadores?)?$/);
+  if (range) return { min: Number(range[1]), max: Number(range[2]) };
+  if (!spec || !/^(?:\d+[v+])*(?:\d+)(?:jugadores?)?$/.test(spec)) return { min: null, max: null };
+  const total = (spec.match(/\d+/g) || []).reduce((sum, value) => sum + Number(value), 0);
+  return total > 0 ? { min: total, max: total } : { min: null, max: null };
+};
+
+const dimensionRange = (task, axis) => {
+  const prefix = axis === 'width' ? 'spaceWidth' : 'spaceLength';
+  const snake = axis === 'width' ? 'space_width' : 'space_length';
+  const fixed = numericValue(task[`${prefix}M`] ?? task[`${snake}_m`]);
+  return {
+    min: numericValue(task[`${prefix}MinM`] ?? task[`${snake}_min_m`]) ?? fixed,
+    max: numericValue(task[`${prefix}MaxM`] ?? task[`${snake}_max_m`]) ?? fixed,
+  };
+};
+
+const rangeContains = (range, point) => point === null || (
+  (range.min !== null || range.max !== null)
+  && (range.min === null || range.min <= point)
+  && (range.max === null || point <= range.max)
+);
+
+const rangesOverlap = (taskRange, requestedMin, requestedMax) => {
+  if (requestedMin === null && requestedMax === null) return true;
+  if (taskRange.min === null && taskRange.max === null) return false;
+  return (requestedMax === null || taskRange.min === null || taskRange.min <= requestedMax)
+    && (requestedMin === null || taskRange.max === null || requestedMin <= taskRange.max);
+};
+
+const taskSearchText = (task) => normalizeTrainingTaskSearch([
+  ...collectSearchText(task),
+  getTrainingTaskTypeDefinition(task.taskType).label,
+  ...normalizeTrainingTaskStages(task.stageKeys).map(getTrainingTaskStageLabel),
+  TRAINING_TASK_PHASES.find((phase) => phase.value === task.gamePhase)?.label,
+  getTrainingTaskMomentLabel(task.gamePhase, task.gameMoment),
+  task.editorPayload?.board?.pitchType === 'full' ? 'campo completo'
+    : task.editorPayload?.board?.pitchType === 'half' ? 'medio campo'
+      : task.editorPayload?.board?.pitchType === 'penalty-area' ? 'vista de area' : '',
+].filter(Boolean).join(' '));
+
+export const parseTrainingTaskSearch = (value) => {
+  let remainder = normalizeTrainingTaskSearch(value);
+  const parsed = { players: null, width: null, length: null, duration: null, series: null, terms: [] };
+  remainder = remainder.replace(/(\d+)\s*(?:jugadores?|jug\.?)/g, (_, number) => { parsed.players = Number(number); return ' '; });
+  remainder = remainder.replace(/(\d+(?:[.,]\d+)?)\s*[xÃ—]\s*(\d+(?:[.,]\d+)?)/g, (_, width, length) => {
+    parsed.width = numericValue(width); parsed.length = numericValue(length); return ' ';
+  });
+  remainder = remainder.replace(/(\d+)\s*(?:minutos?|mins?\.?)/g, (_, number) => { parsed.duration = Number(number); return ' '; });
+  remainder = remainder.replace(/(\d+)\s*series?/g, (_, number) => { parsed.series = Number(number); return ' '; });
+  parsed.terms = normalizeTrainingTaskSearch(remainder).split(' ').filter(Boolean);
+  return parsed;
+};
+
 export const filterTrainingTasks = (tasks, filters = {}, currentUserId = '') => {
-  const search = normalizeTrainingTaskSearch(filters.search);
+  const query = parseTrainingTaskSearch(filters.search);
   const taskCode = normalizeTrainingTaskSearch(filters.taskCode);
   const objective = normalizeTrainingTaskSearch(filters.objective);
-  const requestedPlayers = filters.players === '' || filters.players === null || filters.players === undefined
-    ? null
-    : Number(filters.players);
+  const requestedPlayers = numericValue(filters.players);
+  const requestedPlayersMin = numericValue(filters.playersMin);
+  const requestedPlayersMax = numericValue(filters.playersMax);
+  const requestedWidthMin = numericValue(filters.spaceWidthMin);
+  const requestedWidthMax = numericValue(filters.spaceWidthMax);
+  const requestedLengthMin = numericValue(filters.spaceLengthMin);
+  const requestedLengthMax = numericValue(filters.spaceLengthMax);
   return tasks.filter((task) => {
-    const haystack = normalizeTrainingTaskSearch([
-      task.name,
-      task.taskCode,
-      task.objective,
-      task.description,
-      task.technicalContent,
-      task.tacticalContent,
-      task.material,
-      task.observations,
-      task.variants,
-    ].filter(Boolean).join(' '));
-    const matchesSearch = !search || haystack.includes(search);
+    const haystack = taskSearchText(task);
+    const playerRange = getTrainingTaskPlayerRange(task);
+    const widthRange = dimensionRange(task, 'width');
+    const lengthRange = dimensionRange(task, 'length');
+    const matchesSearch = query.terms.every((term) => haystack.includes(term))
+      && rangeContains(playerRange, query.players)
+      && rangeContains(widthRange, query.width)
+      && rangeContains(lengthRange, query.length)
+      && (query.duration === null || Number(task.durationMinutes) === query.duration)
+      && (query.series === null || Number(task.seriesCount) === query.series);
     const matchesType = !filters.taskType || getTrainingTaskTypeDefinition(task.taskType).key === filters.taskType;
     const matchesTaskCode = !taskCode || normalizeTrainingTaskSearch(task.taskCode).includes(taskCode);
     const matchesObjective = !objective || normalizeTrainingTaskSearch(task.objective).includes(objective);
@@ -350,15 +441,10 @@ export const filterTrainingTasks = (tasks, filters = {}, currentUserId = '') => 
       filters.duration === 'short' ? duration <= 15
         : filters.duration === 'medium' ? duration > 15 && duration <= 30 : duration > 30
     ));
-    const hasMin = task.playersMin !== '' && task.playersMin !== null && task.playersMin !== undefined;
-    const hasMax = task.playersMax !== '' && task.playersMax !== null && task.playersMax !== undefined;
-    const matchesPlayers = requestedPlayers === null || (
-      Number.isInteger(requestedPlayers)
-      && requestedPlayers > 0
-      && (hasMin || hasMax)
-      && (!hasMin || Number(task.playersMin) <= requestedPlayers)
-      && (!hasMax || requestedPlayers <= Number(task.playersMax))
-    );
+    const matchesPlayers = rangeContains(playerRange, requestedPlayers)
+      && rangesOverlap(playerRange, requestedPlayersMin, requestedPlayersMax);
+    const matchesSpace = rangesOverlap(widthRange, requestedWidthMin, requestedWidthMax)
+      && rangesOverlap(lengthRange, requestedLengthMin, requestedLengthMax);
     const ratingMinimum = filters.ratingMin === '' || filters.ratingMin === null || filters.ratingMin === undefined
       ? null
       : Number(filters.ratingMin);
@@ -368,7 +454,7 @@ export const filterTrainingTasks = (tasks, filters = {}, currentUserId = '') => 
       && Number(task.ratingAverage) >= ratingMinimum
     );
     return matchesSearch && matchesType && matchesTaskCode && matchesObjective
-      && matchesStage && matchesPlayers && matchesRating && matchesPhase && matchesOwnership && matchesDuration;
+      && matchesStage && matchesPlayers && matchesSpace && matchesRating && matchesPhase && matchesOwnership && matchesDuration;
   });
 };
 

@@ -1,5 +1,6 @@
 export const TRAINING_TASK_ADVANCED_FILTER_KEYS = Object.freeze([
-  'ratingMin', 'taskCode', 'players', 'objective', 'gamePhase', 'duration',
+  'ratingMin', 'taskCode', 'players', 'playersMin', 'playersMax', 'objective',
+  'gamePhase', 'duration', 'spaceWidthMin', 'spaceWidthMax', 'spaceLengthMin', 'spaceLengthMax',
 ]);
 
 export const countActiveTrainingTaskAdvancedFilters = (filters = {}) => (

@@ -11,7 +11,7 @@ export const loadTrainingTasks = async (client, clubId) => {
       .order('updated_at', { ascending: false }),
     client
       .from('training_task_feedback')
-      .select('task_id,rating')
+      .select('task_id,rating,post_text,used_on')
       .eq('club_id', clubId),
   ]);
   if (tasksResult.error) throw tasksResult.error;
@@ -28,6 +28,10 @@ export const loadTrainingTasks = async (client, clubId) => {
     ...normalizeTrainingTask({
       ...row,
       ...summarizeTrainingTaskRatings(feedbackByTask.get(row.id) || []),
+      feedbackSearchText: (feedbackByTask.get(row.id) || [])
+        .map((entry) => entry.post_text)
+        .filter(Boolean)
+        .join('\n'),
       is_shared: Array.isArray(row.training_task_shares) && row.training_task_shares.length > 0,
     }),
     media: sortTrainingTaskMedia(row.training_task_media || []),
