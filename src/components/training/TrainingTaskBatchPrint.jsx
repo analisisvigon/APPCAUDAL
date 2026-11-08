@@ -50,12 +50,19 @@ export function TrainingTaskPrintSheet({ task, index = 0, total = 1, playerLooku
     {organization.length ? <section className="task-export-summary" aria-label="Organización">
       {organization.map(([label, text]) => <PrintText key={label} label={label}>{text}</PrintText>)}
     </section> : null}
+    <div className={`task-export-main${parsed.kind === 'empty' && !teams.length ? ' task-export-no-board' : ''}`}>
+    <div className="task-export-visual">
     {parsed.kind === 'v1' ? <section className="task-export-board"><h2>Diseño de la tarea</h2>
       <TrainingTaskDiagramCanvas elements={parsed.scene.board.elements} pitchType={parsed.scene.board.pitchType === 'penalty-area' ? 'half' : parsed.scene.board.pitchType}
         players={playerLookup} readOnly renderMode="preview" />
     </section> : parsed.kind !== 'empty' ? <p>Pizarra guardada en un formato no compatible con esta versión.</p> : null}
     {teams.map((team) => <PrintText key={team.key} label={team.teamName + ' · ' + team.colorName}>{team.players.join(', ')}</PrintText>)}
+    </div>
+    <div className="task-export-content">
     {content.map(([label, text]) => <PrintText key={label} label={label}>{text}</PrintText>)}
+    </div>
+    </div>
+    <footer className="task-export-footer">
     {task.media?.length || task.attachmentName ? <section>
       <h2>Multimedia y archivos</h2>
       {(task.media || []).map((media) => {
@@ -76,6 +83,7 @@ export function TrainingTaskPrintSheet({ task, index = 0, total = 1, playerLooku
         {entry.post ? <p>{entry.post}</p> : null}
       </div>)}
     </section> : null}
+    </footer>
   </article>;
 }
 export function TrainingTaskBatchPrintPages({ tasks = [], playerLookup }) {
@@ -84,7 +92,7 @@ export function TrainingTaskBatchPrintPages({ tasks = [], playerLookup }) {
 export default function TrainingTaskBatchPrint({ tasks = [], playerLookup, printRef }) {
   if (!tasks.length || typeof document === 'undefined') return null;
   return createPortal(<div className="task-export-portal" ref={printRef}>
-    <style media="print">{'@page task-library { size: A4 portrait; margin: 12mm; }'}</style>
+    <style media="print">{'@page task-library { size: A4 landscape; margin: 0; }'}</style>
     <TrainingTaskBatchPrintPages tasks={tasks} playerLookup={playerLookup} />
   </div>, document.body);
 }

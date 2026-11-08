@@ -5,6 +5,7 @@ import TrainingTaskCardPreview from './TrainingTaskCardPreview';
 import TrainingTaskDetail from './TrainingTaskDetail';
 import TrainingTaskMediaPanel from './TrainingTaskMediaPanel';
 import TrainingTaskBatchPrint from './TrainingTaskBatchPrint';
+import { fitTrainingTaskPrintSheets } from '../../utils/trainingTaskPrintLayout';
 import { loadTrainingTaskPrintData } from '../../utils/trainingTaskPrintData';
 import { buildTrainingTaskCardPresentation } from '../../utils/trainingTaskCardPresentation';
 import { createTrainingTaskPlayerLookup } from '../../utils/trainingTaskRoster';
@@ -221,6 +222,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
       if (cancelled) return;
       const sheets = batchPrintRef.current?.querySelectorAll('.task-export-sheet');
       if (sheets?.length !== batchPrint.tasks.length) throw new Error('No se pudieron preparar todas las fichas para imprimir.');
+      fitTrainingTaskPrintSheets(sheets);
       document.title = batchPrint.fileName.replace(/\.pdf$/i, '');
       setExportProgress(`Abriendo la impresión de ${sheets.length} fichas. Elige «Guardar como PDF».`);
       window.addEventListener('afterprint', finish, { once: true });
@@ -421,7 +423,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
               ? <p className={`mt-3 text-sm ${exportResult.rows.length ? 'text-slate-200' : 'text-amber-200'}`} role="status">{exportResult.rows.length} {exportResult.rows.length === 1 ? 'tarea encontrada' : 'tareas encontradas'} (ambas fechas incluidas).{!exportResult.rows.length ? ' No se generará un PDF vacío.' : ''}</p> : null}
         {exportError ? <p role="alert" className="mt-3 rounded-xl bg-red-400/10 px-3 py-2 text-xs font-bold text-red-100">{exportError}</p> : null}
         {exportProgress ? <p role="status" className="mt-3 rounded-xl bg-caudal-electric/10 px-3 py-2 text-xs font-bold text-caudal-electric">{exportProgress}</p> : null}
-        <p className="mt-3 text-[11px] text-slate-500">En el cuadro de impresión selecciona «Guardar como PDF». Cada tarea comienza en una hoja nueva y el contenido largo puede continuar en las siguientes.</p>
+        <p className="mt-3 text-[11px] text-slate-500">Una página A4 horizontal por tarea. Si el contenido no cabe con letra legible, se avisará antes de imprimir. Selecciona A4 horizontal, escala 100 % y desactiva los encabezados y pies del navegador.</p>
         <div className="mt-5 flex justify-end gap-2"><button type="button" disabled={exportBusy} onClick={() => setExportOpen(false)} className="rounded-xl border border-white/15 px-4 py-2.5 text-xs font-black text-slate-200">Cancelar</button><button type="button" onClick={exportTasksPdf} disabled={exportBusy || exportLoading || exportResult?.clubId !== clubId || exportResult?.from !== exportFrom || exportResult?.to !== exportTo || !exportResult?.rows.length} className="rounded-xl bg-caudal-electric px-4 py-2.5 text-xs font-black text-slate-950 disabled:opacity-40">{exportBusy ? 'Preparando…' : 'Generar PDF'}</button></div>
       </section>
     </div> : null}
