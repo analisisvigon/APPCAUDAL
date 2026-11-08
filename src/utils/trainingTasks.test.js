@@ -5,11 +5,13 @@ import {
   createTrainingTaskFilters,
   filterTrainingTasks,
   formatTrainingTaskPlayers,
+  getTrainingTaskPlayerRange,
   getTrainingTaskMomentLabel,
   getTrainingTaskStageLabel,
   getTrainingTaskTypeDefinition,
   normalizeTrainingTaskStages,
   normalizeTrainingTask,
+  parseTrainingTaskSearch,
   trainingTaskToDraft,
   TRAINING_TASK_MOMENTS,
   TRAINING_TASK_STAGES,
@@ -101,7 +103,7 @@ assert.deepEqual(getTrainingTaskTypeDefinition('Rondo'), { key: 'rondos', label:
 assert.equal(getTrainingTaskTypeDefinition('Tipo histórico').label, 'Tipo histórico', 'un legacy desconocido no rompe presentación');
 
 const tasks = [
-  { name: 'Rondo de tercer hombre', taskCode: 'Vigón', objective: 'Presión tras pérdida', description: 'Tres equipos', technicalContent: 'Pase', tacticalContent: 'Conservación', material: 'Petos', observations: 'Alta intensidad', variants: 'Dos contactos', stageKeys: ['juvenil', 'senior'], ratingAverage: 4.25, ratingCount: 4, taskType: 'rondos', playersMin: 8, playersMax: 12, gamePhase: 'offensive', durationMinutes: 12, author_user_id: 'me', isShared: true },
+  { name: 'Rondo de tercer hombre', taskCode: 'Vigón', objective: 'Presión tras pérdida', description: 'Tres equipos', technicalContent: 'Pase', tacticalContent: 'Conservación', exerciseRules: 'Circular rápido y orientar el control', tacticalOffensiveContent: 'Fijar por dentro', tacticalDefensiveContent: 'Cerrar línea interior', material: 'Petos', observations: 'Alta intensidad', variants: 'Dos contactos', feedbackSearchText: 'Funcionó el bloque alto', media: [{ title: 'Apoyos diagonales', caption: 'Vídeo de referencia' }], editorPayload: { schemaVersion: 1, board: { pitchType: 'half', elements: [{ id: 'text-1', type: 'text', text: 'Zona de presión', x: 20, y: 30 }, { id: 'por-1', type: 'participant', role: 'goalkeeper', x: 50, y: 10 }, { id: 'comodin-1', type: 'participant', role: 'neutral', x: 50, y: 36 }] } }, stageKeys: ['juvenil', 'senior'], ratingAverage: 4.25, ratingCount: 4, taskType: 'rondos', playersMin: 8, playersMax: 12, gamePhase: 'offensive', gameMoment: 'creation', durationMinutes: 12, seriesCount: 3, spaceWidthMinM: 20, spaceWidthMaxM: 30, spaceLengthMinM: 25, spaceLengthMaxM: 40, author_user_id: 'me', isShared: true },
   { name: 'Bloque medio', taskCode: 'DEF', objective: 'Defender área', stageKeys: ['cadete'], ratingAverage: 3, ratingCount: 1, taskType: 'Tarea táctica', playersMin: null, playersMax: 10, gamePhase: 'defensive', durationMinutes: 25, author_user_id: 'other', isShared: true },
   { name: 'Sin tiempo', taskCode: '', objective: 'Libre', stageKeys: [], ratingAverage: null, ratingCount: 0, taskType: 'Otro', playersMin: null, playersMax: null, gamePhase: '', durationMinutes: null, author_user_id: 'me', isShared: false },
 ];
@@ -112,6 +114,23 @@ for (const query of ['tres equipos', 'pase', 'conservacion', 'petos', 'alta inte
   assert.equal(filterTrainingTasks(tasks, { search: query }).length, 1, `la búsqueda general incluye "${query}"`);
 }
 assert.equal(filterTrainingTasks(tasks, { search: 'dos contactos' }).length, 1, 'la búsqueda general incluye variantes');
+for (const query of ['circular rapido', 'fijar dentro', 'cerrar interior', 'bloque alto', 'apoyos diagonales', 'zona presion', 'medio campo', 'portero', 'comodin', 'creacion', 'senior']) {
+  assert.equal(filterTrainingTasks(tasks, { search: query }).length, 1, `la búsqueda completa incluye "${query}"`);
+}
+assert.equal(filterTrainingTasks(tasks, { search: 'PERDIDA presion' }).length, 1, 'varias palabras no dependen de su orden');
+assert.equal(filterTrainingTasks(tasks, { search: 'posesion inexistente' }).length, 0, 'todas las palabras libres son necesarias');
+assert.deepEqual(parseTrainingTaskSearch('Rondo 10 jugadores 25×32'), { players: 10, width: 25, length: 32, duration: null, series: null, terms: ['rondo'] });
+assert.equal(filterTrainingTasks(tasks, { search: 'presion 10 jugadores 25 x 32' }).length, 1, 'texto, jugadores y dimensiones se combinan semánticamente');
+assert.equal(filterTrainingTasks(tasks, { search: 'presion 15 jugadores' }).length, 0, 'el número de jugadores no coincide con otros números de la ficha');
+assert.equal(filterTrainingTasks(tasks, { search: 'presion 25x32' }).length, 1, 'las dimensiones consultadas pueden estar dentro de intervalos persistidos');
+assert.equal(filterTrainingTasks(tasks, { search: 'presion 31x32' }).length, 0, 'un ancho fuera del intervalo no coincide');
+assert.equal(filterTrainingTasks(tasks, { search: 'presion 25x41' }).length, 0, 'un largo fuera del intervalo no coincide');
+assert.equal(filterTrainingTasks(tasks, { search: 'presion 12 minutos 3 series' }).length, 1, 'duración y series usan sus campos y no texto ambiguo');
+const editedTask = { ...tasks[0], description: 'Automatismo exclusivo tras edición' };
+assert.equal(filterTrainingTasks([editedTask], { search: 'automatismo edicion' }).length, 1, 'una tarea editada se indexa desde sus datos actuales sin caché obsoleta');
+assert.equal(filterTrainingTasks([{ name: 'Tarea antigua', objective: null, editorPayload: null }], { search: 'tarea antigua' }).length, 1, 'las tareas antiguas con campos incompletos siguen siendo consultables');
+assert.deepEqual(getTrainingTaskPlayerRange({ playersSpec: '4v4+3' }), { min: 11, max: 11 }, 'el formato suma equipos y comodines como total');
+assert.deepEqual(getTrainingTaskPlayerRange({ playersSpec: '8-12 jugadores' }), { min: 8, max: 12 }, 'un rango textual legacy sigue siendo consultable');
 assert.equal(filterTrainingTasks(tasks, { stage: 'senior' }).length, 1, 'el filtro incluye tareas con la etapa entre varias');
 assert.equal(filterTrainingTasks(tasks, { stage: 'juvenil', taskType: 'rondos', players: '10', objective: 'presion' }).length, 1, 'etapa se combina mediante AND');
 assert.equal(filterTrainingTasks(tasks, { ratingMin: '4' }).length, 1, '4+ usa la media real');
@@ -123,6 +142,10 @@ assert.equal(filterTrainingTasks(tasks, { players: '10' }).length, 2, 'incluye r
 assert.equal(filterTrainingTasks(tasks, { players: '12' }).length, 1, 'excluye un número fuera del máximo');
 assert.equal(filterTrainingTasks(tasks, { players: '7' }).length, 1, 'un máximo sin mínimo actúa como límite superior abierto');
 assert.equal(filterTrainingTasks(tasks, { players: '18' }).length, 0, 'null/null no inventa compatibilidad de jugadores');
+assert.equal(filterTrainingTasks(tasks, { playersMin: '10', playersMax: '14' }).length, 2, 'el rango solicitado encuentra intervalos compatibles');
+assert.equal(filterTrainingTasks(tasks, { playersMin: '13', playersMax: '15' }).length, 0, 'un rango sin solapamiento no coincide');
+assert.equal(filterTrainingTasks(tasks, { spaceWidthMin: '24', spaceWidthMax: '26', spaceLengthMin: '30', spaceLengthMax: '35' }).length, 1, 'los rangos de ancho y largo se combinan');
+assert.equal(filterTrainingTasks(tasks, { spaceWidthMin: '31' }).length, 0, 'el filtro avanzado descarta anchos incompatibles');
 assert.equal(filterTrainingTasks([{ playersMin: 12, playersMax: null }], { players: '14' }).length, 1, 'un mínimo sin máximo actúa como límite inferior abierto');
 assert.equal(filterTrainingTasks(tasks, { taskCode: 'vigon', taskType: 'rondos', players: '10', objective: 'presion' }).length, 1, 'los filtros diferentes se combinan con AND');
 assert.equal(filterTrainingTasks(tasks, { scope: 'mine' }, 'me').length, 2, 'Mías incluye tareas propias compartidas');
@@ -130,6 +153,6 @@ assert.equal(filterTrainingTasks(tasks, { scope: 'shared' }, 'me').length, 1, 'C
 assert.equal(filterTrainingTasks(tasks, { taskCode: 'def', scope: 'mine' }, 'me').length, 0, 'el código no altera ownership');
 assert.equal(filterTrainingTasks(tasks, { duration: 'short' }, 'me').length, 1, 'duración nula no equivale a cero');
 assert.equal(filterTrainingTasks(tasks, { gamePhase: 'defensive', duration: 'medium' }).length, 1, 'fase y duración se combinan');
-assert.deepEqual(createTrainingTaskFilters(), { search: '', taskType: '', taskCode: '', players: '', objective: '', gamePhase: '', scope: '', duration: '', stage: '', ratingMin: '' }, 'limpiar filtros restaura también etapa y valoración');
+assert.deepEqual(createTrainingTaskFilters(), { search: '', taskType: '', taskCode: '', players: '', playersMin: '', playersMax: '', objective: '', gamePhase: '', scope: '', duration: '', spaceWidthMin: '', spaceWidthMax: '', spaceLengthMin: '', spaceLengthMax: '', stage: '', ratingMin: '' }, 'limpiar filtros restaura también rangos, etapa y valoración');
 
 console.log('training task tests passed');

@@ -185,7 +185,7 @@ assert.match(verify, /STAFF no compartido no crea feedback[\s\S]*receptor crea y
 assert.match(verify, /INSERT ignora id falsificado[\s\S]*INSERT deriva club_id[\s\S]*INSERT fija author_user_id[\s\S]*INSERT fija created_at[\s\S]*INSERT fija updated_at/i);
 assert.match(verify, /rating 3\.5 denegado[\s\S]*share revocado impide SELECT feedback[\s\S]*share revocado impide INSERT feedback[\s\S]*share revocado impide UPDATE feedback[\s\S]*share revocado impide DELETE feedback/i);
 assert.match(store, /from\('training_tasks'\)\.insert\(payload\)\.select\('\*'\)\.single\(\)/i);
-assert.match(store, /from\('training_task_feedback'\)[\s\S]*select\('task_id,rating'\)/i);
+assert.match(store, /from\('training_task_feedback'\)[\s\S]*select\('task_id,rating,post_text,used_on'\)/i);
 assert.doesNotMatch(store, /TRAINING_TASK_RLS_DEBUG|insert-without-representation|safeDiagnostic|current_membership|can_edit_club_data/i);
 assert.match(trainingTasksSection, /canManage\s*\?\s*<>[\s\S]*onDelete\(task\)[\s\S]*>Eliminar<\/button>/i);
 assert.match(trainingTasksSection, /canManage=\{task\.author_user_id\s*===\s*userId\}/i);

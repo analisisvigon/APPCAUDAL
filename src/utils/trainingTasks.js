@@ -322,6 +322,13 @@ export const buildTrainingTaskPayload = (draft, { clubId, authorUserId, existing
 
 const SEARCH_EXCLUDED_KEYS = /(^|_)(id|uuid|club|author|user|membership|created|updated|deleted|path|url|mime|size|color|schema|coordinate|x|y|x1|x2|y1|y2|controlx|controly)(_|$)/i;
 const SEARCH_TEXT_KEYS = /^(name|title|label|text|caption|description|objective|material|observations|variants|rules|content|post_text|original_name|task_code|players_spec)$/i;
+const EDITOR_VALUE_LABELS = Object.freeze({
+  full: 'campo completo', half: 'medio campo', blank: 'terreno sin lineas', 'penalty-area': 'vista de area',
+  neutral: 'comodin', goalkeeper: 'portero', coach: 'entrenador', player: 'jugador', opponent: 'rival',
+  ball: 'balon', cone: 'cono', pole: 'pica', mannequin: 'maniqui', hoop: 'aro', goal: 'porteria',
+  mini_goal: 'mini porteria', zone: 'zona', block: 'bloque', arrow: 'flecha', dashed_arrow: 'flecha discontinua',
+  curved_arrow: 'flecha curva', double_arrow: 'flecha doble', line: 'linea', dashed_line: 'linea discontinua',
+});
 
 const collectSearchText = (value, key = '', depth = 0, output = []) => {
   if (value == null || depth > 8 || SEARCH_EXCLUDED_KEYS.test(key)) return output;
@@ -342,6 +349,20 @@ const numericValue = (value) => {
   if (value === '' || value === null || value === undefined) return null;
   const number = Number(String(value).replace(',', '.'));
   return Number.isFinite(number) ? number : null;
+};
+
+const collectEditorLabels = (value, key = '', output = []) => {
+  if (value == null) return output;
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectEditorLabels(entry, key, output));
+    return output;
+  }
+  if (typeof value !== 'object') {
+    if (typeof value === 'string' && /^(role|type|pitchType|teamKey)$/.test(key) && EDITOR_VALUE_LABELS[value]) output.push(EDITOR_VALUE_LABELS[value]);
+    return output;
+  }
+  Object.entries(value).forEach(([entryKey, entry]) => collectEditorLabels(entry, entryKey, output));
+  return output;
 };
 
 export const getTrainingTaskPlayerRange = (task = {}) => {
@@ -385,16 +406,14 @@ const taskSearchText = (task) => normalizeTrainingTaskSearch([
   ...normalizeTrainingTaskStages(task.stageKeys).map(getTrainingTaskStageLabel),
   TRAINING_TASK_PHASES.find((phase) => phase.value === task.gamePhase)?.label,
   getTrainingTaskMomentLabel(task.gamePhase, task.gameMoment),
-  task.editorPayload?.board?.pitchType === 'full' ? 'campo completo'
-    : task.editorPayload?.board?.pitchType === 'half' ? 'medio campo'
-      : task.editorPayload?.board?.pitchType === 'penalty-area' ? 'vista de area' : '',
+  ...collectEditorLabels(task.editorPayload ?? task.editor_payload),
 ].filter(Boolean).join(' '));
 
 export const parseTrainingTaskSearch = (value) => {
   let remainder = normalizeTrainingTaskSearch(value);
   const parsed = { players: null, width: null, length: null, duration: null, series: null, terms: [] };
   remainder = remainder.replace(/(\d+)\s*(?:jugadores?|jug\.?)/g, (_, number) => { parsed.players = Number(number); return ' '; });
-  remainder = remainder.replace(/(\d+(?:[.,]\d+)?)\s*[xÃ—]\s*(\d+(?:[.,]\d+)?)/g, (_, width, length) => {
+  remainder = remainder.replace(/(\d+(?:[.,]\d+)?)\s*[x\u00d7]\s*(\d+(?:[.,]\d+)?)/g, (_, width, length) => {
     parsed.width = numericValue(width); parsed.length = numericValue(length); return ' ';
   });
   remainder = remainder.replace(/(\d+)\s*(?:minutos?|mins?\.?)/g, (_, number) => { parsed.duration = Number(number); return ' '; });
