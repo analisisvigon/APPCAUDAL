@@ -11,6 +11,7 @@ export const PLAYER_STATUSES = [
   { key: 'absent', label: 'Ausente', short: 'Aus.' },
   { key: 'injured', label: 'Lesionado', short: 'Les.' },
   { key: 'adapted', label: 'Trabajo adaptado', short: 'Adap.' },
+  { key: 'first_team', label: 'Convocado con el primer equipo', short: 'Primer equipo' },
 ];
 
 export const eligibleRosterCandidates = (candidates, date) => candidates.filter((row) =>
@@ -29,7 +30,7 @@ export const groupSessionPlayers = (players, frozen) => PLAYER_GROUPS.map((group
 })).filter((group) => group.key !== null || group.players.length);
 
 export const sessionPlayerCounts = (roster, availability = {}) => {
-  const counts = { total: roster.length, available: 0, absent: 0, injured: 0, adapted: 0, participants: 0 };
+  const counts = { total: roster.length, available: 0, absent: 0, injured: 0, adapted: 0, first_team: 0, participants: 0 };
   for (const player of roster) {
     const status = availability[player.player_id]?.status || 'available';
     if (Object.hasOwn(counts, status)) counts[status] += 1;

@@ -1,7 +1,7 @@
 import { groupSessionPlayers, PLAYER_STATUSES, sessionPlayerCounts } from '../../utils/plannedSessionPlayers';
 
 const statusLabel = (status) => PLAYER_STATUSES.find((item) => item.key === status)?.label || status;
-const visualStatus = (status) => status === 'absent' || status === 'injured'
+const visualStatus = (status) => ['absent', 'injured', 'first_team'].includes(status)
   ? 'planned-roster-player-no-training' : status === 'adapted' ? 'planned-roster-player-adapted' : '';
 
 export default function PlannedSessionRoster({ roster = [], frozen = false, selectedIds = [],
@@ -25,6 +25,8 @@ export default function PlannedSessionRoster({ roster = [], frozen = false, sele
           <span className="planned-roster-name" aria-label={frozen && state.status !== 'available'
             ? `${name}, ${statusLabel(state.status)}` : name}>{name}</span>
           {frozen ? <>
+            {state.status === 'first_team' && (print || !canEdit)
+              ? <small className="planned-roster-session-status">Primer equipo</small> : null}
             {canEdit && !print ? <select aria-label={`Disponibilidad de ${name}`} value={state.status}
               onChange={(event) => onAvailability(player.player_id, 'status', event.target.value)}>
               {PLAYER_STATUSES.map((option) => <option value={option.key} key={option.key}>{option.label}</option>)}
@@ -51,6 +53,7 @@ export default function PlannedSessionRoster({ roster = [], frozen = false, sele
         <span>Ausentes <strong>{counts.absent}</strong></span>
         <span>Lesionados <strong>{counts.injured}</strong></span>
         <span>Trabajo adaptado <strong>{counts.adapted}</strong></span>
+        {counts.first_team > 0 ? <span>Primer equipo <strong>{counts.first_team}</strong></span> : null}
       </>}
     </div>
   </div>;

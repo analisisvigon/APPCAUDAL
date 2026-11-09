@@ -15,11 +15,12 @@ const DRAW_TOOLS = new Set(['arrow', 'curved_arrow', 'dashed_arrow', 'line', 'da
 const snapValue = (value, snap) => snap ? Math.round(value / 4) * 4 : value;
 const clamp = (value, axis) => clampDiagramCoordinate(value, axis) ?? 0;
 
-function TrainingPitch({ pitchType }) {
-  const line = { fill: 'none', stroke: 'rgba(255,255,255,.82)', strokeWidth: 0.48 };
+function TrainingPitch({ pitchType, monochrome = false }) {
+  const ink = monochrome ? '#374151' : 'rgba(255,255,255,.82)';
+  const line = { fill: 'none', stroke: ink, strokeWidth: 0.48 };
   return <>
-    <rect width="100" height="72" rx="2.5" fill="#176b3a" />
-    {[0, 1, 2, 3, 4, 5, 6, 7].map((stripe) => <rect key={stripe} x={stripe * 12.5} width="12.5" height="72" fill={stripe % 2 ? '#ffffff' : '#071f14'} opacity={stripe % 2 ? 0.025 : 0.035} />)}
+    <rect width="100" height="72" rx="2.5" fill={monochrome ? '#ffffff' : '#176b3a'} />
+    {!monochrome && [0, 1, 2, 3, 4, 5, 6, 7].map((stripe) => <rect key={stripe} x={stripe * 12.5} width="12.5" height="72" fill={stripe % 2 ? '#ffffff' : '#071f14'} opacity={stripe % 2 ? 0.025 : 0.035} />)}
     {pitchType === 'blank' ? null : pitchType === 'half' ? <g {...line}>
       <rect x="1" y="1" width="98" height="70" rx="1.5" />
       <line x1="1" y1="1" x2="1" y2="71" />
@@ -27,13 +28,13 @@ function TrainingPitch({ pitchType }) {
       <rect x="79" y="17" width="20" height="38" />
       <rect x="92" y="27" width="7" height="18" />
       <rect x="98" y="30" width="2" height="12" />
-      <circle cx="87" cy="36" r="0.8" fill="rgba(255,255,255,.86)" stroke="none" />
+      <circle cx="87" cy="36" r="0.8" fill={monochrome ? ink : 'rgba(255,255,255,.86)'} stroke="none" />
       <path d="M79 29 A10 10 0 0 0 79 43" />
     </g> : <g {...line}>
       <rect x="1" y="1" width="98" height="70" rx="1.5" />
       <line x1="50" y1="1" x2="50" y2="71" />
       <circle cx="50" cy="36" r="9" />
-      <circle cx="50" cy="36" r="0.7" fill="rgba(255,255,255,.86)" stroke="none" />
+      <circle cx="50" cy="36" r="0.7" fill={monochrome ? ink : 'rgba(255,255,255,.86)'} stroke="none" />
       <rect x="1" y="17" width="19" height="38" /><rect x="1" y="27" width="7" height="18" />
       <rect x="80" y="17" width="19" height="38" /><rect x="92" y="27" width="7" height="18" />
       <rect x="0" y="30" width="2" height="12" /><rect x="98" y="30" width="2" height="12" />
@@ -70,7 +71,8 @@ function Material({ element, color }) {
   return null;
 }
 
-export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = 'full', selectedId = '', activeTool = 'select', onSelect, onChange, onInsert, readOnly = false, snap = false, players = [], renderMode = 'editor', fitViewport = false }) {
+export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = 'full', selectedId = '', activeTool = 'select', onSelect, onChange, onInsert, readOnly = false, snap = false, players = [], renderMode = 'editor', fitViewport = false, pitchAppearance = 'green' }) {
+  const monochrome = pitchAppearance === 'bw';
   const preview = renderMode === 'preview';
   const svgRef = useRef(null);
   const dragRef = useRef(null);
@@ -163,7 +165,9 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
   const renderElement = (raw) => {
     const element = adaptLegacyTrainingBoardElement(raw);
     const palette = getTrainingBoardColor(element, element.type === 'text' ? 'white' : 'blue');
-    const color = palette.value;
+    // White equipment/traces need contrast on paper; participant colours stay intact.
+    const color = monochrome && element.type !== 'participant' && palette.key === 'white'
+      ? '#374151' : palette.value;
     if (TRACE_TYPES.has(element.type)) {
       const curved = element.type === 'curved_arrow';
       const control = getSetPieceCurveControlPoint(element);
@@ -211,7 +215,7 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
   const interactionProps = preview ? {} : { onPointerMove: move, onPointerUp: stop, onPointerCancel: stop, onPointerDown: onBoardPointerDown };
   return <svg ref={preview ? null : svgRef} viewBox="0 0 100 72" preserveAspectRatio={fitViewport ? 'xMidYMid meet' : undefined} role={preview ? undefined : 'img'} aria-label={preview ? undefined : readOnly ? 'Pizarra de entrenamiento' : 'Editor de pizarra de entrenamiento'} aria-hidden={preview ? true : undefined} data-interaction-mode={preview ? 'preview' : readOnly ? 'readonly' : activeTool === 'select' ? 'select' : 'insert'} className={`training-task-diagram-canvas block select-none ${fitViewport === 'all' ? 'h-full max-h-full w-full max-w-full' : fitViewport === 'desktop' ? 'h-auto w-full lg:h-full lg:max-h-full lg:max-w-full' : 'h-auto w-full'} ${preview ? 'pointer-events-none' : activeTool !== 'select' ? 'cursor-crosshair' : ''}`} {...interactionProps}>
     <defs><marker id={markerId} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="2.7" markerHeight="2.7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="context-stroke" /></marker></defs>
-    <TrainingPitch pitchType={pitchType} />
+    <TrainingPitch pitchType={pitchType} monochrome={monochrome} />
     {rendered.map(renderElement)}
     {draftPath ? <path d={draftPath} fill="none" stroke="#38bdf8" strokeWidth=".8" strokeDasharray="2 1.5" pointerEvents="none" /> : null}
     {draftZone ? <rect {...draftZone} fill="#38bdf8" fillOpacity=".14" stroke="#38bdf8" strokeWidth=".45" strokeDasharray="2 1.5" pointerEvents="none" /> : null}
