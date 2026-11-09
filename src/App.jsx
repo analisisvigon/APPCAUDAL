@@ -7688,8 +7688,16 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
 
         const result = await runIndependentAuthenticatedLoaders({
           jugadores: async () => {
-            const access = await resolveRosterContext(supabase, selectedCtsId || rosterRequestedCtsId,
-              identity?.membership?.club_id || '');
+            let access;
+            try {
+              access = await resolveRosterContext(supabase, selectedCtsId || rosterRequestedCtsId,
+                identity?.membership?.club_id || '');
+            } catch (contextError) {
+              if (isCurrent() && contextError.contexts) {
+                setRosterAccess({ contexts: contextError.contexts, context: null, canWrite: false });
+              }
+              throw contextError;
+            }
             if (!isCurrent()) return;
             setRosterAccess({ ...access, canWrite: false });
             if (!access.context) throw new Error('Selecciona un equipo y temporada autorizado para ver su plantilla.');
@@ -7736,30 +7744,35 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   }, [authLoading, authenticatedDataLoadKey]);
 
   useEffect(() => {
-    if (authLoading || !authenticatedUserId) return;
+    if (authLoading || !authenticatedUserId || !rosterAccess.canWrite) return;
+    const token = rosterSnapshotRef.current;
+    if (!rosterCoordinatorRef.current.isCurrent(token)) return;
     const suspendedPlayers = players.filter((player) => (
       player.availabilityStatus === PLAYER_AVAILABILITY.suspended
       && player.suspensionMatchesRemaining > 0
       && player.suspensionCycleId
     ));
-    if (!suspendedPlayers.length || !matches.length) return;
+    const rosterMatches = matches.filter((match) => match.clubTeamSeasonId === token.context.id);
+    if (!suspendedPlayers.length || !rosterMatches.length) return;
     const signature = [
+      token.context.id,
       ...suspendedPlayers.map((player) => `${player.id}:${player.suspensionCycleId}:${player.suspensionMatchesRemaining}`),
-      ...matches.map((match) => `${match.id}:${match.status}:${match.homeScore}:${match.awayScore}:${match.goalsFor}:${match.goalsAgainst}`),
+      ...rosterMatches.map((match) => `${match.id}:${match.status}:${match.homeScore}:${match.awayScore}:${match.goalsFor}:${match.goalsAgainst}`),
     ].join('|');
     if (suspensionProcessingSignatureRef.current === signature) return;
     suspensionProcessingSignatureRef.current = signature;
-    consumeSuspensionsForEligibleMatches({ supabase, matches, competitionCatalog: competitions })
+    assertCtsCreate(supabase, rosterCoordinatorRef.current, token)
+      .then(() => consumeSuspensionsForEligibleMatches({ supabase, matches: rosterMatches, competitionCatalog: competitions }))
       .then(async (consumptions) => {
         if (!consumptions.length) return;
-        const jugadores = await getScopedJugadores();
+        const jugadores = (await loadCtsRoster(supabase, rosterCoordinatorRef.current, token)).map(normalizeSupabaseJugador);
         setPlayers(jugadores);
         setEmpty(jugadores.length === 0);
       })
       .catch((processingError) => {
         console.error('Error consumiendo sanciones de partidos oficiales:', processingError);
       });
-  }, [authLoading, authenticatedUserId, competitions, matches, players]);
+  }, [authLoading, authenticatedUserId, competitions, matches, players, rosterAccess.canWrite]);
 
   useEffect(() => {
     try {
@@ -16311,6 +16324,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   };
 
   const openAvailabilityEditor = (player) => {
+    if (!rosterAccess.canWrite || !players.some((row) => row.id === player.id)) return;
     const presentation = getPlayerAvailabilityPresentation(player);
     setAvailabilityEditor(player);
     setAvailabilityDraft({
@@ -16328,7 +16342,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   };
 
   const savePlayerAvailability = async () => {
-    if (!availabilityEditor?.id) return;
+    if (!availabilityEditor?.id || availabilitySaving) return;
     const current = getPlayerAvailabilityPresentation(availabilityEditor);
     const pendingSanctionText = current.remaining === 1 ? 'Queda 1 partido' : `Quedan ${current.remaining} partidos`;
     const leavingSanctionMessage = availabilityDraft.status === PLAYER_AVAILABILITY.available
@@ -16343,11 +16357,18 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     setAvailabilitySaving(true);
     setAvailabilityError('');
     try {
+      const token = rosterSnapshotRef.current;
+      await assertCtsCreate(supabase, rosterCoordinatorRef.current, token);
+      const roster = await loadCtsRoster(supabase, rosterCoordinatorRef.current, token);
+      if (!roster.some((row) => row.id === availabilityEditor.id)) {
+        throw new Error('El jugador no pertenece a la plantilla seleccionada.');
+      }
       const { data, error: rpcError } = await supabase.rpc(
         'set_player_availability',
         buildAvailabilityRpcInput(availabilityEditor.id, availabilityDraft.status, availabilityDraft.remaining)
       );
       if (rpcError) throw rpcError;
+      rosterCoordinatorRef.current.assertWritable(token);
       const updatedRow = Array.isArray(data) ? data[0] : data;
       if (!updatedRow) throw new Error('Supabase no devolvió el estado de disponibilidad actualizado.');
       const updatedPlayer = normalizeSupabaseJugador({ ...availabilityEditor, ...updatedRow });
@@ -17569,8 +17590,15 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     setCaptainPriorityError('');
     setCaptainPriorityStatus('');
     try {
+      const token = rosterSnapshotRef.current;
+      await assertCtsCreate(supabase, rosterCoordinatorRef.current, token);
+      const roster = await loadCtsRoster(supabase, rosterCoordinatorRef.current, token);
+      if (orderedPlayers.some((player) => !roster.some((row) => row.membership_id === player.membershipId))) {
+        throw new Error('Los capitanes deben pertenecer a la plantilla seleccionada.');
+      }
       await saveOwnCaptainPriorities(supabase, orderedPlayers);
       const refreshed = await loadOwnCaptainPriorities(supabase, players);
+      rosterCoordinatorRef.current.assertWritable(token);
       if (!refreshed.schemaAvailable) {
         const schemaError = new Error('Falta aplicar supabase_own_captain_priority.sql en Supabase.');
         schemaError.code = 'CAPTAIN_PRIORITY_SCHEMA_MISSING';
@@ -24046,6 +24074,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   };
 
   const openRivalPlayerModal = (player = null, options = {}) => {
+    if (rivalPlayerSaving || ownPlayerCreateAttemptRef.current?.busy) return;
     const activeTeam = getActiveRivalPlayerTeam();
     const contextTeamId = options.standalone
       ? player?.membership?.team_id || player?.teamId || ''
@@ -24582,15 +24611,18 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
         }).eq('id', draft.legacyPlayerId);
         if (legacyLinkError) throw legacyLinkError;
       }
-      const ownPlayers = confirmedRoster || await getScopedJugadores();
+      const ownPlayers = confirmedRoster || (isOwnTeamDraft ? await getScopedJugadores() : null);
       if (sportsSnapshot && rivalPlayerModal.mode === 'create' && isOwnTeamDraft
         && !ownPlayers.some((player) => String(player.id) === String(atomicIdentity?.ownPlayerId)
           && String(player.globalPlayerId || player.global_player_id) === String(globalId)
           && String(player.membershipId || player.membership_id) === String(membershipId))) {
         throw new Error('El perfil se creó, pero no se confirmó su vinculación a la plantilla seleccionada. No se completó el alta.');
       }
-      setPlayers(ownPlayers);
-      setEmpty(ownPlayers.length === 0);
+      if (ownPlayers) {
+        rosterCoordinatorRef.current.assertWritable(sportsSnapshot);
+        setPlayers(ownPlayers);
+        setEmpty(ownPlayers.length === 0);
+      }
       if (confirmedRoster) { setPlayerSearchTerm(''); setPlayerQuickFilter('Todos'); }
       const genericSourceSaved = safeArray(draft.sources).some((source) => !['transfermarkt', 'besoccer'].includes(normalizePlayerIdentityName(source.sourceName)));
       setGlobalPlayerStatus(genericSourceSaved ? 'Fuente guardada. Completa manualmente los datos que quieras conservar.' : 'Jugador global guardado correctamente.');
@@ -31457,13 +31489,14 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                   <h2 className="mt-1 whitespace-nowrap text-lg font-black leading-tight text-white">Panel competitivo</h2>
                   <label className="mt-2 grid gap-1 text-xs text-slate-300">Equipo y temporada
                     <select aria-label="Equipo y temporada de Plantilla" value={rosterAccess.context?.id || rosterRequestedCtsId}
-                      disabled={Boolean(selectedCtsId) || loading || rivalPlayerSaving}
+                      disabled={Boolean(selectedCtsId) || loading || rivalPlayerSaving || availabilitySaving || captainPrioritiesSaving}
                       onChange={(event) => {
                         homeDataCoordinatorRef.current.invalidate();
                         rosterCoordinatorRef.current.change(null); rosterSnapshotRef.current = null;
                         ownPlayerCreateAttemptRef.current = null;
                         setRosterAccess((current) => ({ ...current, context: null, canWrite: false }));
                         setPlayers([]); setSelectedPlayerProfileId(null);
+                        setAvailabilityEditor(null); setCaptainPanelOpen(false);
                         setPlayerSearchTerm(''); setPlayerQuickFilter('Todos');
                         closeRivalPlayerModal(); setRosterRequestedCtsId(event.target.value);
                       }} className="min-h-10 w-full rounded-xl border border-white/10 bg-caudal-950 px-2 text-xs">
@@ -38211,6 +38244,7 @@ function CtsWorkspace({ controlledSession, selectedCtsId, availableContexts = []
   const { context, players, matches } = snapshot;
   const selectTab = (name) => { setActiveTab(name); setMobileMoreOpen(false); setEditing(null); setMutationError(''); };
   const openEditor = (type, row = null) => {
+    if (mutationBusy || playerCreateAttemptRef.current?.busy) return;
     playerCreateAttemptRef.current = type === 'player' && !row
       ? { playerId: crypto.randomUUID(), ctsId: context.id } : null;
     setEditing({ type, row }); setMutationError('');

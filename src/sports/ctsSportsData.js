@@ -10,7 +10,12 @@ export async function resolveRosterContext(client, requestedId = '', clubId = ''
     || (contexts.length === 1 ? contexts[0].id : '');
   if (!id) return { contexts, context: null };
   if (!contexts.some((context) => context.id === id)) throw new Error('Equipo y temporada no autorizados.');
-  return { contexts, context: await verifySelectableSportsContext(client, id) };
+  try {
+    return { contexts, context: await verifySelectableSportsContext(client, id) };
+  } catch (error) {
+    // Preserve authorized options so an unavailable archive does not trap the selector.
+    throw Object.assign(new Error(error.message), { contexts });
+  }
 }
 
 // El identificador del navegador solo solicita un contexto: la RPC de identidad

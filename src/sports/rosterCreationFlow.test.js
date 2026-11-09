@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { SportsContextCoordinator, verifySportsContext } from './authorizedContext.js';
 import { createAndConfirmCtsPlayer, loadCtsRoster, resolveRosterContext } from './ctsSportsData.js';
+import { groupRosterPlayers } from '../utils/rosterGroups.js';
 
 const option = (id = 'cts-a', seasonStatus = 'open') => ({ club_team_season_id: id,
   club_id: 'club-a', team_id: 'team-a', season_id: id, season_status: seasonStatus });
@@ -11,6 +12,7 @@ let fichas = [];
 let links = [];
 let readError = null;
 let preferred = null;
+let archiveAvailable = true;
 const calls = [];
 const client = { rpc: async (name, args) => {
   calls.push({ name, args });
@@ -18,7 +20,7 @@ const client = { rpc: async (name, args) => {
     club_id: 'club-a', role: 'staff', is_active: true, contexts }] };
   if (name === 'my_operational_cts_v1') return { data: preferred };
   if (name === 'can_write_club_team_season') return { data: permission };
-  if (name === 'can_open_historical_cts_v1') return { data: true };
+  if (name === 'can_open_historical_cts_v1') return { data: archiveAvailable };
   if (name === 'my_cts_jugadores_v1') return { data: fichas, error: readError };
   if (name === 'my_cts_roster_links_v1') return { data: links };
   throw new Error(`Unexpected RPC: ${name}`);
@@ -32,6 +34,15 @@ preferred = 'cts-b';
 assert.equal((await resolveRosterContext(client, '', 'club-a')).context, null, 'STAFF no hereda la preferencia de owner');
 assert.equal((await resolveRosterContext(client, 'cts-b', 'club-a')).context.id, 'cts-b');
 await assert.rejects(resolveRosterContext(client, 'cts-a', 'club-other'), /no autorizados/);
+contexts = [option(), option('closed', 'closed')];
+archiveAvailable = false;
+await assert.rejects(resolveRosterContext(client, 'closed', 'club-a'), (error) => {
+  assert.match(error.message, /Archivo pendiente/);
+  assert.deepEqual(error.contexts.map((context) => context.id), ['cts-a', 'closed'],
+    'un archivo no disponible permite volver a seleccionar el CTS abierto');
+  return true;
+});
+archiveAvailable = true;
 contexts = [option()];
 
 const active = { id: 'new-id', global_player_id: 'global-new', membership_id: 'stage-new', active_in_squad: true };
@@ -110,6 +121,14 @@ contexts = [option('cts-b')];
 snapshot = coordinator.change(await verifySportsContext(client, 'cts-b'));
 await assert.rejects(createAndConfirmCtsPlayer(client, coordinator, snapshot, freshAttempt(), create), /formulario no pertenece/);
 assert.equal(writes, 4, 'sin permisos, con temporada cerrada o CTS distinto no se escribe');
+
+const rosterCards = [{ id: 'keeper', position: 'Portero' }, { id: 'missing' },
+  { id: 'custom', position: 'Carrilero personalizado' }, { id: 'blank', position: '' }];
+const groups = groupRosterPlayers(rosterCards, [{ title: 'Porteros', positions: ['Portero'] },
+  { title: 'Defensas', positions: ['Defensa'] }]);
+assert.deepEqual(groups.flatMap((group) => group.players).map((player) => player.id),
+  rosterCards.map((player) => player.id), 'todos los jugadores contados tienen tarjeta, incluso sin posición estándar');
+assert.equal(groups.at(-1).players.length, 3);
 
 const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 assert.doesNotMatch(app, /deleteOwnPlayer|handleDelete\(player\)|delete_own_player_atomic_v1/, 'el panel no expone ni invoca el borrado abandonado');
