@@ -176,6 +176,20 @@ select diagnostics.*,
       where migration.item->>'match_basis' = 'atomic_own_player_create'
         and migration.item->>'review_status' = 'confirmed'
     ) then 'REVIEW_MIGRATION_IDENTITY_MISMATCH'
+    when binding_count = 1 and all_cts_row_count = 1 and target_cts_row_count = 1
+      and exists (
+        select 1
+        from jsonb_array_elements(binding_rows) as binding(item)
+        join jsonb_array_elements(target_cts_rows) as roster(item)
+          on roster.item->>'id' = binding.item->>'club_team_season_player_id'
+        join jsonb_array_elements(legacy_player_rows) as ficha(item)
+          on ficha.item->>'id' = binding.item->>'jugador_id'
+        where binding.item->>'cts_id' = target_cts_id::text
+          and binding.item->>'cts_player_id' = player_id::text
+          and roster.item->>'has_departed' = 'false'
+          and roster.item->>'voided_at' is null
+          and roster.item->>'left_on' is null
+      ) then 'ALREADY_LINKED_ACTIVE_NO_ACTION'
     when binding_count <> 0 then 'REVIEW_EXISTING_CTS_BINDING'
     when all_cts_row_count <> 0 then 'REVIEW_EXISTING_CTS_MEMBERSHIP'
     else 'READY_RECOVER_EXISTING_ROWS'

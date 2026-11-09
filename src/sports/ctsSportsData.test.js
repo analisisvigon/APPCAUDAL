@@ -26,7 +26,8 @@ const client = {
       contexts: authorized,
     }], error: null };
     if (name === 'my_operational_cts_v1') return { data: 'cts-a', error: null };
-    if (name === 'my_cts_jugadores_v1') return delayedRoster || { data: [{ id: 'j-a' }], error: null };
+    if (name === 'my_cts_jugadores_v1') return delayedRoster || { data: [{ id: 'j-a', global_player_id: 'g-a' }], error: null };
+    if (name === 'my_cts_roster_links_v1') return { data: [{ legacy_jugador_id: 'j-a', player_id: 'g-a', legacy_ficha_count: 1, has_departed: false }], error: null };
     if (name === 'my_cts_matches_v1') return delayedMatches || { data: [
       { id: 'p-a', club_team_season_id: 'cts-a' },
       ...(crossedMatchResponse ? [{ id: 'p-b', club_team_season_id: 'cts-b' }] : []),
@@ -51,7 +52,7 @@ assert.equal(await loadOperationalPreferredContextId(client, [context]), '');
 assert.equal(await loadOperationalPreferredContextId(client,
   [{ ...context, role: 'owner' }]), 'cts-a');
 const snapshot = coordinator.change(context);
-assert.deepEqual(await loadCtsRoster(client, coordinator, snapshot), [{ id: 'j-a' }]);
+assert.deepEqual(await loadCtsRoster(client, coordinator, snapshot), [{ id: 'j-a', global_player_id: 'g-a' }]);
 assert.deepEqual((await loadCtsMatches(client, coordinator, snapshot)).map((match) => match.id), ['p-a']);
 crossedMatchResponse = true;
 await assert.rejects(loadCtsMatches(client, coordinator, snapshot), /contiene otro equipo/);

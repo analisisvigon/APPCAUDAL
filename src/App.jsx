@@ -3,10 +3,11 @@ import React from 'react';
 import { createPortal, flushSync } from 'react-dom';
 
 import { supabase } from './lib/supabase';
-import { deleteOwnPlayer } from './data/ownPlayerDeletion';
+import { groupRosterPlayers } from './utils/rosterGroups';
 import { SportsContextCoordinator, loadAuthorizedSportsContexts, loadOperationalPreferredContextId, verifySelectableSportsContext, verifySportsContext } from './sports/authorizedContext';
 import {
-  assertCreatedPlayerInCtsRoster, assertCtsCreate, assertCtsMatchWrite, canWriteOperationalCts,
+  assertCtsCreate, assertCtsMatchWrite, canWriteOperationalCts,
+  createAndConfirmCtsPlayer, resolveRosterContext,
   createOperationalMatch, createOperationalPlayer, editOperationalMatch,
   editOperationalPlayer, loadCtsMatches, loadCtsRoster,
 } from './sports/ctsSportsData';
@@ -1790,10 +1791,8 @@ const normalizeSupabaseJugador = (player) => ({
 });
 
 async function getJugadores({ coordinator = null, snapshot = null } = {}) {
-  const { data, error } = snapshot
-    ? { data: await loadCtsRoster(supabase, coordinator, snapshot), error: null }
-    : await supabase.from("jugadores").select("*")
-  if (error) throw error
+  if (!snapshot?.context) throw new Error('Selecciona y verifica el equipo y temporada de Plantilla.');
+  const data = await loadCtsRoster(supabase, coordinator, snapshot);
   return (data || []).map(normalizeSupabaseJugador).filter((player) => player.activeInSquad !== false)
 }
 
@@ -5308,12 +5307,16 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   const [plannedSessionsDirty, setPlannedSessionsDirty] = useState(false);
   const [microcyclesDirty, setMicrocyclesDirty] = useState(false);
   const [players, setPlayers] = useState([]);
-  const [playerRemovalNotice, setPlayerRemovalNotice] = useState('');
   const sportsContextCoordinatorRef = useRef(new SportsContextCoordinator());
   const sportsSnapshotRef = useRef(null);
+  const rosterCoordinatorRef = useRef(new SportsContextCoordinator());
+  const rosterSnapshotRef = useRef(null);
+  const ownPlayerCreateAttemptRef = useRef(null);
+  const [rosterRequestedCtsId, setRosterRequestedCtsId] = useState(selectedCtsId || '');
+  const [rosterAccess, setRosterAccess] = useState({ contexts: [], context: null, canWrite: false });
   const getScopedJugadores = () => getJugadores({
-    coordinator: sportsContextCoordinatorRef.current,
-    snapshot: sportsSnapshotRef.current,
+    coordinator: rosterCoordinatorRef.current,
+    snapshot: rosterSnapshotRef.current,
   });
   const [captainPriorities, setCaptainPriorities] = useState([]);
   const [captainPrioritiesLoading, setCaptainPrioritiesLoading] = useState(false);
@@ -6643,7 +6646,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
           : supabase.from("partidos").select("*").order("date", { ascending: true, nullsFirst: false }),
         reusePrincipalData
           ? Promise.resolve({ data: players, error: null })
-          : supabase.from("jugadores").select("*").order("name", { ascending: true }),
+          : getScopedJugadores().then((data) => ({ data, error: null })),
         reusePrincipalData
           ? Promise.resolve({ data: teams, error: null })
           : supabase.from("equipos_rivales").select("*").order("name", { ascending: true }),
@@ -6676,9 +6679,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
         if (response.error) console.warn(`[HOME_RECENT_ACTIVITY] No se pudo consultar ${source}:`, response.error);
       });
 
-      const nextPlayers = reusePrincipalData
-        ? jugadoresResponse.data || []
-        : (jugadoresResponse.data || []).map(normalizeSupabaseJugador);
+      const nextPlayers = jugadoresResponse.data || [];
       const statsByMatch = (statsResponse.data || []).reduce((acc, row) => {
         const current = acc[row.partido_id] || {};
         current[row.player_name] = {
@@ -6740,8 +6741,8 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
         rivalMemberships: rivalMembershipsResponse.error ? [] : rivalMembershipsResponse.data || [],
       });
 
-      setPlayers(nextPlayers);
-      setEmpty(nextPlayers.length === 0);
+      // Plantilla owns roster state. A delayed Home refresh must not overwrite
+      // a more recent CTS read or a just-confirmed player creation.
       setMatches(nextMatches);
       setHomeRecentActivity(nextRecentActivity);
       setTeams((currentTeams) =>
@@ -7439,6 +7440,10 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   };
 
   const clearAuthenticatedData = () => {
+    rosterSnapshotRef.current = null;
+    rosterCoordinatorRef.current.change(null);
+    ownPlayerCreateAttemptRef.current = null;
+    setRosterAccess({ contexts: [], context: null, canWrite: false });
     sportsSnapshotRef.current = null;
     sportsContextCoordinatorRef.current.change(null);
     setPlayers([]);
@@ -7603,7 +7608,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   }, [activeTab, authLoading, authenticatedUserId, identity?.membership?.club_id,
     identity?.membership?.role, selectedCtsId]);
   const authenticatedDataLoadKey = authenticatedUserId
-    ? `${authenticatedUserId}:${authDataRefreshVersion}:${selectedCtsId || 'legacy'}`
+    ? `${authenticatedUserId}:${authDataRefreshVersion}:${selectedCtsId || 'legacy'}:${rosterRequestedCtsId}`
     : '';
 
   useEffect(() => {
@@ -7657,6 +7662,10 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
         setLoading(true);
         setError(null);
         setSportsContextError('');
+        rosterSnapshotRef.current = null;
+        rosterCoordinatorRef.current.change(null);
+        setRosterAccess({ contexts: [], context: null, canWrite: false });
+        setPlayers([]);
 
         sportsSnapshotRef.current = null;
         sportsContextCoordinatorRef.current.change(null);
@@ -7679,8 +7688,19 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
 
         const result = await runIndependentAuthenticatedLoaders({
           jugadores: async () => {
+            const access = await resolveRosterContext(supabase, selectedCtsId || rosterRequestedCtsId,
+              identity?.membership?.club_id || '');
+            if (!isCurrent()) return;
+            setRosterAccess({ ...access, canWrite: false });
+            if (!access.context) throw new Error('Selecciona un equipo y temporada autorizado para ver su plantilla.');
+            const rosterSnapshot = rosterCoordinatorRef.current.change(access.context);
+            rosterSnapshotRef.current = rosterSnapshot;
+            let canWrite = false;
+            try { await assertCtsCreate(supabase, rosterCoordinatorRef.current, rosterSnapshot); canWrite = true; }
+            catch { /* Keep authorized reads available when writes are denied. */ }
             const jugadores = await getScopedJugadores();
             if (!isCurrent()) return;
+            setRosterAccess({ ...access, canWrite });
             setPlayers(jugadores);
             setEmpty(jugadores.length === 0);
           },
@@ -23603,11 +23623,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     });
   }, [playerQuickFilter, playerSearchTerm, rosterDisplayPlayers, staffStatusByPlayerId]);
   const groupedPlayers = useMemo(
-    () =>
-      squadGroups.map((group) => ({
-        ...group,
-        players: visiblePlayers.filter((player) => group.positions.includes(player.position)),
-      })),
+    () => groupRosterPlayers(visiblePlayers, squadGroups),
     [visiblePlayers]
   );
 
@@ -23694,7 +23710,13 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   }, [homeRecentActivity, matches, players, teams, matchFilter]);
 
   const openForm = (player = null) => {
-    const ownClubTeam = teams.find((team) => team.isOwnClub || team.teamKind === 'own');
+    const rosterSnapshot = rosterSnapshotRef.current;
+    if (!rosterAccess.canWrite || !rosterCoordinatorRef.current.isCurrent(rosterSnapshot)) {
+      setOwnPlayerEditorError('Selecciona un equipo y temporada abierto con permiso de escritura.');
+      return;
+    }
+    const ownClubTeam = teams.find((team) => team.id === rosterSnapshot.context.teamId
+      && (team.isOwnClub || team.teamKind === 'own'));
     const resolution = player ? resolveOwnRosterGlobalPlayer(player, globalPlayers) : null;
     setOwnPlayerEditorError('');
     if (!globalPlayersAvailable || !ownClubTeam) {
@@ -24036,6 +24058,9 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     const ownRosterPlayerId = options.ownRosterPlayerId
       || player?.ownRosterPlayerId
       || (!player && (contextTeam?.isOwnClub || contextTeam?.teamKind === 'own') ? globalThis.crypto?.randomUUID?.() : null);
+    ownPlayerCreateAttemptRef.current = !player && ownRosterPlayerId
+      ? { playerId: ownRosterPlayerId, ctsId: rosterSnapshotRef.current?.context.id,
+        snapshot: rosterSnapshotRef.current } : null;
     setRivalPlayerSaveError('');
     setRivalPlayerPhotoError('');
     setRivalPlayerSaving(false);
@@ -24413,6 +24438,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
 
   const saveRivalPlayerFromModal = async (event) => {
     event.preventDefault();
+    if (rivalPlayerSaving || ownPlayerCreateAttemptRef.current?.busy) return;
     if (!rivalPlayerModal.draft?.name?.trim()) return;
     if (!globalPlayersAvailable) {
       setRivalPlayerSaveError('La base global no está disponible. Ejecuta supabase_global_players.sql antes de crear o editar jugadores.');
@@ -24449,12 +24475,12 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       positionSource: /^imported(?:_|$)/i.test(draftBase.positionSource || '') ? draftBase.positionSource : 'manual',
     };
     const matches = rivalPlayerModal.mode === 'create' ? findGlobalPlayerMatches(draft, globalPlayers) : [];
-    if (matches.some((match) => match.confidence === 'exact')) {
+    if (!ownPlayerCreateAttemptRef.current?.started && matches.some((match) => match.confidence === 'exact')) {
       setRivalPlayerSaveError('Jugador encontrado en la base global. Vincula el perfil existente en lugar de crear un duplicado.');
       setRivalPlayerSaving(false);
       return;
     }
-    if (matches.length && !rivalPlayerModal.allowDuplicateCreate) {
+    if (!ownPlayerCreateAttemptRef.current?.started && matches.length && !rivalPlayerModal.allowDuplicateCreate) {
       setRivalPlayerSaveError('Hay posibles coincidencias. Revísalas o confirma expresamente que se trata de otro jugador.');
       setRivalPlayerSaving(false);
       return;
@@ -24462,19 +24488,34 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     try {
       const draftTeam = teams.find((team) => String(team.id) === String(draft.teamId));
       const isOwnTeamDraft = Boolean(draftTeam?.isOwnClub || draftTeam?.teamKind === 'own');
-      const sportsSnapshot = sportsSnapshotRef.current;
+      const sportsSnapshot = isOwnTeamDraft ? rosterSnapshotRef.current : sportsSnapshotRef.current;
+      const createAttempt = ownPlayerCreateAttemptRef.current;
+      if (createAttempt && (!isOwnTeamDraft || draft.teamId !== createAttempt.snapshot?.context.teamId)) {
+        throw new Error('El equipo del formulario no coincide con el CTS del alta.');
+      }
+      if (rivalPlayerModal.mode === 'create' && isOwnTeamDraft
+        && (!sportsSnapshot || !createAttempt || createAttempt.snapshot !== sportsSnapshot)) {
+        throw new Error('El equipo y temporada del alta no están verificados o han cambiado. Vuelve a abrir el formulario.');
+      }
       if (selectedCtsId && sportsSnapshot?.context.id !== selectedCtsId) {
         throw new Error('El equipo y temporada todavía no están verificados. No se guardó el jugador.');
       }
-      if (sportsSnapshot) {
-        if (rivalPlayerModal.mode !== 'create' || !isOwnTeamDraft) {
+      if (sportsSnapshot && rivalPlayerModal.mode === 'create') {
+        if (!isOwnTeamDraft) {
           throw new Error('Esta edición global todavía no está disponible en el modo por equipo y temporada.');
         }
         if (String(draft.teamId) !== String(sportsSnapshot.context.teamId)) {
           throw new Error('El jugador no pertenece al equipo y temporada seleccionados.');
         }
-        await assertCtsCreate(supabase, sportsContextCoordinatorRef.current, sportsSnapshot);
-        sportsContextCoordinatorRef.current.assertWritable(sportsSnapshot);
+        await assertCtsCreate(supabase, rosterCoordinatorRef.current, sportsSnapshot);
+        rosterCoordinatorRef.current.assertWritable(sportsSnapshot);
+      }
+      if (isOwnTeamDraft && rivalPlayerModal.mode === 'edit') {
+        if (!sportsSnapshot) throw new Error('El contexto de Plantilla no está verificado.');
+        await assertCtsCreate(supabase, rosterCoordinatorRef.current, sportsSnapshot);
+        const roster = await loadCtsRoster(supabase, rosterCoordinatorRef.current, sportsSnapshot);
+        if (!roster.some((row) => row.id === draft.ownRosterPlayerId)
+          || draft.teamId !== sportsSnapshot.context.teamId) throw new Error('El jugador no pertenece a la plantilla seleccionada.');
       }
       if (rivalPlayerModal.mode === 'edit' && isOwnTeamDraft && draft.ownRosterPlayerId) {
         const resolvedGlobalId = currentGlobalPlayer.globalPlayerId || currentGlobalPlayer.id;
@@ -24497,12 +24538,14 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       let globalId;
       let membershipId;
       let atomicIdentity = null;
+      let confirmedRoster = null;
       if (rivalPlayerModal.mode === 'create' && isOwnTeamDraft) {
-        if (sportsSnapshot) sportsContextCoordinatorRef.current.assertWritable(sportsSnapshot);
-        atomicIdentity = await createOwnPlayerProfileAtomic(supabase, {
-          ...draft,
-          clubTeamSeasonId: sportsSnapshot?.context.id || null,
-        });
+        const confirmed = await createAndConfirmCtsPlayer(supabase, rosterCoordinatorRef.current,
+          sportsSnapshot, createAttempt, () => createOwnPlayerProfileAtomic(supabase, {
+            ...draft, clubTeamSeasonId: sportsSnapshot.context.id,
+          }));
+        atomicIdentity = confirmed.result;
+        confirmedRoster = confirmed.roster.map(normalizeSupabaseJugador);
         globalId = atomicIdentity.globalPlayerId;
         membershipId = atomicIdentity.membershipId;
       } else {
@@ -24517,8 +24560,8 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
           })
           : null;
       }
-      if (isOwnTeamDraft) {
-        if (sportsSnapshot) sportsContextCoordinatorRef.current.assertWritable(sportsSnapshot);
+      if (isOwnTeamDraft && rivalPlayerModal.mode !== 'create') {
+        rosterCoordinatorRef.current.assertWritable(sportsSnapshot);
         if (!isUuid(draft.ownRosterPlayerId)) throw new Error('Falta el UUID de la ficha propia.');
         const { error: googleFormsNameError } = await supabase
           .from('jugadores')
@@ -24539,8 +24582,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
         }).eq('id', draft.legacyPlayerId);
         if (legacyLinkError) throw legacyLinkError;
       }
-      await loadTeams();
-      const ownPlayers = await getScopedJugadores();
+      const ownPlayers = confirmedRoster || await getScopedJugadores();
       if (sportsSnapshot && rivalPlayerModal.mode === 'create' && isOwnTeamDraft
         && !ownPlayers.some((player) => String(player.id) === String(atomicIdentity?.ownPlayerId)
           && String(player.globalPlayerId || player.global_player_id) === String(globalId)
@@ -24549,9 +24591,11 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       }
       setPlayers(ownPlayers);
       setEmpty(ownPlayers.length === 0);
+      if (confirmedRoster) { setPlayerSearchTerm(''); setPlayerQuickFilter('Todos'); }
       const genericSourceSaved = safeArray(draft.sources).some((source) => !['transfermarkt', 'besoccer'].includes(normalizePlayerIdentityName(source.sourceName)));
       setGlobalPlayerStatus(genericSourceSaved ? 'Fuente guardada. Completa manualmente los datos que quieras conservar.' : 'Jugador global guardado correctamente.');
       closeRivalPlayerModal();
+      void loadTeams().catch((loadError) => console.error('[PLAYER_TEAMS_REFRESH]', loadError));
     } catch (savePlayerError) {
       console.error('[GLOBAL_PLAYER_SAVE_ERROR]', savePlayerError);
       setRivalPlayerSaveError(savePlayerError.message || 'No se ha podido guardar el jugador global.');
@@ -24694,32 +24738,6 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     event.preventDefault();
     setIsSavingPlayer(false);
     setPlayerFormError('El alta legacy de jugadores propios está deshabilitada. Cierra esta ventana y utiliza el editor global.');
-  };
-
-  const handleDelete = async (player) => {
-    const confirmed = window.confirm(`¿Retirar a ${player.name} de la plantilla? Si tiene pagos de multas, su ficha quedará de baja y se conservará el historial contable. Si no tiene pagos, su ficha y datos personales exclusivos se eliminarán definitivamente. Se conservarán partidos, sesiones y recursos compartidos.`);
-    if (!confirmed) return;
-    setLoading(true);
-    setError(null);
-    setPlayerRemovalNotice('');
-    try {
-      if (sportsSnapshotRef.current) {
-        throw new Error('La eliminación de fichas requiere un flujo específico por equipo y temporada.');
-      }
-      const result = await deleteOwnPlayer(supabase, player.id);
-      const jugadores = await getScopedJugadores();
-      setPlayers(jugadores);
-      setEmpty(jugadores.length === 0);
-      if (selectedPlayerProfileId === player.id) setSelectedPlayerProfileId(null);
-      setPlayerRemovalNotice(result.status === 'retired'
-        ? `${player.name} está de baja de la plantilla. Su ficha, multas y pagos permanecen conservados.`
-        : `${player.name} y sus datos personales exclusivos se han eliminado.`);
-    } catch (deleteError) {
-      console.error('Error eliminando jugador en Supabase:', deleteError);
-      setError(deleteError.message || 'No se pudo eliminar el jugador.');
-    } finally {
-      setLoading(false);
-    }
   };
 
   const importTeamFromSource = async (sourceUrl) => {
@@ -31437,6 +31455,24 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                 <div className="self-center">
                   <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Plantilla</p>
                   <h2 className="mt-1 whitespace-nowrap text-lg font-black leading-tight text-white">Panel competitivo</h2>
+                  <label className="mt-2 grid gap-1 text-xs text-slate-300">Equipo y temporada
+                    <select aria-label="Equipo y temporada de Plantilla" value={rosterAccess.context?.id || rosterRequestedCtsId}
+                      disabled={Boolean(selectedCtsId) || loading || rivalPlayerSaving}
+                      onChange={(event) => {
+                        homeDataCoordinatorRef.current.invalidate();
+                        rosterCoordinatorRef.current.change(null); rosterSnapshotRef.current = null;
+                        ownPlayerCreateAttemptRef.current = null;
+                        setRosterAccess((current) => ({ ...current, context: null, canWrite: false }));
+                        setPlayers([]); setSelectedPlayerProfileId(null);
+                        setPlayerSearchTerm(''); setPlayerQuickFilter('Todos');
+                        closeRivalPlayerModal(); setRosterRequestedCtsId(event.target.value);
+                      }} className="min-h-10 w-full rounded-xl border border-white/10 bg-caudal-950 px-2 text-xs">
+                      <option value="" disabled>Selecciona equipo y temporada</option>
+                      {rosterAccess.contexts.map((context) => <option key={context.id} value={context.id}>
+                        {context.teamName} · {context.seasonLabel}{context.seasonStatus === 'closed' ? ' · Cerrada' : ''}
+                      </option>)}
+                    </select>
+                  </label>
                 </div>
                 <div className="grid min-w-0 grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
                   {[
@@ -31465,6 +31501,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                   <button
                     type="button"
                     onClick={() => openForm(null)}
+                    disabled={!rosterAccess.canWrite || loading}
                     className={`${rosterHeaderActionClass} bg-caudal-electric/90 text-slate-950 hover:bg-caudal-electric`}
                   >
                     Nuevo jugador
@@ -31559,9 +31596,6 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
               </div>
             </section>
 
-            {playerRemovalNotice ? (
-              <p role="status" className="rounded-[1.35rem] border border-emerald-300/20 bg-emerald-300/10 px-5 py-3 text-sm text-emerald-100">{playerRemovalNotice}</p>
-            ) : null}
             {loading ? (
               <div className="rounded-[1.35rem] border border-dashed border-white/10 bg-white/[0.03] px-5 py-5 text-sm text-slate-400">
                 Cargando jugadores...
@@ -31682,7 +31716,6 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                             <FloatingActionMenu anchorRect={floatingMenu.anchorRect} width={144} onClose={closeFloatingMenu}>
                               <button type="button" onClick={() => runMenuAction(() => openForm(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-white transition hover:bg-white/10">Editar</button>
                               <button type="button" onClick={() => runMenuAction(() => openAvailabilityEditor(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-amber-100 transition hover:bg-amber-500/15">Disponibilidad</button>
-                              <button type="button" onClick={() => runMenuAction(() => handleDelete(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-red-100 transition hover:bg-red-500/15">Eliminar</button>
                             </FloatingActionMenu>
                           ) : null}
                           <div className="grid grid-cols-[72px_minmax(0,1fr)] items-start gap-3 pr-11">
@@ -31750,7 +31783,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             onEdit={(player) => openRivalPlayerModal(player, { standalone: true })}
             onOpenProfile={(player) => openRivalPlayerModal(player, { standalone: true })}
             onManageTeam={openPlayerTeamManager}
-            canDelete={identity?.membership?.role === 'owner' && identity?.membership?.is_active !== false}
+            canDelete={false}
             onOpenTeam={(team) => {
               if (team.isOwnClub || team.teamKind === 'own') {
                 setActiveTab('Plantilla');
@@ -38139,6 +38172,7 @@ function CtsWorkspace({ controlledSession, selectedCtsId, availableContexts = []
   const [mutationBusy, setMutationBusy] = useState(false);
   const [mutationError, setMutationError] = useState('');
   const coordinatorRef = useRef(new SportsContextCoordinator());
+  const playerCreateAttemptRef = useRef(null);
 
   useEffect(() => {
     setActiveTab('Inicio');
@@ -38176,9 +38210,13 @@ function CtsWorkspace({ controlledSession, selectedCtsId, availableContexts = []
 
   const { context, players, matches } = snapshot;
   const selectTab = (name) => { setActiveTab(name); setMobileMoreOpen(false); setEditing(null); setMutationError(''); };
-  const openEditor = (type, row = null) => { setEditing({ type, row }); setMutationError(''); };
+  const openEditor = (type, row = null) => {
+    playerCreateAttemptRef.current = type === 'player' && !row
+      ? { playerId: crypto.randomUUID(), ctsId: context.id } : null;
+    setEditing({ type, row }); setMutationError('');
+  };
   const savePlayer = async (draft) => {
-    if (!snapshot.canWrite || editing?.type !== 'player') return;
+    if (!snapshot.canWrite || editing?.type !== 'player' || mutationBusy || playerCreateAttemptRef.current?.busy) return;
     setMutationBusy(true);
     setMutationError('');
     try {
@@ -38190,12 +38228,11 @@ function CtsWorkspace({ controlledSession, selectedCtsId, availableContexts = []
       } else {
         const positions = { Portero: 'goalkeeper', Defensa: 'defender',
           Centrocampista: 'midfielder', Delantero: 'forward' };
-        const playerId = crypto.randomUUID();
-        const result = await createOperationalPlayer(supabase, coordinatorRef.current, token,
-          playerId, { name: draft.name.trim(), number: String(patch.number), foot: draft.foot },
-          positions[draft.position] ? [{ position_type: 'natural', position_key: positions[draft.position], is_primary: true }] : []);
-        const roster = await loadCtsRoster(supabase, coordinatorRef.current, token);
-        assertCreatedPlayerInCtsRoster(roster, result, playerId);
+        const attempt = playerCreateAttemptRef.current;
+        const { roster } = await createAndConfirmCtsPlayer(supabase, coordinatorRef.current, token, attempt,
+          () => createOperationalPlayer(supabase, coordinatorRef.current, token,
+            attempt.playerId, { name: draft.name.trim(), number: String(patch.number), foot: draft.foot },
+            positions[draft.position] ? [{ position_type: 'natural', position_key: positions[draft.position], is_primary: true }] : []));
         setSnapshot((current) => coordinatorRef.current.isCurrent(token)
           ? { ...current, players: roster }
           : current);

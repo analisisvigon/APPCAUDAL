@@ -1,4 +1,17 @@
-import { verifySportsContext } from './authorizedContext.js';
+import { loadAuthorizedSportsContexts, loadOperationalPreferredContextId,
+  verifySelectableSportsContext, verifySportsContext } from './authorizedContext.js';
+
+// The compatibility workspace must also select an authorized CTS before reading
+// or creating roster entries. Never infer it from a team name/code or season dates.
+export async function resolveRosterContext(client, requestedId = '', clubId = '') {
+  const contexts = (await loadAuthorizedSportsContexts(client))
+    .filter((context) => !clubId || context.clubId === clubId);
+  const id = requestedId || await loadOperationalPreferredContextId(client, contexts)
+    || (contexts.length === 1 ? contexts[0].id : '');
+  if (!id) return { contexts, context: null };
+  if (!contexts.some((context) => context.id === id)) throw new Error('Equipo y temporada no autorizados.');
+  return { contexts, context: await verifySelectableSportsContext(client, id) };
+}
 
 // El identificador del navegador solo solicita un contexto: la RPC de identidad
 // vuelve a autorizarlo en cada operación. RLS es la barrera definitiva.
@@ -15,12 +28,53 @@ export async function authorizedSnapshot(client, coordinator, snapshot, { write 
 
 export async function loadCtsRoster(client, coordinator, snapshot) {
   const context = await authorizedSnapshot(client, coordinator, snapshot);
-  const { data, error } = await client.rpc('my_cts_jugadores_v1', {
-    p_club_team_season_id: context.id,
-  });
-  if (error) throw error;
+  const [fichas, links] = await Promise.all([
+    client.rpc('my_cts_jugadores_v1', { p_club_team_season_id: context.id }),
+    client.rpc('my_cts_roster_links_v1', { p_club_team_season_id: context.id }),
+  ]);
+  if (fichas.error) throw fichas.error;
+  if (links.error) throw links.error;
   if (!coordinator.isCurrent(snapshot)) throw new Error('El equipo o temporada ha cambiado.');
-  return data || [];
+  if (!Array.isArray(fichas.data) || !Array.isArray(links.data)) throw new Error('Respuesta de plantilla incompleta.');
+  // my_cts_jugadores returns legacy fields, which do not include the CTS departure.
+  // The canonical link decides whether a player still belongs to this roster.
+  return fichas.data.filter((player) => player.active_in_squad !== false && links.data.some((link) => (
+    link.legacy_jugador_id === player.id && link.player_id === player.global_player_id
+    && Number(link.legacy_ficha_count) === 1 && link.has_departed === false
+    && !link.voided_at && !link.left_on
+  )));
+}
+
+// Keep this attempt for the lifetime of the form. A failed read or a lost RPC
+// response must not generate another UUID or repeat a confirmed INSERT.
+export async function createAndConfirmCtsPlayer(client, coordinator, snapshot, attempt, create) {
+  if (!attempt?.playerId || attempt.ctsId !== snapshot?.context?.id) {
+    throw new Error('El formulario no pertenece al equipo y temporada seleccionados.');
+  }
+  if (attempt.busy) throw new Error('El alta ya se está comprobando.');
+  attempt.busy = true;
+  try {
+    await assertCtsCreate(client, coordinator, snapshot);
+    if (attempt.started) {
+      const roster = await loadCtsRoster(client, coordinator, snapshot);
+      const existing = roster.find((row) => row.id === attempt.playerId);
+      if (existing) {
+        const result = attempt.result || { status: 'created', ownPlayerId: existing.id,
+          globalPlayerId: existing.global_player_id, membershipId: existing.membership_id };
+        assertCreatedPlayerInCtsRoster(roster, result, attempt.playerId);
+        return { result, roster };
+      }
+      if (attempt.result) {
+        assertCreatedPlayerInCtsRoster(roster, attempt.result, attempt.playerId);
+      }
+    }
+    attempt.started = true;
+    attempt.result = await create();
+    coordinator.assertWritable(snapshot);
+    const roster = await loadCtsRoster(client, coordinator, snapshot);
+    assertCreatedPlayerInCtsRoster(roster, attempt.result, attempt.playerId);
+    return { result: attempt.result, roster };
+  } finally { attempt.busy = false; }
 }
 
 export async function loadCtsMatches(client, coordinator, snapshot) {

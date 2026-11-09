@@ -153,7 +153,7 @@ const atomicClient = {
     atomicCreateCalls.push({ name, args });
     return {
       data: {
-        status: atomicCreateCalls.length === 1 ? 'created' : 'already_created',
+        status: 'created',
         ownPlayerId: ismaRosterId,
         globalPlayerId: ismaGlobalId,
         membershipId: '77777777-7777-4777-8777-777777777777',
@@ -163,6 +163,7 @@ const atomicClient = {
   },
 };
 const atomicDraft = {
+  clubTeamSeasonId: '88888888-8888-4888-8888-888888888888',
   ownRosterPlayerId: ismaRosterId,
   name: 'Nuevo jugador propio',
   shirtName: 'Nuevo',
@@ -175,9 +176,9 @@ const atomicDraft = {
 const firstAtomicCreate = await createOwnPlayerProfileAtomic(atomicClient, atomicDraft);
 const repeatedAtomicCreate = await createOwnPlayerProfileAtomic(atomicClient, atomicDraft);
 assert.equal(firstAtomicCreate.status, 'created');
-assert.equal(repeatedAtomicCreate.status, 'already_created');
+assert.equal(repeatedAtomicCreate.status, 'created');
 assert.equal(atomicCreateCalls.length, 2, 'el doble envío usa una única RPC por intento');
-assert.equal(atomicCreateCalls[0].name, 'create_own_player_atomic');
+assert.equal(atomicCreateCalls[0].name, 'create_own_player_atomic_v2');
 assert.equal(atomicCreateCalls[0].args.p_own_player_id, atomicCreateCalls[1].args.p_own_player_id, 'los reintentos conservan la misma clave idempotente');
 
 for (const databaseError of ['PROFILE_CREATE_FAILED', 'MEMBERSHIP_CREATE_FAILED']) {
@@ -200,7 +201,7 @@ const appSource = fs.readFileSync(new URL('../App.jsx', import.meta.url), 'utf8'
 const formSource = fs.readFileSync(new URL('../components/players/PlayerDatabaseForm.jsx', import.meta.url), 'utf8');
 const openFormSource = appSource.slice(appSource.indexOf('const openForm ='), appSource.indexOf('const closeForm ='));
 const linkSource = appSource.slice(appSource.indexOf('const ensureOwnRosterGlobalLink'), appSource.indexOf('const saveRivalPlayerFromModal'));
-const legacySubmitSource = appSource.slice(appSource.indexOf('const handleSubmit = async'), appSource.indexOf('const handleDelete = async'));
+const legacySubmitSource = appSource.slice(appSource.indexOf('const handleSubmit = async'), appSource.indexOf('const importTeamFromSource = async'));
 assert.ok(openFormSource.includes('resolveOwnRosterGlobalPlayer(player, globalPlayers)'), 'Plantilla usa el resolvedor global compartido');
 assert.ok(openFormSource.includes('buildOwnRosterGlobalEditorDraft'), 'Plantilla abre el editor global con un adaptador de datos');
 assert.ok(openFormSource.includes('No se abrirá el editor legacy ni se creará un duplicado'), 'una identidad ambigua no cae silenciosamente al formulario alternativo');
@@ -208,8 +209,8 @@ assert.ok(openFormSource.includes("console.error('[OWN_PLAYER_EDITOR_RESOLUTION_
 assert.ok(openFormSource.includes('El alta y la edición legacy están deshabilitadas'), 'Plantilla no reabre el alta parcial si falta la base global');
 assert.ok(!legacySubmitSource.includes('.insert(') && !legacySubmitSource.includes('.update('), 'el submit legacy ya no puede escribir jugadores parciales');
 assert.ok(appSource.includes('createOwnPlayerProfileAtomic(supabase, {')
-  && appSource.includes('clubTeamSeasonId: sportsSnapshot?.context.id || null'),
-  'el alta propia envía el CTS a la RPC atómica cuando está seleccionado');
+  && appSource.includes('clubTeamSeasonId: sportsSnapshot.context.id'),
+  'el alta propia siempre envía el CTS verificado a la RPC atómica');
 assert.doesNotMatch(appSource, /from\(["']jugadores["']\)\s*\.insert\(/, 'ningún flujo React puede insertar directamente una fila propia parcial');
 assert.ok(linkSource.includes(".from('jugadores')") && linkSource.includes('.update({ global_player_id: globalPlayerId })'), 'guardar repara el enlace de la fila existente');
 assert.ok(!linkSource.includes('.insert('), 'la reparación de identidad no crea jugadores ni membresías');
