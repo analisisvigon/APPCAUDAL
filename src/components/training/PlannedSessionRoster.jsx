@@ -1,7 +1,7 @@
 import { groupSessionPlayers, PLAYER_STATUSES, sessionPlayerCounts } from '../../utils/plannedSessionPlayers';
 
 const statusLabel = (status) => PLAYER_STATUSES.find((item) => item.key === status)?.label || status;
-const visualStatus = (status) => ['absent', 'injured', 'first_team'].includes(status)
+const visualStatus = (status) => status === 'first_team' ? 'planned-roster-player-first-team' : ['absent', 'injured'].includes(status)
   ? 'planned-roster-player-no-training' : status === 'adapted' ? 'planned-roster-player-adapted' : '';
 
 export default function PlannedSessionRoster({ roster = [], frozen = false, selectedIds = [],

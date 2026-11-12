@@ -10,6 +10,7 @@ import { readTrainingTaskEditorPayload } from '../../utils/trainingTaskEditorPay
 import TrainingTaskBoardPreview from './TrainingTaskBoardPreview';
 import TrainingTaskBoardEditor from './TrainingTaskBoardEditor';
 import PlannedSessionPrint from './PlannedSessionPrint';
+import SessionPitchAppearance from './SessionPitchAppearance';
 import PlannedSessionRoster from './PlannedSessionRoster';
 import { SessionPlayerDistribution, SessionSpaceDistribution } from './PlannedSessionDistributionBoards';
 import { sessionPlayerCounts } from '../../utils/plannedSessionPlayers';
@@ -269,6 +270,7 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
 }
 
 export default function PlannedSessionDocument({ editor, selected, canEdit, busy, fieldIssue,
+  pitchAppearance = 'green', onPitchAppearanceChange,
   updateEditor, updateSlot, updateTask, moveSlot, moveItem, moveItemToSlot,
   addExercise, addTask, removeTask, removeSlot, changePhase, libraryTasks, libraryLoading,
   libraryError, selectLibraryTask, switchToFreeTask, roster, frozen,
@@ -367,6 +369,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   return <div className="planned-document" data-planned-session-document>
     <div className="planned-document-toolbar" aria-label="Vista de hojas">
       <span>Plantilla de sesión · A4 horizontal · {printSheets.length} hojas para imprimir</span>
+      <SessionPitchAppearance value={pitchAppearance} onChange={onPitchAppearanceChange} />
       <button type="button" onClick={printDocument} disabled={Boolean(boardsError)}
         title={boardsError ? 'Recarga las pizarras antes de imprimir' : undefined}>
         Imprimir sesión · A4 horizontal</button>
@@ -516,7 +519,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
       </div>
     </div>
     <p className="planned-document-note">Vista editorial de 03B. La exportación PDF definitiva y las zonas marcadas como pendientes no están activadas.</p>
-    <PlannedSessionPrint editor={editor} selected={selected} pages={printSheets} printRef={printRef}
+    <PlannedSessionPrint editor={editor} selected={selected} pages={printSheets} printRef={printRef} pitchAppearance={pitchAppearance}
       mcNumber={printedMcNumber}
       leagueLogoUrl={leagueLogoUrl} sessionValue={printedSessionValue}
       roster={frozen ? roster : []} availability={availability}

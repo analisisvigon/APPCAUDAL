@@ -19,7 +19,7 @@ const roster = Array.from({ length: 24 }, (_, i) => ({ player_id: `p${i}` }));
 const states = { p0: { status: 'absent', observation: '' }, p1: { status: 'injured', observation: 'Lesión' },
   p2: { status: 'adapted', observation: '' } };
 assert.deepEqual(sessionPlayerCounts(roster, states), {
-  total: 24, available: 21, absent: 1, injured: 1, adapted: 1, participants: 22,
+  total: 24, available: 21, absent: 1, injured: 1, adapted: 1, first_team: 0, participants: 22,
 });
 assert.deepEqual(availabilityChanges(states, {}, roster), [
   { player_id: 'p0', status: 'absent', observation: null },
@@ -28,3 +28,9 @@ assert.deepEqual(availabilityChanges(states, {}, roster), [
 ]);
 assert.deepEqual(availabilityChanges(states, states, roster), []);
 console.log('planned session players tests passed');
+
+const firstTeam = { ...states, p3: { status: 'first_team', observation: 'Convocatoria' } };
+const before = JSON.stringify(roster);
+assert.deepEqual(sessionPlayerCounts(roster, firstTeam), { total: 24, available: 20, absent: 1, injured: 1, adapted: 1, first_team: 1, participants: 21 });
+assert.deepEqual(availabilityChanges(firstTeam, states, roster), [{ player_id: 'p3', status: 'first_team', observation: 'Convocatoria' }]);
+assert.equal(JSON.stringify(roster), before, 'no cambia la pertenencia ni los snapshots');

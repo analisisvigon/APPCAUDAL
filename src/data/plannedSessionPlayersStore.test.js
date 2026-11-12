@@ -20,7 +20,13 @@ const client = {
       is() { return this; }, in() { return this; },
       then(resolve) { resolve({ data: rows[table], error: null }); } };
   },
-  async rpc(name, args) { calls.push({ name, args }); return { data: 5, error: null }; },
+  async rpc(name, args) {
+    calls.push({ name, args });
+    if (name === 'save_planned_session_availability_04b') {
+      rows.planned_session_player_availability = args.p_changes.map((change) => ({ session_id: args.p_session_id, ...change }));
+    }
+    return { data: 5, error: null };
+  },
 };
 
 const candidates = await loadPlannedRosterCandidates(client, 'cts-1');
@@ -55,3 +61,14 @@ await assert.rejects(savePlannedAvailability({ rpc: async () => ({ data: null,
   error: { code: '40001', message: 'CAS obsoleto' } }) }, 'session-1', 4, []),
 { code: '40001' }, 'una revisión obsoleta nunca se presenta como guardada');
 console.log('planned session players store tests passed');
+
+const historicalRoster = JSON.stringify(rows.planned_session_player_roster);
+const generalRoster = JSON.stringify(rows.club_team_season_players);
+await savePlannedAvailability(client, 'session-1', 7,
+  [{ player_id: 'player-1', status: 'first_team', observation: 'Convocatoria del primer equipo' }]);
+const reopened = await loadPlannedSessionPlayers(client, 'session-1');
+assert.equal(reopened.availability[0].status, 'first_team');
+assert.equal(reopened.availability[0].observation, 'Convocatoria del primer equipo');
+assert.equal(JSON.stringify(reopened.roster), historicalRoster);
+assert.equal(JSON.stringify(rows.club_team_season_players), generalRoster);
+assert.ok(calls.every((call) => call.table !== 'jugadores'), 'no lee ni modifica la disponibilidad general');

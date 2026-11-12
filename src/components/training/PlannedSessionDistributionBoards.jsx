@@ -12,7 +12,7 @@ function FieldLines() {
   </svg>;
 }
 
-const statusClass = (status) => ['absent', 'injured'].includes(status)
+const statusClass = (status) => status === 'first_team' ? 'planned-distribution-player-first-team' : ['absent', 'injured'].includes(status)
   ? 'planned-distribution-player-out' : status === 'adapted'
     ? 'planned-distribution-player-adapted' : '';
 

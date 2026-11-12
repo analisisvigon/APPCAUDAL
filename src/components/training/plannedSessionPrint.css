@@ -107,3 +107,10 @@
   body:has(> .planned-print-batch-portal) > .planned-print-portal:not(.planned-print-batch-portal) { display: none !important; }
   .planned-print-batch-portal .planned-print-pages:not(:last-child) > .planned-print-sheet:last-child { break-after: page; page-break-after: always; }
 }
+
+/* Only field surfaces change; player and tactical colours remain intact. */
+.planned-print-pages[data-pitch-appearance="bw"] .planned-distribution-field { background: #fff; }
+.planned-print-pages[data-pitch-appearance="bw"] .planned-distribution-lines { color: #374151; }
+.planned-roster-session-status { font-size: 8px; font-weight: 700; text-decoration: none; }
+.planned-roster-player-first-team .planned-roster-name,
+.planned-distribution-player-first-team { color: #1d4ed8; font-weight: 700; }

@@ -67,6 +67,7 @@ import { BOARD_V11_ENABLED, applySessionBoardSeed, initialBoardFromDefaults,
   exerciseDimensionsKey, exerciseDimensionsPayload } from '../../utils/plannedSessionFieldScale';
 import PlannedSessionDocument from './PlannedSessionDocument';
 import PlannedSessionBatchPrint from './PlannedSessionBatchPrint';
+import SessionPitchAppearance from './SessionPitchAppearance';
 import { loadPlannedSessionPrintData, plannedSessionExportFileName } from '../../utils/plannedSessionBatchExport';
 
 const panel = 'rounded-2xl border border-white/10 bg-[#0b1a2d]/85 p-4 sm:p-5';
@@ -108,6 +109,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [exportProgress, setExportProgress] = useState('');
   const [exportError, setExportError] = useState('');
   const [batchPrint, setBatchPrint] = useState(null);
+  const [pitchAppearance, setPitchAppearance] = useState('green');
   const batchPrintRef = useRef(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [lifecycleAction, setLifecycleAction] = useState('retire');
@@ -1412,7 +1414,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       }
       setExportProgress('Componiendo las hojas A4…');
       setBatchPrint({ sessions: printSessions,
-        fileName: plannedSessionExportFileName(exportFrom, exportTo), selected });
+        fileName: plannedSessionExportFileName(exportFrom, exportTo), selected, pitchAppearance });
     } catch (cause) {
       setExportError(`No se abrió la impresión; no se ha generado un archivo incompleto. ${readError(cause)}`);
       setExportProgress(''); setExportBusy(false);
@@ -1484,6 +1486,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           {v12ProbeError ? <p className="mt-3 text-xs text-amber-200">No se pudieron verificar las medidas guardadas de los ejercicios. Recarga Sesiones antes de exportar.</p> : null}
           {exportError ? <p role="alert" className="mt-3 rounded-lg border border-red-400/30 bg-red-950/40 p-2 text-xs text-red-100">{exportError}</p> : null}
           {exportProgress ? <p role="status" className="mt-3 text-xs text-caudal-electric">{exportProgress}</p> : null}
+          <SessionPitchAppearance value={pitchAppearance} onChange={setPitchAppearance} disabled={exportBusy} />
           <p className="mt-3 text-[11px] text-slate-500">En el cuadro de impresión selecciona «Guardar como PDF». El nombre sugerido será {plannedSessionExportFileName(exportFrom, exportTo)}.</p>
           <div className="mt-4 flex justify-end"><button type="button"
             className={`${button} bg-caudal-electric text-slate-950`}
@@ -1628,7 +1631,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           <p className="font-bold">Plantilla histórica congelada · {roster.length} jugadores</p>
           {availabilityDirty ? <p>La disponibilidad visible se guardará con «Guardar cambios».</p> : null}
         </div> : null}
-        <PlannedSessionDocument editor={editor} selected={selected} canEdit={canEdit} busy={busy}
+        <PlannedSessionDocument pitchAppearance={pitchAppearance} onPitchAppearanceChange={setPitchAppearance} editor={editor} selected={selected} canEdit={canEdit} busy={busy}
           seriesSupported={seriesSupported}
           contentSupported={contentSupported}
           mcEnabled={mcV4Supported} mcNumber={mcNumber} printedMcNumber={mcBaseline}
@@ -1667,7 +1670,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           switchToFreeTask={switchToFreeTask} />
       </section> : null}
       {batchPrint ? <PlannedSessionBatchPrint sessions={batchPrint.sessions}
-        selected={batchPrint.selected} leagueLogoUrl={safeLeagueLogoUrl} printRef={batchPrintRef} /> : null}
+        selected={batchPrint.selected} pitchAppearance={batchPrint.pitchAppearance} leagueLogoUrl={safeLeagueLogoUrl} printRef={batchPrintRef} /> : null}
     </main>
   );
 }
