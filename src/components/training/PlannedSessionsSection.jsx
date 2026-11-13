@@ -1616,6 +1616,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           </label> : null}
           {!(lifecycleAction === 'delete' ? deletionReady : SESSION_RETIREMENT_BACKEND_VERIFIED) ? <p role="status" className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-xs text-amber-100">
             {lifecycleAction === 'delete' ? (deletionProbeError || 'El borrado aún no está habilitado en el servidor. Recarga Sesiones después de su actualización.') : 'La anulación requiere instalar y verificar su backend.'}</p> : null}
+          {error ? <p role="alert" className="mt-3 rounded-lg border border-red-300/30 bg-red-400/10 p-3 text-sm text-red-100">{error}</p> : null}
           <div className="mt-5 flex flex-wrap justify-end gap-2">
             <button type="button" autoFocus disabled={busy} onClick={() => setDeleteTarget(null)}
               className={`${button} border border-white/20 text-white`}>Cancelar</button>
