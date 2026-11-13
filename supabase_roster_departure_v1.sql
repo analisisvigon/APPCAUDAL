@@ -2,6 +2,18 @@
 -- Solo baja CTS. No habilita borrado global ni cambia guards existentes.
 begin;
 set local lock_timeout='5s';
+do $preflight$
+begin
+  if current_user<>'postgres' or auth.uid() is not null then
+    raise exception 'Instalar como postgres sin JWT de usuario';
+  end if;
+  if not exists(select 1 from pg_trigger t
+    where t.tgrelid=to_regclass('public.club_team_season_players')
+      and t.tgfoid=to_regprocedure('public.guard_club_team_season_player_mutation()')
+      and t.tgtype=31 and t.tgenabled in ('O','A') and t.tgqual is null) then
+    raise exception 'Falta el guard canonico completo y habilitado: revisar verificador';
+  end if;
+end $preflight$;
 create table public.roster_departure_audit_v1 (
   id uuid primary key default gen_random_uuid(),
   actor_user_id uuid not null,
@@ -56,8 +68,15 @@ begin
       and p.club_id=club and p.club_team_season_id=p_cts_id for share of p;
     if not found then raise exception 'PLAYER_CTS_DENIED' using errcode='42501'; end if;
   end if;
-  select l.club_team_season_player_id into strict binding
-    from public.legacy_jugador_cts_links_v1 l where l.jugador_id=p_jugador_id for share of l;
+  if public.can_write_club_team_season(p_cts_id) is not true then
+    raise exception 'PLAYER_CTS_DENIED' using errcode='42501';
+  end if;
+  begin
+    select l.club_team_season_player_id into strict binding
+      from public.legacy_jugador_cts_links_v1 l where l.jugador_id=p_jugador_id for share of l;
+  exception when no_data_found or too_many_rows then
+    raise exception 'PLAYER_CTS_LINK_REVIEW_REQUIRED' using errcode='42501';
+  end;
   select r.* into before_row from public.club_team_season_players r
     join public.jugadores j on j.id=p_jugador_id and j.global_player_id=r.player_id
     where r.id=binding and r.club_team_season_id=p_cts_id and r.voided_at is null for update of r;
@@ -73,6 +92,11 @@ begin
       left_on=coalesce(p_left_on,left_on) where id=binding returning * into after_row;
     if after_row.has_departed is distinct from true then
       raise exception 'Baja no confirmada';
+    end if;
+    if (to_jsonb(after_row)-array['has_departed','left_on','updated_at'])
+      is distinct from (to_jsonb(before_row)-array['has_departed','left_on','updated_at'])
+      or after_row.left_on is distinct from coalesce(p_left_on,before_row.left_on) then
+      raise exception 'La baja intento modificar otros datos de la pertenencia';
     end if;
     insert into public.roster_departure_audit_v1
       (actor_user_id,actor_membership_id,club_team_season_id,before_row,after_row)

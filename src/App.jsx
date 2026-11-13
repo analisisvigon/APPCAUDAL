@@ -383,7 +383,6 @@ import {
 } from './constants/playerPositions';
 import {
   departRosterPlayer,
-  getPlayerHistoricalSummary,
 } from './data/ownPlayerDeletion';
 import {
   RIVAL_PLAYER_MANUAL_FIELDS,
@@ -5727,8 +5726,14 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   const [availabilityError, setAvailabilityError] = useState('');
   const [deletePlayerDialog, setDeletePlayerDialog] = useState(null);
   const [deletePlayerSaving, setDeletePlayerSaving] = useState(false);
+  const rosterDepartureBusyRef = useRef(false);
   const [deletePlayerError, setDeletePlayerError] = useState('');
   const [deletePlayerNotice, setDeletePlayerNotice] = useState('');
+  useEffect(() => {
+    setDeletePlayerDialog(null);
+    setDeletePlayerError('');
+    setDeletePlayerNotice('');
+  }, [rosterAccess.context?.id]);
   const [selectedPlayerProfileId, setSelectedPlayerProfileId] = useState(null);
   const [playerCompetitionFilter, setPlayerCompetitionFilter] = useState('Temporada');
   const [performanceLoading, setPerformanceLoading] = useState(false);
@@ -16390,7 +16395,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   };
 
   const openDeletePlayerDialog = (player, operation = 'depart') => {
-    if (!player) return;
+    if (!player || rosterDepartureBusyRef.current) return;
     if (!rosterAccess.canWrite) {
       setOwnPlayerEditorError('No tienes permiso para modificar la plantilla o la temporada está cerrada.');
       return;
@@ -16401,13 +16406,13 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   };
 
   const closeDeletePlayerDialog = () => {
-    if (deletePlayerSaving) return;
+    if (rosterDepartureBusyRef.current) return;
     setDeletePlayerDialog(null);
     setDeletePlayerError('');
   };
 
   const confirmDeletePlayer = async () => {
-    if (!deletePlayerDialog || deletePlayerSaving) return;
+    if (!deletePlayerDialog || rosterDepartureBusyRef.current) return;
     if (!rosterAccess.canWrite) {
       setDeletePlayerError('No tienes permiso para modificar la plantilla o la temporada está cerrada.');
       return;
@@ -16417,6 +16422,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     if (playerToDelete.operation !== 'depart') {
       setDeletePlayerError('El borrado definitivo requiere revisar los triggers y dependencias instalados.'); return;
     }
+    rosterDepartureBusyRef.current = true;
     setDeletePlayerSaving(true); setDeletePlayerError('');
     try {
       await assertCtsCreate(supabase, rosterCoordinatorRef.current, token);
@@ -16426,12 +16432,13 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       rosterCoordinatorRef.current.assertWritable(token);
       if (roster.some((row) => row.id === playerToDelete.id)) throw new Error('La baja no se refleja en la plantilla. Actualiza antes de reintentar.');
       setPlayers(roster.map(normalizeSupabaseJugador));
+      setEmpty(roster.length === 0);
       if (selectedPlayerProfileId === playerToDelete.id) setSelectedPlayerProfileId(null);
       setDeletePlayerDialog(null);
       setDeletePlayerNotice('Jugador retirado solo de esta plantilla. Su identidad e historial se conservan.');
     } catch (err) {
       if (rosterCoordinatorRef.current.isCurrent(token)) setDeletePlayerError(err.message || 'No se pudo confirmar la baja.');
-    } finally { setDeletePlayerSaving(false); }
+    } finally { rosterDepartureBusyRef.current = false; setDeletePlayerSaving(false); }
   };
 
   const openStatsCallupPanel = async () => {
