@@ -59,7 +59,7 @@ export function TrainingTaskDetailAccordion({ sectionKey, title, summary, isOpen
   </section>;
 }
 
-export default function TrainingTaskDetail({ task = null, currentUserId = '', players = [], client, feedbackContent = null, onEdit, onDuplicate, onDownload, onMediaChange, onClose, onPdf, pdfBusy = false }) {
+export default function TrainingTaskDetail({ task = null, currentUserId = '', players = [], client, feedbackContent = null, onEdit, onDuplicate, onDownload, onMediaChange, onClose, onPdf, pdfBusy = false, onPowerPoint, powerpointBusy = false, powerpointError = '' }) {
   const [openSections, setOpenSections] = useState({});
   const toggleSection = (sectionKey) => setOpenSections((current) => ({ ...current, [sectionKey]: !current[sectionKey] }));
 
@@ -108,11 +108,13 @@ export default function TrainingTaskDetail({ task = null, currentUserId = '', pl
         </div>
         <div className="flex w-full flex-wrap gap-2 lg:w-auto lg:justify-end">
           <button type="button" disabled={pdfBusy} onClick={() => onPdf?.(task)} className="min-h-10 rounded-xl border border-white/10 bg-white/[0.07] px-4 text-xs font-black text-white disabled:opacity-50">PDF</button>
+          <button type="button" disabled={powerpointBusy} onClick={() => onPowerPoint?.(task)} className="min-h-10 rounded-xl border border-caudal-electric/30 bg-caudal-electric/10 px-4 text-xs font-black text-caudal-electric disabled:opacity-50">{powerpointBusy ? 'Generando…' : 'PowerPoint'}</button>
           {canEdit ? <button type="button" onClick={() => onEdit?.(task)} className="min-h-10 flex-1 rounded-xl bg-caudal-electric px-4 text-xs font-black text-slate-950 sm:flex-none">Editar tarea</button> : null}
           <button type="button" onClick={() => onDuplicate?.(task)} className="min-h-10 flex-1 rounded-xl border border-white/10 bg-white/[0.07] px-4 text-xs font-black text-white sm:flex-none">Duplicar</button>
           <button type="button" onClick={onClose} className="min-h-10 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-4 text-xs font-black text-slate-300 sm:flex-none">Volver</button>
         </div>
       </div>
+      {powerpointError ? <p role="alert" className="mt-2 text-xs font-bold text-red-200">{powerpointError}</p> : null}
     </header>
 
     <div className="space-y-3 p-3.5 sm:p-4 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,0.43fr)_minmax(0,0.57fr)] lg:grid-rows-[auto_minmax(0,1.2fr)_minmax(0,0.8fr)] lg:gap-3 lg:space-y-0">
