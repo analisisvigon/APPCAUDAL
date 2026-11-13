@@ -132,7 +132,8 @@ assert.equal(groups.at(-1).players.length, 3);
 
 const app = readFileSync(new URL('../App.jsx', import.meta.url), 'utf8');
 assert.doesNotMatch(app, /handleDelete\(player\)/, 'el panel no expone ni invoca el borrado abandonado');
-assert.match(app, /deleteOwnPlayer/, 'el panel integra el borrado seguro y autorizado de jugadores');
+assert.match(app, /departRosterPlayer/, 'el panel integra la baja acotada al CTS');
+assert.doesNotMatch(app, /deleteOwnPlayer\(/, 'no reutiliza la eliminacion global antigua');
 const getPlayers = app.slice(app.indexOf('async function getJugadores'), app.indexOf('const createJugadorPayload'));
 assert.doesNotMatch(getPlayers, /\.from\(/, 'no hay lectura legacy de respaldo sin CTS');
 assert.match(app, /Equipo y temporada de Plantilla/);
