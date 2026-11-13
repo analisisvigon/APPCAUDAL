@@ -1,3 +1,28 @@
+export function getPlayerHistoricalSummary(player, { matches = [], stats = null } = {}) {
+  if (!player?.id) {
+    return { hasHistory: false, matchCount: 0, minutes: 0, starts: 0 };
+  }
+  const playerId = String(player.id);
+  const matchHistory = (matches || []).filter((match) => {
+    const isCalledUp = (match.callup || []).some((item) => String(item?.id || item?.player_id || item?.jugador_id || '') === playerId);
+    const isInLineup = (match.lineup || []).some((item) => String(item?.id || item?.player_id || item?.jugador_id || '') === playerId);
+    const hasSubstitution = (match.substitutions || []).some((sub) => String(sub?.outgoing_jugador_id || '') === playerId || String(sub?.incoming_jugador_id || '') === playerId);
+    const hasQuickEvents = (match.quickEvents || []).some((ev) => String(ev?.jugador_id || '') === playerId);
+    const isCaptain = String(match?.captain_player_id || '') === playerId;
+    const hasGoalOrAssist = (match.goals || []).some((g) => String(g?.scorer_id || g?.scorerId || '') === playerId || String(g?.assistant_id || g?.assistantId || '') === playerId);
+    return isCalledUp || isInLineup || hasSubstitution || hasQuickEvents || isCaptain || hasGoalOrAssist;
+  });
+  const minutes = Number(stats?.minutes ?? player.minutes ?? 0);
+  const starts = Number(stats?.starts ?? player.starts ?? 0);
+  const hasHistory = matchHistory.length > 0 || minutes > 0 || starts > 0;
+  return {
+    hasHistory,
+    matchCount: matchHistory.length,
+    minutes,
+    starts,
+  };
+}
+
 export async function deleteOwnPlayer(supabase, jugadorId) {
   if (!jugadorId) throw new Error('Falta el identificador del jugador.');
   const { data, error } = await supabase.rpc('delete_own_player_atomic_v1', {
@@ -6,6 +31,7 @@ export async function deleteOwnPlayer(supabase, jugadorId) {
   if (error) {
     const reasons = {
       PLAYER_DELETE_DENIED: 'No tienes permiso para eliminar jugadores.',
+      SEASON_CLOSED: 'No se pueden modificar jugadores en una temporada cerrada.',
       SINGLE_CLUB_STAFF_REQUIRED: 'Tu acceso al equipo requiere revisión antes de eliminar jugadores.',
       PLAYER_NOT_FOUND: 'El jugador ya no existe. Actualiza la plantilla.',
       PLAYER_NOT_IN_OWN_TEAM: 'Este jugador no pertenece al equipo propio.',
@@ -31,7 +57,7 @@ export async function deleteOwnPlayer(supabase, jugadorId) {
   }
   if (!['deleted', 'retired'].includes(data?.status)
     || data?.jugador_id !== jugadorId
-    || (data.status === 'retired' && data.fine_payments_preserved !== true)) {
+    || (data.status === 'retired' && data.fine_payments_preserved !== true && data.history_preserved !== true)) {
     throw new Error('El servidor no confirmó la retirada del jugador.');
   }
   return data;

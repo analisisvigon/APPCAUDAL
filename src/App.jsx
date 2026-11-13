@@ -382,6 +382,10 @@ import {
   mapExternalPositionToPlayerPositions,
 } from './constants/playerPositions';
 import {
+  deleteOwnPlayer,
+  getPlayerHistoricalSummary,
+} from './data/ownPlayerDeletion';
+import {
   RIVAL_PLAYER_MANUAL_FIELDS,
   RIVAL_TEAM_SYNC_FIELDS,
   applyFieldSyncPlan,
@@ -5721,6 +5725,10 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   const [availabilityDraft, setAvailabilityDraft] = useState({ status: PLAYER_AVAILABILITY.available, remaining: 1 });
   const [availabilitySaving, setAvailabilitySaving] = useState(false);
   const [availabilityError, setAvailabilityError] = useState('');
+  const [deletePlayerDialog, setDeletePlayerDialog] = useState(null);
+  const [deletePlayerSaving, setDeletePlayerSaving] = useState(false);
+  const [deletePlayerError, setDeletePlayerError] = useState('');
+  const [deletePlayerNotice, setDeletePlayerNotice] = useState('');
   const [selectedPlayerProfileId, setSelectedPlayerProfileId] = useState(null);
   const [playerCompetitionFilter, setPlayerCompetitionFilter] = useState('Temporada');
   const [performanceLoading, setPerformanceLoading] = useState(false);
@@ -16378,6 +16386,53 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       setAvailabilityError(saveError.message || 'No se pudo guardar la disponibilidad.');
     } finally {
       setAvailabilitySaving(false);
+    }
+  };
+
+  const openDeletePlayerDialog = (player) => {
+    if (!player) return;
+    if (!rosterAccess.canWrite) {
+      setOwnPlayerEditorError('No tienes permiso para modificar la plantilla o la temporada está cerrada.');
+      return;
+    }
+    setDeletePlayerError('');
+    setDeletePlayerSaving(false);
+    setDeletePlayerDialog(player);
+  };
+
+  const closeDeletePlayerDialog = () => {
+    if (deletePlayerSaving) return;
+    setDeletePlayerDialog(null);
+    setDeletePlayerError('');
+  };
+
+  const confirmDeletePlayer = async () => {
+    if (!deletePlayerDialog || deletePlayerSaving) return;
+    if (!rosterAccess.canWrite) {
+      setDeletePlayerError('No tienes permiso para modificar la plantilla o la temporada está cerrada.');
+      return;
+    }
+    const playerToDelete = deletePlayerDialog;
+    setDeletePlayerSaving(true);
+    setDeletePlayerError('');
+    try {
+      const result = await deleteOwnPlayer(supabase, playerToDelete.id);
+      setPlayers((current) => current.filter((p) => p.id !== playerToDelete.id));
+      if (selectedPlayerProfileId === playerToDelete.id) {
+        setSelectedPlayerProfileId(null);
+      }
+      setDeletePlayerDialog(null);
+      const playerName = displayPlayerName(playerToDelete);
+      if (result.status === 'retired') {
+        setDeletePlayerNotice(`${playerName} ha sido retirado de la plantilla activa. Se conserva todo su historial deportivo, estadísticas y partidos.`);
+      } else {
+        setDeletePlayerNotice(`${playerName} ha sido eliminado definitivamente al no contar con historial deportivo.`);
+      }
+    } catch (err) {
+      console.error('Error eliminando jugador:', err);
+      setDeletePlayerError(err.message || 'No se pudo eliminar el jugador. Inténtalo de nuevo.');
+    } finally {
+      setDeletePlayerSaving(false);
     }
   };
 
@@ -31497,6 +31552,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                         setRosterAccess((current) => ({ ...current, context: null, canWrite: false }));
                         setPlayers([]); setSelectedPlayerProfileId(null);
                         setAvailabilityEditor(null); setCaptainPanelOpen(false);
+                        setDeletePlayerDialog(null); setDeletePlayerNotice('');
                         setPlayerSearchTerm(''); setPlayerQuickFilter('Todos');
                         closeRivalPlayerModal(); setRosterRequestedCtsId(event.target.value);
                       }} className="min-h-10 w-full rounded-xl border border-white/10 bg-caudal-950 px-2 text-xs">
@@ -31546,6 +31602,13 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                 <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-red-300/20 bg-red-400/10 px-3 py-2 text-xs font-bold text-red-100">
                   <span>{ownPlayerEditorError}</span>
                   <button type="button" onClick={() => setOwnPlayerEditorError('')} className="shrink-0 text-[10px] font-black uppercase text-red-100/75 hover:text-red-100">Cerrar</button>
+                </div>
+              ) : null}
+
+              {deletePlayerNotice ? (
+                <div role="status" className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-emerald-300/20 bg-emerald-400/10 px-3 py-2 text-xs font-bold text-emerald-100">
+                  <span>{deletePlayerNotice}</span>
+                  <button type="button" onClick={() => setDeletePlayerNotice('')} className="shrink-0 text-[10px] font-black uppercase text-emerald-100/75 hover:text-emerald-100">Cerrar</button>
                 </div>
               ) : null}
 
@@ -31746,9 +31809,10 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                             ⋮
                           </button>
                           {floatingMenu?.id === `player-card-${player.id}` ? (
-                            <FloatingActionMenu anchorRect={floatingMenu.anchorRect} width={144} onClose={closeFloatingMenu}>
+                            <FloatingActionMenu anchorRect={floatingMenu.anchorRect} width={160} onClose={closeFloatingMenu}>
                               <button type="button" onClick={() => runMenuAction(() => openForm(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-white transition hover:bg-white/10">Editar</button>
                               <button type="button" onClick={() => runMenuAction(() => openAvailabilityEditor(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-amber-100 transition hover:bg-amber-500/15">Disponibilidad</button>
+                              <button type="button" onClick={() => runMenuAction(() => openDeletePlayerDialog(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-rose-300 transition hover:bg-rose-500/20 hover:text-rose-100">Eliminar jugador</button>
                             </FloatingActionMenu>
                           ) : null}
                           <div className="grid grid-cols-[72px_minmax(0,1fr)] items-start gap-3 pr-11">
@@ -36860,6 +36924,123 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
           </div>
         </div>
       ) : null}
+
+      {deletePlayerDialog ? (() => {
+        const playerRow = rosterDashboard.rowByPlayerId.get(deletePlayerDialog.id) || {};
+        const historicalSummary = getPlayerHistoricalSummary(deletePlayerDialog, { matches, stats: playerRow });
+        const hasHistory = historicalSummary.hasHistory;
+        return (
+          <div className="fixed inset-0 z-[80] flex items-end justify-center overflow-hidden bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:px-4 sm:py-6">
+            <div className="mobile-form-controls max-h-[92dvh] w-full max-w-xl overflow-y-auto rounded-t-[2rem] border border-white/10 bg-[#07111f] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.5)] sm:rounded-3xl sm:p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-rose-500/30 bg-rose-500/15 text-rose-300">
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-300">Gestión de plantilla</p>
+                    <h3 className="mt-1 text-xl font-black text-white">{displayPlayerName(deletePlayerDialog)}</h3>
+                    <p className="mt-0.5 text-xs font-semibold text-slate-400">
+                      {deletePlayerDialog.number ? `#${displayDorsal(deletePlayerDialog.number)} · ` : ''}{getPlayerPositionLabel(deletePlayerDialog)}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeDeletePlayerDialog}
+                  disabled={deletePlayerSaving}
+                  className="min-h-10 rounded-xl border border-white/10 bg-white/[0.06] px-3.5 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-white/10 disabled:opacity-50"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+              {deletePlayerError ? (
+                <div className="mt-4 rounded-2xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-xs font-bold text-rose-100">
+                  {deletePlayerError}
+                </div>
+              ) : null}
+
+              <div className="mt-5 space-y-4">
+                {hasHistory ? (
+                  <div className="rounded-2xl border border-amber-300/25 bg-amber-400/[0.08] p-4 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-400/25 text-xs font-black text-amber-200">ℹ</span>
+                      <span className="font-black uppercase tracking-[0.14em] text-amber-200">Jugador con historial deportivo</span>
+                    </div>
+                    <p className="mt-2 text-slate-200 leading-relaxed">
+                      Este jugador cuenta con participación o historial deportivo registrado en la temporada ({historicalSummary.minutes > 0 ? `${historicalSummary.minutes} minutos disputados` : `${historicalSummary.matchCount} partidos registrados`}).
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-sky-300/25 bg-sky-400/[0.08] p-4 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-400/25 text-xs font-black text-sky-200">✓</span>
+                      <span className="font-black uppercase tracking-[0.14em] text-sky-200">Jugador sin historial deportivo</span>
+                    </div>
+                    <p className="mt-2 text-slate-200 leading-relaxed">
+                      Este jugador no tiene minutos disputados, convocatorias ni partidos registrados en la temporada actual.
+                    </p>
+                  </div>
+                )}
+
+                <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-xs text-slate-300 space-y-2">
+                  <p className="font-bold uppercase tracking-[0.12em] text-[11px] text-white">¿Qué ocurrirá con sus datos?</p>
+                  {hasHistory ? (
+                    <>
+                      <p className="leading-relaxed">
+                        Para respetar el <strong>historial deportivo del club</strong>, el jugador <strong>se retirará de la plantilla activa</strong> de esta temporada sin borrar su histórico:
+                      </p>
+                      <ul className="list-disc pl-5 space-y-1 text-slate-400">
+                        <li>Se conservan todos sus partidos, alineaciones, actas y minutos jugados.</li>
+                        <li>Se mantienen intactas todas sus estadísticas oficiales, goles, asistencias y tarjetas.</li>
+                        <li>Los registros de sesiones, informes médicos, fisioterapia y cargas no se destruyen.</li>
+                        <li>Las vinculaciones y temporadas anteriores se mantienen sin alteraciones.</li>
+                      </ul>
+                    </>
+                  ) : (
+                    <>
+                      <p className="leading-relaxed">
+                        El sistema verificará en la base de datos que no existan dependencias ni referencias históricas asociadas y <strong>eliminará definitivamente su ficha y registro</strong> del club.
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        Si existiera alguna referencia deportiva previa no visible en este filtro, el sistema la protegerá automáticamente retirándolo de la plantilla sin borrar datos.
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeDeletePlayerDialog}
+                  disabled={deletePlayerSaving}
+                  className="rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-3 text-xs font-bold text-slate-300 transition hover:bg-white/10 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeletePlayer}
+                  disabled={deletePlayerSaving || !rosterAccess.canWrite}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-500/40 bg-rose-600 px-6 py-3 text-xs font-black uppercase tracking-[0.12em] text-white shadow-[0_8px_20px_rgba(225,29,72,0.3)] transition hover:bg-rose-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {deletePlayerSaving ? (
+                    <span>Procesando...</span>
+                  ) : hasHistory ? (
+                    <span>Retirar de la plantilla</span>
+                  ) : (
+                    <span>Eliminar definitivamente</span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
 
       {isStatsCallupPanelOpen ? (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6">
