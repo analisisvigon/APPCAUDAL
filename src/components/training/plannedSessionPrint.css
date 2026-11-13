@@ -2,7 +2,7 @@
    para comprobar desbordamientos antes de abrir la impresión del navegador. */
 .planned-print-portal { position: absolute; left: -20000px; top: 0; width: 297mm; visibility: hidden; pointer-events: none; }
 .planned-print-pages { width: 297mm; color: #111; font: 8pt/1.2 Arial, Helvetica, sans-serif; }
-@page nexo-session { size: 297mm 210mm; margin: 0; page-orientation: upright; }
+@page nexo-session { size: A4 landscape; margin: 0; }
 .planned-print-sheet { page: nexo-session; box-sizing: border-box; width: 297mm; min-height: 209mm; padding: 5mm; background: #fff; }
 .planned-print-sheet-exercises { padding: 4mm 5mm; }
 .planned-print-sheet-exercises .planned-print-identity { height: 15mm; }
