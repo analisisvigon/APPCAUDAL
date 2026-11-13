@@ -2,6 +2,7 @@ import PptxGenJS from 'pptxgenjs';
 import { getSetPieceCurveControlPoint } from './setPieceEditorInteractions.js';
 import {
   adaptLegacyTrainingBoardElement,
+  getTrainingConditionalMaterial,
   getTrainingBoardColor,
   sortTrainingBoardElements,
 } from './trainingTaskBoardElements.js';
@@ -288,9 +289,95 @@ const addBoardTrace = (slide, board, element, type) => {
   }
 };
 
+const addConditionalMaterial = (slide, board, element) => {
+  const material = getTrainingConditionalMaterial(element.materialKey);
+  const width = Number(element.width) || material?.geometry.width || 10;
+  const height = Number(element.height) || material?.geometry.height || 8;
+  const scale = Math.min(width, height) / 24;
+  const center = { x: Number(element.x), y: Number(element.y) };
+  const rotation = Number(element.rotation) || 0;
+  const palette = {
+    primary: toHex(getTrainingBoardColor(element, 'yellow').value),
+    ink: '10291D',
+    paper: 'F8FAFC',
+    accent: 'FACC15',
+    turf: COLORS.pitch,
+  };
+  const materialName = material?.name || 'Material condicional';
+  const toPoint = (x, y) => {
+    const rotated = rotatePoint({
+      x: center.x + (x - 12) * scale,
+      y: center.y + (y - 12) * scale,
+    }, center, rotation);
+    return inchPoint(rotated.x, rotated.y, board);
+  };
+
+  if (!material) {
+    const point = inchPoint(center.x, center.y, board);
+    const fallbackSize = board.w * 7 / BOARD_VIEW_WIDTH;
+    slide.addShape('ellipse', {
+      x: point.x - fallbackSize / 2,
+      y: point.y - fallbackSize / 2,
+      w: fallbackSize,
+      h: fallbackSize,
+      fill: { color: 'FFFFFF', transparency: 100 },
+      line: { color: palette.primary, width: 1.2 },
+      objectName: `Pizarra - material no disponible ${cleanValue(element.materialKey)}`,
+    });
+    return;
+  }
+
+  material.icon.shapes.forEach((shape, index) => {
+    const name = `Pizarra - ${materialName} · ${index + 1}`;
+    const strokeToken = shape.stroke || 'primary';
+    const fillToken = shape.fill || 'none';
+    const stroke = palette[strokeToken] || toHex(strokeToken);
+    const fill = fillToken === 'none' ? 'none' : palette[fillToken] || toHex(fillToken);
+    if (shape.type === 'line' || shape.type === 'polyline') {
+      const points = shape.type === 'line'
+        ? [[shape.x1, shape.y1], [shape.x2, shape.y2]]
+        : shape.points;
+      for (let pointIndex = 1; pointIndex < points.length; pointIndex += 1) {
+        addBoardLine(slide, board, toPoint(...points[pointIndex - 1]), toPoint(...points[pointIndex]), {
+          color: stroke,
+          width: shape.strokeWidth || 1.5,
+          name,
+        });
+      }
+      return;
+    }
+
+    const isEllipse = shape.type === 'ellipse';
+    const centerX = isEllipse ? shape.cx : shape.x + shape.width / 2;
+    const centerY = isEllipse ? shape.cy : shape.y + shape.height / 2;
+    const point = toPoint(centerX, centerY);
+    const shapeWidth = (isEllipse ? shape.rx * 2 : shape.width) * scale;
+    const shapeHeight = (isEllipse ? shape.ry * 2 : shape.height) * scale;
+    const fillColor = fill === 'none' ? 'FFFFFF' : fill;
+    slide.addShape(isEllipse ? 'ellipse' : shape.radius ? 'roundRect' : 'rect', {
+      x: point.x - board.w * shapeWidth / BOARD_VIEW_WIDTH / 2,
+      y: point.y - board.h * shapeHeight / BOARD_VIEW_HEIGHT / 2,
+      w: board.w * shapeWidth / BOARD_VIEW_WIDTH,
+      h: board.h * shapeHeight / BOARD_VIEW_HEIGHT,
+      rotate: rotation,
+      fill: { color: fillColor, transparency: fill === 'none' ? 100 : 0 },
+      line: {
+        color: stroke,
+        width: shape.strokeWidth || 1.5,
+        transparency: shape.stroke === 'none' ? 100 : 0,
+      },
+      objectName: name,
+    });
+  });
+};
+
 const addBoardElement = (slide, board, rawElement, players) => {
   const element = adaptLegacyTrainingBoardElement(rawElement);
   const type = element.type;
+  if (type === 'conditional_material') {
+    addConditionalMaterial(slide, board, element);
+    return;
+  }
   if (type === 'participant') {
     addBoardParticipant(slide, board, element, players);
     return;

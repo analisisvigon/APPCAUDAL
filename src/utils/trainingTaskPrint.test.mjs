@@ -3,6 +3,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 import { loadTrainingTaskPrintData, printableMediaUrl } from './trainingTaskPrintData.js';
+import { createTrainingTaskBoardElement, TRAINING_CONDITIONAL_MATERIALS } from './trainingTaskBoardElements.js';
 
 const base = { id: 'a', club_id: 'club', name: 'Ejercicio completo', task_code: 'RON-01', task_type: 'rondos',
   objective: 'Conservar', description: 'Inicio\n' + 'Desarrollo largo. '.repeat(1000) + 'FINAL DESCRIPCIÓN',
@@ -11,6 +12,11 @@ const base = { id: 'a', club_id: 'club', name: 'Ejercicio completo', task_code: 
   tactical_content: 'Herencia real', technical_content: 'Técnica real', stage_keys: ['senior'],
   editor_payload: { schemaVersion: 1, board: { pitchType: 'full', elements: [
     { id: 'ball', type: 'ball', x: 50, y: 36 },
+    ...TRAINING_CONDITIONAL_MATERIALS.map((material, index) => ({
+      ...createTrainingTaskBoardElement(`conditional:${material.id}`, () => `conditional-${index}`),
+      x: 10 + (index % 8) * 11,
+      y: 12 + Math.floor(index / 8) * 20,
+    })),
   ] }, assignments: { players: [], teamColors: {} } } };
 const media = [{ id: 'video', task_id: 'a', source: 'url', kind: 'video', provider: 'youtube',
   title: 'Vídeo real', original_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', caption: 'Consigna del vídeo' },
@@ -44,6 +50,10 @@ try {
   for (const text of ['RON-01', 'Variante real', 'Ataque real', 'Defensa real', 'Herencia real', 'Técnica real',
     'FINAL DESCRIPCIÓN', 'FINAL REGLAS', 'Vídeo real', 'Consigna del vídeo', 'privado.pdf', 'Observación POST 204', 'Valoración 4/5']) assert.ok(html.includes(text), text);
   assert.match(html, /<svg/);
+  TRAINING_CONDITIONAL_MATERIALS.forEach((material) => assert.ok(
+    html.includes(`data-training-material="${material.id}"`),
+    `PDF markup includes ${material.name}`,
+  ));
   assert.match(html, /href="https:\/\/www.youtube.com/);
   assert.doesNotMatch(html, /secret-path|<video|<iframe|<button/);
   const batch = render(TrainingTaskBatchPrintPages, { tasks: [task, { id: 'b', name: 'Segunda', editorPayload: {} }] });

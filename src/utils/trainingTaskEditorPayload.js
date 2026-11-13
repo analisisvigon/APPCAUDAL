@@ -25,6 +25,7 @@ export const TRAINING_TASK_EDITOR_ELEMENT_TYPES = Object.freeze([
   'hoop',
   'goal',
   'mini_goal',
+  'conditional_material',
   'line',
   'dashed_line',
 ]);

@@ -43,6 +43,13 @@ assert.deepEqual(extended.scene.vendor, payloadWithExtensions.vendor, 'preserva 
 assert.deepEqual(extended.scene.board.background, payloadWithExtensions.board.background, 'preserva claves desconocidas del tablero');
 assert.deepEqual(extended.scene.board.elements[0].futureData, { value: 7 }, 'preserva claves desconocidas de elementos conocidos');
 
+const conditionalMaterial = createTrainingTaskEditorSceneV1({
+  pitchType: 'full',
+  elements: [{ id: 'conditional-1', type: 'conditional_material', materialKey: 'dumbbell', x: 54, y: 33, width: 10, height: 7, rotation: 90 }],
+});
+assert.equal(readTrainingTaskEditorPayload(conditionalMaterial).kind, 'v1', 'V1 admite material condicional sin migrar la escena');
+assert.deepEqual(serializeTrainingTaskEditorScene(conditionalMaterial), conditionalMaterial, 'el material condicional persiste sin perder sus propiedades');
+
 const unknownElementPayload = { schemaVersion: 1, board: { pitchType: 'full', elements: [{ id: 'future-1', type: 'future-equipment', x: 20, y: 30, data: { keep: true } }] } };
 const unknownElement = readTrainingTaskEditorPayload(unknownElementPayload);
 assert.equal(unknownElement.kind, 'invalid', 'V1 no intenta renderizar tipos futuros con semantica incorrecta');

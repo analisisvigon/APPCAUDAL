@@ -6,6 +6,11 @@ import {
   inspectTrainingTaskPowerPointLayout,
   trainingTaskPowerPointFileName,
 } from './trainingTaskPowerPoint.js';
+import {
+  createTrainingTaskBoardElement,
+  TRAINING_CONDITIONAL_MATERIALS,
+} from './trainingTaskBoardElements.js';
+import { createTrainingTaskEditorSceneV1 } from './trainingTaskEditorPayload.js';
 
 const task = {
   id: 'task-123',
@@ -121,6 +126,37 @@ test('keeps task text exportable when the board schema is unsupported', async ()
   assert.equal(slideFiles.length, 1);
   assert.match(slideXml, /Tarea sin pizarra compatible/);
   assert.match(slideXml, /formato no es compatible/);
+});
+
+test('exports every conditional catalog material as native editable PowerPoint shapes', async () => {
+  const elements = TRAINING_CONDITIONAL_MATERIALS.map((material, index) => ({
+    ...createTrainingTaskBoardElement(`conditional:${material.id}`, () => `conditional-${index}`),
+    x: 10 + (index % 8) * 11,
+    y: 12 + Math.floor(index / 8) * 20,
+  }));
+  const editorPayload = createTrainingTaskEditorSceneV1({ pitchType: 'full', elements });
+  const presentation = createTrainingTaskPowerPoint({ name: 'Catálogo condicional', editorPayload });
+  const archive = await JSZip.loadAsync(await presentation.write({ outputType: 'nodebuffer' }));
+  const slideFiles = Object.keys(archive.files).filter((path) => /^ppt\/slides\/slide\d+\.xml$/.test(path));
+  const slideXml = await archive.file('ppt/slides/slide1.xml').async('string');
+  const presentationXml = await archive.file('ppt/presentation.xml').async('string');
+  const shapeCount = (slideXml.match(/<p:sp>/g) || []).length;
+
+  assert.equal(slideFiles.length, 1);
+  assert.match(presentationXml, /cx="10692000" cy="7560000"/);
+  assert.ok(shapeCount > TRAINING_CONDITIONAL_MATERIALS.length * 2);
+  assert.doesNotMatch(slideXml, /<p:pic>/);
+  TRAINING_CONDITIONAL_MATERIALS.forEach((material) => assert.ok(
+    slideXml.includes(`Pizarra - ${material.name}`),
+    `expected editable shapes for ${material.name}`,
+  ));
+  [...slideXml.matchAll(/<a:xfrm(?:\s[^>]*)?>([\s\S]*?)<\/a:xfrm>/g)].forEach(([, transform]) => {
+    const offset = transform.match(/<a:off x="(\d+)" y="(\d+)"\/>/);
+    const extent = transform.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
+    if (!offset || !extent) return;
+    assert.ok(Number(offset[1]) + Number(extent[1]) <= 10692000);
+    assert.ok(Number(offset[2]) + Number(extent[2]) <= 7560000);
+  });
 });
 
 test('rejects content that cannot fit legibly instead of creating continuation slides', () => {

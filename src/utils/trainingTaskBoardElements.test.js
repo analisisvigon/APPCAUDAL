@@ -6,13 +6,17 @@ import {
   createTrainingTaskBoardElement,
   drawTrainingTaskBoardElement,
   getTrainingBoardElementLayer,
+  getTrainingConditionalMaterial,
   moveTrainingBoardElement,
   resizeTrainingBoardZone,
+  resizeTrainingBoardMaterial,
   placeTrainingTaskBoardElement,
   rotateTrainingBoardElement,
   sortTrainingBoardElements,
   TRAINING_BOARD_PALETTE,
   TRAINING_BOARD_TEAM_OPTIONS,
+  TRAINING_CONDITIONAL_MATERIAL_CATEGORIES,
+  TRAINING_CONDITIONAL_MATERIALS,
 } from './trainingTaskBoardElements.js';
 import { createTrainingTaskEditorSceneV1, readTrainingTaskEditorPayload } from './trainingTaskEditorPayload.js';
 
@@ -21,6 +25,53 @@ const id = () => `training-${++sequence}`;
 const tools = ['team-1', 'team-2', 'team-3', 'neutral', 'goalkeeper', 'coach', 'ball', 'cone', 'pole', 'mannequin', 'hoop', 'goal', 'mini_goal', 'arrow', 'curved_arrow', 'dashed_arrow', 'line', 'dashed_line', 'zone', 'text'];
 const elements = tools.map((tool) => createTrainingTaskBoardElement(tool, id));
 assert.equal(new Set(elements.map((element) => element.id)).size, tools.length, 'cada objeto recibe id estable unico');
+
+assert.equal(TRAINING_CONDITIONAL_MATERIALS.length, 22, 'el catalogo contiene todos los materiales solicitados');
+assert.deepEqual(TRAINING_CONDITIONAL_MATERIAL_CATEGORIES, [
+  'FUERZA', 'EQUILIBRIO', 'COORDINACIÓN', 'PLIOMETRÍA', 'RESISTENCIA', 'TRABAJO EN SUELO', 'VELOCIDAD',
+]);
+assert.deepEqual(TRAINING_CONDITIONAL_MATERIALS.map((material) => material.name), [
+  'Mancuerna', 'Kettlebell', 'Barra con discos', 'Disco de peso', 'Balón medicinal',
+  'BOSU', 'Fitball', 'Plataforma de equilibrio',
+  'Escalera de coordinación', 'Aros', 'Valla baja',
+  'Cajón pliométrico', 'Step', 'Obstáculo bajo',
+  'Banda elástica', 'Goma de resistencia', 'TRX',
+  'Esterilla', 'Colchoneta', 'Rueda abdominal',
+  'Trineo de arrastre', 'Paracaídas de resistencia',
+]);
+assert.ok(TRAINING_CONDITIONAL_MATERIALS.every((material) => (
+  material.id && material.name && TRAINING_CONDITIONAL_MATERIAL_CATEGORIES.includes(material.category)
+  && material.icon.shapes.length > 0 && material.geometry.width > 0 && material.geometry.height > 0
+)), 'cada material tiene identidad, categoria, icono vectorial y geometria');
+assert.equal(new Set(TRAINING_CONDITIONAL_MATERIALS.map((material) => material.id)).size, 22);
+const conditionalElements = TRAINING_CONDITIONAL_MATERIALS.map((material) => (
+  createTrainingTaskBoardElement(`conditional:${material.id}`, id)
+));
+assert.ok(conditionalElements.every((element) => element.type === 'conditional_material'));
+assert.ok(conditionalElements.every((element) => getTrainingConditionalMaterial(element.materialKey)));
+assert.equal(getTrainingBoardElementLayer(conditionalElements[0]), 3, 'el material se sitúa sobre el campo y bajo los participantes');
+const conditionalScene = createTrainingTaskEditorSceneV1({ pitchType: 'full', elements: conditionalElements });
+assert.deepEqual(readTrainingTaskEditorPayload(conditionalScene).scene.board.elements, conditionalElements, 'los 22 materiales hacen round-trip en V1');
+for (const element of conditionalElements) {
+  const placed = placeTrainingTaskBoardElement(`conditional:${element.materialKey}`, { x: 0, y: 0 }, id);
+  assert.ok(placed.x >= placed.width / 2 && placed.y >= placed.height / 2, `${element.materialKey} no se recorta al colocarlo en el borde`);
+  const moved = moveTrainingBoardElement(element, 3, -2);
+  assert.deepEqual({ x: moved.x, y: moved.y }, { x: element.x + 3, y: element.y - 2 });
+  const rotated = rotateTrainingBoardElement(element);
+  assert.equal(rotated.rotation, 90);
+  const resized = resizeTrainingBoardMaterial(element, { width: 100, height: 100 });
+  assert.deepEqual({ width: resized.width, height: resized.height }, { width: 28, height: 24 });
+  const copy = duplicateDiagramElement(element, id);
+  assert.notEqual(copy.id, element.id);
+  assert.equal(copy.materialKey, element.materialKey, 'duplicar conserva el material del catalogo');
+  assert.equal(copy.x, element.x + 4);
+  assert.equal(deleteSetPieceElement([element], element.id).length, 0, 'cualquier material condicional se puede borrar');
+}
+let conditionalHistory = createDiagramHistory([conditionalElements[0]]);
+const movedConditional = moveTrainingBoardElement(conditionalElements[0], 5, 2);
+conditionalHistory = pushDiagramHistory(conditionalHistory, [movedConditional]);
+assert.deepEqual(moveDiagramHistory(conditionalHistory, 'undo').elements, [conditionalElements[0]], 'undo restaura el material movido');
+assert.deepEqual(moveDiagramHistory(moveDiagramHistory(conditionalHistory, 'undo').history, 'redo').elements, [movedConditional], 'redo restaura su nueva posición');
 
 const participants = elements.slice(0, 6);
 assert.deepEqual(participants.slice(0, 3).map((entry) => entry.teamKey), ['team-1', 'team-2', 'team-3']);

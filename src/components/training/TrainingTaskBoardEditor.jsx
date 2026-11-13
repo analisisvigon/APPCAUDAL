@@ -24,8 +24,10 @@ import {
 import {
   adaptLegacyTrainingBoardElement,
   drawTrainingTaskBoardElement,
+  getTrainingConditionalMaterial,
   getTrainingBoardColor,
   placeTrainingTaskBoardElement,
+  resizeTrainingBoardMaterial,
   rotateTrainingBoardElement,
   PARTICIPANT_ROLES,
   TRAINING_BOARD_PALETTE,
@@ -50,18 +52,20 @@ import {
 const buttonClass = 'min-h-10 rounded-xl bg-white/[0.07] px-3 text-[11px] font-black text-slate-200 outline-none hover:bg-white/[0.12] focus-visible:ring-2 focus-visible:ring-caudal-electric disabled:opacity-35';
 const inputClass = 'min-h-10 rounded-xl border border-white/10 bg-white px-3 text-xs font-bold text-slate-950 outline-none focus:ring-2 focus:ring-caudal-electric';
 const TRACE_TYPES = new Set(['arrow', 'curved_arrow', 'dashed_arrow', 'double_arrow', 'line', 'dashed_line']);
-const ROTATABLE_TYPES = new Set(['pole', 'mannequin', 'goal', 'mini_goal']);
-const COLOR_TYPES = new Set(['participant', 'player', 'opponent', 'cone', 'pole', 'mannequin', 'hoop', 'goal', 'mini_goal', 'arrow', 'curved_arrow', 'dashed_arrow', 'double_arrow', 'line', 'dashed_line', 'zone', 'text']);
+const ROTATABLE_TYPES = new Set(['pole', 'mannequin', 'goal', 'mini_goal', 'conditional_material']);
+const COLOR_TYPES = new Set(['participant', 'player', 'opponent', 'cone', 'pole', 'mannequin', 'hoop', 'goal', 'mini_goal', 'conditional_material', 'arrow', 'curved_arrow', 'dashed_arrow', 'double_arrow', 'line', 'dashed_line', 'zone', 'text']);
 
 function ElementProperties({ element, players = [], space = null, onChange, onDuplicate, onDelete }) {
   const participant = ['participant', 'player', 'opponent'].includes(element.type);
   const labelEditable = participant || ['zone', 'text', 'text_box'].includes(element.type);
   const selectedColor = getTrainingBoardColor(element, element.type === 'text' ? 'white' : 'blue').key;
+  const conditionalMaterial = element.type === 'conditional_material'
+    ? getTrainingConditionalMaterial(element.materialKey) : null;
   const realPlayer = element.playerRef ? resolveTrainingTaskPlayerRef(element.playerRef, players) : null;
   const zoneMetres = getTrainingTaskZoneMetres(element, space);
   const materialPosition = getTrainingTaskSpatialPosition(element, space);
   return <aside className="mt-2 w-full shrink-0 rounded-xl bg-[#071526]/90 p-3 xl:mt-0 xl:w-72" aria-label="Propiedades del elemento seleccionado">
-    <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[9px] font-black uppercase tracking-[0.16em] text-caudal-electric">Elemento seleccionado</p><p className="mt-0.5 text-sm font-black capitalize text-white">{element.role || element.type.replaceAll('_', ' ')}</p></div><div className="flex gap-1.5"><button type="button" disabled={!onDuplicate} onClick={onDuplicate} className={buttonClass}>Duplicar</button><button type="button" onClick={onDelete} className={`${buttonClass} text-red-200`}>Borrar</button></div></div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[9px] font-black uppercase tracking-[0.16em] text-caudal-electric">Elemento seleccionado</p><p className="mt-0.5 text-sm font-black capitalize text-white">{element.role || conditionalMaterial?.name || element.type.replaceAll('_', ' ')}</p></div><div className="flex gap-1.5"><button type="button" disabled={!onDuplicate} onClick={onDuplicate} className={buttonClass}>Duplicar</button><button type="button" onClick={onDelete} className={`${buttonClass} text-red-200`}>Borrar</button></div></div>
     {realPlayer ? <div className="mt-3 flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-2">{realPlayer.display.image ? <img src={realPlayer.display.image} alt="" className="h-10 w-10 rounded-full object-cover" /> : null}<div className="min-w-0"><p className="truncate text-xs font-black text-white">{realPlayer.display.name}</p><p className="truncate text-[10px] text-slate-500">{realPlayer.display.number ? `#${realPlayer.display.number} · ` : ''}{realPlayer.display.specificPosition || realPlayer.display.position}{realPlayer.unavailable ? ' · no disponible' : ''}</p></div></div> : null}
     <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
       {participant && element.role !== 'coach' && element.role !== 'neutral' ? <label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Equipo<select value={element.teamKey || 'team-1'} onChange={(event) => onChange({ teamKey: event.target.value })} className={inputClass}>{TRAINING_BOARD_TEAM_OPTIONS.map((team) => <option key={team.key} value={team.key}>{team.label}</option>)}</select></label> : null}
@@ -71,6 +75,7 @@ function ElementProperties({ element, players = [], space = null, onChange, onDu
       {element.type === 'zone' ? <><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Opacidad<select value={element.opacity ?? .18} onChange={(event) => onChange({ opacity: Number(event.target.value) })} className={inputClass}><option value="0.1">10%</option><option value="0.18">18%</option><option value="0.28">28%</option></select></label><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Borde<select value={element.borderStyle || 'solid'} onChange={(event) => onChange({ borderStyle: event.target.value })} className={inputClass}><option value="solid">Continuo</option><option value="dashed">Discontinuo</option></select></label></> : null}
       {ROTATABLE_TYPES.has(element.type) ? <label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Orientación<select value={Number(element.rotation) || 0} onChange={(event) => onChange({ rotation: Number(event.target.value) })} className={inputClass}>{[0, 90, 180, 270].map((rotation) => <option key={rotation} value={rotation}>{rotation}°</option>)}</select></label> : null}
       {['goal', 'mini_goal'].includes(element.type) ? <button type="button" onClick={() => onChange(rotateTrainingBoardElement(element))} className={buttonClass}>Rotar 90°</button> : null}
+      {element.type === 'conditional_material' ? <><button type="button" onClick={() => onChange({ rotation: rotateTrainingBoardElement(element).rotation })} className={buttonClass}>Rotar 90°</button><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Tamaño · ancho<input type="number" min="3" max="28" value={element.width || conditionalMaterial?.geometry.width || 10} onChange={(event) => onChange(resizeTrainingBoardMaterial(element, { width: event.target.value }))} className={inputClass} /></label><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Tamaño · alto<input type="number" min="3" max="24" value={element.height || conditionalMaterial?.geometry.height || 8} onChange={(event) => onChange(resizeTrainingBoardMaterial(element, { height: event.target.value }))} className={inputClass} /></label></> : null}
       {['goal', 'mini_goal'].includes(element.type) ? <><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Ancho<input type="number" min="4" max="30" value={element.width || (element.type === 'goal' ? 10 : 6)} onChange={(event) => onChange({ width: Math.max(4, Math.min(30, Number(event.target.value))) })} className={inputClass} /></label><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Fondo<input type="number" min="2" max="14" value={element.height || (element.type === 'goal' ? 4.5 : 3)} onChange={(event) => onChange({ height: Math.max(2, Math.min(14, Number(event.target.value))) })} className={inputClass} /></label></> : null}
     </div>
     {element.type === 'zone' ? <div className="mt-3 rounded-xl border border-caudal-electric/20 bg-caudal-electric/[0.06] p-2.5">

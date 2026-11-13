@@ -3,12 +3,14 @@ import { clampDiagramCoordinate } from '../../utils/diagramScene';
 import { getSetPieceCurveControlPoint } from '../../utils/setPieceEditorInteractions';
 import {
   adaptLegacyTrainingBoardElement,
+  getTrainingConditionalMaterial,
   getTrainingBoardColor,
   moveTrainingBoardElement,
   resizeTrainingBoardZone,
   sortTrainingBoardElements,
 } from '../../utils/trainingTaskBoardElements';
 import { resolveTrainingTaskPlayerRef } from '../../utils/trainingTaskRoster';
+import TrainingTaskConditionalMaterialGraphic from './TrainingTaskConditionalMaterialGraphic';
 
 const TRACE_TYPES = new Set(['arrow', 'curved_arrow', 'dashed_arrow', 'double_arrow', 'line', 'dashed_line']);
 const DRAW_TOOLS = new Set(['arrow', 'curved_arrow', 'dashed_arrow', 'line', 'dashed_line', 'zone']);
@@ -188,6 +190,18 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
       const goalkeeper = role === 'goalkeeper';
       return <g key={element.id} onPointerDown={(event) => startDrag(event, raw)} className={readOnly ? '' : 'diagram-draggable'}>{participantTitle ? <title>{participantTitle}</title> : null}<circle cx={element.x} cy={element.y} r="3.2" fill="transparent" /><circle cx={element.x} cy={element.y} r="1.52" fill={color} stroke={monochrome ? '#374151' : 'rgba(255,255,255,.9)'} strokeWidth=".34" pointerEvents="none" /><circle cx={element.x} cy={element.y} r="1.9" fill="none" stroke={goalkeeper ? '#fef08a' : 'transparent'} strokeWidth=".32" pointerEvents="none" /><text x={element.x} y={element.y + .43} textAnchor="middle" fontSize="1.32" fontWeight="900" fill={palette.contrast} pointerEvents="none">{participantLabel}</text></g>;
     }
+    if (element.type === 'conditional_material') {
+      const material = getTrainingConditionalMaterial(element.materialKey);
+      const width = Number(element.width) || material?.geometry.width || 10;
+      const height = Number(element.height) || material?.geometry.height || 8;
+      return <g key={element.id} transform={`rotate(${Number(element.rotation) || 0} ${element.x} ${element.y})`}
+        onPointerDown={(event) => startDrag(event, raw)} className={readOnly ? '' : 'diagram-draggable'}>
+        <rect x={element.x - width / 2} y={element.y - height / 2} width={width} height={height}
+          fill="transparent" />
+        <TrainingTaskConditionalMaterialGraphic materialKey={element.materialKey} color={color} monochrome={monochrome}
+          x={element.x} y={element.y} width={width} height={height} />
+      </g>;
+    }
     if (['ball', 'cone', 'pole', 'mannequin', 'hoop', 'goal', 'mini_goal', 'block'].includes(element.type)) {
       const goal = ['goal', 'mini_goal'].includes(element.type);
       const hitRadius = element.type === 'pole' ? 3.5 : element.type === 'mannequin' ? 3.2 : 2.8;
@@ -220,7 +234,13 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
     {draftPath ? <path d={draftPath} fill="none" stroke="#38bdf8" strokeWidth=".8" strokeDasharray="2 1.5" pointerEvents="none" /> : null}
     {draftZone ? <rect {...draftZone} fill="#38bdf8" fillOpacity=".14" stroke="#38bdf8" strokeWidth=".45" strokeDasharray="2 1.5" pointerEvents="none" /> : null}
     {adaptedSelected && !readOnly ? <g className="training-board-selection">
-      {TRACE_TYPES.has(adaptedSelected.type) ? <>{(() => { const control = getSetPieceCurveControlPoint(adaptedSelected); return <><TraceHandle x={adaptedSelected.x1} y={adaptedSelected.y1} onPointerDown={(event) => startDrag(event, selected, 'start')} /><TraceHandle x={adaptedSelected.x2} y={adaptedSelected.y2} onPointerDown={(event) => startDrag(event, selected, 'end')} />{adaptedSelected.type === 'curved_arrow' ? <TraceHandle x={control.x} y={control.y} filled onPointerDown={(event) => startDrag(event, selected, 'control')} /> : null}</>; })()}</> : adaptedSelected.type === 'zone' ? <><rect x={adaptedSelected.x - .45} y={adaptedSelected.y - .45} width={(adaptedSelected.width || 22) + .9} height={(adaptedSelected.height || 12) + .9} rx="1" fill="none" stroke="#38bdf8" strokeWidth=".45" pointerEvents="none" />{[[adaptedSelected.x, adaptedSelected.y], [Number(adaptedSelected.x) + Number(adaptedSelected.width || 22), adaptedSelected.y], [adaptedSelected.x, Number(adaptedSelected.y) + Number(adaptedSelected.height || 12)]].map(([x, y], index) => <rect key={index} x={Number(x) - .8} y={Number(y) - .8} width="1.6" height="1.6" rx=".3" fill="#fff" stroke="#38bdf8" strokeWidth=".3" pointerEvents="none" />)}<rect x={Number(adaptedSelected.x) + Number(adaptedSelected.width || 22) - 1.2} y={Number(adaptedSelected.y) + Number(adaptedSelected.height || 12) - 1.2} width="2.4" height="2.4" rx=".4" fill="#fff" stroke="#38bdf8" strokeWidth=".35" onPointerDown={(event) => startDrag(event, selected, 'resize')} /></> : <circle cx={adaptedSelected.x} cy={adaptedSelected.y} r={adaptedSelected.type === 'participant' ? '2.65' : '3.2'} fill="none" stroke="#38bdf8" strokeWidth=".45" pointerEvents="none" />}
+      {TRACE_TYPES.has(adaptedSelected.type) ? <>{(() => { const control = getSetPieceCurveControlPoint(adaptedSelected); return <><TraceHandle x={adaptedSelected.x1} y={adaptedSelected.y1} onPointerDown={(event) => startDrag(event, selected, 'start')} /><TraceHandle x={adaptedSelected.x2} y={adaptedSelected.y2} onPointerDown={(event) => startDrag(event, selected, 'end')} />{adaptedSelected.type === 'curved_arrow' ? <TraceHandle x={control.x} y={control.y} filled onPointerDown={(event) => startDrag(event, selected, 'control')} /> : null}</>; })()}</> : adaptedSelected.type === 'zone' ? <><rect x={adaptedSelected.x - .45} y={adaptedSelected.y - .45} width={(adaptedSelected.width || 22) + .9} height={(adaptedSelected.height || 12) + .9} rx="1" fill="none" stroke="#38bdf8" strokeWidth=".45" pointerEvents="none" />{[[adaptedSelected.x, adaptedSelected.y], [Number(adaptedSelected.x) + Number(adaptedSelected.width || 22), adaptedSelected.y], [adaptedSelected.x, Number(adaptedSelected.y) + Number(adaptedSelected.height || 12)]].map(([x, y], index) => <rect key={index} x={Number(x) - .8} y={Number(y) - .8} width="1.6" height="1.6" rx=".3" fill="#fff" stroke="#38bdf8" strokeWidth=".3" pointerEvents="none" />)}<rect x={Number(adaptedSelected.x) + Number(adaptedSelected.width || 22) - 1.2} y={Number(adaptedSelected.y) + Number(adaptedSelected.height || 12) - 1.2} width="2.4" height="2.4" rx=".4" fill="#fff" stroke="#38bdf8" strokeWidth=".35" onPointerDown={(event) => startDrag(event, selected, 'resize')} /></> : adaptedSelected.type === 'conditional_material' ? <rect
+        x={adaptedSelected.x - (Number(adaptedSelected.width) || 10) / 2 - .45}
+        y={adaptedSelected.y - (Number(adaptedSelected.height) || 8) / 2 - .45}
+        width={(Number(adaptedSelected.width) || 10) + .9}
+        height={(Number(adaptedSelected.height) || 8) + .9}
+        transform={`rotate(${Number(adaptedSelected.rotation) || 0} ${adaptedSelected.x} ${adaptedSelected.y})`}
+        fill="none" stroke="#38bdf8" strokeWidth=".45" pointerEvents="none" /> : <circle cx={adaptedSelected.x} cy={adaptedSelected.y} r={adaptedSelected.type === 'participant' ? '2.65' : '3.2'} fill="none" stroke="#38bdf8" strokeWidth=".45" pointerEvents="none" />}
     </g> : null}
   </svg>;
 }

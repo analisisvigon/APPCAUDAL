@@ -3,12 +3,19 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'vite';
+import { createTrainingTaskBoardElement, TRAINING_CONDITIONAL_MATERIALS } from '../../utils/trainingTaskBoardElements.js';
 
 const vite = await createServer({ configFile: false, esbuild: { jsx: 'automatic' },
   server: { middlewareMode: true }, appType: 'custom' });
 try {
   const { PlannedSessionBatchPrintPages } = await vite.ssrLoadModule(
     '/src/components/training/PlannedSessionBatchPrint.jsx');
+  const conditionalPayload = { schemaVersion: 1, board: { pitchType: 'full', elements:
+    TRAINING_CONDITIONAL_MATERIALS.map((material, index) => ({
+      ...createTrainingTaskBoardElement(`conditional:${material.id}`, () => `conditional-${index}`),
+      x: 10 + (index % 8) * 11,
+      y: 12 + Math.floor(index / 8) * 20,
+    })) } };
   const slot = (id, phase) => ({ id, phase, duration: '15', items: [{ id: `${id}-task`, kind: 'free',
     title: `Título ${id}`, description: `Desarrollo ${id}` }] });
   const librarySlot = { id: 'library', phase: 'main', duration: '15', items: [{
@@ -17,7 +24,7 @@ try {
       name: 'Biblioteca', description: 'Desarrollo original', material: 'Conos',
       exercise_rules: 'Dos toques\nGol doble', tactical_content: 'Contenido heredado',
       tactical_content_offensive: 'Atacar por fuera', tactical_content_defensive: 'Cerrar el centro',
-      editor_payload: {},
+      editor_payload: conditionalPayload,
     } }, working: { exercise_rules: 'Tres toques\nGol doble' },
   }] };
   const session = (id, number, slots) => ({
@@ -40,6 +47,10 @@ try {
     'Material one', 'Material two', 'Nº sesión']) assert.ok(markup.includes(label), label);
   assert.ok(markup.includes('>7</b>') && markup.includes('>8</b>'),
     'se conserva la numeración original de cada sesión');
+  TRAINING_CONDITIONAL_MATERIALS.forEach((material) => assert.ok(
+    markup.includes(`data-training-material="${material.id}"`),
+    `la impresión de sesión representa ${material.name}`,
+  ));
   for (const content of ['Tres toques', 'Gol doble', 'Contenido heredado',
     'Atacar por fuera', 'Cerrar el centro']) assert.ok(markup.includes(content), content);
   assert.doesNotMatch(markup, /Dos toques/, 'la copia editada sustituye su valor original en el PDF');
