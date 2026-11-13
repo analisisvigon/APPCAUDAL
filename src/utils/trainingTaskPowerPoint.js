@@ -16,10 +16,20 @@ import {
 } from './trainingTasks.js';
 import { resolveTrainingTaskPlayerRef } from './trainingTaskRoster.js';
 
-const SLIDE_WIDTH = 13.333;
-const SLIDE_HEIGHT = 7.5;
+const SLIDE_WIDTH = 297 / 25.4;
+const SLIDE_HEIGHT = 210 / 25.4;
 const BOARD_VIEW_WIDTH = 100;
 const BOARD_VIEW_HEIGHT = 72;
+const PAGE_MARGIN = 0.36;
+const LEFT_COLUMN = Object.freeze({ x: 0.36, y: 1.68, w: 6.12 });
+const RIGHT_COLUMN = Object.freeze({ x: 6.75, y: 1.68, w: 4.58 });
+const BOARD_RECT = Object.freeze({
+  x: RIGHT_COLUMN.x,
+  y: 1.96,
+  w: RIGHT_COLUMN.w,
+  h: RIGHT_COLUMN.w * BOARD_VIEW_HEIGHT / BOARD_VIEW_WIDTH,
+});
+const PAGE_BOTTOM = SLIDE_HEIGHT - PAGE_MARGIN;
 const FONT_FACE = 'Arial';
 const COLORS = Object.freeze({
   ink: '152238',
@@ -873,9 +883,484 @@ export const trainingTaskPowerPointFileName = (task = {}) => {
   return `Tarea_${base}.pptx`;
 };
 
+const hasTaskText = (value) => cleanValue(value) !== '';
+
+const isDisplayValue = (value) => {
+  const normalized = cleanValue(value).toLocaleLowerCase('es-ES');
+  return normalized !== '' && !['—', '-', 'sin definir', 'undefined'].includes(normalized);
+};
+
+const estimateA4TextLines = (value, width, fontSize) => {
+  const charactersPerLine = Math.max(12, Math.floor((width * 72) / (fontSize * 0.58)));
+  return String(value || '').split(/\r\n|\r|\n/).reduce(
+    (total, line) => total + Math.max(1, Math.ceil(line.length / charactersPerLine)),
+    0,
+  );
+};
+
+const measureTextHeight = (value, width, fontSize, leading = 1.3) => (
+  Math.max(0.18, estimateA4TextLines(value, width, fontSize) * fontSize * leading / 72 + 0.03)
+);
+
+const getTaskPowerPointData = (task) => {
+  const type = getTrainingTaskTypeDefinition(task.taskType);
+  const stages = Array.isArray(task.stageKeys)
+    ? task.stageKeys.map(getTrainingTaskStageLabel).filter(Boolean).join(', ')
+    : '';
+  const phase = TRAINING_TASK_PHASES.find((entry) => entry.value === task.gamePhase)?.label
+    || cleanValue(task.gamePhase);
+  const moment = getTrainingTaskMomentLabel(task.gamePhase, task.gameMoment)
+    || cleanValue(task.gameMoment);
+  const metadata = [
+    ['CÓDIGO', task.taskCode],
+    ['TIPO', type?.label || task.taskType],
+    ['ETAPAS', stages],
+    ['FASE', phase],
+    ['MOMENTO', moment],
+  ].filter(([, value]) => hasTaskText(value)).map(([label, value]) => [label, String(value)]);
+
+  const durationParts = [];
+  if (hasTaskText(task.durationMinutes)) durationParts.push(`${task.durationMinutes} min`);
+  if (hasTaskText(task.seriesCount) && hasTaskText(task.minutesPerSeries)) {
+    durationParts.push(`${task.seriesCount} × ${task.minutesPerSeries} min`);
+  }
+  const hasPlayerRange = hasTaskText(task.playersMin) || hasTaskText(task.playersMax);
+  const players = hasPlayerRange
+    ? formatTrainingTaskPlayers({ ...task, playersSpec: '' })
+    : cleanValue(task.playersSpec);
+  const hasSpace = hasTaskText(task.spaceWidthM) || hasTaskText(task.spaceLengthM);
+  const stats = [
+    ['DURACIÓN', durationParts.join(' · ')],
+    ['JUGADORES', players],
+    ['ESPACIO', hasSpace ? formatTrainingTaskSpace(task) : ''],
+  ].filter(([, value]) => isDisplayValue(value)).map(([label, value]) => [label, String(value)]);
+
+  const tacticalFields = [
+    ['Consignas / observaciones', task.observations],
+    ['Contenido técnico', task.technicalContent],
+    ['Contenido táctico', task.tacticalContent],
+    ['Contenido táctico ofensivo', task.tacticalOffensiveContent],
+    ['Contenido táctico defensivo', task.tacticalDefensiveContent],
+  ].filter(([, value]) => hasTaskText(value)).map(([label, value]) => [label, String(value)]);
+
+  const mediaNames = Array.isArray(task.media)
+    ? task.media.map((media, index) => {
+      const title = cleanValue(media?.title || media?.originalName || media?.fileName || media?.name)
+        || `Recurso ${index + 1}`;
+      const size = Number(media?.sizeBytes);
+      const description = [
+        media?.kind,
+        media?.provider,
+        media?.mimeType,
+        Number.isFinite(size) && size > 0 ? `${Math.ceil(size / 1024)} KB` : '',
+        media?.isPrimary ? 'Recurso principal' : '',
+        media?.originalName && media?.title ? media.originalName : '',
+        media?.caption,
+      ].map(cleanValue).filter(Boolean).join(' · ');
+      return [title, description].filter(Boolean).join(' — ');
+    })
+    : [];
+  const attachment = [
+    cleanValue(task.attachmentName),
+    cleanValue(task.attachmentMime),
+    Number(task.attachmentSize) > 0 ? `${Math.ceil(Number(task.attachmentSize) / 1024)} KB` : '',
+    task.attachmentPath ? 'Disponible en la ficha' : '',
+  ].filter(Boolean).join(' · ');
+  const feedback = Array.isArray(task.feedback)
+    ? task.feedback.map((entry, index) => {
+      const details = [
+        entry?.usedOn ? `Fecha: ${entry.usedOn}` : '',
+        hasTaskText(entry?.rating) ? `Valoración: ${entry.rating}/5` : '',
+        entry?.post,
+      ].map(cleanValue).filter(Boolean).join('\n');
+      return details ? [`Evaluación POST ${index + 1}`, details] : null;
+    }).filter(Boolean)
+    : [];
+  const detailFields = [
+    ['Creada', task.created_at],
+    ['Actualizada', task.updated_at],
+    ['Formato de jugadores', hasPlayerRange ? task.playersSpec : ''],
+    ['Series', hasTaskText(task.seriesCount) && !hasTaskText(task.minutesPerSeries) ? task.seriesCount : ''],
+    ['Minutos por serie', hasTaskText(task.minutesPerSeries) && !hasTaskText(task.seriesCount) ? `${task.minutesPerSeries} min` : ''],
+    ['Variantes y progresiones', task.variants],
+    ['Material', task.material],
+    ['Adjunto', attachment || (task.attachmentPath ? 'Adjunto disponible' : '')],
+    ['Recursos multimedia', mediaNames.join('\n')],
+    ...feedback,
+  ].filter(([, value]) => hasTaskText(value)).map(([label, value]) => [label, String(value)]);
+
+  return {
+    metadata,
+    stats,
+    objective: task.objective === null || task.objective === undefined ? '' : String(task.objective),
+    description: task.description === null || task.description === undefined ? '' : String(task.description),
+    rules: task.exerciseRules === null || task.exerciseRules === undefined ? '' : String(task.exerciseRules),
+    tacticalFields,
+    detailFields,
+  };
+};
+
+const getTaskPowerPointLayout = (task = {}) => {
+  const data = getTaskPowerPointData(task);
+  const metadataCells = [];
+  const detailFields = [...data.detailFields];
+  const metadataCellWidth = (SLIDE_WIDTH - PAGE_MARGIN * 2) / Math.max(data.metadata.length, 1);
+  data.metadata.forEach(([label, value]) => {
+    if (estimateA4TextLines(value, metadataCellWidth - 0.14, 8.2) > 1) {
+      detailFields.unshift([label, value]);
+    } else {
+      metadataCells.push([label, value]);
+    }
+  });
+
+  const stats = [];
+  const statCellWidth = (SLIDE_WIDTH - PAGE_MARGIN * 2) / 3;
+  data.stats.forEach(([label, value]) => {
+    if (estimateA4TextLines(value, statCellWidth - 0.2, 10.2) > 1) {
+      detailFields.unshift([label, value]);
+    } else {
+      stats.push([label, value]);
+    }
+  });
+
+  const leftSections = [
+    data.objective.trim() ? { title: 'OBJETIVO', value: data.objective, fontSize: 14.2, bold: true } : null,
+    data.description.trim() ? { title: 'DESCRIPCIÓN Y DESARROLLO', value: data.description, fontSize: 12.2 } : null,
+    data.rules.trim() ? { title: 'REGLAS DEL EJERCICIO', value: data.rules, fontSize: 10.8 } : null,
+    data.tacticalFields.length ? { title: 'CONSIGNAS / CONTENIDOS TÁCTICOS', items: data.tacticalFields } : null,
+  ].filter(Boolean);
+
+  let leftY = LEFT_COLUMN.y;
+  const plannedLeftSections = leftSections.map((section, index) => {
+    const planned = { ...section, x: LEFT_COLUMN.x, y: leftY, w: LEFT_COLUMN.w, headingH: 0.17 };
+    leftY += planned.headingH + 0.035;
+    if (section.items) {
+      planned.items = section.items.map(([label, value]) => {
+        const item = {
+          label,
+          value,
+          labelY: leftY,
+          labelH: 0.14,
+          fontSize: 10.2,
+          valueY: leftY + 0.15,
+        };
+        item.valueH = measureTextHeight(value, LEFT_COLUMN.w - 0.1, item.fontSize);
+        leftY = item.valueY + item.valueH + 0.035;
+        return item;
+      });
+    } else {
+      planned.valueY = leftY;
+      planned.valueH = measureTextHeight(section.value, LEFT_COLUMN.w - 0.04, section.fontSize);
+      leftY = planned.valueY + planned.valueH;
+    }
+    planned.bottom = leftY;
+    if (index < leftSections.length - 1) leftY += 0.13;
+    return planned;
+  });
+
+  const boardBottom = BOARD_RECT.y + BOARD_RECT.h;
+  const rightHeadingY = boardBottom + 0.12;
+  const rightHeadingH = 0.16;
+  let rightY = rightHeadingY + rightHeadingH + 0.04;
+  const plannedRightFields = detailFields.map(([label, value]) => {
+    const field = { label, value, x: RIGHT_COLUMN.x, w: RIGHT_COLUMN.w, labelY: rightY, labelH: 0.13 };
+    field.valueY = field.labelY + field.labelH + 0.015;
+    field.valueH = measureTextHeight(value, RIGHT_COLUMN.w - 0.04, 9.2, 1.27);
+    field.bottom = field.valueY + field.valueH;
+    rightY = field.bottom + 0.035;
+    return field;
+  });
+
+  const title = cleanValue(task.name) || 'Tarea sin nombre';
+  const titleWidth = SLIDE_WIDTH - PAGE_MARGIN * 2;
+  let titleFontSize = 23;
+  while (titleFontSize > 17 && estimateA4TextLines(title, titleWidth, titleFontSize) > 1) {
+    titleFontSize -= 0.5;
+  }
+  const overflowAreas = [];
+  if (estimateA4TextLines(title, titleWidth, titleFontSize) > 1) overflowAreas.push('el nombre');
+  if (leftY + (plannedLeftSections.length ? 0.035 : 0) > PAGE_BOTTOM) {
+    overflowAreas.push('la columna de explicaciones');
+  }
+  if (rightY > PAGE_BOTTOM) overflowAreas.push('los datos complementarios');
+
+  if (overflowAreas.length) {
+    throw new Error(
+      `Esta tarea no cabe completa y legiblemente en una diapositiva A4 horizontal (${overflowAreas.join(' y ')}). No se generó el PowerPoint ni se dividió en diapositivas. Revisa el contenido y vuelve a intentarlo.`,
+    );
+  }
+
+  return {
+    title,
+    titleFontSize,
+    stats,
+    metadataCells,
+    metadataCellWidth,
+    leftSections: plannedLeftSections,
+    detailFields: plannedRightFields,
+    rightHeadingY,
+    rightHeadingH,
+  };
+};
+
+export const inspectTrainingTaskPowerPointLayout = (task = {}) => {
+  const layout = getTaskPowerPointLayout(task);
+  return {
+    page: { width: SLIDE_WIDTH, height: SLIDE_HEIGHT },
+    leftSections: layout.leftSections,
+    board: BOARD_RECT,
+    rightFields: layout.detailFields,
+    pageBottom: PAGE_BOTTOM,
+  };
+};
+
+const addSingleTaskSlide = (pptx, task, players, parsedBoard, layout) => {
+  const slide = pptx.addSlide();
+  slide.background = { color: 'FFFFFF' };
+  slide.addText(layout.title, {
+    x: PAGE_MARGIN,
+    y: 0.24,
+    w: SLIDE_WIDTH - PAGE_MARGIN * 2,
+    h: 0.43,
+    fontFace: FONT_FACE,
+    fontSize: layout.titleFontSize,
+    bold: true,
+    color: COLORS.ink,
+    margin: 0,
+    fit: 'shrink',
+    objectName: 'Nombre de la tarea',
+  });
+
+  const statWidth = (SLIDE_WIDTH - PAGE_MARGIN * 2) / 3;
+  layout.stats.forEach(([label, value], index) => {
+    slide.addText([
+      { text: `${label}  `, options: { bold: true, color: COLORS.muted } },
+      { text: value, options: { bold: true, color: COLORS.ink } },
+    ], {
+      x: PAGE_MARGIN + statWidth * index,
+      y: 0.75,
+      w: statWidth - 0.1,
+      h: 0.25,
+      fontFace: FONT_FACE,
+      fontSize: 10.2,
+      margin: 0,
+      fit: 'shrink',
+      objectName: `Dato principal - ${label}`,
+    });
+  });
+
+  const metadataY = 1.08;
+  const metadataH = 0.44;
+  slide.addShape('roundRect', {
+    x: PAGE_MARGIN,
+    y: metadataY,
+    w: SLIDE_WIDTH - PAGE_MARGIN * 2,
+    h: metadataH,
+    rectRadius: 0.04,
+    fill: { color: COLORS.panel },
+    line: { color: COLORS.line, width: 0.5 },
+    objectName: 'Franja de metadatos',
+  });
+  layout.metadataCells.forEach(([label, value], index) => {
+    const cellX = PAGE_MARGIN + layout.metadataCellWidth * index;
+    slide.addText(label, {
+      x: cellX + 0.07,
+      y: metadataY + 0.045,
+      w: layout.metadataCellWidth - 0.14,
+      h: 0.1,
+      fontFace: FONT_FACE,
+      fontSize: 7,
+      bold: true,
+      charSpacing: 0.6,
+      color: COLORS.muted,
+      margin: 0,
+    });
+    slide.addText(value, {
+      x: cellX + 0.07,
+      y: metadataY + 0.17,
+      w: layout.metadataCellWidth - 0.14,
+      h: 0.2,
+      fontFace: FONT_FACE,
+      fontSize: 8.2,
+      bold: true,
+      color: COLORS.ink,
+      margin: 0,
+      fit: 'shrink',
+      objectName: `Metadato - ${label}`,
+    });
+  });
+
+  layout.leftSections.forEach((section) => {
+    slide.addText(section.title, {
+      x: section.x,
+      y: section.y,
+      w: section.w,
+      h: section.headingH,
+      fontFace: FONT_FACE,
+      fontSize: 9,
+      bold: true,
+      charSpacing: 0.9,
+      color: '147D92',
+      margin: 0,
+    });
+    if (section.items) {
+      section.items.forEach((item) => {
+        slide.addText(item.label, {
+          x: section.x,
+          y: item.labelY,
+          w: section.w,
+          h: item.labelH,
+          fontFace: FONT_FACE,
+          fontSize: 9,
+          bold: true,
+          color: COLORS.ink,
+          margin: 0,
+        });
+        slide.addText(item.value, {
+          x: section.x,
+          y: item.valueY,
+          w: section.w - 0.1,
+          h: item.valueH,
+          fontFace: FONT_FACE,
+          fontSize: item.fontSize,
+          color: COLORS.ink,
+          valign: 'top',
+          margin: 0,
+          fit: 'shrink',
+          objectName: `Contenido - ${item.label}`,
+        });
+      });
+    } else {
+      slide.addText(section.value, {
+        x: section.x,
+        y: section.valueY,
+        w: section.w - 0.04,
+        h: section.valueH,
+        fontFace: FONT_FACE,
+        fontSize: section.fontSize,
+        bold: Boolean(section.bold),
+        color: COLORS.ink,
+        valign: 'top',
+        margin: 0,
+        fit: 'shrink',
+        objectName: `Contenido - ${section.title}`,
+      });
+    }
+    slide.addShape('line', {
+      x: section.x,
+      y: section.bottom + 0.035,
+      w: section.w,
+      h: 0,
+      line: { color: COLORS.line, width: 0.55 },
+      objectName: `Separador - ${section.title}`,
+    });
+  });
+
+  slide.addText('PIZARRA TÁCTICA', {
+    x: RIGHT_COLUMN.x,
+    y: 1.7,
+    w: RIGHT_COLUMN.w,
+    h: 0.17,
+    fontFace: FONT_FACE,
+    fontSize: 9,
+    bold: true,
+    charSpacing: 0.9,
+    color: COLORS.muted,
+    margin: 0,
+  });
+  if (parsedBoard.kind === 'v1') {
+    addFieldLines(slide, BOARD_RECT, parsedBoard.scene.board.pitchType);
+    sortTrainingBoardElements(parsedBoard.scene.board.elements)
+      .forEach((element) => addBoardElement(slide, BOARD_RECT, element, players));
+  } else {
+    slide.addShape('roundRect', {
+      x: BOARD_RECT.x,
+      y: BOARD_RECT.y,
+      w: BOARD_RECT.w,
+      h: BOARD_RECT.h,
+      rectRadius: 0.1,
+      fill: { color: COLORS.panel },
+      line: { color: COLORS.line, width: 1 },
+      objectName: 'Pizarra no disponible',
+    });
+    const boardMessage = parsedBoard.kind === 'empty'
+      ? 'No hay pizarra táctica guardada.'
+      : 'La pizarra no se ha podido representar porque su formato no es compatible.';
+    slide.addText(boardMessage, {
+      x: BOARD_RECT.x + 0.25,
+      y: BOARD_RECT.y + BOARD_RECT.h / 2 - 0.28,
+      w: BOARD_RECT.w - 0.5,
+      h: 0.56,
+      fontFace: FONT_FACE,
+      fontSize: 11,
+      color: COLORS.muted,
+      align: 'center',
+      valign: 'mid',
+      margin: 0,
+      fit: 'shrink',
+      objectName: 'Aviso de pizarra',
+    });
+  }
+
+  slide.addText('DATOS COMPLEMENTARIOS', {
+    x: RIGHT_COLUMN.x,
+    y: layout.rightHeadingY,
+    w: RIGHT_COLUMN.w,
+    h: layout.rightHeadingH,
+    fontFace: FONT_FACE,
+    fontSize: 8.5,
+    bold: true,
+    charSpacing: 0.8,
+    color: COLORS.muted,
+    margin: 0,
+  });
+  layout.detailFields.forEach((field) => {
+    slide.addText(field.label, {
+      x: field.x,
+      y: field.labelY,
+      w: field.w,
+      h: field.labelH,
+      fontFace: FONT_FACE,
+      fontSize: 7.7,
+      bold: true,
+      color: COLORS.muted,
+      charSpacing: 0.35,
+      margin: 0,
+    });
+    slide.addText(field.value, {
+      x: field.x,
+      y: field.valueY,
+      w: field.w - 0.04,
+      h: field.valueH,
+      fontFace: FONT_FACE,
+      fontSize: 9.2,
+      color: COLORS.ink,
+      valign: 'top',
+      margin: 0,
+      fit: 'shrink',
+      objectName: `Dato complementario - ${field.label}`,
+    });
+    slide.addShape('line', {
+      x: field.x,
+      y: field.bottom + 0.02,
+      w: field.w,
+      h: 0,
+      line: { color: COLORS.line, width: 0.45 },
+      objectName: `Separador - ${field.label}`,
+    });
+  });
+  return slide;
+};
+
 export const createTrainingTaskPowerPoint = (task = {}, players = []) => {
+  const layout = getTaskPowerPointLayout(task);
   const pptx = new PptxGenJS();
-  pptx.layout = 'LAYOUT_WIDE';
+  pptx.defineLayout({
+    name: 'NEXO_A4_LANDSCAPE',
+    width: SLIDE_WIDTH,
+    height: SLIDE_HEIGHT,
+  });
+  pptx.layout = 'NEXO_A4_LANDSCAPE';
   pptx.author = 'NEXO CLUB';
   pptx.subject = 'Tarea de entrenamiento';
   pptx.title = cleanValue(task.name) || 'Tarea de entrenamiento';
@@ -888,15 +1373,7 @@ export const createTrainingTaskPowerPoint = (task = {}, players = []) => {
   };
 
   const parsedBoard = readTrainingTaskEditorPayload(task.editorPayload ?? task.editor_payload);
-  const { continuation } = addMainSlide(pptx, task, players, parsedBoard);
-  const continuationSlides = [];
-  continuation.forEach(([heading, text]) => {
-    splitTextForLayout(text, 1600, 22, 115).forEach((chunk) => continuationSlides.push([heading, chunk]));
-  });
-  continuationSlides.forEach(([heading, text]) => {
-    addBodySlide(pptx, heading, text);
-  });
-  addInformationSlides(pptx, getTaskInformation(task));
+  addSingleTaskSlide(pptx, task, players, parsedBoard, layout);
   return pptx;
 };
 
