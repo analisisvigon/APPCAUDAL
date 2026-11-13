@@ -280,6 +280,9 @@ returns boolean language sql stable security definer set search_path=pg_catalog 
   select (select count(*)=10 from target_tables)
     and (select count(*)=10 from pg_class c where c.oid in(select oid from target_tables)
       and c.relkind='r' and not c.relhassubclass and c.relrowsecurity)
+    -- Una regla de reescritura DELETE tambien podria modificar otras tablas.
+    and not exists(select 1 from pg_rewrite r where r.ev_class in(select oid from target_tables)
+      and r.ev_type='4')
     and (select count(*)=10 from actual_fk)
     and not exists(select 1 from expected_fk e where not exists(
       select 1 from actual_fk c where c.conrelid=to_regclass('public.'||e.child)
@@ -291,7 +294,7 @@ returns boolean language sql stable security definer set search_path=pg_catalog 
     and not exists(select 1 from expected_trigger e where not exists(
       select 1 from actual_trigger t join pg_proc p on p.oid=t.tgfoid
       where t.tgrelid=to_regclass('public.'||e.relation) and t.tgname=e.name
-        and t.tgfoid=to_regprocedure('public.'||e.routine) and t.tgtype=27
+        and t.tgfoid=to_regprocedure('public.'||e.routine) and t.tgtype=31
         and t.tgenabled in ('O','A') and t.tgqual is null and t.tgnargs=0
         and p.prosecdef and p.proowner='postgres'::regrole
         and p.proconfig=array['search_path=pg_catalog']::text[]));
@@ -328,7 +331,7 @@ begin
     from public.club_team_seasons cts
     join public.club_seasons se on se.id=cts.season_id and se.club_id=cts.club_id
     where cts.id=p_club_team_season_id for update of se;
-  if not found or season_status<>'open'
+  if not found or season_status is distinct from 'open'
     or public.can_write_club_team_season(p_club_team_season_id) is not true then
     raise exception 'Temporada cerrada o permiso revocado' using errcode='42501';
   end if;

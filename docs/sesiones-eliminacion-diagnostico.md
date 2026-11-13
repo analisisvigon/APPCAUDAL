@@ -16,8 +16,11 @@ La FK `planned_session_player_availability_roster_fkey` sí usa `ON DELETE RESTR
 Un DELETE de plantilla antes de disponibilidades fallaría por ella. No obstante,
 hay además tres protecciones anteriores: los guards de sesión, plantilla congelada
 y auditoría rechazan DELETE. Eliminar primero las disponibilidades no resuelve
-esos bloqueos. No se ha verificado qué versiones están instaladas en producción;
-no se atribuye un error remoto concreto sin su respuesta y el inventario real.
+esos bloqueos. La revisión de Supabase comunicada por el usuario confirma las diez
+FK previstas y que los guards de hijos y disponibilidades permiten DELETE autorizado.
+No se han leído directamente los cuerpos instalados: el verificador final compara
+sus definiciones y la instalación aborta si alguno de los tres guards a sustituir
+difiere del original revisado.
 
 ## Recorrido preparado
 
@@ -40,22 +43,38 @@ no se atribuye un error remoto concreto sin su respuesta y el inventario real.
 7. Devuelve un comprobante con identidad/revisión; el frontend lo valida y consulta
    la ausencia de la sesión antes de quitar la tarjeta y cerrar el editor.
    Un fallo mantiene el diálogo y no anuncia éxito. Un reintento tras respuesta
-   perdida reconoce el mismo comprobante sin repetir el borrado.
+   perdida reconoce el mismo comprobante sin repetir el borrado. También en ese
+   reintento exige temporada abierta, membresía activa y asignación STAFF vigente,
+   bloqueadas durante la transacción. El comprobante debe corresponder al mismo
+   usuario, sesión, CTS y revisión; no devuelve el contenido del archivo.
 
 ## SQL necesario (no ejecutado)
 
 - `supabase_sessions_delete_v1.sql`: migración transaccional nueva. Añade RPC,
   comprobación de disponibilidad y archivo de auditoría privado con RLS y sin
-  privilegios para clientes. Amplía tres guards con una única excepción: DELETE
+  privilegios para clientes, incluido `service_role`. Sustituye explícitamente las
+  definiciones completas de tres guards con una única excepción inicial: DELETE
   acreditado por el archivo de la misma sesión, usuario y transacción, después de
   verificar permisos. El cuerpo restante de cada guard se conserva íntegro.
+  No usa parcheo dinámico. Antes de sustituirlos exige el hash de los cuerpos
+  originales 03A/04A (normaliza CRLF y espacios de los bordes), propietario
+  `postgres`, retorno trigger, SECURITY DEFINER y search_path cerrado.
 - `supabase_sessions_delete_v1_verify.sql`: inventario de solo lectura de funciones,
-  dependencias recursivas, triggers, RLS y grants. No invoca ninguna eliminación.
+  dependencias recursivas, triggers, RLS y grants. Compara los hashes de las tres
+  funciones antes y después, muestra sus definiciones completas, verifica la
+  privacidad del archivo y evalúa el mismo contrato de catálogo que la RPC.
+  Se puede ejecutar antes y después de instalar; no invoca ninguna eliminación
+  ni lee el contenido de las instantáneas.
 
 No se deshabilita ningún trigger ni RLS, no se cambia ninguna FK, no se añade
 CASCADE ni se concede DELETE directo. La RPC aborta si encuentra dependencias
-externas o triggers de borrado desconocidos/deshabilitados. Cualquier error
-revierte también el archivo: no hay borrados parciales.
+externas, incluso FK nuevas entre tablas conocidas, o triggers de borrado
+desconocidos/deshabilitados. El contrato exige exactamente las diez FK por tabla,
+columnas ordenadas y acciones, y los seis triggers DELETE por tabla, nombre,
+función, eventos y metadatos. También rechaza reglas DELETE y tablas con herencia
+descendente. Se verifica al instalar, al consultar disponibilidad y antes de
+archivar/borrar; la RPC bloquea las tablas durante esa comprobación y el borrado.
+Cualquier error revierte también el archivo: no hay borrados parciales.
 
 No toca `players_database`, `club_team_season_players`, `training_tasks`, la
 configuración habitual del CTS ni el contador histórico de numeración. Las
@@ -69,6 +88,9 @@ respuesta incorrecta, backend ausente, revisión y permisos rechazados. También
 audita SQL/UI y simula las dependencias RESTRICT usando el orden real de la
 migración para sesiones vacías, con plantilla, con `first_team` y con tareas.
 Verifica conservación de otras sesiones, jugadores globales, Biblioteca y archivo.
+La revisión final añade comparación exacta de los tres cuerpos originales con los
+finales, hashes antes/después, autorización previa a los reintentos, contrato de
+FK/triggers y coincidencia entre el contrato de la migración y el del verificador.
 
 Estas pruebas **no ejecutan PostgreSQL** ni acreditan la instalación o el borrado
 real en Supabase. La corrección está preparada, no declarada resuelta en producción.
@@ -78,8 +100,32 @@ migración en una base de pruebas. Allí comprobar los seis casos: sesión vací
 con jugadores, con disponibilidades (`first_team` incluido), con tareas, temporada
 cerrada y usuario sin permiso. Los cuatro primeros deben desaparecer de las tablas
 operativas y conservar su archivo; los dos últimos deben conservar todas sus filas.
-Añadir reintento, revisión obsoleta y dependencia inesperada: deben ser idempotente,
-conflicto y rollback completo respectivamente. SQL Editor sin JWT no simula STAFF.
+Añadir reintento autorizado, revisión obsoleta y dependencia inesperada: deben ser
+idempotente, conflicto y rollback completo respectivamente. Un reintento tras
+cierre de temporada, revocación de permisos o de otro usuario debe rechazarse.
+SQL Editor sin JWT no simula STAFF.
+
+## Condiciones y riesgos pendientes de instalación
+
+- Ejecutar el verificador como administrador antes de instalar: los tres guards
+  deben indicar `ORIGINAL_REVISADO`, metadatos correctos y contrato `true`. Un hash
+  distinto exige comparar la definición completa: no quitar el preflight ni forzar
+  la sustitución. Incluso cambios de formato internos producen rechazo seguro.
+- La migración se instala **una sola vez**, completa, como `postgres` sin JWT de
+  aplicación. Está dentro de `BEGIN`/`COMMIT`, con comprobación final del contrato;
+  una instalación previa/parcial se rechaza, no se sobrescribe.
+- Después, el verificador debe indicar `DELETE_V1_REVISADO`, contrato `true` y
+  archivo con RLS, propietario `postgres`, cero políticas y ningún acceso de
+  clientes/PUBLIC. El archivo conserva la fila de sesión, todas las filas de las
+  nueve tablas hijas (incluida auditoría), usuario/membresía, CTS, revisión, fecha
+  y transacción. Es archivo administrativo; un administrador PostgreSQL conserva
+  acceso privilegiado. Los clientes solo reciben un comprobante mínimo.
+- Las diez FK incluyen las extensiones 05, V11 y V12 revisadas. Una evolución del
+  esquema exige revisar el contrato antes de volver a habilitar el borrado.
+- Los bloqueos de tablas durante el borrado pueden esperar o interferir brevemente
+  con guardados concurrentes; validar concurrencia y tiempos en la base de pruebas.
+  Las pruebas estáticas no sustituyen comprobar triggers, rollback y permisos con
+  identidades reales de prueba en PostgreSQL. No se ha ejecutado SQL en esta revisión.
 
 Archivos de aplicación: `PlannedSessionsSection.jsx` y `plannedSessionDeletionStore.js`.
 Pruebas: `plannedSessionDeletionStore.test.js`, `plannedSessionDeletionSqlAudit.test.mjs`
