@@ -31818,7 +31818,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                               <button type="button" onClick={() => runMenuAction(() => openForm(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-white transition hover:bg-white/10">Editar</button>
                               <button type="button" onClick={() => runMenuAction(() => openAvailabilityEditor(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-amber-100 transition hover:bg-amber-500/15">Disponibilidad</button>
                               <button type="button" onClick={() => runMenuAction(() => openDeletePlayerDialog(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-rose-300 transition hover:bg-rose-500/20 hover:text-rose-100">Quitar de esta plantilla</button>
-                              <button type="button" onClick={() => runMenuAction(() => openDeletePlayerDialog(player, 'delete'))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-rose-300">Eliminar definitivamente</button>
+                              <button type="button" disabled title="El borrado global no está habilitado: deben conservarse la identidad y las referencias históricas." className="block w-full cursor-not-allowed rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-500">Eliminar definitivamente · No disponible</button>
                             </FloatingActionMenu>
                           ) : null}
                           <div className="grid grid-cols-[72px_minmax(0,1fr)] items-start gap-3 pr-11">

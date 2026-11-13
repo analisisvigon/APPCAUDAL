@@ -15,6 +15,8 @@ assert.ok(flow.includes('rosterDepartureBusyRef.current = false'));
 assert.ok(sql.includes('exception when no_data_found or too_many_rows'));
 assert.ok(sql.includes("to_jsonb(after_row)-array['has_departed','left_on','updated_at']"));
 assert.ok(app.includes('Quitar de esta plantilla') && app.includes('Eliminar definitivamente'));
+assert.doesNotMatch(app, /openDeletePlayerDialog\(player, 'delete'\)/);
+assert.match(app, /<button type="button" disabled title="[^"]+"[^>]*>Eliminar definitivamente · No disponible<\/button>/);
 assert.ok(sql.includes("season_status is distinct from 'open'"));
 assert.ok(sql.includes('for update of s') && sql.includes('for share of m') && sql.includes('for share of p'));
 assert.ok(sql.includes('r.club_team_season_id=p_cts_id'));
