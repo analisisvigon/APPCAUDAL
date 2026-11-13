@@ -382,7 +382,7 @@ import {
   mapExternalPositionToPlayerPositions,
 } from './constants/playerPositions';
 import {
-  deleteOwnPlayer,
+  departRosterPlayer,
   getPlayerHistoricalSummary,
 } from './data/ownPlayerDeletion';
 import {
@@ -16389,7 +16389,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     }
   };
 
-  const openDeletePlayerDialog = (player) => {
+  const openDeletePlayerDialog = (player, operation = 'depart') => {
     if (!player) return;
     if (!rosterAccess.canWrite) {
       setOwnPlayerEditorError('No tienes permiso para modificar la plantilla o la temporada está cerrada.');
@@ -16397,7 +16397,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     }
     setDeletePlayerError('');
     setDeletePlayerSaving(false);
-    setDeletePlayerDialog(player);
+    setDeletePlayerDialog({ ...player, operation, rosterSnapshot: rosterSnapshotRef.current });
   };
 
   const closeDeletePlayerDialog = () => {
@@ -16413,27 +16413,25 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       return;
     }
     const playerToDelete = deletePlayerDialog;
-    setDeletePlayerSaving(true);
-    setDeletePlayerError('');
-    try {
-      const result = await deleteOwnPlayer(supabase, playerToDelete.id);
-      setPlayers((current) => current.filter((p) => p.id !== playerToDelete.id));
-      if (selectedPlayerProfileId === playerToDelete.id) {
-        setSelectedPlayerProfileId(null);
-      }
-      setDeletePlayerDialog(null);
-      const playerName = displayPlayerName(playerToDelete);
-      if (result.status === 'retired') {
-        setDeletePlayerNotice(`${playerName} ha sido retirado de la plantilla activa. Se conserva todo su historial deportivo, estadísticas y partidos.`);
-      } else {
-        setDeletePlayerNotice(`${playerName} ha sido eliminado definitivamente al no contar con historial deportivo.`);
-      }
-    } catch (err) {
-      console.error('Error eliminando jugador:', err);
-      setDeletePlayerError(err.message || 'No se pudo eliminar el jugador. Inténtalo de nuevo.');
-    } finally {
-      setDeletePlayerSaving(false);
+    const token = playerToDelete.rosterSnapshot;
+    if (playerToDelete.operation !== 'depart') {
+      setDeletePlayerError('El borrado definitivo requiere revisar los triggers y dependencias instalados.'); return;
     }
+    setDeletePlayerSaving(true); setDeletePlayerError('');
+    try {
+      await assertCtsCreate(supabase, rosterCoordinatorRef.current, token);
+      await departRosterPlayer(supabase, { jugadorId: playerToDelete.id,
+        ctsId: token.context.id, confirmed: true });
+      const roster = await loadCtsRoster(supabase, rosterCoordinatorRef.current, token);
+      rosterCoordinatorRef.current.assertWritable(token);
+      if (roster.some((row) => row.id === playerToDelete.id)) throw new Error('La baja no se refleja en la plantilla. Actualiza antes de reintentar.');
+      setPlayers(roster.map(normalizeSupabaseJugador));
+      if (selectedPlayerProfileId === playerToDelete.id) setSelectedPlayerProfileId(null);
+      setDeletePlayerDialog(null);
+      setDeletePlayerNotice('Jugador retirado solo de esta plantilla. Su identidad e historial se conservan.');
+    } catch (err) {
+      if (rosterCoordinatorRef.current.isCurrent(token)) setDeletePlayerError(err.message || 'No se pudo confirmar la baja.');
+    } finally { setDeletePlayerSaving(false); }
   };
 
   const openStatsCallupPanel = async () => {
@@ -31812,7 +31810,8 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                             <FloatingActionMenu anchorRect={floatingMenu.anchorRect} width={160} onClose={closeFloatingMenu}>
                               <button type="button" onClick={() => runMenuAction(() => openForm(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-white transition hover:bg-white/10">Editar</button>
                               <button type="button" onClick={() => runMenuAction(() => openAvailabilityEditor(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-amber-100 transition hover:bg-amber-500/15">Disponibilidad</button>
-                              <button type="button" onClick={() => runMenuAction(() => openDeletePlayerDialog(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-rose-300 transition hover:bg-rose-500/20 hover:text-rose-100">Eliminar jugador</button>
+                              <button type="button" onClick={() => runMenuAction(() => openDeletePlayerDialog(player))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-rose-300 transition hover:bg-rose-500/20 hover:text-rose-100">Quitar de esta plantilla</button>
+                              <button type="button" onClick={() => runMenuAction(() => openDeletePlayerDialog(player, 'delete'))} className="block w-full rounded-lg px-3 py-2 text-left text-xs font-bold text-rose-300">Eliminar definitivamente</button>
                             </FloatingActionMenu>
                           ) : null}
                           <div className="grid grid-cols-[72px_minmax(0,1fr)] items-start gap-3 pr-11">
@@ -36925,122 +36924,21 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
         </div>
       ) : null}
 
-      {deletePlayerDialog ? (() => {
-        const playerRow = rosterDashboard.rowByPlayerId.get(deletePlayerDialog.id) || {};
-        const historicalSummary = getPlayerHistoricalSummary(deletePlayerDialog, { matches, stats: playerRow });
-        const hasHistory = historicalSummary.hasHistory;
-        return (
-          <div className="fixed inset-0 z-[80] flex items-end justify-center overflow-hidden bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:px-4 sm:py-6">
-            <div className="mobile-form-controls max-h-[92dvh] w-full max-w-xl overflow-y-auto rounded-t-[2rem] border border-white/10 bg-[#07111f] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.5)] sm:rounded-3xl sm:p-6">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-rose-500/30 bg-rose-500/15 text-rose-300">
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-300">Gestión de plantilla</p>
-                    <h3 className="mt-1 text-xl font-black text-white">{displayPlayerName(deletePlayerDialog)}</h3>
-                    <p className="mt-0.5 text-xs font-semibold text-slate-400">
-                      {deletePlayerDialog.number ? `#${displayDorsal(deletePlayerDialog.number)} · ` : ''}{getPlayerPositionLabel(deletePlayerDialog)}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={closeDeletePlayerDialog}
-                  disabled={deletePlayerSaving}
-                  className="min-h-10 rounded-xl border border-white/10 bg-white/[0.06] px-3.5 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-white/10 disabled:opacity-50"
-                >
-                  Cerrar
-                </button>
-              </div>
-
-              {deletePlayerError ? (
-                <div className="mt-4 rounded-2xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-xs font-bold text-rose-100">
-                  {deletePlayerError}
-                </div>
-              ) : null}
-
-              <div className="mt-5 space-y-4">
-                {hasHistory ? (
-                  <div className="rounded-2xl border border-amber-300/25 bg-amber-400/[0.08] p-4 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-400/25 text-xs font-black text-amber-200">ℹ</span>
-                      <span className="font-black uppercase tracking-[0.14em] text-amber-200">Jugador con historial deportivo</span>
-                    </div>
-                    <p className="mt-2 text-slate-200 leading-relaxed">
-                      Este jugador cuenta con participación o historial deportivo registrado en la temporada ({historicalSummary.minutes > 0 ? `${historicalSummary.minutes} minutos disputados` : `${historicalSummary.matchCount} partidos registrados`}).
-                    </p>
-                  </div>
-                ) : (
-                  <div className="rounded-2xl border border-sky-300/25 bg-sky-400/[0.08] p-4 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-400/25 text-xs font-black text-sky-200">✓</span>
-                      <span className="font-black uppercase tracking-[0.14em] text-sky-200">Jugador sin historial deportivo</span>
-                    </div>
-                    <p className="mt-2 text-slate-200 leading-relaxed">
-                      Este jugador no tiene minutos disputados, convocatorias ni partidos registrados en la temporada actual.
-                    </p>
-                  </div>
-                )}
-
-                <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-xs text-slate-300 space-y-2">
-                  <p className="font-bold uppercase tracking-[0.12em] text-[11px] text-white">¿Qué ocurrirá con sus datos?</p>
-                  {hasHistory ? (
-                    <>
-                      <p className="leading-relaxed">
-                        Para respetar el <strong>historial deportivo del club</strong>, el jugador <strong>se retirará de la plantilla activa</strong> de esta temporada sin borrar su histórico:
-                      </p>
-                      <ul className="list-disc pl-5 space-y-1 text-slate-400">
-                        <li>Se conservan todos sus partidos, alineaciones, actas y minutos jugados.</li>
-                        <li>Se mantienen intactas todas sus estadísticas oficiales, goles, asistencias y tarjetas.</li>
-                        <li>Los registros de sesiones, informes médicos, fisioterapia y cargas no se destruyen.</li>
-                        <li>Las vinculaciones y temporadas anteriores se mantienen sin alteraciones.</li>
-                      </ul>
-                    </>
-                  ) : (
-                    <>
-                      <p className="leading-relaxed">
-                        El sistema verificará en la base de datos que no existan dependencias ni referencias históricas asociadas y <strong>eliminará definitivamente su ficha y registro</strong> del club.
-                      </p>
-                      <p className="text-[11px] text-slate-400">
-                        Si existiera alguna referencia deportiva previa no visible en este filtro, el sistema la protegerá automáticamente retirándolo de la plantilla sin borrar datos.
-                      </p>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-6 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={closeDeletePlayerDialog}
-                  disabled={deletePlayerSaving}
-                  className="rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-3 text-xs font-bold text-slate-300 transition hover:bg-white/10 disabled:opacity-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmDeletePlayer}
-                  disabled={deletePlayerSaving || !rosterAccess.canWrite}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-500/40 bg-rose-600 px-6 py-3 text-xs font-black uppercase tracking-[0.12em] text-white shadow-[0_8px_20px_rgba(225,29,72,0.3)] transition hover:bg-rose-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {deletePlayerSaving ? (
-                    <span>Procesando...</span>
-                  ) : hasHistory ? (
-                    <span>Retirar de la plantilla</span>
-                  ) : (
-                    <span>Eliminar definitivamente</span>
-                  )}
-                </button>
-              </div>
-            </div>
+      {deletePlayerDialog ? <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4">
+        <section role="dialog" aria-modal="true" aria-labelledby="roster-depart-title" className="w-full max-w-xl rounded-3xl border border-white/10 bg-[#07111f] p-6 text-slate-200">
+          <h3 id="roster-depart-title" className="text-xl font-black text-white">{displayPlayerName(deletePlayerDialog)}</h3>
+          <p className="mt-4 font-bold">{deletePlayerDialog.operation === 'depart' ? 'Quitar de esta plantilla' : 'Eliminar definitivamente'}</p>
+          {deletePlayerDialog.operation === 'depart' ? <p className="mt-3 text-sm">Se registra una baja exclusivamente en el equipo y temporada seleccionados, sin inventar una fecha de salida. Se conservan la identidad global, otras plantillas, partidos, sesiones, estadísticas y snapshots.</p>
+            : <p className="mt-3 text-sm">El borrado definitivo está pendiente de revisar los triggers y todas las dependencias de Supabase. No tener estadísticas en esta temporada no acredita que el jugador sea eliminable. No se ejecutará el mecanismo antiguo ni se convertirá esta solicitud en una baja.</p>}
+          {deletePlayerError ? <p role="alert" className="mt-4 text-rose-200">{deletePlayerError}</p> : null}
+          <div className="mt-6 flex justify-end gap-3">
+            <button type="button" disabled={deletePlayerSaving} onClick={closeDeletePlayerDialog} className="rounded-xl border border-white/20 p-3">Cancelar</button>
+            <button type="button" disabled={deletePlayerSaving || !rosterAccess.canWrite || deletePlayerDialog.operation !== 'depart'} onClick={confirmDeletePlayer} className="rounded-xl bg-rose-700 p-3 disabled:opacity-40">
+              {deletePlayerSaving ? 'Comprobando...' : deletePlayerDialog.operation === 'depart' ? 'Confirmar baja de esta plantilla' : 'Eliminar definitivamente'}
+            </button>
           </div>
-        );
-      })() : null}
+        </section>
+      </div> : null}
 
       {isStatsCallupPanelOpen ? (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6">

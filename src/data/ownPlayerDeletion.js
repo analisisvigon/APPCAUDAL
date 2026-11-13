@@ -23,6 +23,24 @@ export function getPlayerHistoricalSummary(player, { matches = [], stats = null 
   };
 }
 
+export async function departRosterPlayer(supabase, { jugadorId, ctsId, confirmed, leftOn = null }) {
+  if (confirmed !== true || !jugadorId || !ctsId) throw new Error('Confirma la baja del jugador en el equipo y temporada seleccionados.');
+  const { data, error } = await supabase.rpc('depart_roster_player_v1', {
+    p_jugador_id: jugadorId, p_cts_id: ctsId, p_confirm: true, p_left_on: leftOn,
+  });
+  if (error) {
+    if (['42883', 'PGRST202'].includes(error.code)) throw new Error('La baja CTS requiere instalar y verificar su actualización de Supabase.');
+    if (error.message === 'SEASON_CLOSED') throw new Error('La temporada está cerrada. No se ha modificado la plantilla.');
+    if (['PLAYER_CTS_DENIED', 'PLAYER_CTS_LINK_REVIEW_REQUIRED'].includes(error.message)) throw new Error('No tienes autorización o la vinculación del jugador no corresponde a este equipo y temporada.');
+    throw new Error(error.message || 'No se pudo confirmar la baja.');
+  }
+  if (data?.status !== 'departed' || data.jugador_id !== jugadorId || data.cts_id !== ctsId) {
+    throw new Error('El servidor no confirmó la baja en este equipo y temporada.');
+  }
+  return data;
+}
+
+// Legacy API retained for callers outside Plantilla; never use it as a CTS fallback.
 export async function deleteOwnPlayer(supabase, jugadorId) {
   if (!jugadorId) throw new Error('Falta el identificador del jugador.');
   const { data, error } = await supabase.rpc('delete_own_player_atomic_v1', {
@@ -43,7 +61,7 @@ export async function deleteOwnPlayer(supabase, jugadorId) {
       PLAYER_STAGE_SHARED_REVIEW_REQUIRED: 'El jugador tiene una etapa compartida que requiere revisión antes de eliminarlo.',
       PLAYER_CROSS_CLUB_DEPENDENCY_REVIEW_REQUIRED: 'El jugador tiene datos asociados a otro club. Revisa esa vinculación antes de eliminarlo.',
       PLAYER_FINE_FK_REVIEW_REQUIRED: 'Las multas del jugador tienen una dependencia que requiere revisión.',
-      PLAYER_DELETE_TRIGGER_REVIEW_REQUIRED: 'Una automatización de la base de datos impide eliminar este jugador. Revisa su configuración.',
+      PLAYER_DELETE_TRIGGER_REVIEW_REQUIRED: 'La comprobación preventiva detectó triggers de borrado pendientes de revisión. No demuestra que este jugador tenga historial y no se ha autorizado su eliminación.',
     };
     const message = error.message || '';
     const code = message.startsWith('PLAYER_DELETE_FK_REVIEW_REQUIRED:')
