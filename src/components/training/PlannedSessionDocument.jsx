@@ -129,6 +129,7 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
           ['observations', 'Observaciones de la tarea'],
         ];
         const hasSecondary = secondary.some(([field]) => String(getPlannedLibraryValue(task, field) ?? '').trim());
+        const hasMaterial = String(getPlannedLibraryValue(task, 'material') ?? '').trim();
         const count = getPlannedLibraryValue(task, 'series_count');
         const perSeries = getPlannedLibraryValue(task, 'minutes_per_series');
         const hasSeries = count !== null && count !== undefined && count !== '' ||
@@ -139,12 +140,14 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
           error={libraryError} disabled={!canEdit || busy} onSelect={selectLibraryTask} onFree={switchToFreeTask} />
         {task.kind === 'library_task' ? <>
           {!task.snapshot ? <p className="planned-sheet-copy-note">Vista previa. Guarda para crear el snapshot en el servidor; después podrás editar la copia.</p> : null}
-          <SheetField label="Nombre" value={getPlannedLibraryValue(task, 'name')} disabled={!canEdit || busy || !task.snapshot}
+          <SheetField label="Nombre" value={getPlannedLibraryValue(task, 'name')} className="planned-sheet-objective"
+            disabled={!canEdit || busy || !task.snapshot}
             issue={fieldIssue('name', slot.id, task.id)}
             onChange={(value) => updateTask(slot.id, task.id, 'name', value)} />
           <div className="planned-sheet-task-body">
             <div className="planned-sheet-explanation"><b>EXPLICACIÓN</b>
               <SheetField label="DESARROLLO" value={getPlannedLibraryValue(task, 'description')} multiline printMirror
+                className="planned-sheet-description"
                 disabled={!canEdit || busy || !task.snapshot}
                 onChange={(value) => updateTask(slot.id, task.id, 'description', value)} />
               {(contentSupported && canEdit && task.snapshot) ||
@@ -154,12 +157,12 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
                   disabled={!canEdit || busy || !task.snapshot || !contentSupported}
                   issue={fieldIssue('exercise_rules', slot.id, task.id)}
                   onChange={(value) => updateTask(slot.id, task.id, 'exercise_rules', value)} /> : null}
-              {(canEdit && task.snapshot) || String(getPlannedLibraryValue(task, 'material') ?? '').trim()
-                ? <SheetField label="Material" value={getPlannedLibraryValue(task, 'material')} multiline printMirror
-                  disabled={!canEdit || busy || !task.snapshot}
-                  onChange={(value) => updateTask(slot.id, task.id, 'material', value)} /> : null}
-              {(canEdit && task.snapshot) || hasSecondary ? <details className="planned-sheet-task-details">
-                <summary>Más detalles{hasSecondary ? ' · con contenido' : ''}</summary>
+              {(canEdit && task.snapshot) || hasSecondary || hasMaterial ? <details className="planned-sheet-task-details">
+                <summary>Más detalles{hasSecondary || hasMaterial ? ' · con contenido' : ''}</summary>
+                {(canEdit && task.snapshot) || hasMaterial
+                  ? <SheetField label="Material" value={getPlannedLibraryValue(task, 'material')} multiline
+                    disabled={!canEdit || busy || !task.snapshot}
+                    onChange={(value) => updateTask(slot.id, task.id, 'material', value)} /> : null}
                 {secondary.map(([field, label, needsContent]) => (canEdit && task.snapshot &&
                     (field !== 'tactical_content' || String(getPlannedLibrarySource(task).tactical_content ?? '').trim()) &&
                     (!needsContent || contentSupported)) ||
@@ -201,12 +204,13 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
             {!exerciseDimensionsSupported ? <div className="planned-sheet-copy-space">Espacio · {getPlannedLibrarySource(task).space_width_m ?? '—'} × {getPlannedLibrarySource(task).space_length_m ?? '—'} m</div> : null}
           </div>
         </> : <>
-        <SheetField label="Nombre" value={task.title} disabled={!canEdit || busy}
+        <SheetField label="Nombre" value={task.title} className="planned-sheet-objective" disabled={!canEdit || busy}
           issue={fieldIssue('title', slot.id, task.id)} onChange={(value) => updateTask(slot.id, task.id, 'title', value)} />
         <div className="planned-sheet-task-body">
           <div className="planned-sheet-explanation">
             <b>EXPLICACIÓN</b>
-            <SheetField label="DESARROLLO" value={task.description} multiline disabled={!canEdit || busy}
+            <SheetField label="DESARROLLO" value={task.description} multiline className="planned-sheet-description"
+              disabled={!canEdit || busy}
               issue={fieldIssue('description', slot.id, task.id)} onChange={(value) => updateTask(slot.id, task.id, 'description', value)} />
             <SheetField label="Comentarios" value={task.comments} multiline className="planned-sheet-secondary-print-hidden" disabled={!canEdit || busy}
               issue={fieldIssue('comments', slot.id, task.id)} onChange={(value) => updateTask(slot.id, task.id, 'comments', value)} />

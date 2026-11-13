@@ -35,7 +35,6 @@ function PrintTask({ item, index, hasExerciseDimensions, pitchAppearance }) {
   const library = item.kind === 'library_task';
   const name = library ? getPlannedLibraryValue(item, 'name') : item.title;
   const description = library ? getPlannedLibraryValue(item, 'description') : item.description;
-  const material = library ? getPlannedLibraryValue(item, 'material') : '';
   const extraContent = library ? [
     ['Reglas del ejercicio', 'exercise_rules'],
     ['Contenido táctico general', 'tactical_content'],
@@ -55,7 +54,6 @@ function PrintTask({ item, index, hasExerciseDimensions, pitchAppearance }) {
       <div className="planned-print-development"><b>DESARROLLO</b><p>{value(description)}</p>
         {extraContent.map((entry) => <p className="planned-print-content-line" key={entry.label}>
           <b>{entry.label}:</b> {entry.text}</p>)}
-        {value(material) ? <p className="planned-print-material"><b>Material:</b> {value(material)}</p> : null}
       </div>
       <div className="planned-print-graphic"><b>REPRESENTACIÓN GRÁFICA</b>
         {hasBoard ? <div className="planned-print-board"><TrainingTaskBoardPreview payload={payload} pitchAppearance={pitchAppearance} /></div>

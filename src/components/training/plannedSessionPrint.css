@@ -57,7 +57,7 @@
 .planned-print-cover-activation { min-width: 0; padding: 2mm 0 0 2mm; }
 .planned-print-cover-activation .planned-print-exercise { min-height: 90mm; }
 .planned-print-empty-activation { display: grid; place-items: center; min-height: 89mm; border: 1px solid #111; color: #555; font-weight: 700; text-align: center; }
-.planned-print-page-title { display: block; margin: 0; padding: 1mm 2mm; background: #f5ee00; font-size: 11pt; }
+.planned-print-page-title { display: block; margin: 0; border-left: 1.5mm solid #315d7e; padding: 1mm 2mm; background: #f1f3f5; color: #203244; font-size: 11pt; }
 .planned-print-exercise-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-auto-rows: minmax(77mm,auto); align-content: start; gap: .5mm; }
 .planned-print-exercise-grid[data-layout="one"] > .planned-print-exercise,
 .planned-print-exercise-grid[data-layout="two"] > .planned-print-exercise,
@@ -66,25 +66,25 @@
 .planned-print-exercise-grid[data-layout="two"] > .planned-print-exercise:not(.planned-print-dual) .planned-print-task-content,
 .planned-print-exercise-grid[data-layout="three"] > .planned-print-exercise:last-child .planned-print-task-content { grid-template-columns: 66% 34%; }
 .planned-print-exercise-grid[data-layout="one"] > .planned-print-exercise:not(.planned-print-dual) .planned-print-task-content { grid-template-columns: 56% 44%; }
-.planned-print-exercise { display: flex; flex-direction: column; min-width: 0; min-height: 77mm; border: 1px solid #111; break-inside: avoid; page-break-inside: avoid; }
+.planned-print-exercise { display: flex; flex-direction: column; min-width: 0; min-height: 77mm; border: 1px solid #aeb8c2; break-inside: avoid; page-break-inside: avoid; }
 .planned-print-exercise-overflow { break-inside: auto; page-break-inside: auto; }
 .planned-print-exercise.planned-print-dual { grid-column: span 2; }
-.planned-print-exercise-head { display: flex; justify-content: space-between; gap: 2mm; padding: .5mm 1.5mm; border-bottom: 1px solid #111; }
-.planned-print-exercise-head strong { background: #f5ee00; padding: 0 .8mm; }
+.planned-print-exercise-head { display: flex; justify-content: space-between; gap: 2mm; padding: 1mm 2mm; border-bottom: 1px solid #cbd2d9; background: #f4f6f8; color: #263545; }
+.planned-print-exercise-head strong { border-left: 1mm solid #315d7e; padding: 0 1mm; color: #172b3d; }
 .planned-print-tasks { display: grid; grid-template-columns: repeat(auto-fit,minmax(0,1fr)); flex: 1; min-height: 0; }
-.planned-print-task { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid #111; }
+.planned-print-task { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid #cbd2d9; }
 .planned-print-task:last-child { border-right: 0; }
-.planned-print-task-name { display: flex; align-items: baseline; gap: 2mm; min-height: 5mm; padding: .5mm 1.5mm; border-bottom: 1px solid #111; overflow-wrap: anywhere; }
-.planned-print-task-name b { flex: none; background: #00e9df; padding: 0 .8mm; }
-.planned-print-task-name strong { font-size: 8pt; }
-.planned-print-task-content { display: grid; grid-template-columns: 43% 57%; flex: 1; min-width: 0; }
-.planned-print-development { min-width: 0; padding: 1mm 1.5mm; border-right: 1px dashed #555; overflow-wrap: anywhere; white-space: pre-wrap; }
-.planned-print-development > b, .planned-print-graphic > b { display: block; margin-bottom: .5mm; font-size: 7pt; font-weight: 500; text-align: center; }
-.planned-print-development p { margin: 0; }
+.planned-print-task-name { display: flex; align-items: baseline; gap: 2mm; min-height: 7mm; padding: 1.5mm 2mm; border-bottom: 1px solid #d5dce2; background: #f8f9fa; overflow-wrap: anywhere; }
+.planned-print-task-name b { flex: none; border-left: 1mm solid #315d7e; padding: 0 1mm; color: #596674; }
+.planned-print-task-name strong { color: #14283a; font-size: 12pt; line-height: 1.2; }
+.planned-print-task-content { display: grid; grid-template-columns: 60% 40%; flex: 1; min-width: 0; }
+.planned-print-development { min-width: 0; padding: 2mm 3mm; border-right: 1px solid #d5dce2; font-size: 10pt; line-height: 1.4; overflow-wrap: anywhere; white-space: pre-wrap; }
+.planned-print-development > b, .planned-print-graphic > b { display: block; margin-bottom: 1mm; color: #596674; font-size: 7pt; font-weight: 800; letter-spacing: .06em; text-align: left; }
+.planned-print-development p { margin: 0; white-space: pre-wrap; }
 .planned-print-development .planned-print-content-line { margin-top: 1mm; white-space: pre-wrap; overflow-wrap: anywhere; }
 .planned-print-development .planned-print-material { margin-top: 2mm; }
-.planned-print-graphic { display: flex; flex-direction: column; min-width: 0; padding: .5mm; }
-.planned-print-board { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 43mm; }
+.planned-print-graphic { display: flex; flex-direction: column; min-width: 0; padding: 1.5mm; }
+.planned-print-board { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 43mm; border: 1px solid #d8dfe5; background: #f7f9f8; }
 .planned-print-board > div { display: flex; align-items: center; justify-content: center; width: 100%; height: auto; max-height: none; overflow: visible; }
 .planned-print-board svg { display: block; width: 100%; height: auto; max-width: 100%; aspect-ratio: 100 / 72; }
 .planned-print-exercise-grid[data-layout="two"] > .planned-print-exercise:not(.planned-print-dual) .planned-print-board svg,
