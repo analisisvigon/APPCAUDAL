@@ -65,6 +65,7 @@ const base = { id: 'fixture', session_date: '2026-10-25', session_number: 1,
     material: 'Balones, petos y conos.', notes: 'Observaciones generales.',
     staff_observations: 'Ajustar cargas de trabajo.' } };
 const fixtures = {
+  roster_24: [slot('a', 'activation'), slot('m1', 'main'), slot('m2', 'main')],
   two_brief: [slot('m1', 'main'), slot('m2', 'main')],
   three_normal: [slot('a', 'activation'), slot('m1', 'main'), slot('m2', 'main'), slot('m3', 'main')],
   four_normal: [slot('a', 'activation'), ...[1, 2, 3, 4].map((i) => slot(`m${i}`, 'main'))],
@@ -73,7 +74,6 @@ const fixtures = {
   activation_main_cooldown: [slot('a', 'activation'), slot('m1', 'main'), slot('m2', 'main'), slot('c', 'cooldown')],
   parallel: [slot('a', 'activation'), slot('m1', 'main', [free('m1a'), free('m1b')]), slot('m2', 'main'), slot('c', 'cooldown')],
   board_teams: [slot('a', 'activation', [library('a')]), slot('m1', 'main', [library('m1')]), slot('m2', 'main')],
-  roster_24: [slot('a', 'activation'), slot('m1', 'main'), slot('m2', 'main')],
   player_board_24: [slot('a', 'activation'), slot('m1', 'main'), slot('m2', 'main')],
   player_board_433: [slot('a', 'activation'), slot('m1', 'main'), slot('m2', 'main')],
   player_board_532: [slot('a', 'activation'), slot('m1', 'main'), slot('m2', 'main')],
@@ -142,6 +142,13 @@ for (const [name, slots] of Object.entries(fixtures)) {
       'defensas, centrocampistas y delanteros usan dos columnas');
     assert.equal((markup.match(/planned-roster-player-no-training/g) || []).length, 2);
     assert.equal((markup.match(/planned-roster-player-adapted/g) || []).length, 1);
+    assert.ok(markup.includes('Samuel González</span><small class="planned-roster-status-abbreviation" aria-hidden="true">LES</small>'));
+    assert.ok(markup.includes('Roberto Albuquerque</span><small class="planned-roster-status-abbreviation" aria-hidden="true">AUS</small>'));
+    assert.ok(markup.includes('Cristian Acerete</span><small class="planned-roster-status-abbreviation" aria-hidden="true">ADAP</small>'));
+    assert.ok(!markup.includes('Alex González</span><small class="planned-roster-status-abbreviation"'));
+    for (const position of ['goalkeeper', 'defender', 'midfielder', 'forward']) {
+      assert.ok(markup.includes(`planned-roster-group-${position}`), `${position} group heading retains its position identity`);
+    }
   }
   if (name === 'parallel') {
     assert.match(markup, /Tarea A[\s\S]*Tarea B/);
@@ -179,7 +186,7 @@ for (const [name, slots] of Object.entries(fixtures)) {
     document.documentElement.dataset.playerBoardScreenTextOverflow = String(screenTextOverflow);
     field.style.height = '';
   });</script>` : '';
-  const html = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${globalPrint}"><link rel="stylesheet" href="${documentCss}"><link rel="stylesheet" href="${css}">${previewCss}</head><body><div class="planned-print-portal"><style media="print">@page { size: A4 landscape; margin: 0; }</style>${markup.replaceAll('/pwa-512x512.png', crest)}</div><script>window.addEventListener('load', () => { const limit = 210 * 96 / 25.4; const sheets = [...document.querySelectorAll('.planned-print-sheet')]; document.documentElement.dataset.printOverflow = String(sheets.length > 2 || sheets.some((sheet) => sheet.getBoundingClientRect().height > limit + 2 || sheet.scrollHeight > limit + 2)); const defender = [...document.querySelectorAll('.planned-roster-group')].find((group) => group.querySelector('b')?.textContent === 'Defensas'); document.documentElement.dataset.defenderColumns = defender ? getComputedStyle(defender.querySelector('.planned-roster-players')).gridTemplateColumns.split(' ').length : 0; document.documentElement.dataset.rosterOverflow = String([...document.querySelectorAll('.planned-roster-player')].some((player) => player.scrollWidth > player.clientWidth + 1)); });</script>${boardCheck}</body></html>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${globalPrint}"><link rel="stylesheet" href="${documentCss}"><link rel="stylesheet" href="${css}">${previewCss}</head><body><div class="planned-print-portal"><style media="print">@page { size: A4 landscape; margin: 0; }</style>${markup.replaceAll('/pwa-512x512.png', crest)}</div><script>window.addEventListener('load', () => { const limit = 210 * 96 / 25.4; const sheets = [...document.querySelectorAll('.planned-print-sheet')]; document.documentElement.dataset.printOverflow = String(sheets.length > 2 || sheets.some((sheet) => sheet.getBoundingClientRect().height > limit + 2 || sheet.scrollHeight > limit + 2)); const defender = [...document.querySelectorAll('.planned-roster-group')].find((group) => group.querySelector('b')?.textContent === 'Defensas'); document.documentElement.dataset.defenderColumns = defender ? getComputedStyle(defender.querySelector('.planned-roster-players')).gridTemplateColumns.split(' ').length : 0; const positionClasses = ['goalkeeper', 'defender', 'midfielder', 'forward']; document.documentElement.dataset.rosterHeadingColors = positionClasses.map((position) => { const heading = document.querySelector('.planned-roster-group-' + position + ' > b'); return heading ? getComputedStyle(heading).backgroundColor : 'missing'; }).join('|'); document.documentElement.dataset.rosterStatusColors = [...document.querySelectorAll('.planned-roster-status-abbreviation')].map((status) => getComputedStyle(status).color).join('|'); document.documentElement.dataset.rosterOverflow = String([...document.querySelectorAll('.planned-roster-player')].some((player) => player.scrollWidth > player.clientWidth + 1 || [...player.querySelectorAll('.planned-roster-name,.planned-roster-status-abbreviation')].some((part) => part.scrollWidth > part.clientWidth + 1))); });</script>${boardCheck}</body></html>`;
   const htmlPath = path.join(output, `${name}.html`);
   const pdfPath = path.join(output, `${name}.pdf`);
   writeFileSync(htmlPath, html, 'utf8');
@@ -208,6 +215,8 @@ for (const [name, slots] of Object.entries(fixtures)) {
     assert.match(dom, /data-print-overflow="false"/);
     assert.match(dom, /data-defender-columns="2"/);
     assert.match(dom, /data-roster-overflow="false"/);
+    assert.match(dom, /data-roster-heading-colors="rgb\(234, 242, 251\)\|rgb\(237, 244, 238\)\|rgb\(241, 237, 247\)\|rgb\(251, 240, 229\)"/);
+    assert.match(dom, /data-roster-status-colors="rgb\(174, 29, 50\)\|rgb\(174, 29, 50\)\|rgb\(152, 101, 0\)"/);
     const previewPath = path.join(output, 'roster_24_preview.png');
     execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox', '--disable-extensions',
       '--window-size=1200,900', `--screenshot=${previewPath}`, pathToFileURL(htmlPath).href],

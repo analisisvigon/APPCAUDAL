@@ -59,15 +59,23 @@
 .planned-sheet-roster-metric { display: flex; align-items: center; justify-content: space-between; gap: 2mm; min-height: 13mm; border-right: 1px solid #222; border-bottom: 1px solid #222; padding: 2mm; font-size: 8pt; }
 .planned-roster-group { min-width: 0; border-right: 1px solid #111; }
 .planned-roster-group:last-of-type { border-right: 0; }
-.planned-sheet-roster .planned-roster-group > b { display: block; padding: 1mm; background: #111; color: #fff; text-align: center; font-size: 8pt; }
+.planned-roster-group-goalkeeper { --roster-heading-background: #eaf2fb; --roster-heading-ink: #284d70; }
+.planned-roster-group-defender { --roster-heading-background: #edf4ee; --roster-heading-ink: #365844; }
+.planned-roster-group-midfielder { --roster-heading-background: #f1edf7; --roster-heading-ink: #574574; }
+.planned-roster-group-forward { --roster-heading-background: #fbf0e5; --roster-heading-ink: #774b25; }
+.planned-roster-group-unassigned { --roster-heading-background: #f1f3f5; --roster-heading-ink: #4b5560; }
+.planned-sheet-roster .planned-roster-group > b { display: block; padding: 1mm; background: var(--roster-heading-background, #111); color: var(--roster-heading-ink, #fff); text-align: center; font-size: 8pt; }
 .planned-roster-players { display: grid; align-content: start; }
 .planned-roster-group-two-columns .planned-roster-players { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--roster-rows), auto); grid-auto-flow: column; column-gap: 1mm; }
 .planned-roster-player { position: relative; display: flex; align-items: center; gap: .6mm; min-width: 0; min-height: 4mm; padding: .35mm .8mm; font-size: 7.6pt; line-height: 1.16; }
 .planned-roster-player-unselected { opacity: .45; }
 .planned-roster-player input[type="checkbox"] { flex: none; width: 3mm; height: 3mm; margin: 0; }
-.planned-roster-name { min-width: 0; overflow-wrap: break-word; }
-.planned-roster-player-no-training .planned-roster-name { color: #ae1d32; font-weight: 700; }
-.planned-roster-player-adapted .planned-roster-name { color: #986500; font-weight: 700; }
+.planned-roster-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.planned-roster-status-abbreviation { flex: none; color: inherit; font-size: .82em; font-weight: 800; letter-spacing: .02em; white-space: nowrap; }
+.planned-roster-player-no-training .planned-roster-name,
+.planned-roster-player-no-training .planned-roster-status-abbreviation { color: #ae1d32; font-weight: 700; }
+.planned-roster-player-adapted .planned-roster-name,
+.planned-roster-player-adapted .planned-roster-status-abbreviation { color: #986500; font-weight: 700; }
 .planned-roster-player select { min-width: 0; max-width: 19mm; margin-left: auto; border: 1px solid #bbb; background: #fff; font-size: 6pt; }
 .planned-roster-group-two-columns .planned-roster-player select { max-width: 12mm; }
 .planned-roster-observation-editor { flex: none; font-size: 6pt; }

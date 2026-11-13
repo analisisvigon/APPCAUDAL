@@ -3,6 +3,7 @@ import { groupSessionPlayers, PLAYER_STATUSES, sessionPlayerCounts } from '../..
 const statusLabel = (status) => PLAYER_STATUSES.find((item) => item.key === status)?.label || status;
 const visualStatus = (status) => status === 'first_team' ? 'planned-roster-player-first-team' : ['absent', 'injured'].includes(status)
   ? 'planned-roster-player-no-training' : status === 'adapted' ? 'planned-roster-player-adapted' : '';
+const statusAbbreviations = { injured: 'LES', first_team: '1EQ', adapted: 'ADAP', absent: 'AUS' };
 
 export default function PlannedSessionRoster({ roster = [], frozen = false, selectedIds = [],
   availability = {}, onSelect, onAvailability, canEdit = false, print = false }) {
@@ -10,7 +11,7 @@ export default function PlannedSessionRoster({ roster = [], frozen = false, sele
   const counts = sessionPlayerCounts(selected, frozen ? availability : {});
   const groups = groupSessionPlayers(roster, frozen);
   return <div className={print ? 'planned-print-roster' : 'planned-sheet-roster'}>
-    {groups.map((group) => <div className={`planned-roster-group ${group.players.length > 4 ? 'planned-roster-group-two-columns' : ''}`} key={group.key || 'unknown'}>
+    {groups.map((group) => <div className={`planned-roster-group planned-roster-group-${group.key || 'unassigned'} ${group.players.length > 4 ? 'planned-roster-group-two-columns' : ''}`} key={group.key || 'unknown'}>
       <b>{group.label}</b>
       <div className="planned-roster-players" style={group.players.length > 4
         ? { '--roster-rows': Math.ceil(group.players.length / 2) } : undefined}>
@@ -24,9 +25,9 @@ export default function PlannedSessionRoster({ roster = [], frozen = false, sele
             aria-label={`Incorporar ${name}`} onChange={(event) => onSelect(player.id, event.target.checked)} /> : null}
           <span className="planned-roster-name" aria-label={frozen && state.status !== 'available'
             ? `${name}, ${statusLabel(state.status)}` : name}>{name}</span>
+          {frozen && statusAbbreviations[state.status] ?
+            <small className="planned-roster-status-abbreviation" aria-hidden="true">{statusAbbreviations[state.status]}</small> : null}
           {frozen ? <>
-            {state.status === 'first_team' && (print || !canEdit)
-              ? <small className="planned-roster-session-status">Primer equipo</small> : null}
             {canEdit && !print ? <select aria-label={`Disponibilidad de ${name}`} value={state.status}
               onChange={(event) => onAvailability(player.player_id, 'status', event.target.value)}>
               {PLAYER_STATUSES.map((option) => <option value={option.key} key={option.key}>{option.label}</option>)}
