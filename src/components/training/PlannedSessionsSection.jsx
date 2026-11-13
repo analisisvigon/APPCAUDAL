@@ -66,6 +66,7 @@ import { BOARD_V11_ENABLED, applySessionBoardSeed, initialBoardFromDefaults,
   validMetres, zoneFromMetres, metresFromZone, normalizeExerciseDimensions,
   exerciseDimensionsKey, exerciseDimensionsPayload } from '../../utils/plannedSessionFieldScale';
 import PlannedSessionDocument from './PlannedSessionDocument';
+import { checkPlannedSessionDeletion, canDeletePlannedSessionContext, deletePlannedSession } from '../../data/plannedSessionDeletionStore';
 import PlannedSessionBatchPrint from './PlannedSessionBatchPrint';
 import SessionPitchAppearance from './SessionPitchAppearance';
 import { loadPlannedSessionPrintData, plannedSessionExportFileName } from '../../utils/plannedSessionBatchExport';
@@ -112,7 +113,12 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [pitchAppearance, setPitchAppearance] = useState('green');
   const batchPrintRef = useRef(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [lifecycleAction, setLifecycleAction] = useState('retire');
+  const [lifecycleAction, setLifecycleAction] = useState('delete');
+  const [deletionReady, setDeletionReady] = useState(false);
+  const [deletionProbeError, setDeletionProbeError] = useState('');
+  const [deletionAllowed, setDeletionAllowed] = useState(false);
+  const deletionScopeRef = useRef('');
+  deletionScopeRef.current = `${userId}:${membership?.club_id}:${contextId}`;
   const [retirementReason, setRetirementReason] = useState('');
   const [libraryTasks, setLibraryTasks] = useState([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
@@ -294,10 +300,53 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   useEffect(() => {
     if (!deleteTarget) return undefined;
     setRetirementReason('');
-    const closeOnEscape = (event) => { if (event.key === 'Escape') setDeleteTarget(null); };
+    const closeOnEscape = (event) => { if (event.key === 'Escape' && !operationRef.current) setDeleteTarget(null); };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [deleteTarget]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDeletionReady(false); setDeletionAllowed(false); setDeletionProbeError('');
+    Promise.all([checkPlannedSessionDeletion(client), canDeletePlannedSessionContext(client, contextId)])
+      .then(([ready, allowed]) => {
+      if (!cancelled) { setDeletionReady(ready); setDeletionAllowed(allowed); }
+    }).catch((cause) => {
+      if (!cancelled) setDeletionProbeError(readError(cause));
+    });
+    return () => { cancelled = true; };
+  }, [client, userId, membership?.club_id, contextId, selected?.status]);
+
+  const performDeletion = async () => {
+    if (!deleteTarget || !deletionReady || !deletionAllowed || busy || operationRef.current) return;
+    if (deleteTarget.club_team_season_id !== contextId) {
+      setError('La sesión no pertenece al equipo y temporada seleccionados.'); return;
+    }
+    if (editor?.id === deleteTarget.id && dirty) {
+      setError('Guarda o descarta los cambios pendientes antes de eliminar esta sesión.'); return;
+    }
+    operationRef.current = true; setBusy(true); setError(''); setNotice('');
+    const scope = deletionScopeRef.current;
+    try {
+      await deletePlannedSession(client, { sessionId: deleteTarget.id, contextId,
+        revision: deleteTarget.revision, confirmed: true });
+      if (scope !== deletionScopeRef.current) return;
+      setSessions((rows) => rows.filter((row) => row.id !== deleteTarget.id));
+      setExportResult(null);
+      if (editor?.id === deleteTarget.id) {
+        setEditor(null); setBaseline(null); setRoster([]); setAvailability({}); setAvailabilityBaseline({});
+        setDistribution(null); setDistributionBaseline(null); setSessionValue(''); setBaselineSessionValue('');
+        setExerciseDimensions({}); setExerciseDimensionsBaseline({}); setExerciseDimensionsLoadedFor('');
+        materialStateRef.current = null; setMaterialState(null); setMaterialBaseline(null);
+      }
+      setDeleteTarget(null);
+      setNotice('Sesión eliminada y ausencia verificada en el servidor.');
+    } catch (cause) {
+      if (scope !== deletionScopeRef.current) return;
+      if (cause?.code === '40001') setConflict(true);
+      setError(`No se pudo confirmar la eliminación. ${readError(cause)}`);
+    } finally { operationRef.current = false; setBusy(false); }
+  };
 
   const performLifecycle = async () => {
     if (!deleteTarget || !SESSION_RETIREMENT_BACKEND_VERIFIED || !canWriteContext || busy || operationRef.current) return;
@@ -1525,20 +1574,20 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
                 {row.mc_number ? ` · MC ${row.mc_number}` : ''}
                 {isPlannedMicrocycle(row.morphology_pattern) ? ` · ${row.morphology_pattern}` : ''} · Abrir sesión</p>
             </button>
-            {canWriteContext ? <details className="relative z-10 mt-2 mr-2 shrink-0">
+            {canWriteContext || deletionAllowed ? <details className="relative z-10 mt-2 mr-2 shrink-0">
               <summary aria-label={`Acciones de ${row.planning_state === 'confirmed' ? `sesión nº ${row.session_number}` : 'borrador'} del ${formatDate(row.session_date)}`}
                 className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-lg text-xl text-slate-300 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caudal-electric">⋯</summary>
               <div className="absolute right-0 top-full z-20 w-44 rounded-xl border border-white/15 bg-[#102239] p-1 shadow-xl">
                 <button type="button" disabled={busy} onClick={(event) => {
                   event.currentTarget.closest('details')?.removeAttribute('open');
-                  setLifecycleAction('retire'); setDeleteTarget(row);
+                  setLifecycleAction('delete'); setDeleteTarget(row);
                 }} className="min-h-10 w-full rounded-lg px-3 text-left text-sm font-semibold text-red-200 hover:bg-red-400/10 disabled:opacity-50">
                   Eliminar sesión</button>
-                <button type="button" disabled={busy} onClick={(event) => {
+                {canWriteContext ? <button type="button" disabled={busy} onClick={(event) => {
                   event.currentTarget.closest('details')?.removeAttribute('open');
                   setLifecycleAction(row.cancelled_at ? 'reactivate' : 'cancel'); setDeleteTarget(row);
                 }} className="min-h-10 w-full rounded-lg px-3 text-left text-sm font-semibold text-amber-100 hover:bg-amber-300/10 disabled:opacity-50">
-                  {row.cancelled_at ? 'Reactivar sesión' : 'Anular sesión'}</button>
+                  {row.cancelled_at ? 'Reactivar sesión' : 'Anular sesión'}</button> : null}
               </div>
             </details> : null}
           </div>)}
@@ -1549,30 +1598,30 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         <section role="dialog" aria-modal="true" aria-labelledby="planned-delete-title"
           className="w-full max-w-md rounded-2xl border border-red-300/25 bg-[#0b1a2d] p-5 shadow-2xl">
           <h3 id="planned-delete-title" className="text-lg font-black text-white">
-            {lifecycleAction === 'retire' ? '¿Eliminar esta sesión?'
+            {lifecycleAction === 'delete' ? '¿Eliminar esta sesión?'
               : lifecycleAction === 'cancel' ? '¿Anular esta sesión?' : '¿Reactivar esta sesión?'}</h3>
           <p className="mt-2 font-semibold text-white">{deleteTarget.planning_state === 'confirmed'
             ? `Sesión nº ${deleteTarget.session_number}` : 'Borrador de sesión'}</p>
           <p className="mt-1 text-sm text-slate-300">{formatDate(deleteTarget.session_date)}
             {deleteTarget.starts_at ? ` · ${String(deleteTarget.starts_at).slice(0, 5)}` : ''}</p>
-          <p className="mt-4 text-sm text-slate-200">{lifecycleAction === 'retire'
-            ? 'La sesión dejará de aparecer en Sesiones y Calendario, pero se conservará internamente para mantener el historial.'
+          <p className="mt-4 text-sm text-slate-200">{lifecycleAction === 'delete'
+            ? 'Se eliminarán la sesión y sus datos asociados de Sesiones y Calendario. No se borrarán jugadores de la plantilla general ni tareas originales de Biblioteca. Se conservará un registro interno de auditoría.'
             : lifecycleAction === 'cancel'
               ? 'La sesión seguirá visible como ANULADA y no contará como entrenamiento activo.'
               : 'La sesión volverá a contar como entrenamiento activo, sin crear otro registro.'}</p>
-          {lifecycleAction !== 'reactivate' ? <label className="mt-3 block text-xs text-slate-300">Motivo opcional
+          {lifecycleAction === 'cancel' ? <label className="mt-3 block text-xs text-slate-300">Motivo opcional
             <textarea value={retirementReason} onChange={(event) => setRetirementReason(event.target.value)}
               maxLength={1000} rows={2} className={`${input} mt-1`} />
           </label> : null}
-          {!SESSION_RETIREMENT_BACKEND_VERIFIED ? <p role="status" className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-xs text-amber-100">
-            Acción pendiente: instala y verifica la migración antes de habilitarla. No se guardará ningún cambio.</p> : null}
+          {!(lifecycleAction === 'delete' ? deletionReady : SESSION_RETIREMENT_BACKEND_VERIFIED) ? <p role="status" className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-xs text-amber-100">
+            {lifecycleAction === 'delete' ? (deletionProbeError || 'El borrado aún no está habilitado en el servidor. Recarga Sesiones después de su actualización.') : 'La anulación requiere instalar y verificar su backend.'}</p> : null}
           <div className="mt-5 flex flex-wrap justify-end gap-2">
             <button type="button" autoFocus disabled={busy} onClick={() => setDeleteTarget(null)}
               className={`${button} border border-white/20 text-white`}>Cancelar</button>
-            <button type="button" onClick={performLifecycle}
-              disabled={!SESSION_RETIREMENT_BACKEND_VERIFIED || busy || !canWriteContext}
-              className={`${button} ${lifecycleAction === 'retire' ? 'bg-red-700' : 'bg-amber-700'} text-white`}>
-              {busy ? 'Procesando…' : lifecycleAction === 'retire' ? 'Eliminar sesión'
+            <button type="button" onClick={lifecycleAction === 'delete' ? performDeletion : performLifecycle}
+              disabled={!(lifecycleAction === 'delete' ? deletionReady && deletionAllowed : SESSION_RETIREMENT_BACKEND_VERIFIED && canWriteContext) || busy}
+              className={`${button} ${lifecycleAction === 'delete' ? 'bg-red-700' : 'bg-amber-700'} text-white`}>
+              {busy ? 'Procesando…' : lifecycleAction === 'delete' ? 'Eliminar sesión'
                 : lifecycleAction === 'cancel' ? 'Anular sesión' : 'Reactivar sesión'}</button>
           </div>
         </section>

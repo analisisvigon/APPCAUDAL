@@ -39,6 +39,7 @@
     "test:pwa": "node scripts/playerPdfPwaBuildAudit.test.mjs",
     "test:training-task-pdf": "node src/utils/trainingTaskPrint.test.mjs && node src/utils/trainingTaskBatchExport.test.js",
     "test:session-appearance": "node src/utils/plannedSessionPlayers.test.js && node src/data/plannedSessionPlayersStore.test.js && node src/data/plannedSessionsBatchExport.test.js && node src/components/training/PlannedSessionBatchPrint.test.mjs && node scripts/plannedSessionAppearance.test.mjs",
+    "test:session-deletion": "node src/data/plannedSessionDeletionStore.test.js && node scripts/plannedSessionDeletionSqlAudit.test.mjs && node src/data/plannedSessionsStore.test.js",
     "test:performance-load": "node src/utils/performanceRpe.test.js && node src/utils/performanceLoad.test.js && node src/utils/performanceLoadStore.test.js && node scripts/trainingLoadSqlAudit.test.mjs && node scripts/performanceLoadUiAudit.test.mjs && node scripts/playerTeamLoadEvolutionUiAudit.test.mjs && node scripts/performanceLoadRuntime.test.mjs",
     "test:league-results": "node src/utils/leagueResults.test.js",
     "test:competition-filters": "node src/utils/competitionFilters.test.js",
