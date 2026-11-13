@@ -7,6 +7,7 @@ import {
 import { needsPlannedTextFragmentation, needsPlannedWideSheet, planPlannedSessionPrintSheets, planPlannedSessionSheets } from '../../utils/plannedSessionSheetPages';
 import { getPlannedSessionBoardTeams } from '../../utils/plannedSessionBoardTeams';
 import { readTrainingTaskEditorPayload } from '../../utils/trainingTaskEditorPayload';
+import { printPlannedSessionDocument } from '../../utils/plannedSessionPrintOrientation';
 import TrainingTaskBoardPreview from './TrainingTaskBoardPreview';
 import TrainingTaskBoardEditor from './TrainingTaskBoardEditor';
 import PlannedSessionPrint from './PlannedSessionPrint';
@@ -334,7 +335,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   const printDocument = () => {
     if (boardsError) return;
     if (printOverflow && !window.confirm('El contenido supera dos hojas A4. La impresión conservará todo el contenido y puede necesitar más páginas. ¿Continuar?')) return;
-    window.print();
+    printPlannedSessionDocument();
   };
   const ordered = PLANNED_PHASES.flatMap((phase) => editor.slots.filter((slot) => slot.phase === phase.key));
   const numberOf = (id) => ordered.findIndex((slot) => slot.id === id) + 1;

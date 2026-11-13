@@ -68,6 +68,7 @@ import { BOARD_V11_ENABLED, applySessionBoardSeed, initialBoardFromDefaults,
 import PlannedSessionDocument from './PlannedSessionDocument';
 import { checkPlannedSessionDeletion, canDeletePlannedSessionContext, deletePlannedSession } from '../../data/plannedSessionDeletionStore';
 import PlannedSessionBatchPrint from './PlannedSessionBatchPrint';
+import { printPlannedSessionDocument } from '../../utils/plannedSessionPrintOrientation';
 import SessionPitchAppearance from './SessionPitchAppearance';
 import { loadPlannedSessionPrintData, plannedSessionExportFileName } from '../../utils/plannedSessionBatchExport';
 
@@ -487,7 +488,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       document.title = batchPrint.fileName.replace(/\.pdf$/i, '');
       setExportProgress(`Abriendo la impresión de ${sheets.length} hojas. Elige «Guardar como PDF».`);
       window.addEventListener('afterprint', finish, { once: true });
-      window.print();
+      printPlannedSessionDocument();
     };
     openPrint().catch((cause) => {
       if (cancelled) return;

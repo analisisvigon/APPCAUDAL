@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { inflateSync } from 'node:zlib';
 import { build } from 'esbuild';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -22,6 +23,20 @@ const { PlannedSessionPrintPages } = await bundle('PlannedSessionPrint');
 const { PlannedSessionBatchPrintPages } = await bundle('PlannedSessionBatchPrint');
 const { default: PlannedSessionRoster } = await bundle('PlannedSessionRoster');
 const { default: Board } = await bundle('TrainingTaskBoardPreview');
+const pdfTextMatrices = (pdf) => {
+  const matrices = [];
+  for (const stream of pdf.matchAll(/(\d+)\s+0\s+obj([\s\S]*?)stream\r?\n/g)) {
+    if (!stream[2].includes('/FlateDecode')) continue;
+    const start = stream.index + stream[0].length;
+    const end = pdf.indexOf('endstream', start);
+    const bytes = Buffer.from(pdf.slice(start, end).replace(/\r?\n$/, ''), 'latin1');
+    const decoded = inflateSync(bytes).toString('latin1');
+    for (const matrix of decoded.matchAll(/([-+]?\d*\.?\d+)\s+([-+]?\d*\.?\d+)\s+([-+]?\d*\.?\d+)\s+([-+]?\d*\.?\d+)\s+[-+]?\d*\.?\d+\s+[-+]?\d*\.?\d+\s+Tm\b/g)) {
+      matrices.push([Number(matrix[1]), Number(matrix[2]), Number(matrix[3]), Number(matrix[4])]);
+    }
+  }
+  return matrices;
+};
 const payload = { schemaVersion: 1, board: { pitchType: 'full', elements: [
   { id: 'red', type: 'participant', colorKey: 'red', x: 30, y: 22, label: 'R' },
   { id: 'blue', type: 'participant', colorKey: 'blue', x: 65, y: 45, label: 'A' },
@@ -123,6 +138,10 @@ for (const pitchAppearance of ['green', 'bw']) {
     assert.equal(boxes.length, pages);
     assert.ok(boxes.every((box) => Math.abs(Number(box[1]) - 841.89) < 1 && Math.abs(Number(box[2]) - 595.28) < 1));
     assert.doesNotMatch(bytes, /\/Rotate\s+(90|270)/);
+    const matrices = pdfTextMatrices(bytes);
+    assert.ok(matrices.length, `${name}: el PDF debe contener texto medible`);
+    assert.ok(matrices.every(([, b, c]) => Math.abs(b) < 0.001 && Math.abs(c) < 0.001),
+      `${name}: el texto debe leerse frontalmente`);
     if (!batch && pitchAppearance === 'green') {
       const dom = execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox',
         '--disable-extensions', '--dump-dom', pathToFileURL(html).href],

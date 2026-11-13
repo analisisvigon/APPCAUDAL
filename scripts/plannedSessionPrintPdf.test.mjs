@@ -5,10 +5,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { inflateSync } from 'node:zlib';
 import { build } from 'esbuild';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { autoPlayerLayout } from '../src/utils/plannedSessionDistributions.js';
+import { PLANNED_SESSION_PRINT_PAGE_RULE } from '../src/utils/plannedSessionPrintOrientation.js';
 
 const root = path.resolve(import.meta.dirname || path.dirname(new URL(import.meta.url).pathname), '..');
 const cache = path.join(root, 'node_modules', '.cache');
@@ -186,7 +188,7 @@ for (const [name, slots] of Object.entries(fixtures)) {
     document.documentElement.dataset.playerBoardScreenTextOverflow = String(screenTextOverflow);
     field.style.height = '';
   });</script>` : '';
-  const html = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${globalPrint}"><link rel="stylesheet" href="${documentCss}"><link rel="stylesheet" href="${css}">${previewCss}</head><body><div class="planned-print-portal"><style media="print">@page { size: A4 landscape; margin: 0; }</style>${markup.replaceAll('/pwa-512x512.png', crest)}</div><script>window.addEventListener('load', () => { const limit = 210 * 96 / 25.4; const sheets = [...document.querySelectorAll('.planned-print-sheet')]; document.documentElement.dataset.printOverflow = String(sheets.length > 2 || sheets.some((sheet) => sheet.getBoundingClientRect().height > limit + 2 || sheet.scrollHeight > limit + 2)); const defender = [...document.querySelectorAll('.planned-roster-group')].find((group) => group.querySelector('b')?.textContent === 'Defensas'); document.documentElement.dataset.defenderColumns = defender ? getComputedStyle(defender.querySelector('.planned-roster-players')).gridTemplateColumns.split(' ').length : 0; const positionClasses = ['goalkeeper', 'defender', 'midfielder', 'forward']; document.documentElement.dataset.rosterHeadingColors = positionClasses.map((position) => { const heading = document.querySelector('.planned-roster-group-' + position + ' > b'); return heading ? getComputedStyle(heading).backgroundColor : 'missing'; }).join('|'); document.documentElement.dataset.rosterStatusColors = [...document.querySelectorAll('.planned-roster-status-abbreviation')].map((status) => getComputedStyle(status).color).join('|'); document.documentElement.dataset.rosterOverflow = String([...document.querySelectorAll('.planned-roster-player')].some((player) => player.scrollWidth > player.clientWidth + 1 || [...player.querySelectorAll('.planned-roster-name,.planned-roster-status-abbreviation')].some((part) => part.scrollWidth > part.clientWidth + 1))); });</script>${boardCheck}</body></html>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${globalPrint}"><link rel="stylesheet" href="${documentCss}"><link rel="stylesheet" href="${css}">${previewCss}<style media="print" data-planned-session-print-page>${PLANNED_SESSION_PRINT_PAGE_RULE}</style></head><body><div class="planned-print-portal">${markup.replaceAll('/pwa-512x512.png', crest)}</div><script>window.addEventListener('load', () => { const limit = 210 * 96 / 25.4; const sheets = [...document.querySelectorAll('.planned-print-sheet')]; document.documentElement.dataset.printOverflow = String(sheets.length > 2 || sheets.some((sheet) => sheet.getBoundingClientRect().height > limit + 2 || sheet.scrollHeight > limit + 2)); const defender = [...document.querySelectorAll('.planned-roster-group')].find((group) => group.querySelector('b')?.textContent === 'Defensas'); document.documentElement.dataset.defenderColumns = defender ? getComputedStyle(defender.querySelector('.planned-roster-players')).gridTemplateColumns.split(' ').length : 0; const positionClasses = ['goalkeeper', 'defender', 'midfielder', 'forward']; document.documentElement.dataset.rosterHeadingColors = positionClasses.map((position) => { const heading = document.querySelector('.planned-roster-group-' + position + ' > b'); return heading ? getComputedStyle(heading).backgroundColor : 'missing'; }).join('|'); document.documentElement.dataset.rosterStatusColors = [...document.querySelectorAll('.planned-roster-status-abbreviation')].map((status) => getComputedStyle(status).color).join('|'); document.documentElement.dataset.rosterOverflow = String([...document.querySelectorAll('.planned-roster-player')].some((player) => player.scrollWidth > player.clientWidth + 1 || [...player.querySelectorAll('.planned-roster-name,.planned-roster-status-abbreviation')].some((part) => part.scrollWidth > part.clientWidth + 1))); });</script>${boardCheck}</body></html>`;
   const htmlPath = path.join(output, `${name}.html`);
   const pdfPath = path.join(output, `${name}.pdf`);
   writeFileSync(htmlPath, html, 'utf8');
@@ -196,11 +198,25 @@ for (const [name, slots] of Object.entries(fixtures)) {
   assert.ok(existsSync(pdfPath), `no se generó ${name}.pdf`);
   const pdf = readFileSync(pdfPath).toString('latin1');
   const pages = (pdf.match(/\/Type\s*\/Page\b/g) || []).length;
-  if (name === 'overfull') assert.ok(pages > 2, 'el contenido excesivo debe continuar sin truncarse');
-  else assert.equal(pages, 2, `${name}: la sesión normal cabe en dos hojas A4`);
   assert.equal((pdf.match(/\/MediaBox\s*\[\s*0\s+0\s+841\.9[\d]*\s+594\.9[\d]*\s*\]/g) || []).length,
     pages, `${name}: cada hoja debe ser A4 horizontal real`);
   assert.doesNotMatch(pdf, /\/Rotate\s+(?:90|180|270)\b/, `${name}: sin rotaciones`);
+  const textMatrices = [];
+  for (const stream of pdf.matchAll(/(\d+)\s+0\s+obj([\s\S]*?)stream\r?\n/g)) {
+    if (!stream[2].includes('/FlateDecode')) continue;
+    const start = stream.index + stream[0].length;
+    const end = pdf.indexOf('endstream', start);
+    const bytes = Buffer.from(pdf.slice(start, end).replace(/\r?\n$/, ''), 'latin1');
+    const decoded = inflateSync(bytes).toString('latin1');
+    for (const matrix of decoded.matchAll(/([-+]?\d*\.?\d+)\s+([-+]?\d*\.?\d+)\s+([-+]?\d*\.?\d+)\s+([-+]?\d*\.?\d+)\s+[-+]?\d*\.?\d+\s+[-+]?\d*\.?\d+\s+Tm\b/g)) {
+      textMatrices.push([Number(matrix[1]), Number(matrix[2]), Number(matrix[3]), Number(matrix[4])]);
+    }
+  }
+  assert.ok(textMatrices.length, `${name}: el PDF debe contener texto medible`);
+  assert.ok(textMatrices.every(([, b, c]) => Math.abs(b) < 0.001 && Math.abs(c) < 0.001),
+    `${name}: las matrices de texto no deben rotar el contenido`);
+  if (name === 'overfull') assert.ok(pages > 2, 'el contenido excesivo debe continuar sin truncarse');
+  else assert.equal(pages, 2, `${name}: la sesión normal cabe en dos hojas A4`);
   if (name === 'four_normal' || name === 'overfull') {
     const dom = execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox',
       '--disable-extensions', '--dump-dom', pathToFileURL(htmlPath).href],
