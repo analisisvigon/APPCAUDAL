@@ -151,6 +151,10 @@ const rosterDashboardSource = appSource.slice(
   appSource.indexOf('const rosterDashboard = useMemo('),
   appSource.indexOf('const rosterDisplayPlayers = useMemo(')
 );
+const rosterStatusSource = appSource.slice(
+  appSource.indexOf('const staffStatusByPlayerId = useMemo('),
+  appSource.indexOf('const squadSummary = useMemo(')
+);
 const keyPlayerLabels = [...rosterDashboardSource.matchAll(/\{ label: '([^']+)', row:/g)].map((match) => match[1]);
 assert.ok(appSource.includes('const officialPlayedMatches = useMemo('), 'los KPI comparten una única colección oficial jugada');
 assert.ok(appSource.includes('getGroupRankings(officialPlayedMatches, { statsOnly: true })'), 'las tarjetas reutilizan las estadísticas reales de partidos oficiales');
@@ -169,6 +173,9 @@ assert.equal(panelSource.includes('Portero principal'), false, 'Portero principa
 assert.equal(keyPlayerLabels.includes('Capitán'), false, 'Capitán desaparece de Jugadores clave');
 assert.equal(appSource.includes('Disponibilidad semanal</p>'), false, 'se elimina el bloque duplicado');
 assert.ok(appSource.includes("['Sub-23', squadSummary.sub23") && appSource.includes("lg:border-dashed"), 'Sub-23 se conserva con tratamiento de característica de plantilla');
+assert.ok(rosterStatusSource.includes('sub23: isRosterPlayerOperationalSub23(player)'), 'un único estado operativo Sub-23 se calcula desde el perfil combinado');
+assert.ok(appSource.includes("(playerQuickFilter === 'Sub-23' && status.sub23)"), 'el filtro reutiliza el estado empleado por las tarjetas');
+assert.ok(appSource.includes('{staffStatus.sub23 ? <span className="ml-1 rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-1.5 py-0.5 text-[9px] font-bold text-caudal-electric">SUB-23</span> : null}'), 'la tarjeta muestra junto a la edad el mismo estado del filtro');
 assert.ok(panelSource.includes("['Plantilla', squadSummary.total") && panelSource.includes("['Disponibles', squadSummary.available"), 'las métricas muestran una única etiqueta legible');
 assert.doesNotMatch(panelSource, /\['(?:PL|OK|LES|SAN|ND|U23)'/);
 assert.ok(appSource.includes("const rosterHeaderActionClass = 'inline-flex h-10 w-full items-center justify-center rounded-xl"), 'las dos acciones comparten dimensiones y alineación');

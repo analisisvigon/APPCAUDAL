@@ -52,7 +52,7 @@ export const getRosterFootLabel = (foot) => {
   return 'Pierna no indicada';
 };
 
-export const isRosterPlayerSub23 = (player = {}, referenceDate = new Date()) => {
-  const age = getAgeFromDate(player.dob, referenceDate);
+export const isRosterPlayerOperationalSub23 = (player = {}, referenceDate = new Date()) => {
+  const age = getRosterAgeYears(player, referenceDate);
   return age !== null && age < 23;
 };

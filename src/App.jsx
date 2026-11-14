@@ -96,7 +96,7 @@ import { getPlayerPositionUsage } from './utils/playerPositionUsage';
 import {
   getRosterAgeLabel,
   getRosterFootLabel,
-  isRosterPlayerSub23,
+  isRosterPlayerOperationalSub23,
   mergeGlobalRosterProfile,
 } from './utils/rosterPlayerProfile';
 import { resolveOpponentTeamIdentity } from './utils/opponentTeamIdentity';
@@ -23622,7 +23622,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
         suspended,
         unavailable,
         availability,
-        sub23: isRosterPlayerSub23(player),
+        sub23: isRosterPlayerOperationalSub23(player),
         highLoad,
         touched,
         available: availability.status === PLAYER_AVAILABILITY.available,
@@ -31769,7 +31769,6 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                                   {rosterDashboard.launcherPlayerIds.has(player.id) ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">Lanzador</span> : null}
                                   {rosterRow.yellow ? <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">Amonestado</span> : null}
                                   {staffStatus.injured ? <span className="rounded-lg border border-red-200/20 bg-red-300/10 px-2 py-1 text-[10px] font-bold text-red-100">Lesionado</span> : null}
-                                  {staffStatus.sub23 ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">SUB-23</span> : null}
                                 </div>
                               </td>
                               <td className="px-4 py-3 font-bold text-white">{rosterRow.minutes ? `${rosterRow.minutes}'` : '-'}</td>
@@ -31815,7 +31814,6 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                           rosterDashboard.launcherPlayerIds.has(player.id) ? ['Lanzador', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
                           rosterRow.yellow ? ['Amonestado', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
                           staffStatus.injured ? ['Lesionado', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
-                          staffStatus.sub23 ? ['SUB-23', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
                         ].filter(Boolean);
                         return (
                         <PlayerNameTooltip key={player.id} player={player}>
@@ -31854,7 +31852,10 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                               >
                                 {positionLabel}
                               </p>
-                              <p className="mt-0.5 text-[10px] font-semibold text-slate-500" title={player.dob ? undefined : 'Falta indicar la fecha de nacimiento'}>{ageLabel}</p>
+                              <p className="mt-0.5 text-[10px] font-semibold text-slate-500" title={player.dob ? undefined : 'Falta indicar la fecha de nacimiento'}>
+                                {ageLabel}
+                                {staffStatus.sub23 ? <span className="ml-1 rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-1.5 py-0.5 text-[9px] font-bold text-caudal-electric">SUB-23</span> : null}
+                              </p>
                             </div>
                           </div>
                           <div className="mt-2 flex min-h-5 flex-wrap items-center gap-1 pl-[84px] pr-1">

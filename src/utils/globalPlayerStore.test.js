@@ -15,6 +15,7 @@ import {
   saveGlobalPlayerProfile,
   searchGlobalPlayersForTeam,
 } from './globalPlayerStore.js';
+import { getRosterAgeLabel, isRosterPlayerOperationalSub23 } from './rosterPlayerProfile.js';
 
 const imported = globalPlayerFromImportedPlayer({
   name: 'Aitor Ferrero', rawPositions: ['Defensa central', 'Pivote'], externalSource: 'transfermarkt', externalPlayerId: '123', sourceProfileUrl: 'https://tm.test/123',
@@ -151,6 +152,12 @@ assert.equal(await saveGlobalPlayerProfile(saveClient, {
   name: 'Agustín Porto', shirtName: ' Agus Porto ', dob: '2007-04-15', age: '19', foot: 'Derecha',
 }), savedGlobalId);
 assert.deepEqual(shirtNameUpdates, [{ patch: { shirt_name: 'Agus Porto' }, column: 'id', value: savedGlobalId }]);
+const reloadedSavedPlayer = normalizeGlobalPlayer({
+  id: savedGlobalId, name: 'Agustín Porto', dob: null, age: '19', foot: '',
+});
+assert.equal(getRosterAgeLabel(reloadedSavedPlayer, new Date(2026, 10, 14)), '19 años');
+assert.equal(isRosterPlayerOperationalSub23(reloadedSavedPlayer, new Date(2026, 10, 14)), true,
+  'la lectura normalizada tras guardar conserva la clasificación por edad alternativa');
 
 let membershipRpcCalls = 0;
 const membershipClient = {
