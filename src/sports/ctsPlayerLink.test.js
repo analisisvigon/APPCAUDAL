@@ -43,4 +43,16 @@ const app=readFileSync('src/App.jsx','utf8');
 const flow=app.slice(app.indexOf('const linkExistingGlobalPlayerToTeam'),app.indexOf('const openPlayerTeamManager'));
 assert.ok(flow.includes('linkAndConfirmCtsPlayer'));
 assert.ok(!flow.includes('assignGlobalPlayerToTeam'));
+assert.ok(flow.includes('rosterCoordinatorRef.current.isCurrent(token)'));
+// The scoped reads must not exclude a valid CTS because another global stage
+// remains current. Inspect both repository definitions of the read RPC.
+for (const path of ['supabase_multiclub_03_prepare.sql', 'supabase_multiclub_04c_staging_03a_core.sql']) {
+  const source=readFileSync(path,'utf8');
+  const body=source.slice(source.indexOf('function public.my_cts_jugadores_v1(')).split('$function$')[1];
+  assert.ok(body.includes('roster.club_team_season_id'));
+  assert.doesNotMatch(body,/is_current/);
+}
+const rosterSource=readFileSync('src/sports/ctsSportsData.js','utf8');
+const rosterRead=rosterSource.slice(rosterSource.indexOf('export async function loadCtsRoster'),rosterSource.indexOf('// Keep this attempt'));
+assert.doesNotMatch(rosterRead,/is_current/);
 console.log('CTS existing profile: linkage, reload, retry, permissions, closed season and static isolation OK. SQL not executed.');

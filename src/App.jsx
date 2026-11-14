@@ -24728,7 +24728,9 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       closeRivalPlayerModal();
       void loadTeams().catch((error) => console.error('[CTS_LINK_REFRESH]', error));
     } catch (linkError) {
-      setRivalPlayerSaveError(linkError.message || 'No se pudo incorporar al jugador.');
+      if (rosterCoordinatorRef.current.isCurrent(token)) {
+        setRivalPlayerSaveError(linkError.message || 'No se pudo incorporar al jugador.');
+      }
     } finally { rosterLinkBusyRef.current = false; setRivalPlayerSaving(false); }
   };
 
