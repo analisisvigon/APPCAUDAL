@@ -93,6 +93,12 @@ import {
   buildPlayerDelegatedSeasonExportSummary,
 } from './utils/playerDelegatedLiveReport';
 import { getPlayerPositionUsage } from './utils/playerPositionUsage';
+import {
+  getRosterAgeLabel,
+  getRosterFootLabel,
+  isRosterPlayerSub23,
+  mergeGlobalRosterProfile,
+} from './utils/rosterPlayerProfile';
 import { resolveOpponentTeamIdentity } from './utils/opponentTeamIdentity';
 import {
   createMatchPlayerIdentityIndex,
@@ -5058,8 +5064,6 @@ const formatRelativeProfileUpdate = (value) => {
 const scoutingPriorityLabel = (value) => ({
   very_high: 'Muy alta', high: 'Alta', medium: 'Media', low: 'Baja',
 }[value] || '');
-
-const playerLabel = (dob) => (calculateAge(dob) < 23 ? 'Sub-23' : 'Senior');
 
 const displayDorsal = (number) => (number ? number : '-');
 
@@ -23595,7 +23599,12 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     [performancePlayerRows]
   );
   const staffStatusByPlayerId = useMemo(() => {
-    return new Map(players.map((player) => {
+    const globalById = new Map(globalPlayers.map((player) => [String(player.globalPlayerId || player.id), player]));
+    return new Map(players.map((rosterPlayer) => {
+      const globalPlayer = rosterPlayer.globalPlayerId
+        ? globalById.get(String(rosterPlayer.globalPlayerId))
+        : null;
+      const player = mergeGlobalRosterProfile(rosterPlayer, globalPlayer);
       const performanceRow = performanceRowByPlayerId.get(player.id);
       const availability = getPlayerAvailabilityPresentation(player);
       const injured = availability.status === PLAYER_AVAILABILITY.injured;
@@ -23613,13 +23622,13 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
         suspended,
         unavailable,
         availability,
-        sub23: playerLabel(player.dob) === 'Sub-23',
+        sub23: isRosterPlayerSub23(player),
         highLoad,
         touched,
         available: availability.status === PLAYER_AVAILABILITY.available,
       }];
     }));
-  }, [matches, performancePlayerRows, performanceRowByPlayerId, players]);
+  }, [globalPlayers, matches, performancePlayerRows, performanceRowByPlayerId, players]);
   const squadSummary = useMemo(() => {
     const statuses = players.map((player) => staffStatusByPlayerId.get(player.id) || {});
     const injured = statuses.filter((status) => status.injured).length;
@@ -23683,9 +23692,10 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       const globalPlayer = player.globalPlayerId
         ? globalById.get(String(player.globalPlayerId))
         : null;
-      if (!globalPlayer) return player;
+      const mergedPlayer = mergeGlobalRosterProfile(player, globalPlayer);
+      if (!globalPlayer) return mergedPlayer;
       return {
-        ...player,
+        ...mergedPlayer,
         specificPosition: player.specificPosition || globalPlayer.specificPosition || '',
         primaryNaturalPosition: player.primaryNaturalPosition || globalPlayer.primaryNaturalPosition || '',
         secondaryNaturalPositions: player.secondaryNaturalPositions?.length
@@ -31736,7 +31746,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                               ? 'bg-amber-200 text-slate-950'
                               : 'bg-slate-300 text-slate-950';
                           const positionLabel = getPlayerPositionLabel(player);
-                          const ageLabel = player.dob ? `${calculateAge(player.dob)} años` : 'Edad no indicada';
+                          const ageLabel = getRosterAgeLabel(player);
                           return (
                             <tr key={player.id} onClick={() => setSelectedPlayerProfileId(player.id)} className="cursor-pointer border-t border-white/10 transition hover:bg-white/[0.06]">
                               <td className="px-4 py-3 font-black text-caudal-electric">#{displayDorsal(player.number)}</td>
@@ -31759,7 +31769,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                                   {rosterDashboard.launcherPlayerIds.has(player.id) ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">Lanzador</span> : null}
                                   {rosterRow.yellow ? <span className="rounded-lg border border-amber-200/20 bg-amber-200/10 px-2 py-1 text-[10px] font-bold text-amber-100">Amonestado</span> : null}
                                   {staffStatus.injured ? <span className="rounded-lg border border-red-200/20 bg-red-300/10 px-2 py-1 text-[10px] font-bold text-red-100">Lesionado</span> : null}
-                                  {staffStatus.sub23 ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">Sub-23</span> : null}
+                                  {staffStatus.sub23 ? <span className="rounded-lg border border-caudal-electric/20 bg-caudal-electric/10 px-2 py-1 text-[10px] font-bold text-caudal-electric">SUB-23</span> : null}
                                 </div>
                               </td>
                               <td className="px-4 py-3 font-bold text-white">{rosterRow.minutes ? `${rosterRow.minutes}'` : '-'}</td>
@@ -31791,7 +31801,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                             : 'border-slate-200/20 bg-slate-200/10 text-slate-200';
                         const minutesLabel = `${Number(rosterRow.minutes || 0)}'`;
                         const startsLabel = rosterRow.starts ? `${rosterRow.starts} TIT` : 'Sin participar';
-                        const footLabel = player.foot || 'Pierna no indicada';
+                        const footLabel = getRosterFootLabel(player.foot);
                         const positionLabel = getPlayerPositionLabel(player);
                         const hasSpecificPosition = Boolean(
                           player.primarySpecificPosition
@@ -31799,13 +31809,13 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                           || player.specificPosition
                           || player.specific_position
                         );
-                        const ageLabel = player.dob ? `${calculateAge(player.dob)} años` : 'Edad no indicada';
+                        const ageLabel = getRosterAgeLabel(player);
                         const tacticalChips = [
                           staffStatus.captain ? ['Capitán', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
                           rosterDashboard.launcherPlayerIds.has(player.id) ? ['Lanzador', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
                           rosterRow.yellow ? ['Amonestado', 'border-amber-200/20 bg-amber-200/10 text-amber-100'] : null,
                           staffStatus.injured ? ['Lesionado', 'border-red-200/20 bg-red-300/10 text-red-100'] : null,
-                          staffStatus.sub23 ? ['Sub-23', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
+                          staffStatus.sub23 ? ['SUB-23', 'border-caudal-electric/20 bg-caudal-electric/10 text-caudal-electric'] : null,
                         ].filter(Boolean);
                         return (
                         <PlayerNameTooltip key={player.id} player={player}>

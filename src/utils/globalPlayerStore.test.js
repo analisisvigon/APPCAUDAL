@@ -130,6 +130,9 @@ const saveClient = {
   rpc: async (name, args) => {
     assert.equal(name, 'save_global_player_profile');
     assert.equal(args.p_player.shirtName, 'Agus Porto');
+    assert.equal(args.p_player.dob, '2007-04-15');
+    assert.equal(args.p_player.age, '19');
+    assert.equal(args.p_player.foot, 'Derecha');
     return { data: savedGlobalId, error: null };
   },
   from: (table) => {
@@ -144,7 +147,9 @@ const saveClient = {
     };
   },
 };
-assert.equal(await saveGlobalPlayerProfile(saveClient, { name: 'Agustín Porto', shirtName: ' Agus Porto ' }), savedGlobalId);
+assert.equal(await saveGlobalPlayerProfile(saveClient, {
+  name: 'Agustín Porto', shirtName: ' Agus Porto ', dob: '2007-04-15', age: '19', foot: 'Derecha',
+}), savedGlobalId);
 assert.deepEqual(shirtNameUpdates, [{ patch: { shirt_name: 'Agus Porto' }, column: 'id', value: savedGlobalId }]);
 
 let membershipRpcCalls = 0;
