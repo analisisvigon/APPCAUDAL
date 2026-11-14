@@ -36,6 +36,7 @@ import MatchKeysPanel from './components/tactical/MatchKeysPanel';
 import MobileReadonlyTacticalPitch from './components/tactical/MobileReadonlyTacticalPitch';
 import MobileEditableTacticalPitch from './components/tactical/MobileEditableTacticalPitch';
 import TacticalCaptureSidebar from './components/tactical/TacticalCaptureSidebar';
+import { linkAndConfirmCtsPlayer } from './sports/ctsPlayerLink';
 import PlayerDatabaseForm from './components/players/PlayerDatabaseForm';
 import GlobalPlayerDatabase from './components/players/GlobalPlayerDatabase';
 import DailyLoadCard from './components/performance/DailyLoadCard';
@@ -5727,6 +5728,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   const [deletePlayerDialog, setDeletePlayerDialog] = useState(null);
   const [deletePlayerSaving, setDeletePlayerSaving] = useState(false);
   const rosterDepartureBusyRef = useRef(false);
+  const rosterLinkBusyRef = useRef(false);
   const [deletePlayerError, setDeletePlayerError] = useState('');
   const [deletePlayerNotice, setDeletePlayerNotice] = useState('');
   useEffect(() => {
@@ -24697,6 +24699,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   };
 
   const linkExistingGlobalPlayerToTeam = async (player, mode = 'replace') => {
+    if (rosterLinkBusyRef.current) return;
     if (mode === 'review') {
       openRivalPlayerModal(player, { standalone: true });
       return;
@@ -24708,24 +24711,25 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       return;
     }
     if (!teamId) return;
-    setRivalPlayerSaving(true);
-    setRivalPlayerSaveError('');
+    const token = rosterSnapshotRef.current;
+    const ownTarget = teams.some((team) => String(team.id) === String(teamId) && (team.isOwnClub || team.teamKind === 'own'));
+    rosterLinkBusyRef.current = true;
+    setRivalPlayerSaving(true); setRivalPlayerSaveError('');
     try {
-      if (sportsSnapshotRef.current) {
-        throw new Error('La vinculación de perfiles globales necesita una autorización por equipo y temporada.');
+      if (ownTarget) {
+        const roster = await linkAndConfirmCtsPlayer(supabase, rosterCoordinatorRef.current, token, { playerId, teamId });
+        rosterCoordinatorRef.current.assertWritable(token);
+        setPlayers(roster.map(normalizeSupabaseJugador)); setEmpty(roster.length === 0);
+        setPlayerSearchTerm(''); setPlayerQuickFilter('Todos');
+        setGlobalPlayerStatus('Jugador incorporado al CTS. Se conservan el equipo global y las relaciones anteriores.');
+      } else {
+        throw new Error('El traslado global queda bloqueado: selecciona un equipo propio y su temporada para incorporar al jugador sin alterar el origen.');
       }
-      await assignGlobalPlayerToTeam(supabase, { playerId, teamId, mode });
-      await loadTeams();
-      const ownPlayers = await getScopedJugadores();
-      setPlayers(ownPlayers);
-      setEmpty(ownPlayers.length === 0);
-      setGlobalPlayerStatus(mode === 'replace' ? 'Jugador global vinculado sin crear duplicados.' : 'Relación de equipo actualizada.');
       closeRivalPlayerModal();
+      void loadTeams().catch((error) => console.error('[CTS_LINK_REFRESH]', error));
     } catch (linkError) {
-      setRivalPlayerSaveError(linkError.message || 'No se pudo vincular el jugador al equipo.');
-    } finally {
-      setRivalPlayerSaving(false);
-    }
+      setRivalPlayerSaveError(linkError.message || 'No se pudo incorporar al jugador.');
+    } finally { rosterLinkBusyRef.current = false; setRivalPlayerSaving(false); }
   };
 
   const openPlayerTeamManager = (player = rivalPlayerModal.draft) => {

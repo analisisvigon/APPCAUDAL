@@ -163,9 +163,8 @@ export default function PlayerDatabaseForm({
                           {!canLink ? <p className="mt-2 text-[10px] font-bold text-amber-100">Perfil legacy pendiente de convertir. Abre la ficha antes de vincularlo.</p> : null}
                         </div>
                         <div className="flex flex-wrap gap-1.5">
-                          {!alreadyInTarget && canLink ? <button type="button" onClick={() => onLinkExisting(player, 'replace')} className="rounded-lg bg-caudal-electric px-2.5 py-1.5 text-[10px] font-black text-slate-950">{belongsElsewhere ? 'Mover a este equipo' : 'Vincular'}</button> : null}
-                          {belongsElsewhere ? <button type="button" disabled title="El proyecto permite un único equipo actual" className="cursor-not-allowed rounded-lg border border-white/10 px-2.5 py-1.5 text-[10px] font-black text-slate-600">Mantener ambas relaciones</button> : null}
-                          {alreadyInTarget ? <span className="rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-2.5 py-1.5 text-[10px] font-black text-emerald-100">Ya vinculado</span> : null}
+                          {canLink ? <button type="button" disabled={saving} onClick={() => onLinkExisting(player, 'cts')} className="rounded-lg bg-caudal-electric px-2.5 py-1.5 text-[10px] font-black text-slate-950 disabled:opacity-50">Incorporar a esta plantilla CTS</button> : null}
+                          <span className="text-[10px] text-slate-400">Se conservan el equipo global y las relaciones anteriores. La pertenencia a esta temporada se comprobará en el servidor.</span>
                           <button type="button" onClick={() => onLinkExisting(player, 'review')} className="rounded-lg border border-white/10 px-2.5 py-1.5 text-[10px] font-black text-white">Ver ficha</button>
                         </div>
                       </div>
