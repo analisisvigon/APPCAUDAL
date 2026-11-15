@@ -33,6 +33,7 @@ import { checkPlannedTaskSeries, checkPlannedTaskContent } from '../../data/plan
 import {
   createTrainingTaskFeedbackDraft,
   summarizeTrainingTaskRatings,
+  trainingTaskFeedbackErrorMessage,
   trainingTaskFeedbackToDraft,
   validateTrainingTaskFeedback,
 } from '../../utils/trainingTaskFeedback';
@@ -120,13 +121,13 @@ function FeedbackPanel({ rows, loading, error, draft, setDraft, editingId, savin
   return <section className="mt-5 border-t border-white/10 pt-5" aria-labelledby="training-task-feedback-title">
     <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-caudal-electric">Historial de uso</p><h3 id="training-task-feedback-title" className="mt-1 text-base font-black text-white">POST · Después de realizarla</h3><p className="mt-1 text-xs text-slate-500">¿Qué funcionó y qué modificarías?</p></div><div className="flex flex-wrap gap-2"><span className="rounded-xl bg-white/[0.05] px-3 py-2 text-xs font-black text-slate-300">{summary.ratingAverage ? `${summary.ratingAverage.toFixed(1)}/5` : 'Sin valoración'}</span><span className="rounded-xl bg-white/[0.05] px-3 py-2 text-xs font-black text-slate-400">{rows.length} {rows.length === 1 ? 'registro' : 'registros'}</span>{canManage ? <button type="button" aria-expanded={showForm} onClick={() => setShowForm((current) => !current)} className="min-h-9 rounded-xl bg-caudal-electric px-3 text-xs font-black text-slate-950">{showForm ? 'Ocultar formulario' : '+ Registrar experiencia'}</button> : null}</div></div>
     {canManage && showForm ? <div className="mt-4 grid gap-3 rounded-2xl border border-white/10 bg-black/15 p-3 md:grid-cols-[160px_1fr]">
-      <label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500">Fecha<input type="date" value={draft.usedOn} onChange={(event) => setDraft((current) => ({ ...current, usedOn: event.target.value }))} className="min-h-11 rounded-xl border border-white/10 bg-white px-3 text-sm font-bold text-slate-950" /></label>
-      <div><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Valoración</p><RatingStars value={draft.rating} onChange={(rating) => setDraft((current) => ({ ...current, rating }))} /></div>
-      <label className="grid gap-1 md:col-span-2"><span className="text-[10px] font-black uppercase tracking-wider text-slate-500">POST</span><textarea maxLength={4000} value={draft.post} onChange={(event) => setDraft((current) => ({ ...current, post: event.target.value }))} placeholder="¿Qué funcionó y qué modificarías?" className="min-h-24 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-600 focus:border-caudal-electric/60" /></label>
-      {error ? <p role="alert" className="text-xs font-bold text-red-200 md:col-span-2">{error}</p> : null}
+      <label className="grid gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500">Fecha<input type="date" disabled={saving} value={draft.usedOn} onChange={(event) => setDraft((current) => ({ ...current, usedOn: event.target.value }))} className="min-h-11 rounded-xl border border-white/10 bg-white px-3 text-sm font-bold text-slate-950 disabled:opacity-60" /></label>
+      <div><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Valoración</p><div className={saving ? 'pointer-events-none opacity-60' : ''}><RatingStars value={draft.rating} onChange={(rating) => setDraft((current) => ({ ...current, rating }))} /></div></div>
+      <label className="grid gap-1 md:col-span-2"><span className="text-[10px] font-black uppercase tracking-wider text-slate-500">POST</span><textarea disabled={saving} maxLength={4000} value={draft.post} onChange={(event) => setDraft((current) => ({ ...current, post: event.target.value }))} placeholder="¿Qué funcionó y qué modificarías?" className="min-h-24 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-600 focus:border-caudal-electric/60 disabled:opacity-60" /></label>
       <div className="flex justify-end gap-2 md:col-span-2">{editingId ? <button type="button" onClick={onCancelEdit} className="min-h-10 rounded-xl bg-white/[0.06] px-3 text-xs font-black text-slate-300">Cancelar edición</button> : null}<button type="button" disabled={saving} onClick={onSave} className="min-h-10 rounded-xl bg-caudal-electric px-4 text-xs font-black text-slate-950 disabled:opacity-50">{saving ? 'Guardando…' : editingId ? 'Guardar cambios' : 'Guardar POST'}</button></div>
     </div> : null}
-    <div className="mt-4 grid gap-2">{loading ? <p className="text-xs text-slate-500">Cargando historial…</p> : rows.length ? rows.map((entry) => <article key={entry.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-xs font-black text-white">{formatDate(`${entry.usedOn}T00:00:00`)}</p>{entry.rating ? <div className="mt-1 text-sm"><RatingStars value={entry.rating} /> <span className="ml-1 text-xs font-bold text-slate-400">{entry.rating}/5</span></div> : <p className="mt-1 text-[10px] font-bold uppercase text-slate-500">Sin valoración</p>}</div>{canManage && entry.author_user_id === userId ? <div className="flex gap-1"><button type="button" onClick={() => onEdit(entry)} className="min-h-10 rounded-lg px-2 text-[10px] font-black text-slate-300 hover:bg-white/10">Editar</button><button type="button" onClick={() => onDelete(entry)} className="min-h-10 rounded-lg px-2 text-[10px] font-black text-red-200 hover:bg-red-500/10">Eliminar</button></div> : null}</div>{entry.post ? <p className="mt-2 whitespace-pre-wrap text-sm leading-5 text-slate-300">{entry.post}</p> : null}</article>) : <p className="rounded-xl border border-dashed border-white/10 p-4 text-center text-xs text-slate-500">Todavía no hay experiencias registradas.</p>}</div>
+    {error ? <p role="alert" className="mt-3 text-xs font-bold text-red-200">{error}</p> : null}
+    <div className="mt-4 grid gap-2">{loading ? <p className="text-xs text-slate-500">Cargando historial…</p> : error ? null : rows.length ? rows.map((entry) => <article key={entry.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-xs font-black text-white">{formatDate(`${entry.usedOn}T00:00:00`)}</p>{entry.rating ? <div className="mt-1 text-sm"><RatingStars value={entry.rating} /> <span className="ml-1 text-xs font-bold text-slate-400">{entry.rating}/5</span></div> : <p className="mt-1 text-[10px] font-bold uppercase text-slate-500">Sin valoración</p>}</div>{canManage && entry.author_user_id === userId ? <div className="flex gap-1"><button type="button" onClick={() => onEdit(entry)} className="min-h-10 rounded-lg px-2 text-[10px] font-black text-slate-300 hover:bg-white/10">Editar</button><button type="button" onClick={() => onDelete(entry)} className="min-h-10 rounded-lg px-2 text-[10px] font-black text-red-200 hover:bg-red-500/10">Eliminar</button></div> : null}</div>{entry.post ? <p className="mt-2 whitespace-pre-wrap text-sm leading-5 text-slate-300">{entry.post}</p> : null}</article>) : <p className="rounded-xl border border-dashed border-white/10 p-4 text-center text-xs text-slate-500">Todavía no hay experiencias registradas.</p>}</div>
   </section>;
 }
 
@@ -168,10 +169,12 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
   const [shareIds, setShareIds] = useState([]);
   const [feedbackRows, setFeedbackRows] = useState([]);
   const [feedbackDraft, setFeedbackDraft] = useState(createTrainingTaskFeedbackDraft);
+  const feedbackDraftBaseline = useRef(feedbackDraft);
   const [feedbackEditingId, setFeedbackEditingId] = useState(null);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [feedbackError, setFeedbackError] = useState('');
+  const feedbackSaveLock = useRef(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [draftBaseline, setDraftBaseline] = useState(null);
   const [exportOpen, setExportOpen] = useState(false);
@@ -250,6 +253,9 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
   }, []);
 
   const visibleTasks = useMemo(() => filterTrainingTasks(tasks, filters, userId), [tasks, filters, userId]);
+  const canManageClubTrainingTasks = Boolean(
+    membership?.is_active && ['owner', 'admin', 'staff'].includes(membership.role)
+  );
   const advancedFilterCount = countActiveTrainingTaskAdvancedFilters(filters);
   const activeFilterChips = useMemo(() => {
     const labels = {
@@ -271,6 +277,8 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     });
   }, [filters]);
   const draftDirty = useMemo(() => Boolean(draft && draftBaseline && JSON.stringify(draft) !== JSON.stringify(draftBaseline)), [draft, draftBaseline]);
+  const feedbackDraftDirty = Boolean(feedbackEditingId)
+    || JSON.stringify(feedbackDraft) !== JSON.stringify(feedbackDraftBaseline.current);
   const clearFilters = () => { setFilters(createTrainingTaskFilters()); setShowAdvancedFilters(false); };
   const clearFilter = (key) => setFilters((current) => ({ ...current, [key]: '' }));
   const openExportDialog = () => {
@@ -324,31 +332,39 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
   const openNew = () => {
     const nextDraft = createTrainingTaskDraft();
     setSelected(null); setFeedbackRows([]); setDraftBaseline(nextDraft); setDraft(nextDraft); setError('');
+    resetFeedbackDraft();
   };
   const loadFeedback = async (task) => {
-    setFeedbackRows([]); setFeedbackDraft(createTrainingTaskFeedbackDraft()); setFeedbackEditingId(null); setFeedbackError(''); setFeedbackLoading(true);
+    const nextDraft = createTrainingTaskFeedbackDraft();
+    feedbackDraftBaseline.current = nextDraft;
+    setFeedbackRows([]); setFeedbackDraft(nextDraft); setFeedbackEditingId(null); setFeedbackError(''); setFeedbackLoading(true);
     try { setFeedbackRows(await loadTrainingTaskFeedback(supabase, task.id)); }
-    catch (loadError) { setFeedbackError(loadError.message || 'No se pudo cargar el historial POST.'); }
+    catch (loadError) { setFeedbackError(trainingTaskFeedbackErrorMessage(loadError, 'cargar')); }
     finally { setFeedbackLoading(false); }
   };
   const openEdit = (task) => {
     if (task.author_user_id !== userId) return;
     const nextDraft = trainingTaskToDraft(task);
-    setSelected(task); setDraftBaseline(nextDraft); setDraft(nextDraft); setError(''); loadFeedback(task);
+    setSelected(task); setDraftBaseline(nextDraft); setDraft(nextDraft); setError(''); setStatus(''); loadFeedback(task);
   };
   const closeEditor = () => {
-    if (draftDirty && !window.confirm('Hay cambios sin guardar. ¿Quieres descartarlos?')) return;
+    if ((draftDirty || feedbackDraftDirty) && !window.confirm('Hay cambios sin guardar. ¿Quieres descartarlos?')) return;
     setDraft(null); setDraftBaseline(null); setError('');
     if (!selected) setFeedbackRows([]);
     resetFeedbackDraft();
   };
   useEffect(() => {
-    if (!draftDirty) return undefined;
+    if (!draftDirty && !feedbackDraftDirty) return undefined;
     const warnBeforeUnload = (event) => { event.preventDefault(); event.returnValue = ''; };
     window.addEventListener('beforeunload', warnBeforeUnload);
     return () => window.removeEventListener('beforeunload', warnBeforeUnload);
-  }, [draftDirty]);
+  }, [draftDirty, feedbackDraftDirty]);
   const save = async () => {
+    if (feedbackDraftDirty) {
+      setStatus('');
+      setError('Hay una experiencia POST sin guardar. Pulsa «Guardar POST» para conservarla antes de guardar la tarea.');
+      return;
+    }
     if (!contentSupported && [draft?.exerciseRules, draft?.tacticalOffensiveContent,
       draft?.tacticalDefensiveContent].some(Boolean)) {
       setError('Instala y verifica la migración de contenido antes de guardar estos campos.'); return;
@@ -385,7 +401,16 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     setDraft(null);
     setDraftBaseline(null);
     setSelected(task);
+    setStatus('');
     await loadFeedback(task);
+  };
+  const closeTaskDetail = () => {
+    if (feedbackDraftDirty && !window.confirm('Hay una experiencia POST sin guardar. ¿Quieres descartarla?')) return;
+    setSelected(null);
+    setFeedbackRows([]);
+    resetFeedbackDraft();
+    setError('');
+    setStatus('');
   };
   const download = async (task) => { const { data, error: urlError } = await supabase.storage.from(BUCKET).createSignedUrl(task.attachmentPath, 3600, { download: task.attachmentName || true }); if (urlError) { setError(urlError.message); return; } window.open(data.signedUrl, '_blank', 'noopener,noreferrer'); };
   const duplicate = async (task) => { if (!seriesSupported && (task.seriesCount || task.minutesPerSeries)) { setError('No se ha verificado la compatibilidad de series; vuelve a cargar antes de duplicar.'); return; } if (!contentSupported && (task.exerciseRules || task.tacticalOffensiveContent || task.tacticalDefensiveContent)) { setError('No se ha verificado la compatibilidad del contenido nuevo; vuelve a cargar antes de duplicar.'); return; } try { const copy = await duplicateTrainingTask(supabase, task, { clubId, authorUserId: userId, seriesEnabled: seriesSupported, contentEnabled: contentSupported }); setTasks((current) => [copy, ...current]); setStatus('Tarea duplicada en tu biblioteca.'); } catch (duplicateError) { setError(duplicateError.message || 'No se pudo duplicar.'); } };
@@ -414,11 +439,17 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     setTasks((current) => current.map((task) => task.id === taskId ? { ...task, ...summary, feedbackSearchText } : task));
     setSelected((current) => current?.id === taskId ? { ...current, ...summary, feedbackSearchText } : current);
   };
-  const resetFeedbackDraft = () => { setFeedbackDraft(createTrainingTaskFeedbackDraft()); setFeedbackEditingId(null); setFeedbackError(''); };
+  const resetFeedbackDraft = () => {
+    const nextDraft = createTrainingTaskFeedbackDraft();
+    feedbackDraftBaseline.current = nextDraft;
+    setFeedbackDraft(nextDraft); setFeedbackEditingId(null); setFeedbackError('');
+  };
   const saveFeedback = async () => {
-    if (!selected) return;
+    if (!selected || feedbackSaveLock.current) return;
+    setStatus('');
     const validation = validateTrainingTaskFeedback(feedbackDraft);
     if (Object.keys(validation).length) { setFeedbackError(Object.values(validation)[0]); return; }
+    feedbackSaveLock.current = true;
     setFeedbackSaving(true);
     setFeedbackError('');
     try {
@@ -432,10 +463,15 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
       applyFeedbackRows(selected.id, orderedRows);
       resetFeedbackDraft();
       setStatus(feedbackEditingId ? 'POST actualizado.' : 'POST añadido al historial.');
-    } catch (saveError) { setFeedbackError(saveError.message || 'No se pudo guardar el POST.'); }
-    finally { setFeedbackSaving(false); }
+    } catch (saveError) { setFeedbackError(trainingTaskFeedbackErrorMessage(saveError)); }
+    finally { feedbackSaveLock.current = false; setFeedbackSaving(false); }
   };
-  const editFeedback = (entry) => { if (entry.author_user_id !== userId) return; setFeedbackEditingId(entry.id); setFeedbackDraft(trainingTaskFeedbackToDraft(entry)); setFeedbackError(''); };
+  const editFeedback = (entry) => {
+    if (entry.author_user_id !== userId) return;
+    const nextDraft = trainingTaskFeedbackToDraft(entry);
+    feedbackDraftBaseline.current = nextDraft;
+    setFeedbackEditingId(entry.id); setFeedbackDraft(nextDraft); setFeedbackError('');
+  };
   const removeFeedback = async (entry) => {
     if (entry.author_user_id !== userId || !window.confirm('¿Eliminar esta entrada POST?')) return;
     try {
@@ -443,7 +479,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
       applyFeedbackRows(selected.id, feedbackRows.filter((item) => item.id !== entry.id));
       if (feedbackEditingId === entry.id) resetFeedbackDraft();
       setStatus('POST eliminado.');
-    } catch (deleteError) { setFeedbackError(deleteError.message || 'No se pudo eliminar el POST.'); }
+    } catch (deleteError) { setFeedbackError(trainingTaskFeedbackErrorMessage(deleteError, 'eliminar')); }
   };
 
   if (!clubId) return <section className="rounded-2xl border border-amber-200/20 bg-amber-200/10 p-5 text-sm text-amber-100">No hay un club activo disponible para cargar Tareas.</section>;
@@ -485,8 +521,8 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
       powerpointBusy={Boolean(powerpointBusyTaskId)}
       powerpointError={powerpointError?.taskId === selected.id ? powerpointError.message : ''}
       onMediaChange={(media) => applyTaskMedia(selected.id, media)}
-      onClose={() => { setSelected(null); setFeedbackRows([]); resetFeedbackDraft(); setError(''); }}
-      feedbackContent={<FeedbackPanel rows={feedbackRows} loading={feedbackLoading} error={feedbackError} draft={feedbackDraft} setDraft={setFeedbackDraft} editingId={feedbackEditingId} saving={feedbackSaving} userId={userId} onSave={saveFeedback} onEdit={editFeedback} onCancelEdit={resetFeedbackDraft} onDelete={removeFeedback} canManage={false} />}
+      onClose={closeTaskDetail}
+      feedbackContent={<FeedbackPanel rows={feedbackRows} loading={feedbackLoading} error={feedbackError} draft={feedbackDraft} setDraft={setFeedbackDraft} editingId={feedbackEditingId} saving={feedbackSaving} userId={userId} onSave={saveFeedback} onEdit={editFeedback} onCancelEdit={resetFeedbackDraft} onDelete={removeFeedback} canManage={canManageClubTrainingTasks} />}
     /> : null}
     {!draft && !selected ? <><section className="rounded-[1.25rem] border border-white/10 bg-[#091428]/78 p-3">
       <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_180px_160px_180px_auto]">

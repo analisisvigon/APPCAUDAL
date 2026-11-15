@@ -40,4 +40,59 @@ assert.equal(deletedId, 'entry-1', 'DELETE apunta solo a la entrada elegida');
 
 await assert.rejects(deleteTrainingTaskFeedback({ from: () => ({ delete: () => ({ eq: () => ({ select: async () => ({ data: [], error: null }) }) }) }) }, 'foreign-entry'), /permisos/, 'DELETE sin fila visible no simula éxito');
 
+const persisted = [];
+let nextId = 0;
+const persistentClient = {
+  from(table) {
+    assert.equal(table, 'training_task_feedback');
+    return {
+      insert(payload) {
+        return {
+          select() {
+            return {
+              single: async () => {
+                const row = { ...payload, id: `persisted-${++nextId}`, created_at: `2027-01-0${nextId}T10:00:00Z` };
+                persisted.push(row);
+                return { data: row, error: null };
+              },
+            };
+          },
+        };
+      },
+      select() {
+        return {
+          eq(column, taskId) {
+            assert.equal(column, 'task_id');
+            this.taskId = taskId;
+            return this;
+          },
+          order() { return this; },
+          then(resolve) { resolve({ data: persisted.filter((row) => row.task_id === this.taskId), error: null }); },
+        };
+      },
+    };
+  },
+};
+const firstForTask = await createTrainingTaskFeedback(persistentClient,
+  { usedOn: '2027-01-01', rating: 5, post: 'Primera experiencia' },
+  { taskId: 'original-task', clubId: 'club-1', authorUserId: 'user-1' });
+const secondForTask = await createTrainingTaskFeedback(persistentClient,
+  { usedOn: '2027-01-02', rating: 4, post: 'Segunda experiencia' },
+  { taskId: 'original-task', clubId: 'club-1', authorUserId: 'user-1' });
+await createTrainingTaskFeedback(persistentClient,
+  { usedOn: '2027-01-03', rating: 3, post: 'Otra tarea' },
+  { taskId: 'different-task', clubId: 'club-1', authorUserId: 'user-1' });
+assert.notEqual(firstForTask.id, secondForTask.id, 'cada guardado confirmado obtiene su propio registro');
+const reloaded = await loadTrainingTaskFeedback(persistentClient, 'original-task');
+assert.deepEqual(reloaded.map(({ id }) => id).sort(), [firstForTask.id, secondForTask.id].sort(), 'dos experiencias se recuperan sin sobrescribirse tras recargar');
+assert.ok(reloaded.every((row) => row.task_id === 'original-task'), 'el historial solo recupera experiencias de la tarea pedida');
+assert.deepEqual(reloaded.map(({ post, rating }) => [post, rating]).sort(), [
+  ['Primera experiencia', 5],
+  ['Segunda experiencia', 4],
+], 'se conservan comentario y valoración de cada experiencia');
+await assert.rejects(createTrainingTaskFeedback({
+  from: () => ({ insert: () => ({ select: () => ({ single: async () => ({ data: null, error: Object.assign(new Error('permission denied'), { code: '42501' }) }) }) }) }),
+}, { usedOn: '2027-01-04', rating: null, post: 'Se conserva el borrador' },
+{ taskId: 'original-task', clubId: 'club-1', authorUserId: 'user-1' }), /permission denied/, 'un error de guardado no simula éxito');
+
 console.log('training task feedback store tests passed');

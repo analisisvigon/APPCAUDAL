@@ -4,6 +4,7 @@ import {
   createTrainingTaskFeedbackDraft,
   sortTrainingTaskFeedback,
   summarizeTrainingTaskRatings,
+  trainingTaskFeedbackErrorMessage,
   validateTrainingTaskFeedback,
 } from './trainingTaskFeedback.js';
 
@@ -36,5 +37,7 @@ const history = sortTrainingTaskFeedback([
 assert.deepEqual(history.map(({ id }) => id), ['newest-created', 'newer-created', 'old'], 'el historial ordena fecha de uso y creación descendentes');
 assert.equal(history.length, 3, 'varias entradas de una tarea conviven sin sobrescribirse');
 assert.match(createTrainingTaskFeedbackDraft(new Date('2026-10-04T12:00:00')).usedOn, /^2026-10-04$/, 'el borrador propone una fecha local editable');
+assert.match(trainingTaskFeedbackErrorMessage({ code: '42501' }), /permisos.*conserva/i, 'RLS muestra un error comprensible y no da por perdido el texto');
+assert.match(trainingTaskFeedbackErrorMessage({ message: 'Failed to fetch' }), /conectar.*conserva/i, 'un fallo de red informa que el borrador se conserva');
 
 console.log('training task feedback tests passed');

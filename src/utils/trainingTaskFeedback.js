@@ -35,6 +35,20 @@ export const validateTrainingTaskFeedback = (draft = {}) => {
   return errors;
 };
 
+export const trainingTaskFeedbackErrorMessage = (cause, action = 'guardar') => {
+  const message = String(cause?.message || '');
+  if (cause?.code === '42501' || /row-level security|permission denied/i.test(message)) {
+    return `No tienes permisos para ${action} esta experiencia POST. El texto introducido se conserva.`;
+  }
+  if (/failed to fetch|network|connection|timeout/i.test(message)) {
+    return `No se pudo conectar con Supabase para ${action} la experiencia POST. Comprueba la conexión e inténtalo de nuevo; el texto introducido se conserva.`;
+  }
+  if (cause?.code === '23514') {
+    return 'La base de datos rechazó los datos de la experiencia. Revisa la fecha, la valoración y el comentario.';
+  }
+  return `No se pudo ${action} la experiencia POST${message ? `: ${message}` : '. El texto introducido se conserva.'}`;
+};
+
 export const buildTrainingTaskFeedbackPayload = (draft, { taskId, clubId, authorUserId } = {}) => ({
   task_id: taskId,
   club_id: clubId,
