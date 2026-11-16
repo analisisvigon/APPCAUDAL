@@ -31226,7 +31226,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                           <div className="mt-3 flex flex-wrap items-center gap-2">
                             <span className="rounded-2xl border border-caudal-electric/30 bg-caudal-electric/90 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-950">{selectedPlayerProfile.position || 'Sin demarcación'}</span>
                             <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">#{displayDorsal(selectedPlayerProfile.number)}</span>
-                            <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">{formatPlayerReportAge(calculateAge(selectedPlayerProfile.dob)) || 'Edad no indicada'}</span>
+                            <span className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-300">{getRosterAgeLabel(rosterDisplayPlayers.find((player) => player.id === selectedPlayerProfile.id) || selectedPlayerProfile)}</span>
                             <span className="rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-xs font-bold text-slate-400">Pie {selectedPlayerProfile.foot || 'no indicado'}</span>
                           </div>
                         </div>

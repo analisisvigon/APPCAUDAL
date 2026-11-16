@@ -15,6 +15,9 @@ assert.ok(start >= 0 && end > start, 'No se pudo aislar la ficha web individual'
 
 const profile = source.slice(start, end);
 
+assert.match(profile, /getRosterAgeLabel\(rosterDisplayPlayers\.find\(\(player\) => player\.id === selectedPlayerProfile\.id\) \|\| selectedPlayerProfile\)/,
+  'la cabecera de la ficha usa la misma edad y el mismo perfil global enriquecido que Plantilla');
+
 for (const removedCopy of [
   'Focos de trabajo',
   'Evolución temporada',
