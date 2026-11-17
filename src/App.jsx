@@ -65,6 +65,8 @@ import {
 import PlayerPositionUsageSummary from './components/player/PlayerPositionUsageSummary';
 import PlayerMatchPositionSummary from './components/player/PlayerMatchPositionSummary';
 import PlayerAvatar from './components/player/PlayerAvatar';
+import PlayerTrainingAttendanceSummary from './components/player/PlayerTrainingAttendanceSummary.jsx';
+import { loadPlayerTrainingAttendance } from './data/plannedSessionsStore.js';
 import SetPieceResponsibilityPanel, { SetPieceResponsibilityBadge } from './components/tactical/SetPieceResponsibilityPanel';
 import PlayerNumberName from './components/player/PlayerNumberName';
 import { getPlayerAvatarSource } from './utils/playerAvatarPresentation';
@@ -6076,6 +6078,10 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   const [playerProfileData, setPlayerProfileData] = useState(null);
   const [playerProfileLoading, setPlayerProfileLoading] = useState(false);
   const [playerProfileError, setPlayerProfileError] = useState('');
+  const [playerTrainingAttendance, setPlayerTrainingAttendance] = useState(null);
+  const [playerTrainingAttendanceLoading, setPlayerTrainingAttendanceLoading] = useState(false);
+  const [playerTrainingAttendanceError, setPlayerTrainingAttendanceError] = useState('');
+  const [playerTrainingAttendanceRefresh, setPlayerTrainingAttendanceRefresh] = useState(0);
   const [groupCompetitionFilter, setGroupCompetitionFilter] = useState('Temporada');
   const [groupContextFilter, setGroupContextFilter] = useState('Todos');
   const [groupQuickReviewedOnly, setGroupQuickReviewedOnly] = useState(true);
@@ -23462,6 +23468,43 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     loadPlayerProfileData(selectedPlayerProfile);
   }, [selectedPlayerProfileId]);
 
+  useEffect(() => {
+    const refreshAttendance = () => setPlayerTrainingAttendanceRefresh((current) => current + 1);
+    window.addEventListener('focus', refreshAttendance);
+    return () => window.removeEventListener('focus', refreshAttendance);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedPlayerProfile || activeTab !== 'Plantilla') {
+      setPlayerTrainingAttendance(null);
+      setPlayerTrainingAttendanceError('');
+      setPlayerTrainingAttendanceLoading(false);
+      return undefined;
+    }
+
+    let isCurrent = true;
+    const now = new Date();
+    const beforeDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const clubTeamSeasonId = rosterAccess.context?.id || '';
+    setPlayerTrainingAttendance(null);
+    setPlayerTrainingAttendanceError('');
+    setPlayerTrainingAttendanceLoading(true);
+    loadPlayerTrainingAttendance(supabase, selectedPlayerProfile.id, clubTeamSeasonId, beforeDate)
+      .then((summary) => {
+        if (isCurrent) setPlayerTrainingAttendance(summary);
+      })
+      .catch((attendanceError) => {
+        if (!isCurrent) return;
+        console.error('Error cargando participación en entrenamientos:', attendanceError);
+        setPlayerTrainingAttendanceError(attendanceError.message || 'No se pudo cargar la participación en entrenamientos.');
+      })
+      .finally(() => {
+        if (isCurrent) setPlayerTrainingAttendanceLoading(false);
+      });
+
+    return () => { isCurrent = false; };
+  }, [selectedPlayerProfileId, rosterAccess.context?.id, activeTab, playerTrainingAttendanceRefresh]);
+
   const openMatchPage = (match, section) => requestMatchPlanNavigation({
     type: selectedMatchId && String(selectedMatchId) !== String(match.id) ? 'change-match' : 'change-match-section',
     execute: async () => {
@@ -31250,6 +31293,13 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                       </div>
                     ) : null}
                   </section>
+
+                  <PlayerTrainingAttendanceSummary
+                    summary={playerTrainingAttendance}
+                    loading={playerTrainingAttendanceLoading}
+                    error={playerTrainingAttendanceError}
+                    contextAvailable={Boolean(rosterAccess.context?.id)}
+                  />
 
                   <AccordionSection title="Estadísticas principales" subtitle="Datos base del periodo analizado" defaultOpen>
                   <section className="rounded-[1.5rem] border border-white/10 bg-[#091428]/70 p-5 shadow-[0_14px_45px_rgba(0,0,0,0.14)]">

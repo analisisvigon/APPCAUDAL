@@ -1,4 +1,5 @@
 import { parsePlannedSessionValue } from '../utils/plannedSessionValue.js';
+import { summarizePlayerTrainingAttendance } from '../utils/playerTrainingAttendance.js';
 import { normalizeOwnClubName } from '../constants/clubIdentity.js';
 
 // Activar solo después de instalar y verificar el backend de ciclo de vida con identidades reales.
@@ -88,6 +89,42 @@ export const checkPlannedTaskContent = async (client) => {
   if (!result.error) return result.data === true;
   if (['42883', 'PGRST202', 'PGRST205'].includes(result.error.code)) return false;
   throw result.error;
+};
+
+export const loadPlayerTrainingAttendance = async (client, playerId, clubTeamSeasonId, beforeDate) => {
+  if (!playerId || !clubTeamSeasonId) return summarizePlayerTrainingAttendance();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(beforeDate || '')) {
+    throw new Error('La fecha de corte del resumen de entrenamientos no es válida.');
+  }
+
+  let sessionsQuery = client.from('planned_training_sessions')
+    .select(`id,session_date,planning_state${SESSION_RETIREMENT_BACKEND_VERIFIED ? ',cancelled_at,retired_at' : ''}`)
+    .eq('club_team_season_id', clubTeamSeasonId)
+    .eq('planning_state', 'confirmed')
+    .lt('session_date', beforeDate);
+  if (SESSION_RETIREMENT_BACKEND_VERIFIED) {
+    sessionsQuery = sessionsQuery.is('cancelled_at', null).is('retired_at', null);
+  }
+  const sessions = unwrap(await sessionsQuery) || [];
+  const eligibleSessions = sessions.filter((row) => row.id && row.planning_state === 'confirmed' &&
+    row.session_date < beforeDate &&
+    (!SESSION_RETIREMENT_BACKEND_VERIFIED || (!row.cancelled_at && !row.retired_at)));
+  if (!eligibleSessions.length) return summarizePlayerTrainingAttendance();
+
+  const sessionIds = eligibleSessions.map((row) => row.id);
+  const rosterRows = unwrap(await client.from('planned_session_player_roster')
+    .select('session_id').eq('player_id', playerId).in('session_id', sessionIds)) || [];
+  const countedSessionIds = [...new Set(rosterRows
+    .map((row) => row.session_id)
+    .filter((sessionId) => sessionIds.includes(sessionId)))];
+  if (!countedSessionIds.length) return summarizePlayerTrainingAttendance();
+
+  const availabilityRows = unwrap(await client.from('planned_session_player_availability')
+    .select('session_id,status').eq('player_id', playerId).in('session_id', countedSessionIds)) || [];
+  return summarizePlayerTrainingAttendance(
+    countedSessionIds.map((session_id) => ({ session_id })),
+    availabilityRows,
+  );
 };
 
 export const savePlannedSessionMaterial = async (client, sessionId, revision, state) =>
