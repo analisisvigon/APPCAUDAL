@@ -90,6 +90,41 @@
 .planned-sheet-roster .planned-sheet-pending { border-right: 1px solid #111; text-align: center; }
 .planned-sheet-roster .planned-sheet-pending:last-child { border-right: 0; }
 .planned-sheet-roster .planned-sheet-pending b { display: block; padding: 1.5mm; background: #111; color: #fff; font-size: 10pt; }
+
+@media screen {
+  .planned-document-viewport .planned-sheet-roster {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .planned-document-viewport .planned-sheet-roster .planned-roster-group-two-columns .planned-roster-players {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-auto-flow: row;
+  }
+  .planned-document-viewport .planned-roster-player {
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 1.2mm;
+    row-gap: .5mm;
+  }
+  .planned-document-viewport .planned-roster-name {
+    flex: 1 1 18ch;
+    min-width: 12ch;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+  .planned-document-viewport .planned-roster-player select,
+  .planned-document-viewport .planned-roster-group-two-columns .planned-roster-player select {
+    flex: 0 1 44mm;
+    max-width: 44mm;
+    min-height: 6mm;
+    margin-left: 0;
+    font-size: 7pt;
+  }
+  .planned-document-viewport .planned-roster-observation-editor {
+    font-size: 7pt;
+  }
+}
+
 .planned-sheet-cover-lower { display: grid; grid-template-columns: 25% 25% 50%; min-height: 85mm; }
 .planned-sheet-pending { box-sizing: border-box; position: relative; min-width: 0; padding: 2mm; color: #777; background: #fbfbfb; font-size: 7pt; text-align: center; }
 .planned-sheet-pending b { display: block; color: #333; font-size: 8pt; text-transform: uppercase; }
