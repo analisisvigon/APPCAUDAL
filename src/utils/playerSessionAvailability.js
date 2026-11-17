@@ -1,6 +1,6 @@
 import { PLAYER_STATUSES } from './plannedSessionPlayers.js';
 
-export const PLAYER_TRAINING_ATTENDANCE_COLORS = {
+export const PLAYER_SESSION_AVAILABILITY_COLORS = {
   available: '#34d399',
   absent: '#94a3b8',
   injured: '#fb7185',
@@ -8,7 +8,7 @@ export const PLAYER_TRAINING_ATTENDANCE_COLORS = {
   first_team: '#60a5fa',
 };
 
-export const summarizePlayerTrainingAttendance = (rosterRows = [], availabilityRows = []) => {
+export const summarizePlayerSessionAvailability = (rosterRows = [], availabilityRows = []) => {
   const sessionIds = new Set(rosterRows.map((row) => row.session_id).filter(Boolean));
   const statusBySession = new Map();
   const knownStatuses = new Set(PLAYER_STATUSES.map((status) => status.key));
@@ -27,19 +27,25 @@ export const summarizePlayerTrainingAttendance = (rosterRows = [], availabilityR
 
   const total = sessionIds.size;
   const counts = Object.fromEntries(PLAYER_STATUSES.map(({ key }) => [key, 0]));
+  let defaultAvailableCount = 0;
+  let explicitAvailableCount = 0;
   for (const sessionId of sessionIds) {
-    const status = statusBySession.get(sessionId) || 'available';
-    counts[status] += 1;
+    const status = statusBySession.get(sessionId);
+    if (!status) defaultAvailableCount += 1;
+    if (status === 'available') explicitAvailableCount += 1;
+    counts[status || 'available'] += 1;
   }
 
   return {
     total,
+    defaultAvailableCount,
+    explicitAvailableCount,
     states: PLAYER_STATUSES.map(({ key, label }) => ({
       key,
       label,
       count: counts[key],
       percentage: total ? (counts[key] / total) * 100 : 0,
-      color: PLAYER_TRAINING_ATTENDANCE_COLORS[key],
+      color: PLAYER_SESSION_AVAILABILITY_COLORS[key],
     })),
   };
 };

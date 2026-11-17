@@ -65,8 +65,11 @@ import {
 import PlayerPositionUsageSummary from './components/player/PlayerPositionUsageSummary';
 import PlayerMatchPositionSummary from './components/player/PlayerMatchPositionSummary';
 import PlayerAvatar from './components/player/PlayerAvatar';
-import PlayerTrainingAttendanceSummary from './components/player/PlayerTrainingAttendanceSummary.jsx';
-import { loadPlayerTrainingAttendance } from './data/plannedSessionsStore.js';
+import PlayerSessionAvailabilitySummary from './components/player/PlayerSessionAvailabilitySummary.jsx';
+import {
+  loadPlayerSessionAvailability,
+  SESSION_RETIREMENT_BACKEND_VERIFIED,
+} from './data/plannedSessionsStore.js';
 import SetPieceResponsibilityPanel, { SetPieceResponsibilityBadge } from './components/tactical/SetPieceResponsibilityPanel';
 import PlayerNumberName from './components/player/PlayerNumberName';
 import { getPlayerAvatarSource } from './utils/playerAvatarPresentation';
@@ -6078,10 +6081,10 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   const [playerProfileData, setPlayerProfileData] = useState(null);
   const [playerProfileLoading, setPlayerProfileLoading] = useState(false);
   const [playerProfileError, setPlayerProfileError] = useState('');
-  const [playerTrainingAttendance, setPlayerTrainingAttendance] = useState(null);
-  const [playerTrainingAttendanceLoading, setPlayerTrainingAttendanceLoading] = useState(false);
-  const [playerTrainingAttendanceError, setPlayerTrainingAttendanceError] = useState('');
-  const [playerTrainingAttendanceRefresh, setPlayerTrainingAttendanceRefresh] = useState(0);
+  const [playerSessionAvailability, setPlayerSessionAvailability] = useState(null);
+  const [playerSessionAvailabilityLoading, setPlayerSessionAvailabilityLoading] = useState(false);
+  const [playerSessionAvailabilityError, setPlayerSessionAvailabilityError] = useState('');
+  const [playerSessionAvailabilityRefresh, setPlayerSessionAvailabilityRefresh] = useState(0);
   const [groupCompetitionFilter, setGroupCompetitionFilter] = useState('Temporada');
   const [groupContextFilter, setGroupContextFilter] = useState('Todos');
   const [groupQuickReviewedOnly, setGroupQuickReviewedOnly] = useState(true);
@@ -23469,16 +23472,16 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   }, [selectedPlayerProfileId]);
 
   useEffect(() => {
-    const refreshAttendance = () => setPlayerTrainingAttendanceRefresh((current) => current + 1);
-    window.addEventListener('focus', refreshAttendance);
-    return () => window.removeEventListener('focus', refreshAttendance);
+    const refreshAvailability = () => setPlayerSessionAvailabilityRefresh((current) => current + 1);
+    window.addEventListener('focus', refreshAvailability);
+    return () => window.removeEventListener('focus', refreshAvailability);
   }, []);
 
   useEffect(() => {
     if (!selectedPlayerProfile || activeTab !== 'Plantilla') {
-      setPlayerTrainingAttendance(null);
-      setPlayerTrainingAttendanceError('');
-      setPlayerTrainingAttendanceLoading(false);
+      setPlayerSessionAvailability(null);
+      setPlayerSessionAvailabilityError('');
+      setPlayerSessionAvailabilityLoading(false);
       return undefined;
     }
 
@@ -23486,24 +23489,24 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     const now = new Date();
     const beforeDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const clubTeamSeasonId = rosterAccess.context?.id || '';
-    setPlayerTrainingAttendance(null);
-    setPlayerTrainingAttendanceError('');
-    setPlayerTrainingAttendanceLoading(true);
-    loadPlayerTrainingAttendance(supabase, selectedPlayerProfile.id, clubTeamSeasonId, beforeDate)
+    setPlayerSessionAvailability(null);
+    setPlayerSessionAvailabilityError('');
+    setPlayerSessionAvailabilityLoading(true);
+    loadPlayerSessionAvailability(supabase, selectedPlayerProfile.id, clubTeamSeasonId, beforeDate)
       .then((summary) => {
-        if (isCurrent) setPlayerTrainingAttendance(summary);
+        if (isCurrent) setPlayerSessionAvailability(summary);
       })
-      .catch((attendanceError) => {
+      .catch((availabilityError) => {
         if (!isCurrent) return;
-        console.error('Error cargando participación en entrenamientos:', attendanceError);
-        setPlayerTrainingAttendanceError(attendanceError.message || 'No se pudo cargar la participación en entrenamientos.');
+        console.error('Error cargando disponibilidad en sesiones:', availabilityError);
+        setPlayerSessionAvailabilityError(availabilityError.message || 'No se pudo cargar la disponibilidad en sesiones.');
       })
       .finally(() => {
-        if (isCurrent) setPlayerTrainingAttendanceLoading(false);
+        if (isCurrent) setPlayerSessionAvailabilityLoading(false);
       });
 
     return () => { isCurrent = false; };
-  }, [selectedPlayerProfileId, rosterAccess.context?.id, activeTab, playerTrainingAttendanceRefresh]);
+  }, [selectedPlayerProfileId, rosterAccess.context?.id, activeTab, playerSessionAvailabilityRefresh]);
 
   const openMatchPage = (match, section) => requestMatchPlanNavigation({
     type: selectedMatchId && String(selectedMatchId) !== String(match.id) ? 'change-match' : 'change-match-section',
@@ -31294,11 +31297,12 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                     ) : null}
                   </section>
 
-                  <PlayerTrainingAttendanceSummary
-                    summary={playerTrainingAttendance}
-                    loading={playerTrainingAttendanceLoading}
-                    error={playerTrainingAttendanceError}
+                  <PlayerSessionAvailabilitySummary
+                    summary={playerSessionAvailability}
+                    loading={playerSessionAvailabilityLoading}
+                    error={playerSessionAvailabilityError}
                     contextAvailable={Boolean(rosterAccess.context?.id)}
+                    lifecycleVerified={SESSION_RETIREMENT_BACKEND_VERIFIED}
                   />
 
                   <AccordionSection title="Estadísticas principales" subtitle="Datos base del periodo analizado" defaultOpen>

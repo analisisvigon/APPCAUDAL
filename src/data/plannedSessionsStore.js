@@ -1,5 +1,5 @@
 import { parsePlannedSessionValue } from '../utils/plannedSessionValue.js';
-import { summarizePlayerTrainingAttendance } from '../utils/playerTrainingAttendance.js';
+import { summarizePlayerSessionAvailability } from '../utils/playerSessionAvailability.js';
 import { normalizeOwnClubName } from '../constants/clubIdentity.js';
 
 // Activar solo después de instalar y verificar el backend de ciclo de vida con identidades reales.
@@ -91,8 +91,8 @@ export const checkPlannedTaskContent = async (client) => {
   throw result.error;
 };
 
-export const loadPlayerTrainingAttendance = async (client, playerId, clubTeamSeasonId, beforeDate) => {
-  if (!playerId || !clubTeamSeasonId) return summarizePlayerTrainingAttendance();
+export const loadPlayerSessionAvailability = async (client, playerId, clubTeamSeasonId, beforeDate) => {
+  if (!playerId || !clubTeamSeasonId) return summarizePlayerSessionAvailability();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(beforeDate || '')) {
     throw new Error('La fecha de corte del resumen de entrenamientos no es válida.');
   }
@@ -109,7 +109,7 @@ export const loadPlayerTrainingAttendance = async (client, playerId, clubTeamSea
   const eligibleSessions = sessions.filter((row) => row.id && row.planning_state === 'confirmed' &&
     row.session_date < beforeDate &&
     (!SESSION_RETIREMENT_BACKEND_VERIFIED || (!row.cancelled_at && !row.retired_at)));
-  if (!eligibleSessions.length) return summarizePlayerTrainingAttendance();
+  if (!eligibleSessions.length) return summarizePlayerSessionAvailability();
 
   const sessionIds = eligibleSessions.map((row) => row.id);
   const rosterRows = unwrap(await client.from('planned_session_player_roster')
@@ -117,11 +117,11 @@ export const loadPlayerTrainingAttendance = async (client, playerId, clubTeamSea
   const countedSessionIds = [...new Set(rosterRows
     .map((row) => row.session_id)
     .filter((sessionId) => sessionIds.includes(sessionId)))];
-  if (!countedSessionIds.length) return summarizePlayerTrainingAttendance();
+  if (!countedSessionIds.length) return summarizePlayerSessionAvailability();
 
   const availabilityRows = unwrap(await client.from('planned_session_player_availability')
     .select('session_id,status').eq('player_id', playerId).in('session_id', countedSessionIds)) || [];
-  return summarizePlayerTrainingAttendance(
+  return summarizePlayerSessionAvailability(
     countedSessionIds.map((session_id) => ({ session_id })),
     availabilityRows,
   );

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { loadPlayerTrainingAttendance } from './plannedSessionsStore.js';
+import { loadPlayerSessionAvailability } from './plannedSessionsStore.js';
 
 const queryLog = [];
 const rows = {
@@ -46,23 +46,25 @@ const client = {
   },
 };
 
-const summary = await loadPlayerTrainingAttendance(client, 'player-a', 'active-cts', '2026-10-19');
+const summary = await loadPlayerSessionAvailability(client, 'player-a', 'active-cts', '2026-10-19');
 assert.equal(summary.total, 2, 'solo sesiones pasadas confirmadas del CTS activo con roster del jugador');
 assert.equal(summary.states.find(({ key }) => key === 'available').count, 1,
-  'una fila de disponibilidad ausente cuenta como disponible');
+  'una fila de disponibilidad ausente cuenta como disponible por defecto');
+assert.equal(summary.defaultAvailableCount, 1);
+assert.equal(summary.explicitAvailableCount, 0);
 assert.equal(summary.states.find(({ key }) => key === 'injured').count, 1);
 assert.ok(queryLog.some(({ table }) => table === 'planned_session_player_roster'));
 assert.ok(queryLog.some(({ table }) => table === 'planned_session_player_availability'));
 
-const empty = await loadPlayerTrainingAttendance(client, 'player-a', 'missing-cts', '2026-10-19');
+const empty = await loadPlayerSessionAvailability(client, 'player-a', 'missing-cts', '2026-10-19');
 assert.equal(empty.total, 0);
-await assert.rejects(loadPlayerTrainingAttendance(client, 'player-a', 'active-cts', '19/10/2026'),
+await assert.rejects(loadPlayerSessionAvailability(client, 'player-a', 'active-cts', '19/10/2026'),
   /fecha de corte.*no es válida/i);
 
 rows.planned_session_player_availability[0].status = 'absent';
-const updatedSummary = await loadPlayerTrainingAttendance(client, 'player-a', 'active-cts', '2026-10-19');
+const updatedSummary = await loadPlayerSessionAvailability(client, 'player-a', 'active-cts', '2026-10-19');
 assert.equal(updatedSummary.states.find(({ key }) => key === 'absent').count, 1,
   'una recarga refleja el estado de disponibilidad modificado');
 assert.equal(updatedSummary.states.find(({ key }) => key === 'injured').count, 0);
 
-console.log('player training attendance store tests passed');
+console.log('player session availability store tests passed');
