@@ -1,6 +1,8 @@
 -- PROPUESTA MANUAL. NO EJECUTADA.
 -- Sesiones realizadas: reutiliza disponibilidad; la confirmacion es conjunta por sesion.
--- Requiere 04A/04B, first_team y ciclo de vida 2C instalado y verificado.
+-- Requiere 04A/04B, first_team y la estructura 2C instalada.
+-- No requiere pruebas funcionales del RPC de ciclo de vida: confirma su estado
+-- directamente bajo el bloqueo y las comprobaciones autorizadas de 04B.
 begin;
 set local search_path = pg_catalog;
 set local lock_timeout = '5s';
@@ -17,18 +19,22 @@ begin
      or to_regprocedure('public.planned_session_04b_lock(uuid,integer)') is null
      or to_regprocedure('public.save_planned_session_availability_04b(uuid,integer,jsonb)') is null
      or to_regprocedure('public.can_write_club_team_season(uuid)') is null
-     or to_regprocedure('public.can_read_club_team_season(uuid)') is null
-     or to_regprocedure('public.change_planned_session_lifecycle_2c(uuid,integer,text,text)') is null then
-    raise exception 'Sesiones realizadas: faltan prerrequisitos 04A/04B o ciclo de vida 2C';
+     or to_regprocedure('public.can_read_club_team_season(uuid)') is null then
+    raise exception 'Sesiones realizadas: faltan prerrequisitos 04A/04B';
   end if;
   if not exists (select 1 from pg_attribute where attrelid='public.planned_training_sessions'::regclass
        and attname='cancelled_at' and atttypid='timestamptz'::regtype and not attisdropped)
      or not exists (select 1 from pg_attribute where attrelid='public.planned_training_sessions'::regclass
        and attname='retired_at' and atttypid='timestamptz'::regtype and not attisdropped)
+     or to_regprocedure('public.guard_planned_session_lifecycle_2c()') is null
+     or not exists (select 1 from pg_constraint where conrelid='public.planned_training_sessions'::regclass
+       and conname='planned_sessions_cancellation_check' and contype='c' and convalidated)
+     or not exists (select 1 from pg_constraint where conrelid='public.planned_training_sessions'::regclass
+       and conname='planned_sessions_retirement_check' and contype='c' and convalidated)
      or not exists (select 1 from pg_trigger where tgrelid='public.planned_training_sessions'::regclass
        and tgname='planned_sessions_lifecycle_2c_guard' and tgenabled='O'
        and tgfoid=to_regprocedure('public.guard_planned_session_lifecycle_2c()')) then
-    raise exception 'Sesiones realizadas: el ciclo de vida 2C no está instalado/verificado; no habilitar confirmaciones';
+    raise exception 'Sesiones realizadas: faltan las columnas o el guard estructural 2C';
   end if;
   if not exists (select 1 from pg_constraint where conrelid=
        'public.planned_session_player_availability'::regclass
@@ -37,11 +43,6 @@ begin
      or position('first_team' in pg_get_functiondef(to_regprocedure(
        'public.save_planned_session_availability_04b(uuid,integer,jsonb)')::oid))=0 then
     raise exception 'Sesiones realizadas: instalar y verificar el estado first_team antes';
-  end if;
-  if to_regclass('public.planned_session_realization_settings') is not null
-     and obj_description(to_regclass('public.planned_session_realization_settings'),'pg_class')
-       is distinct from 'NEXO Sesiones 07: manual realization readiness gate' then
-    raise exception 'Sesiones realizadas: objeto preexistente incompatible';
   end if;
   if to_regclass('public.planned_session_realizations') is not null
      and obj_description(to_regclass('public.planned_session_realizations'),'pg_class')
@@ -61,31 +62,14 @@ begin
 end
 $pre$;
 
-create table if not exists public.planned_session_realization_settings (
-  singleton boolean primary key default true check (singleton),
-  lifecycle_verified_at timestamptz,
-  verification_note text,
-  constraint planned_session_realization_verification_note_check
-    check (verification_note is null or char_length(verification_note)<=1000)
-);
-comment on table public.planned_session_realization_settings is
-  'NEXO Sesiones 07: manual realization readiness gate';
-insert into public.planned_session_realization_settings(singleton)
-values (true) on conflict (singleton) do nothing;
-alter table public.planned_session_realization_settings enable row level security;
-revoke all on table public.planned_session_realization_settings from public,anon,authenticated,service_role;
-
 create table if not exists public.planned_session_realizations (
   session_id uuid primary key references public.planned_training_sessions(id) on delete restrict,
   realized_at timestamptz not null default now(),
   realized_by_membership_id uuid not null references public.club_memberships(id) on delete restrict,
   roster_count integer not null,
   default_available_count integer not null,
-  initial_status_hash text not null,
   constraint planned_session_realization_roster_count_check
-    check (roster_count>0 and default_available_count between 0 and roster_count),
-  constraint planned_session_realization_hash_check
-    check (initial_status_hash ~ '^[0-9a-f]{32}$')
+    check (roster_count>0 and default_available_count between 0 and roster_count)
 );
 comment on table public.planned_session_realizations is
   'NEXO Sesiones 07: explicit session realization';
@@ -192,23 +176,39 @@ alter policy planned_session_realization_audit_read on public.planned_session_re
 
 create or replace function public.planned_session_realization_ready_v1()
 returns boolean language sql stable security definer set search_path=pg_catalog as $fn$
-  select coalesce((select st.lifecycle_verified_at is not null
-      and st.verification_note is not null
-      and to_regprocedure('public.change_planned_session_lifecycle_2c(uuid,integer,text,text)') is not null
+  select to_regclass('public.planned_session_realizations') is not null
+      and to_regclass('public.planned_session_realized_player_statuses') is not null
+      and to_regclass('public.planned_session_realization_audit') is not null
+      and to_regprocedure('public.confirm_planned_training_session_realized_v1(uuid,integer,boolean)') is not null
+      and to_regprocedure('public.planned_session_04b_lock(uuid,integer)') is not null
       and exists(select 1 from pg_attribute a
-        where a.attrelid='public.planned_training_sessions'::regclass
+        where a.attrelid=to_regclass('public.planned_training_sessions')
           and a.attname='cancelled_at' and a.atttypid='timestamptz'::regtype and not a.attisdropped)
       and exists(select 1 from pg_attribute a
-        where a.attrelid='public.planned_training_sessions'::regclass
+        where a.attrelid=to_regclass('public.planned_training_sessions')
           and a.attname='retired_at' and a.atttypid='timestamptz'::regtype and not a.attisdropped)
       and exists(select 1 from pg_trigger t where t.tgrelid=
-        'public.planned_training_sessions'::regclass
+        to_regclass('public.planned_training_sessions')
         and t.tgname='planned_sessions_lifecycle_2c_guard' and t.tgenabled='O'
         and t.tgfoid=to_regprocedure('public.guard_planned_session_lifecycle_2c()'))
-    from public.planned_session_realization_settings st where st.singleton),false);
+      and exists(select 1 from pg_constraint c where c.conrelid=
+        to_regclass('public.planned_training_sessions')
+        and c.conname='planned_sessions_cancellation_check' and c.contype='c' and c.convalidated)
+      and exists(select 1 from pg_constraint c where c.conrelid=
+        to_regclass('public.planned_training_sessions')
+        and c.conname='planned_sessions_retirement_check' and c.contype='c' and c.convalidated)
+      and exists(select 1 from pg_trigger t where t.tgrelid=
+        to_regclass('public.planned_session_player_availability')
+        and t.tgname='planned_session_realized_availability_sync' and t.tgenabled='O')
+      and exists(select 1 from pg_trigger t where t.tgrelid=
+        to_regclass('public.planned_session_realizations')
+        and t.tgname='planned_session_realizations_immutable' and t.tgenabled='O')
+      and exists(select 1 from pg_trigger t where t.tgrelid=
+        to_regclass('public.planned_session_realization_audit')
+        and t.tgname='planned_session_realization_audit_immutable' and t.tgenabled='O');
 $fn$;
 comment on function public.planned_session_realization_ready_v1() is
-  'NEXO Sesiones 07: readiness requires manual lifecycle verification';
+  'NEXO Sesiones 07: readiness requires realization objects and lifecycle structure';
 alter function public.planned_session_realization_ready_v1() owner to postgres;
 revoke all on function public.planned_session_realization_ready_v1()
   from public,anon,authenticated,service_role;
@@ -334,7 +334,7 @@ begin
       using errcode='22023';
   end if;
   if public.planned_session_realization_ready_v1() is not true then
-    raise exception 'La realización requiere verificar previamente el ciclo de vida de sesiones'
+    raise exception 'El backend de realización o la estructura de ciclo de vida no está instalado'
       using errcode='55000';
   end if;
   select * into v_ctx
@@ -378,8 +378,8 @@ begin
   end if;
 
   insert into public.planned_session_realizations
-    (session_id,realized_by_membership_id,roster_count,default_available_count,initial_status_hash)
-  values (p_session_id,v_ctx.actor_id,v_roster_count,v_default_count,v_status_hash)
+    (session_id,realized_by_membership_id,roster_count,default_available_count)
+  values (p_session_id,v_ctx.actor_id,v_roster_count,v_default_count)
   returning realized_at into v_realized_at;
   insert into public.planned_session_realized_player_statuses
     (session_id,player_id,status,status_source)
@@ -429,20 +429,11 @@ begin
      or has_function_privilege('anon',
       'public.confirm_planned_training_session_realized_v1(uuid,integer,boolean)','EXECUTE')
      or not has_function_privilege('authenticated',
-      'public.confirm_planned_training_session_realized_v1(uuid,integer,boolean)','EXECUTE') then
+      'public.confirm_planned_training_session_realized_v1(uuid,integer,boolean)','EXECUTE')
+     or public.planned_session_realization_ready_v1() is not true then
     raise exception 'Sesiones realizadas: verificación de permisos o triggers fallida';
   end if;
 end
 $post$;
 
 commit;
-
--- ACTIVACIÓN MANUAL, solo tras instalar y probar el ciclo de vida 2C:
--- 1) Ejecuta supabase_sessions_lifecycle_2c_verify.sql y prueba anular/reactivar
---    y retirar una sesión con usuarios autorizados reales.
--- 2) Revisa el resultado y habilita explícitamente la puerta:
--- update public.planned_session_realization_settings
---   set lifecycle_verified_at=now(),
---       verification_note='Ciclo 2C verificado: anulación, reactivación y retiro probados'
---   where singleton=true;
--- Sin ese paso la RPC devuelve error y la interfaz no habilita la confirmación.

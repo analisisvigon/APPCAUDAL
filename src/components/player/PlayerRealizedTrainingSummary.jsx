@@ -30,7 +30,7 @@ export default function PlayerRealizedTrainingSummary({
       ) : null}
       {!loading && !error && contextAvailable && !ready ? (
         <p role="status" className="mt-4 text-sm text-amber-200">
-          Este resumen requiere instalar la migración de realización y verificar el ciclo de vida de sesiones.
+          Este resumen requiere instalar el backend de realización y la estructura de ciclo de vida.
         </p>
       ) : null}
       {!loading && !error && contextAvailable && ready && summary?.total === 0 ? (

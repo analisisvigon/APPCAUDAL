@@ -1813,7 +1813,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
             <p className={`${panel} text-xs text-amber-200`} role={realizationProbeError ? 'alert' : 'status'}>
               {realizationProbeError
                 ? `No se pudo verificar el backend de realización: ${realizationProbeError}`
-                : 'La confirmación de realización requiere instalar la migración de sesiones realizadas y verificar el ciclo de vida en Supabase.'}
+                : 'La confirmación de realización requiere instalar el backend de sesiones realizadas y la estructura de ciclo de vida.'}
             </p>
           ) : realizationLoadedFor !== editor.id || realizationLoading ? (
             <p className={`${panel} text-xs text-slate-400`} role="status">Cargando el estado de realización…</p>

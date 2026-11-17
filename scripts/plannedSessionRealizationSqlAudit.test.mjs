@@ -13,8 +13,10 @@ assert.notEqual(confirmFunctionStart, -1);
 assert.doesNotMatch(sql.slice(0, confirmFunctionStart),
   /insert into public\.planned_session_(?:realizations|realized_player_statuses)/i,
   'la migración no marca sesiones antiguas como realizadas');
-assert.match(sql, /lifecycle_verified_at is not null/);
-assert.match(sql, /verification_note is not null/);
+assert.doesNotMatch(sql, /planned_session_realization_settings|lifecycle_verified_at|verification_note/);
+assert.doesNotMatch(sql, /change_planned_session_lifecycle_2c/);
+assert.match(sql, /planned_session_04b_lock\(uuid,integer\)/);
+assert.match(sql, /planned_sessions_lifecycle_2c_guard/);
 assert.match(sql, /cancelled_at/);
 assert.match(sql, /retired_at/);
 assert.match(sql, /first_team/);
@@ -30,8 +32,11 @@ assert.match(sql, /planned_session_realized_availability_sync/);
 assert.match(sql, /update public\.planned_session_realized_player_statuses/);
 assert.match(sql, /'player_status_corrected'/);
 assert.match(sql, /can_write_club_team_season\(v_cts\) is not true/);
+const realizationTableStart = sql.indexOf('create table if not exists public.planned_session_realizations');
+const playerSnapshotTableStart = sql.indexOf('create table if not exists public.planned_session_realized_player_statuses');
+assert.doesNotMatch(sql.slice(realizationTableStart, playerSnapshotTableStart), /initial_status_hash/,
+  'el hash inicial se conserva una sola vez, en la auditoría');
 assert.match(sql, /revoke all on table public\.planned_session_realizations/);
-assert.match(sql, /-- update public\.planned_session_realization_settings/);
 
 assert.match(store, /\.eq\('club_team_season_id', clubTeamSeasonId\)/);
 assert.match(store, /\.eq\('planning_state', 'confirmed'\)/);

@@ -102,7 +102,7 @@ export const checkPlannedSessionRealizationReady = async (client) => {
 export const loadPlannedSessionRealization = async (client, sessionId) => {
   if (!sessionId) throw new Error('Falta el identificador de sesión para cargar su realización.');
   const realization = unwrap(await client.from('planned_session_realizations')
-    .select('session_id,realized_at,realized_by_membership_id,roster_count,default_available_count,initial_status_hash')
+    .select('session_id,realized_at,realized_by_membership_id,roster_count,default_available_count')
     .eq('session_id', sessionId).maybeSingle());
   if (!realization) return null;
   const players = unwrap(await client.from('planned_session_realized_player_statuses')

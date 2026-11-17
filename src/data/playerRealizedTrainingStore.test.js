@@ -52,7 +52,7 @@ tableRows = {
   planned_session_realizations: [{
     session_id: 'session-a', realized_at: '2026-03-10T18:00:00Z',
     realized_by_membership_id: 'membership-a', roster_count: 2,
-    default_available_count: 1, initial_status_hash: 'a'.repeat(32),
+    default_available_count: 1,
   }],
   planned_session_realized_player_statuses: [
     { session_id: 'session-a', player_id: 'player-a', status: 'available', status_source: 'default' },
@@ -61,6 +61,9 @@ tableRows = {
 };
 const realization = await loadPlannedSessionRealization(client, 'session-a');
 assert.equal(realization.players.length, 2);
+assert.ok(!queryCalls.some(([table, operation, columns]) =>
+  table === 'planned_session_realizations' && operation === 'select' &&
+  columns.includes('initial_status_hash')), 'el hash de confirmación vive solo en la auditoría');
 tableRows.planned_session_realized_player_statuses.pop();
 await assert.rejects(loadPlannedSessionRealization(client, 'session-a'), /no coincide con la plantilla/);
 
