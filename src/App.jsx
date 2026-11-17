@@ -66,8 +66,10 @@ import PlayerPositionUsageSummary from './components/player/PlayerPositionUsageS
 import PlayerMatchPositionSummary from './components/player/PlayerMatchPositionSummary';
 import PlayerAvatar from './components/player/PlayerAvatar';
 import PlayerSessionAvailabilitySummary from './components/player/PlayerSessionAvailabilitySummary.jsx';
+import PlayerRealizedTrainingSummary from './components/player/PlayerRealizedTrainingSummary.jsx';
 import {
   loadPlayerSessionAvailability,
+  loadPlayerRealizedTrainingStats,
   SESSION_RETIREMENT_BACKEND_VERIFIED,
 } from './data/plannedSessionsStore.js';
 import SetPieceResponsibilityPanel, { SetPieceResponsibilityBadge } from './components/tactical/SetPieceResponsibilityPanel';
@@ -6085,6 +6087,9 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   const [playerSessionAvailabilityLoading, setPlayerSessionAvailabilityLoading] = useState(false);
   const [playerSessionAvailabilityError, setPlayerSessionAvailabilityError] = useState('');
   const [playerSessionAvailabilityRefresh, setPlayerSessionAvailabilityRefresh] = useState(0);
+  const [playerRealizedTraining, setPlayerRealizedTraining] = useState(null);
+  const [playerRealizedTrainingLoading, setPlayerRealizedTrainingLoading] = useState(false);
+  const [playerRealizedTrainingError, setPlayerRealizedTrainingError] = useState('');
   const [groupCompetitionFilter, setGroupCompetitionFilter] = useState('Temporada');
   const [groupContextFilter, setGroupContextFilter] = useState('Todos');
   const [groupQuickReviewedOnly, setGroupQuickReviewedOnly] = useState(true);
@@ -23474,7 +23479,11 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
   useEffect(() => {
     const refreshAvailability = () => setPlayerSessionAvailabilityRefresh((current) => current + 1);
     window.addEventListener('focus', refreshAvailability);
-    return () => window.removeEventListener('focus', refreshAvailability);
+    window.addEventListener('planned-session-data-changed', refreshAvailability);
+    return () => {
+      window.removeEventListener('focus', refreshAvailability);
+      window.removeEventListener('planned-session-data-changed', refreshAvailability);
+    };
   }, []);
 
   useEffect(() => {
@@ -23504,6 +23513,38 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       .finally(() => {
         if (isCurrent) setPlayerSessionAvailabilityLoading(false);
       });
+
+    return () => { isCurrent = false; };
+  }, [selectedPlayerProfileId, rosterAccess.context?.id, activeTab, playerSessionAvailabilityRefresh]);
+
+  useEffect(() => {
+    if (!selectedPlayerProfile || activeTab !== 'Plantilla') {
+      setPlayerRealizedTraining(null);
+      setPlayerRealizedTrainingError('');
+      setPlayerRealizedTrainingLoading(false);
+      return undefined;
+    }
+
+    let isCurrent = true;
+    const now = new Date();
+    const throughDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    setPlayerRealizedTraining(null);
+    setPlayerRealizedTrainingError('');
+    setPlayerRealizedTrainingLoading(true);
+    loadPlayerRealizedTrainingStats(
+      supabase,
+      selectedPlayerProfile.id,
+      rosterAccess.context?.id || '',
+      throughDate,
+    ).then((result) => {
+      if (isCurrent) setPlayerRealizedTraining(result);
+    }).catch((statsError) => {
+      if (!isCurrent) return;
+      console.error('Error cargando entrenamientos realizados:', statsError);
+      setPlayerRealizedTrainingError(statsError.message || 'No se pudieron cargar los entrenamientos realizados.');
+    }).finally(() => {
+      if (isCurrent) setPlayerRealizedTrainingLoading(false);
+    });
 
     return () => { isCurrent = false; };
   }, [selectedPlayerProfileId, rosterAccess.context?.id, activeTab, playerSessionAvailabilityRefresh]);
@@ -31303,6 +31344,13 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
                     error={playerSessionAvailabilityError}
                     contextAvailable={Boolean(rosterAccess.context?.id)}
                     lifecycleVerified={SESSION_RETIREMENT_BACKEND_VERIFIED}
+                  />
+                  <PlayerRealizedTrainingSummary
+                    summary={playerRealizedTraining?.summary}
+                    ready={playerRealizedTraining?.ready === true}
+                    loading={playerRealizedTrainingLoading}
+                    error={playerRealizedTrainingError}
+                    contextAvailable={Boolean(rosterAccess.context?.id)}
                   />
 
                   <AccordionSection title="Estadísticas principales" subtitle="Datos base del periodo analizado" defaultOpen>

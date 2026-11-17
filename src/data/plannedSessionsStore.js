@@ -1,4 +1,5 @@
 import { parsePlannedSessionValue } from '../utils/plannedSessionValue.js';
+import { summarizePlayerRealizedTraining } from '../utils/playerRealizedTrainingStats.js';
 import { summarizePlayerSessionAvailability } from '../utils/playerSessionAvailability.js';
 import { normalizeOwnClubName } from '../constants/clubIdentity.js';
 
@@ -89,6 +90,66 @@ export const checkPlannedTaskContent = async (client) => {
   if (!result.error) return result.data === true;
   if (['42883', 'PGRST202', 'PGRST205'].includes(result.error.code)) return false;
   throw result.error;
+};
+
+export const checkPlannedSessionRealizationReady = async (client) => {
+  const result = await client.rpc('planned_session_realization_ready_v1');
+  if (!result.error) return result.data === true;
+  if (['42883', 'PGRST202', 'PGRST205'].includes(result.error.code)) return false;
+  throw result.error;
+};
+
+export const loadPlannedSessionRealization = async (client, sessionId) => {
+  if (!sessionId) throw new Error('Falta el identificador de sesión para cargar su realización.');
+  const realization = unwrap(await client.from('planned_session_realizations')
+    .select('session_id,realized_at,realized_by_membership_id,roster_count,default_available_count,initial_status_hash')
+    .eq('session_id', sessionId).maybeSingle());
+  if (!realization) return null;
+  const players = unwrap(await client.from('planned_session_realized_player_statuses')
+    .select('session_id,player_id,status,status_source')
+    .eq('session_id', sessionId)) || [];
+  if (players.length !== realization.roster_count) {
+    throw new Error('La lista de estados realizados no coincide con la plantilla confirmada.');
+  }
+  return { ...realization, players };
+};
+
+export const confirmPlannedSessionRealization = async (client, sessionId, revision, reviewAcknowledged) => {
+  if (!sessionId || !Number.isInteger(revision) || revision < 1 || reviewAcknowledged !== true) {
+    throw new Error('Confirma que revisaste toda la lista antes de marcar la sesión como realizada.');
+  }
+  return unwrap(await client.rpc('confirm_planned_training_session_realized_v1', {
+    p_session_id: sessionId,
+    p_expected_revision: revision,
+    p_review_acknowledged: reviewAcknowledged,
+  }));
+};
+
+export const loadPlayerRealizedTrainingStats = async (client, playerId, clubTeamSeasonId, throughDate) => {
+  const ready = await checkPlannedSessionRealizationReady(client);
+  if (!ready) return { ready: false, summary: null };
+  if (!playerId || !clubTeamSeasonId) {
+    return { ready: true, summary: summarizePlayerRealizedTraining() };
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(throughDate || '')) {
+    throw new Error('La fecha de corte de entrenamientos realizados no es válida.');
+  }
+
+  const sessions = unwrap(await client.from('planned_training_sessions')
+    .select('id')
+    .eq('club_team_season_id', clubTeamSeasonId)
+    .eq('planning_state', 'confirmed')
+    .lte('session_date', throughDate)
+    .is('cancelled_at', null)
+    .is('retired_at', null)) || [];
+  const sessionIds = [...new Set(sessions.map((row) => row.id).filter(Boolean))];
+  if (!sessionIds.length) return { ready: true, summary: summarizePlayerRealizedTraining() };
+
+  const rows = unwrap(await client.from('planned_session_realized_player_statuses')
+    .select('session_id,status')
+    .eq('player_id', playerId)
+    .in('session_id', sessionIds)) || [];
+  return { ready: true, summary: summarizePlayerRealizedTraining(rows) };
 };
 
 export const loadPlayerSessionAvailability = async (client, playerId, clubTeamSeasonId, beforeDate) => {

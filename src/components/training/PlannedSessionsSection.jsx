@@ -21,6 +21,9 @@ import {
 } from '../../utils/plannedSessions';
 import {
   confirmPlannedSession,
+  checkPlannedSessionRealizationReady,
+  loadPlannedSessionRealization,
+  confirmPlannedSessionRealization,
   createPlannedDraft,
   checkPlannedMicrocycleV4,
   checkPlannedMaterialAutofill,
@@ -56,6 +59,7 @@ import {
   changePlannedSessionLifecycle,
 } from '../../data/plannedSessionsStore';
 import { availabilityChanges, eligibleRosterCandidates, hasUncertainRosterDate } from '../../utils/plannedSessionPlayers';
+import { summarizePlayerRealizedTraining } from '../../utils/playerRealizedTrainingStats';
 import { calendarWeekDays } from '../../utils/teamCalendar';
 import { autoPlayerLayout, distributionForSave, distributionPayloadKey, emptyDistribution, movePlayerBoardLayout, normalizeDistribution,
   reconcileSpaceZones, specificPositionMap, validateDistribution } from '../../utils/plannedSessionDistributions';
@@ -147,6 +151,14 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [initialSelectedMembershipIds, setInitialSelectedMembershipIds] = useState([]);
   const [availability, setAvailability] = useState({});
   const [availabilityBaseline, setAvailabilityBaseline] = useState({});
+  const [realizationReady, setRealizationReady] = useState(false);
+  const [realizationProbeError, setRealizationProbeError] = useState('');
+  const [realizationProbeComplete, setRealizationProbeComplete] = useState(false);
+  const [realization, setRealization] = useState(null);
+  const [realizationLoading, setRealizationLoading] = useState(false);
+  const [realizationLoadedFor, setRealizationLoadedFor] = useState('');
+  const [realizationLoadError, setRealizationLoadError] = useState('');
+  const [realizationReloadRequest, setRealizationReloadRequest] = useState(0);
   const [playersError, setPlayersError] = useState('');
   const [distribution, setDistribution] = useState(null);
   const [distributionBaseline, setDistributionBaseline] = useState(null);
@@ -175,6 +187,13 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [baselineSessionValue, setBaselineSessionValue] = useState('');
   const [valueSupported, setValueSupported] = useState(false);
   const selected = contexts.find((row) => row.id === contextId) || null;
+  const localNow = new Date();
+  const localToday = `${localNow.getFullYear()}-${String(localNow.getMonth() + 1).padStart(2, '0')}-${String(localNow.getDate()).padStart(2, '0')}`;
+  const defaultAvailableCount = roster.filter((player) => !availability[player.player_id]).length;
+  const currentRealization = realization?.session_id === editor?.id ? realization : null;
+  const realizationStats = currentRealization
+    ? summarizePlayerRealizedTraining(currentRealization.players.map(({ session_id, status }) => ({ session_id, status })))
+    : null;
   const isManager = membership?.is_active === true && ['owner', 'admin'].includes(membership?.role);
   const canWriteContext = canWritePlannedContext(membership, selected);
   const canEdit = canWriteContext && !unsupportedItems && !playersError &&
@@ -269,6 +288,44 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     return () => { active = false; };
   }, [client]);
   useEffect(() => {
+    let active = true;
+    setRealizationReady(false);
+    setRealizationProbeError('');
+    setRealizationProbeComplete(false);
+    checkPlannedSessionRealizationReady(client).then((ready) => {
+      if (active) { setRealizationReady(ready); setRealizationProbeComplete(true); }
+    }).catch((cause) => {
+      if (active) { setRealizationProbeError(readError(cause)); setRealizationProbeComplete(true); }
+    });
+    return () => { active = false; };
+  }, [client]);
+  useEffect(() => {
+    if (!editor?.id || !realizationReady) {
+      setRealization(null);
+      setRealizationLoading(false);
+      setRealizationLoadedFor('');
+      setRealizationLoadError('');
+      return undefined;
+    }
+    let active = true;
+    setRealization(null);
+    setRealizationLoading(true);
+    setRealizationLoadedFor('');
+    setRealizationLoadError('');
+    loadPlannedSessionRealization(client, editor.id).then((record) => {
+      if (active) { setRealization(record); setRealizationLoadedFor(editor.id); }
+    }).catch((cause) => {
+      if (active) {
+        setRealizationLoadError(readError(cause));
+        setRealizationLoadedFor(editor.id);
+        setError(`No se pudo cargar la realización de la sesión. ${readError(cause)}`);
+      }
+    }).finally(() => {
+      if (active) setRealizationLoading(false);
+    });
+    return () => { active = false; };
+  }, [client, editor?.id, editor?.revision, realizationReady, realizationReloadRequest]);
+  useEffect(() => {
     let cancelled = false;
     setV12ProbeReady(false);
     checkPlannedExerciseDimensionsV12(client).then((supported) => {
@@ -342,6 +399,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       }
       setDeleteTarget(null);
       setNotice('Sesión eliminada y ausencia verificada en el servidor.');
+      window.dispatchEvent(new Event('planned-session-data-changed'));
     } catch (cause) {
       if (scope !== deletionScopeRef.current) return;
       if (cause?.code === '40001') setConflict(true);
@@ -381,6 +439,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       setNotice(lifecycleAction === 'retire' ? 'Sesión retirada y verificada en el servidor.'
         : lifecycleAction === 'cancel' ? 'Sesión anulada y verificada en el servidor.'
           : 'Sesión reactivada y verificada en el servidor.');
+      window.dispatchEvent(new Event('planned-session-data-changed'));
     } catch (cause) {
       if (cause?.code === '40001') setConflict(true);
       setError(`${errorKind(cause)}: no se pudo verificar el cambio de estado. ${readError(cause)}`);
@@ -952,6 +1011,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         setMaterialState(savedMaterialState); setMaterialBaseline(savedMaterialState);
         completed.push('Material');
       }
+      window.dispatchEvent(new Event('planned-session-data-changed'));
       await refreshList(selected.id);
       const pending = [pendingEmptyFormation && 'sistema vacío', selectionDirty && 'selección de plantilla sin confirmar'].filter(Boolean);
       setNotice(pending.length
@@ -1000,10 +1060,66 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         setNotice('Confirmación aceptada por el servidor. Recarga la ficha para ver el número asignado.');
         setError(`No se pudo recargar la sesión: ${readError(reloadError)}`);
       }
+      window.dispatchEvent(new Event('planned-session-data-changed'));
       await refreshList(selected.id);
     } catch (cause) {
       if (cause?.code === '40001') setConflict(true);
       setError(`${errorKind(cause)}: no se pudo confirmar. ${readError(cause)}`);
+    } finally { operationRef.current = false; setBusy(false); }
+  };
+
+  const confirmRealization = async () => {
+    if (!editor?.id || !selected || !realizationReady || !canEdit || !frozen ||
+        editor.planning_state !== 'confirmed' || dirty || busy || operationRef.current ||
+        conflict || creationUncertain || currentRealization || realizationLoadedFor !== editor.id ||
+        realizationLoading || realizationLoadError) return;
+    if (selected.status !== 'open') {
+      setError('La temporada está cerrada; no se puede confirmar ni corregir la realización.');
+      return;
+    }
+    if (editor.cancelled_at || editor.retired_at) {
+      setError('Una sesión anulada o retirada no se puede marcar como realizada.');
+      return;
+    }
+    if (editor.session_date > localToday) {
+      setError('No se puede marcar como realizada una sesión futura.');
+      return;
+    }
+    const reviewMessage = [
+      '¿Confirmas que el entrenamiento se celebró y que revisaste la lista completa?',
+      `${roster.length} jugadores; ${defaultAvailableCount} con Disponible por defecto.`,
+      'Los valores por defecto se tomarán como estados finales solo tras esta confirmación conjunta.',
+      'Podrás corregir estados después; cada corrección autorizada quedará auditada.',
+    ].join('\n\n');
+    if (!window.confirm(reviewMessage)) return;
+
+    operationRef.current = true;
+    setBusy(true); setError(''); setNotice('');
+    let confirmationAccepted = false;
+    let realizationVerified = false;
+    try {
+      await confirmPlannedSessionRealization(client, editor.id, editor.revision, true);
+      confirmationAccepted = true;
+      const fresh = await loadPlannedSessionRealization(client, editor.id);
+      if (!fresh || fresh.roster_count !== roster.length || fresh.players.length !== roster.length) {
+        throw new Error('La lectura posterior no confirma la plantilla completa como realizada.');
+      }
+      setRealization(fresh);
+      realizationVerified = true;
+      setNotice(`Sesión marcada como realizada. ${fresh.default_available_count} jugadores quedaron como Disponible por defecto tras tu revisión conjunta.`);
+      window.dispatchEvent(new Event('planned-session-data-changed'));
+      await refreshList(selected.id);
+    } catch (cause) {
+      if (cause?.code === '40001') setConflict(true);
+      if (confirmationAccepted && !realizationVerified) {
+        setRealizationLoadError(readError(cause));
+        setRealizationLoadedFor(editor.id);
+        setError(`La sesión se confirmó, pero no se pudo verificar la lectura posterior. Reintenta la lectura antes de volver a confirmar. ${readError(cause)}`);
+      } else if (confirmationAccepted) {
+        setError(`La sesión y sus estados se verificaron, pero no se pudo actualizar la lista. ${readError(cause)}`);
+      } else {
+        setError(`${errorKind(cause)}: no se pudo confirmar la sesión realizada. ${readError(cause)}`);
+      }
     } finally { operationRef.current = false; setBusy(false); }
   };
 
@@ -1087,6 +1203,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       const revision = await savePlannedAvailability(client, editor.id, editor.revision, changes);
       await reloadPlayersAfter04b(revision, dateNeedsReconciliation ? editor.session_date : null);
       setNotice('Disponibilidad guardada y recargada desde el servidor.');
+      window.dispatchEvent(new Event('planned-session-data-changed'));
     } catch (cause) { handle04bError(cause, 'guardar la disponibilidad'); }
     finally { operationRef.current = false; setBusy(false); }
   };
@@ -1648,6 +1765,13 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
             {canEdit && editor.id && editor.planning_state === 'draft' ?
               <button type="button" className={`${button} border border-caudal-electric/50 text-caudal-electric`}
                 onClick={confirm} disabled={busy || dirty || conflict || creationUncertain}>Confirmar y numerar</button> : null}
+            {canEdit && realizationReady && editor.id && frozen && editor.planning_state === 'confirmed' &&
+              realizationLoadedFor === editor.id && !currentRealization ?
+              <button type="button" className={`${button} border border-emerald-300/50 bg-emerald-400/10 text-emerald-100`}
+                onClick={confirmRealization}
+                disabled={busy || dirty || conflict || creationUncertain || realizationLoading || Boolean(realizationLoadError) ||
+                  selected.status !== 'open' || Boolean(editor.cancelled_at || editor.retired_at) || editor.session_date > localToday}>
+                Confirmar sesión realizada</button> : null}
             {editor.id ? <button type="button" className={`${button} border border-white/15 text-slate-200`}
               onClick={() => { if (requestDiscard()) openSession(editor.id, true); }} disabled={busy}>Recargar</button> : null}
             <button type="button" className={`${button} border border-white/15 text-slate-200`}
@@ -1666,6 +1790,52 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           {creationUncertain ? <p className="w-full text-xs text-amber-200">Guardado bloqueado: comprueba la sesión en la lista y recárgala antes de continuar.</p> : null}
           {unsupportedItems ? <p className="w-full text-xs text-amber-200">Esta sesión contiene un tipo de tarea o snapshot incompatible, o más de dos tareas en un ejercicio. Se muestra sin edición para preservar sus datos.</p> : null}
         </div>
+        {editor.id && frozen && editor.planning_state === 'confirmed' ? (
+          currentRealization ? (
+            <div className={`${panel} space-y-2 text-sm`} role="status">
+              <p className="font-bold text-emerald-100">Entrenamiento marcado como realizado</p>
+              <p className="text-xs text-slate-300">
+                {new Date(currentRealization.realized_at).toLocaleString('es-ES')} · {currentRealization.roster_count} jugadores ·
+                {' '}{currentRealization.default_available_count} Disponibles por defecto aceptados en la revisión conjunta.
+              </p>
+              <p className="text-xs text-slate-400">
+                Estados actuales: {realizationStats?.states.filter(({ count }) => count > 0)
+                  .map(({ label, count }) => `${label}: ${count}`).join(' · ') || 'sin jugadores'}.
+                {' '}Las correcciones posteriores se guardan desde los controles habituales de disponibilidad y quedan auditadas.
+              </p>
+              {editor.cancelled_at || editor.retired_at ? (
+                <p className="text-xs text-amber-200">La sesión está anulada o retirada y no se incluye en las estadísticas.</p>
+              ) : null}
+            </div>
+          ) : !realizationProbeComplete ? (
+            <p className={`${panel} text-xs text-slate-400`} role="status">Comprobando el backend de confirmación de realización…</p>
+          ) : !realizationReady ? (
+            <p className={`${panel} text-xs text-amber-200`} role={realizationProbeError ? 'alert' : 'status'}>
+              {realizationProbeError
+                ? `No se pudo verificar el backend de realización: ${realizationProbeError}`
+                : 'La confirmación de realización requiere instalar la migración de sesiones realizadas y verificar el ciclo de vida en Supabase.'}
+            </p>
+          ) : realizationLoadedFor !== editor.id || realizationLoading ? (
+            <p className={`${panel} text-xs text-slate-400`} role="status">Cargando el estado de realización…</p>
+          ) : realizationLoadError ? (
+            <div className={`${panel} flex flex-wrap items-center justify-between gap-3 text-xs text-red-200`} role="alert">
+              <span>No se puede confirmar hasta comprobar el estado de la sesión: {realizationLoadError}</span>
+              <button type="button" className={`${button} border border-white/20 text-white`}
+                onClick={() => setRealizationReloadRequest((current) => current + 1)} disabled={busy}>
+                Reintentar lectura</button>
+            </div>
+          ) : editor.cancelled_at || editor.retired_at ? (
+            <p className={`${panel} text-xs text-amber-200`} role="status">Una sesión anulada o retirada no puede confirmarse como realizada.</p>
+          ) : editor.session_date > localToday ? (
+            <p className={`${panel} text-xs text-slate-400`} role="status">La sesión es futura; la acción estará disponible después de su fecha.</p>
+          ) : realizationReady && selected.status !== 'open' ? (
+            <p className={`${panel} text-xs text-amber-200`} role="status">La temporada está cerrada; no se puede confirmar ni corregir la realización.</p>
+          ) : (
+            <p className={`${panel} text-xs text-slate-400`} role="status">
+              Antes de confirmar, revisa la disponibilidad guardada. {defaultAvailableCount} jugadores tienen Disponible por defecto; la confirmación conjunta los aceptará como estado final de esta sesión.
+            </p>
+          )
+        ) : null}
         {playersError ? <p role="alert" className="rounded-xl border border-red-400/30 p-3 text-sm text-red-100">{playersError} Recarga la sesión; no se habilitarán operaciones de jugadores con datos incompletos.</p> : null}
         {boardsError ? <p role="alert" className="rounded-xl border border-red-400/30 p-3 text-sm text-red-100">{boardsError} La edición de pizarras está deshabilitada; la sesión y sus ejercicios siguen disponibles.</p> : null}
         {suggestionsError ? <p role="status" className="text-xs text-amber-200">{suggestionsError} Los campos Lugar y Rival siguen siendo editables.</p> : null}
