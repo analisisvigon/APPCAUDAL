@@ -79,6 +79,7 @@ const session = { id: 'fixture', editor: { session_date: '2026-11-13', session_n
     { player_id: 'p3', player_name_snapshot: 'Jugador lesionado', position_key_snapshot: 'goalkeeper' },
     { player_id: 'p4', player_name_snapshot: 'Jugador ausente', position_key_snapshot: 'midfielder' },
     { player_id: 'p5', player_name_snapshot: 'Jugador adaptado', position_key_snapshot: 'defender' },
+    { player_id: 'p6', player_name_snapshot: 'Jugador extremo', position_key_snapshot: 'forward' },
   ], availability: {
     p1: { status: 'first_team', observation: 'Entrena con el primer equipo' },
     p3: { status: 'injured' },
@@ -87,7 +88,10 @@ const session = { id: 'fixture', editor: { session_date: '2026-11-13', session_n
   },
   distribution: { formation_key: null, player_layout: [], space_zones: [
     { slot_id: 'exercise', x: 20, y: 20, w: 40, h: 30, color: 'blue' },
-  ] }, positionById: new Map() };
+  ] }, positionById: new Map([
+    ['p1', 'centre_back'], ['p2', 'centre_forward'], ['p3', 'goalkeeper'],
+    ['p4', 'holding_midfield'], ['p5', 'right_back'], ['p6', 'right_winger'],
+  ]) };
 const selected = { team_name: 'Equipo de prueba', label: '2026/2027' };
 const before = JSON.stringify(session);
 const chrome = [process.env.CHROME_PATH, 'C:/Program Files/Google/Chrome/Application/chrome.exe',
@@ -99,6 +103,7 @@ const css = ['plannedSessionDocument.css', 'plannedSessionPrint.css'].map((file)
   readFileSync(`src/components/training/${file}`, 'utf8')).join('\n');
 const screenRoster = renderToStaticMarkup(React.createElement(PlannedSessionRoster, {
   roster: session.roster, frozen: true, availability: session.availability,
+  positionById: session.positionById,
 }));
 for (const pitchAppearance of ['green', 'bw']) {
   for (const batch of [false, true]) {
@@ -111,13 +116,13 @@ for (const pitchAppearance of ['green', 'bw']) {
     assert.match(markup, /Jugador adaptado<\/span><small class="planned-roster-status-abbreviation" aria-hidden="true">ADAP<\/small>/);
     assert.doesNotMatch(markup, /Jugador disponible<\/span><small class="planned-roster-status-abbreviation"/);
     assert.match(markup, /Primer equipo/);
-    assert.match(markup, /Disponibles <strong>1<\/strong>/);
+    assert.match(markup, /Disponibles <strong>2<\/strong>/);
     assert.match(markup, /Ausentes <strong>1<\/strong>/);
     assert.match(markup, /Lesionados <strong>1<\/strong>/);
     assert.match(markup, /Trabajo adaptado <strong>1<\/strong>/);
     assert.match(markup, /Primer equipo <strong>1<\/strong>/);
     assert.match(markup, /Entrena con el primer equipo/);
-    for (const position of ['goalkeeper', 'defender', 'midfielder', 'forward']) {
+    for (const position of ['goalkeeper', 'central', 'lateral', 'midfielder', 'winger', 'forward']) {
       assert.match(markup, new RegExp(`planned-roster-group-${position}`));
     }
     assert.equal(JSON.stringify(session), before);
@@ -128,7 +133,7 @@ for (const pitchAppearance of ['green', 'bw']) {
       body{margin:0}.planned-print-pages{visibility:visible}.planned-print-pages:not(:last-child)>.planned-print-sheet:last-child{break-after:page}
       .roster-screen-probe{position:absolute;top:-1000mm;left:0;width:297mm}@media print{.roster-screen-probe{display:none!important}}
       </style></head><body><div class="roster-screen-probe">${screenRoster}</div>${markup}
-      <script>window.addEventListener('load',()=>{const positions=['goalkeeper','defender','midfielder','forward'];const colors=(root)=>positions.map((position)=>{const heading=document.querySelector(root+' .planned-roster-group-'+position+' > b');return heading?getComputedStyle(heading).backgroundColor:'missing'}).join('|');document.documentElement.dataset.screenRosterHeadingColors=colors('.roster-screen-probe');document.documentElement.dataset.printRosterHeadingColors=colors('.planned-print-pages');const abbreviations=[...document.querySelectorAll('.planned-print-pages .planned-roster-status-abbreviation')];document.documentElement.dataset.printRosterStatusColors=abbreviations.map((status)=>getComputedStyle(status).color).join('|');const overflow=(root)=>[...document.querySelectorAll(root+' .planned-roster-player')].some((player)=>player.scrollWidth>player.clientWidth+1||[...player.querySelectorAll('.planned-roster-name,.planned-roster-status-abbreviation')].some((part)=>part.scrollWidth>part.clientWidth+1));document.documentElement.dataset.screenRosterOverflow=String(overflow('.roster-screen-probe'));document.documentElement.dataset.printRosterOverflow=String(overflow('.planned-print-pages'))});</script></body></html>`);
+      <script>window.addEventListener('load',()=>{const positions=['goalkeeper','central','lateral','midfielder','winger','forward'];const colors=(root)=>positions.map((position)=>{const heading=document.querySelector(root+' .planned-roster-group-'+position+' > b');return heading?getComputedStyle(heading).backgroundColor:'missing'}).join('|');document.documentElement.dataset.screenRosterHeadingColors=colors('.roster-screen-probe');document.documentElement.dataset.printRosterHeadingColors=colors('.planned-print-pages');const abbreviations=[...document.querySelectorAll('.planned-print-pages .planned-roster-status-abbreviation')];document.documentElement.dataset.printRosterStatusColors=abbreviations.map((status)=>getComputedStyle(status).color).join('|');const overflow=(root)=>[...document.querySelectorAll(root+' .planned-roster-player')].some((player)=>player.scrollWidth>player.clientWidth+1||[...player.querySelectorAll('.planned-roster-name,.planned-roster-status-abbreviation')].some((part)=>part.scrollWidth>part.clientWidth+1));document.documentElement.dataset.screenRosterOverflow=String(overflow('.roster-screen-probe'));document.documentElement.dataset.printRosterOverflow=String(overflow('.planned-print-pages'))});</script></body></html>`);
     execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox', '--disable-extensions',
       '--no-pdf-header-footer', `--print-to-pdf=${pdf}`, pathToFileURL(html).href], { timeout: 30000, stdio: 'pipe' });
     const bytes = readFileSync(pdf).toString('latin1');
@@ -146,10 +151,10 @@ for (const pitchAppearance of ['green', 'bw']) {
       const dom = execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox',
         '--disable-extensions', '--dump-dom', pathToFileURL(html).href],
       { timeout: 30000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-      const headings = 'rgb\\(234, 242, 251\\)\\|rgb\\(237, 244, 238\\)\\|rgb\\(241, 237, 247\\)\\|rgb\\(251, 240, 229\\)';
+      const headings = 'rgb\\(234, 242, 251\\)\\|rgb\\(251, 233, 233\\)\\|rgb\\(232, 244, 234\\)\\|rgb\\(240, 234, 251\\)\\|rgb\\(255, 240, 223\\)\\|rgb\\(255, 245, 204\\)';
       assert.match(dom, new RegExp(`data-screen-roster-heading-colors="${headings}"`));
       assert.match(dom, new RegExp(`data-print-roster-heading-colors="${headings}"`));
-      assert.match(dom, /data-print-roster-status-colors="rgb\(174, 29, 50\)\|rgb\(152, 101, 0\)\|rgb\(29, 78, 216\)\|rgb\(174, 29, 50\)"/);
+      assert.match(dom, /data-print-roster-status-colors="rgb\(174, 29, 50\)\|rgb\(29, 78, 216\)\|rgb\(152, 101, 0\)\|rgb\(174, 29, 50\)"/);
       assert.match(dom, /data-screen-roster-overflow="false"/);
       assert.match(dom, /data-print-roster-overflow="false"/);
     }

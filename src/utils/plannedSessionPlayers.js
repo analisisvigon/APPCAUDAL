@@ -1,10 +1,42 @@
+import { getPlayerPositionPresentation } from '../constants/playerPositions.js';
+
 export const PLAYER_GROUPS = [
   { key: 'goalkeeper', label: 'Porteros' },
-  { key: 'defender', label: 'Defensas' },
-  { key: 'midfielder', label: 'Centrocampistas' },
+  { key: 'central', label: 'Centrales' },
+  { key: 'lateral', label: 'Laterales' },
+  { key: 'midfielder', label: 'Mediocentros' },
+  { key: 'winger', label: 'Extremos' },
   { key: 'forward', label: 'Delanteros' },
   { key: null, label: 'Sin posición' },
 ];
+
+const rosterGroupByPositionPresentation = {
+  PORTEROS: 'goalkeeper',
+  'CENTRALES': 'central',
+  'LATERALES DERECHOS': 'lateral',
+  'LATERALES IZQUIERDOS': 'lateral',
+  CARRILEROS: 'lateral',
+  PIVOTES: 'midfielder',
+  MEDIOCENTROS: 'midfielder',
+  INTERIORES: 'midfielder',
+  MEDIAPUNTAS: 'midfielder',
+  'EXTREMOS DERECHOS': 'winger',
+  'EXTREMOS IZQUIERDOS': 'winger',
+  'SEGUNDOS PUNTAS': 'forward',
+  'DELANTEROS CENTRO': 'forward',
+};
+
+const sessionPlayerGroupKey = (row, frozen, positionById) => {
+  const specificPosition = frozen ? positionById.get(row.player_id) : row.specific_position_key;
+  if (specificPosition) {
+    const presentation = getPlayerPositionPresentation({ primarySpecificPosition: specificPosition });
+    return rosterGroupByPositionPresentation[presentation.group] || null;
+  }
+  const position = frozen ? row.position_key_snapshot : row.position_key;
+  if (position === 'goalkeeper') return 'goalkeeper';
+  if (position === 'forward') return 'forward';
+  return null;
+};
 
 export const PLAYER_STATUSES = [
   { key: 'available', label: 'Disponible', short: 'Disp.' },
@@ -21,10 +53,9 @@ export const eligibleRosterCandidates = (candidates, date) => candidates.filter(
 
 export const hasUncertainRosterDate = (row) => !row.joined_on || (row.has_departed && !row.left_on);
 
-export const groupSessionPlayers = (players, frozen) => PLAYER_GROUPS.map((group) => ({
+export const groupSessionPlayers = (players, frozen, positionById = new Map()) => PLAYER_GROUPS.map((group) => ({
   ...group,
-  players: players.filter((row) => (frozen ? row.position_key_snapshot : row.position_key) === group.key ||
-    (group.key === null && (frozen ? row.position_key_snapshot : row.position_key) == null))
+  players: players.filter((row) => sessionPlayerGroupKey(row, frozen, positionById) === group.key)
     .sort((a, b) => (frozen ? a.player_name_snapshot : a.name)
       .localeCompare(frozen ? b.player_name_snapshot : b.name, 'es')),
 })).filter((group) => group.key !== null || group.players.length);

@@ -7,7 +7,10 @@ const rows = {
   club_team_season_players: [{ id: 'membership-1', club_team_season_id: 'cts-1', player_id: 'player-1',
     joined_on: null, left_on: null, has_departed: false }],
   players_database: [{ id: 'player-1', name: 'Nombre real' }],
-  player_positions: [{ player_id: 'player-1', position_key: 'goalkeeper', position_type: 'natural', is_primary: true }],
+  player_positions: [
+    { player_id: 'player-1', position_key: 'goalkeeper', position_type: 'natural', is_primary: true },
+    { player_id: 'player-1', position_key: 'sweeper_keeper', position_type: 'specific', is_primary: true },
+  ],
   planned_session_player_roster: [{ session_id: 'session-1', player_id: 'player-1',
     source_membership_id: 'membership-1', player_name_snapshot: 'Nombre histórico', position_key_snapshot: 'goalkeeper' }],
   planned_session_player_availability: [{ session_id: 'session-1', player_id: 'player-1',
@@ -16,9 +19,12 @@ const rows = {
 const client = {
   from(table) {
     calls.push({ table });
-    return { select() { return this; }, eq(column, value) { calls.push({ table, column, value }); return this; },
-      is() { return this; }, in() { return this; },
-      then(resolve) { resolve({ data: rows[table], error: null }); } };
+    const filters = [];
+    return { select() { return this; }, eq(column, value) {
+      calls.push({ table, column, value }); filters.push([column, value]); return this;
+    }, is() { return this; }, in() { return this; },
+      then(resolve) { resolve({ data: (rows[table] || []).filter((row) =>
+        filters.every(([column, value]) => row[column] === value)), error: null }); } };
   },
   async rpc(name, args) {
     calls.push({ name, args });
@@ -32,6 +38,8 @@ const client = {
 const candidates = await loadPlannedRosterCandidates(client, 'cts-1');
 assert.deepEqual(candidates.map((row) => [row.id, row.player_id, row.name, row.position_key]),
   [['membership-1', 'player-1', 'Nombre real', 'goalkeeper']]);
+assert.equal(candidates[0].specific_position_key, 'sweeper_keeper',
+  'la agrupación propuesta usa la demarcación específica principal disponible');
 assert.ok(calls.some((call) => call.table === 'club_team_season_players' &&
   call.column === 'club_team_season_id' && call.value === 'cts-1'));
 const loaded = await loadPlannedSessionPlayers(client, 'session-1');

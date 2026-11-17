@@ -475,7 +475,8 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
               </div>
             </div>
             <PlannedSessionRoster roster={roster} frozen={frozen} selectedIds={selectedMembershipIds}
-              availability={availability} onSelect={onSelectPlayer} onAvailability={onAvailability}
+              availability={availability} positionById={positionById}
+              onSelect={onSelectPlayer} onAvailability={onAvailability}
               canEdit={canEdit && !busy && Boolean(editor.id)} />
             <div className="planned-sheet-cover-lower">
               <SessionPlayerDistribution distribution={distribution} roster={frozen ? roster : []}

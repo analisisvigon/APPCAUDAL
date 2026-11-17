@@ -220,19 +220,25 @@ export const loadPlannedRosterCandidates = async (client, clubTeamSeasonId) => {
     .eq('club_team_season_id', clubTeamSeasonId).is('voided_at', null)) || [];
   if (!memberships.length) return [];
   const ids = [...new Set(memberships.map((row) => row.player_id))];
-  const [namesResponse, positionsResponse] = await Promise.all([
+  const [namesResponse, positionsResponse, specificPositionsResponse] = await Promise.all([
     client.from('players_database').select('id,name').in('id', ids),
     client.from('player_positions').select('player_id,position_key,position_type,is_primary')
       .in('player_id', ids).eq('position_type', 'natural').eq('is_primary', true),
+    client.from('player_positions').select('player_id,position_key,position_type,is_primary')
+      .in('player_id', ids).eq('position_type', 'specific').eq('is_primary', true),
   ]);
   const names = new Map((unwrap(namesResponse) || []).map((row) => [row.id, row.name]));
   const positions = unwrap(positionsResponse) || [];
+  const specificPositions = unwrap(specificPositionsResponse) || [];
   const keys = new Map(ids.map((id) => [id, positions.filter((row) => row.player_id === id).map((row) => row.position_key)]));
+  const specificKeys = new Map(ids.map((id) => [id,
+    specificPositions.filter((row) => row.player_id === id).map((row) => row.position_key)]));
   if (memberships.some((row) => !names.get(row.player_id) || keys.get(row.player_id).length > 1)) {
     throw new Error('Identidad o posición principal ambigua en la plantilla canónica. Revisa las pertenencias antes de congelar.');
   }
   return memberships.map((row) => ({ ...row, name: names.get(row.player_id),
-    position_key: keys.get(row.player_id)[0] || null }));
+    position_key: keys.get(row.player_id)[0] || null,
+    specific_position_key: specificKeys.get(row.player_id).length === 1 ? specificKeys.get(row.player_id)[0] : null }));
 };
 
 export const loadPlannedSessionPlayers = async (client, sessionId) => {

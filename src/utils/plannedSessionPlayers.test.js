@@ -15,6 +15,33 @@ assert.equal(hasUncertainRosterDate(candidates[1]), false);
 assert.equal(groupSessionPlayers(candidates, false)[0].label, 'Porteros');
 assert.equal(groupSessionPlayers(candidates, false).at(-1).label, 'Sin posición');
 
+const positions = [
+  ['goalkeeper', 'goalkeeper'],
+  ['central', 'centre_back'],
+  ['lateral', 'right_back'],
+  ['midfielder', 'holding_midfield'],
+  ['winger', 'left_winger'],
+  ['forward', 'centre_forward'],
+];
+const classifiedRoster = positions.map(([, specific_position_key], index) => ({
+  player_id: `position-${index}`, name: `Jugador ${index}`, player_name_snapshot: `Jugador ${index}`,
+  position_key: index === 0 ? 'goalkeeper' : index === 5 ? 'forward' : 'defender',
+  position_key_snapshot: index === 0 ? 'goalkeeper' : index === 5 ? 'forward' : 'defender',
+  specific_position_key,
+}));
+classifiedRoster.push({ player_id: 'unspecified', name: 'Sin demarcación', player_name_snapshot: 'Sin demarcación',
+  position_key: 'defender', position_key_snapshot: 'defender' });
+const primaryPositionMap = new Map(positions.map(([, key], index) => [`position-${index}`, key]));
+for (const frozen of [false, true]) {
+  const grouped = groupSessionPlayers(classifiedRoster, frozen, primaryPositionMap);
+  assert.deepEqual(grouped.map((group) => group.key), [
+    'goalkeeper', 'central', 'lateral', 'midfielder', 'winger', 'forward', null,
+  ]);
+  assert.deepEqual(grouped.map((group) => group.players.length), [1, 1, 1, 1, 1, 1, 1]);
+  assert.equal(grouped.flatMap((group) => group.players).length, classifiedRoster.length,
+    'cada jugador queda exactamente en un grupo, incluidos quienes no tienen demarcación específica');
+}
+
 const roster = Array.from({ length: 24 }, (_, i) => ({ player_id: `p${i}` }));
 const states = { p0: { status: 'absent', observation: '' }, p1: { status: 'injured', observation: 'Lesión' },
   p2: { status: 'adapted', observation: '' } };

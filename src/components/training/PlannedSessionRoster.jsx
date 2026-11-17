@@ -6,10 +6,10 @@ const visualStatus = (status) => status === 'first_team' ? 'planned-roster-playe
 const statusAbbreviations = { injured: 'LES', first_team: '1EQ', adapted: 'ADAP', absent: 'AUS' };
 
 export default function PlannedSessionRoster({ roster = [], frozen = false, selectedIds = [],
-  availability = {}, onSelect, onAvailability, canEdit = false, print = false }) {
+  availability = {}, positionById = new Map(), onSelect, onAvailability, canEdit = false, print = false }) {
   const selected = frozen ? roster : roster.filter((row) => selectedIds.includes(row.id));
   const counts = sessionPlayerCounts(selected, frozen ? availability : {});
-  const groups = groupSessionPlayers(roster, frozen);
+  const groups = groupSessionPlayers(roster, frozen, positionById);
   return <div className={print ? 'planned-print-roster' : 'planned-sheet-roster'}>
     {groups.map((group) => <div className={`planned-roster-group planned-roster-group-${group.key || 'unassigned'} ${group.players.length > 4 ? 'planned-roster-group-two-columns' : ''}`} key={group.key || 'unknown'}>
       <b>{group.label}</b>

@@ -131,7 +131,7 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], availa
           </div>
           <div className="planned-print-session-numbers planned-print-value-metric"><span>VALOR (0–10)<b>{sessionValue === '' || sessionValue == null ? '—' : sessionValue}</b></span></div>
         </div>
-        <PlannedSessionRoster roster={roster} frozen availability={availability} print />
+        <PlannedSessionRoster roster={roster} frozen availability={availability} positionById={positionById} print />
         <div className="planned-print-cover-lower">
           <SessionPlayerDistribution distribution={playerDistribution} roster={roster}
             availability={availability} positionById={positionById} />
