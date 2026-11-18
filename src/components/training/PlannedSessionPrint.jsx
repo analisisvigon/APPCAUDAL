@@ -88,14 +88,14 @@ function PrintExercise({ slot, number, dimensions, pitchAppearance }) {
   </section>;
 }
 
-export function PlannedSessionPrintPages({ editor, selected, roster = [], availability = {},
+export function PlannedSessionPrintPages({ editor, selected, roster = [], guests = [], availability = {},
   distribution = { formation_key: null, player_layout: [], space_zones: [] }, positionById = new Map(),
   playerDistribution = distribution, leagueLogoUrl = '', sessionValue = '', fieldDimensions = null,
   exerciseDimensions = {}, mcNumber = '', pitchAppearance = 'green',
   pages = planPlannedSessionPrintSheets(editor.slots) }) {
   const ordered = ['activation', 'main', 'cooldown'].flatMap((phase) => editor.slots.filter((slot) => slot.phase === phase));
   const numberOf = (id) => ordered.findIndex((slot) => slot.id === id) + 1;
-  const counts = sessionPlayerCounts(roster, availability);
+  const counts = sessionPlayerCounts(roster, availability, guests);
   const layoutOf = (slots) => {
     if (slots.length === 1) return 'one';
     if (slots.length === 2) return 'two';
@@ -111,7 +111,7 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], availa
           <PrintField label="Día">{editor.session_date}</PrintField>
           <PrintField label="Hora">{editor.header.starts_at}</PrintField>
           <PrintField label="Lugar">{editor.header.location}</PrintField>
-          <PrintField label="Nº jugadores">{roster.length ? counts.participants : '—'}</PrintField>
+          <PrintField label="Participantes">{roster.length || guests.length ? counts.participants : '—'}</PrintField>
           <PrintField label="Periodo">{editor.header.period_label}</PrintField>
           <div className="planned-print-field planned-print-microcycle-pair">
             <div><strong>Microciclo</strong><span>{mcNumber ? `MC ${mcNumber}` : 'Sin asignar'}</span></div>
@@ -131,7 +131,8 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], availa
           </div>
           <div className="planned-print-session-numbers planned-print-value-metric"><span>VALOR (0–10)<b>{sessionValue === '' || sessionValue == null ? '—' : sessionValue}</b></span></div>
         </div>
-        <PlannedSessionRoster roster={roster} frozen availability={availability} positionById={positionById} print />
+        <PlannedSessionRoster roster={roster} guests={guests} frozen availability={availability}
+          positionById={positionById} print />
         <div className="planned-print-cover-lower">
           <SessionPlayerDistribution distribution={playerDistribution} roster={roster}
             availability={availability} positionById={positionById} />
@@ -152,13 +153,13 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], availa
   </div>;
 }
 
-export default function PlannedSessionPrint({ editor, selected, pages, printRef, roster, availability,
+export default function PlannedSessionPrint({ editor, selected, pages, printRef, roster, guests = [], availability,
   distribution, playerDistribution, positionById, leagueLogoUrl, sessionValue, fieldDimensions,
   exerciseDimensions, mcNumber, pitchAppearance = 'green' }) {
   if (typeof document === 'undefined') return null;
   return createPortal(<div className="planned-print-portal" ref={printRef}>
     <PlannedSessionPrintPages editor={editor} selected={selected} pages={pages}
-      roster={roster} availability={availability} distribution={distribution}
+      roster={roster} guests={guests} availability={availability} distribution={distribution}
       playerDistribution={playerDistribution}
       positionById={positionById} leagueLogoUrl={leagueLogoUrl} sessionValue={sessionValue}
       fieldDimensions={fieldDimensions} exerciseDimensions={exerciseDimensions} mcNumber={mcNumber} pitchAppearance={pitchAppearance} />

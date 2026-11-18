@@ -27,6 +27,7 @@ const rosterGroupByPositionPresentation = {
 };
 
 const sessionPlayerGroupKey = (row, frozen, positionById) => {
+  if (row.is_guest) return row.position_group;
   const specificPosition = frozen ? positionById.get(row.player_id) : row.specific_position_key;
   if (specificPosition) {
     const presentation = getPlayerPositionPresentation({ primarySpecificPosition: specificPosition });
@@ -56,14 +57,26 @@ export const hasUncertainRosterDate = (row) => !row.joined_on || (row.has_depart
 export const groupSessionPlayers = (players, frozen, positionById = new Map()) => PLAYER_GROUPS.map((group) => ({
   ...group,
   players: players.filter((row) => sessionPlayerGroupKey(row, frozen, positionById) === group.key)
-    .sort((a, b) => (frozen ? a.player_name_snapshot : a.name)
-      .localeCompare(frozen ? b.player_name_snapshot : b.name, 'es')),
+    .sort((a, b) => (a.player_name_snapshot || a.name || a.player_name || '')
+      .localeCompare(b.player_name_snapshot || b.name || b.player_name || '', 'es')),
 })).filter((group) => group.key !== null || group.players.length);
 
-export const sessionPlayerCounts = (roster, availability = {}) => {
-  const counts = { total: roster.length, available: 0, absent: 0, injured: 0, adapted: 0, first_team: 0, participants: 0 };
-  for (const player of roster) {
-    const status = availability[player.player_id]?.status || 'available';
+export const sessionPlayerCounts = (roster, availability = {}, guests = []) => {
+  const counts = {
+    total: roster.length + guests.length,
+    template: roster.length,
+    guests: guests.length,
+    available: 0,
+    absent: 0,
+    injured: 0,
+    adapted: 0,
+    first_team: 0,
+    participants: 0,
+  };
+  for (const player of [...roster, ...guests]) {
+    const status = player.is_guest
+      ? player.status || 'available'
+      : availability[player.player_id]?.status || 'available';
     if (Object.hasOwn(counts, status)) counts[status] += 1;
   }
   counts.participants = counts.available + counts.adapted;

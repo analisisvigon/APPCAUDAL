@@ -1,6 +1,7 @@
 import {
   loadPlannedSession,
   loadPlannedSessionPlayers,
+  loadPlannedSessionGuests,
   loadPlannedDistribution,
   loadPlannedBoardSeedV11,
   loadPlannedExerciseDimensionsV12,
@@ -14,13 +15,14 @@ import { readPlannedSessionValue } from './plannedSessionValue.js';
 export const plannedSessionExportFileName = (fromDate, toDate) =>
   `Sesiones_${fromDate}_a_${toDate}.pdf`;
 
-export const loadPlannedSessionPrintData = async (client, row, clubTeamSeasonId, v12Supported) => {
-  const [data, players, distributionRow, seed, dimensionRows] = await Promise.all([
+export const loadPlannedSessionPrintData = async (client, row, clubTeamSeasonId, v12Supported, guestsSupported = false) => {
+  const [data, players, distributionRow, seed, dimensionRows, guests] = await Promise.all([
     loadPlannedSession(client, row.id, clubTeamSeasonId),
     loadPlannedSessionPlayers(client, row.id),
     loadPlannedDistribution(client, row.id),
     BOARD_V11_ENABLED ? loadPlannedBoardSeedV11(client, row.id) : Promise.resolve(null),
     v12Supported ? loadPlannedExerciseDimensionsV12(client, row.id) : Promise.resolve([]),
+    guestsSupported ? loadPlannedSessionGuests(client, row.id) : Promise.resolve([]),
   ]);
   if (data.session?.club_team_season_id !== clubTeamSeasonId ||
       data.session?.session_date !== row.session_date ||
@@ -36,6 +38,7 @@ export const loadPlannedSessionPrintData = async (client, row, clubTeamSeasonId,
     id: row.id,
     editor,
     roster: players.roster,
+    guests,
     availability: Object.fromEntries(players.availability.map((player) => [player.player_id,
       { status: player.status, observation: player.observation || '' }])),
     distribution,

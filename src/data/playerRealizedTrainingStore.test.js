@@ -58,9 +58,15 @@ tableRows = {
     { session_id: 'session-a', player_id: 'player-a', status: 'available', status_source: 'default' },
     { session_id: 'session-a', player_id: 'player-b', status: 'adapted', status_source: 'explicit' },
   ],
+  planned_session_realized_guest_snapshots_v1: [{
+    session_id: 'session-a', guest_id: 'guest-a', player_name: 'Pablo',
+    origin_team: 'JUV', position_group: 'forward', status: 'available',
+  }],
 };
-const realization = await loadPlannedSessionRealization(client, 'session-a');
+const realization = await loadPlannedSessionRealization(client, 'session-a', true);
 assert.equal(realization.players.length, 2);
+assert.deepEqual(realization.guests.map(({ player_name, origin_team, status }) =>
+  [player_name, origin_team, status]), [['Pablo', 'JUV', 'available']]);
 assert.ok(!queryCalls.some(([table, operation, columns]) =>
   table === 'planned_session_realizations' && operation === 'select' &&
   columns.includes('initial_status_hash')), 'el hash de confirmación vive solo en la auditoría');
@@ -93,6 +99,8 @@ assert.ok(queryCalls.some((call) => call[0] === 'planned_training_sessions' &&
   call[1] === 'is' && call[2] === 'retired_at' && call[3] === null));
 assert.ok(queryCalls.some((call) => call[0] === 'planned_session_realized_player_statuses' &&
   call[1] === 'eq' && call[2] === 'player_id' && call[3] === 'player-a'));
+assert.ok(!queryCalls.some((call) => call[0] === 'planned_session_realized_guest_snapshots_v1'),
+  'los invitados nunca se incorporan a las estadísticas individuales de Plantilla');
 
 tableRows.planned_training_sessions = [];
 const empty = await loadPlayerRealizedTrainingStats(client, 'player-a', 'cts-a', '2026-03-10');

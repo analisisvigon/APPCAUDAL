@@ -36,24 +36,42 @@ const availability = {
   'player-2': { status: 'absent', observation: '' },
   'player-3': { status: 'adapted', observation: 'Trabajo individual' },
 };
+const guests = [
+  { id: 'guest-1', name: 'Invitado central', origin_team: 'JUV',
+    position_group: 'central', status: 'available', is_guest: true },
+  { id: 'guest-2', name: 'Invitado delantero', origin_team: '',
+    position_group: 'forward', status: 'adapted', is_guest: true },
+];
 const markup = renderToStaticMarkup(React.createElement(PlannedSessionRoster, {
-  roster, frozen: true, availability, positionById, canEdit: true,
+  roster, guests, frozen: true, availability, positionById, canEdit: true, canEditGuests: true,
   onAvailability() {},
 }));
 
-assert.equal((markup.match(/aria-label="Disponibilidad de /g) || []).length, 25);
+assert.equal((markup.match(/aria-label="Disponibilidad de /g) || []).length, 27);
 assert.equal((markup.match(/aria-label="Editar observación de /g) || []).length, 25);
 assert.match(markup, /AY OUB AL HADIYA/);
 assert.match(markup, /AL BANOUDI/);
 assert.match(markup, /SUFYAN/);
 assert.match(markup, /ALI TAREK/);
 assert.match(markup, /MUBASHER/);
-assert.match(markup, /Nº jugadores <strong>22<\/strong>/);
-assert.match(markup, /Total <strong>25<\/strong>/);
-assert.match(markup, /Disponibles <strong>21<\/strong>/);
+assert.match(markup, /Plantilla <strong>25<\/strong>/);
+assert.match(markup, /Invitados <strong>2<\/strong>/);
+assert.match(markup, /Participantes <strong>24<\/strong>/);
+assert.match(markup, /Total sesión <strong>27<\/strong>/);
+assert.match(markup, /Disponibles <strong>22<\/strong>/);
 assert.match(markup, /Ausentes <strong>1<\/strong>/);
 assert.match(markup, /Lesionados <strong>1<\/strong>/);
-assert.match(markup, /Trabajo adaptado <strong>1<\/strong>/);
+assert.match(markup, /Trabajo adaptado <strong>2<\/strong>/);
+assert.match(markup, /Invitado central<\/span><small class="planned-roster-guest-badge">INV<\/small>/);
+assert.equal((markup.match(/class="planned-roster-guest-editor"/g) || []).length, 2);
+
+const emptyMarkup = renderToStaticMarkup(React.createElement(PlannedSessionRoster, {
+  roster: [], guests: [], frozen: true, canEditGuests: true,
+}));
+assert.equal((emptyMarkup.match(/\+ Añadir invitado/g) || []).length, 6,
+  'cada demarcación permite añadir invitados aunque no tenga jugadores');
+assert.doesNotMatch(emptyMarkup, /class="planned-roster-player /,
+  'los grupos vacíos no crean filas vacías de jugadores');
 
 const chromeCandidates = [
   process.env.CHROME_PATH,
@@ -105,15 +123,15 @@ for (const viewport of viewportCases) {
     '--disable-extensions', `--window-size=${viewport.width},${viewport.height}`,
     '--dump-dom', pathToFileURL(htmlPath).href], { timeout: 30000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   assert.match(dom, /data-group-columns="3"/, `${viewport.width}px: los seis grupos deben quedar en tres columnas`);
-  assert.match(dom, /data-player-count="25"/);
-  assert.match(dom, /data-selector-count="25"/);
+  assert.match(dom, /data-player-count="27"/);
+  assert.match(dom, /data-selector-count="33"/);
   assert.match(dom, /data-note-editor-count="25"/);
   assert.match(dom, /data-bad-name-wrap="false"/);
   assert.match(dom, /data-player-overflow="false"/);
   assert.match(dom, /data-control-overlap="false"/);
   assert.match(dom, /data-page-overflow="false"/, `${viewport.width}px: el ajuste del documento no debe añadir scroll horizontal`);
   const height = Number(dom.match(/data-roster-height-mm="(\d+)"/)?.[1]);
-  assert.ok(height <= 90, `${viewport.width}px: altura del roster ${height}mm debe ser razonable`);
+  assert.ok(height <= 100, `${viewport.width}px: altura del roster ${height}mm debe ser razonable con invitados`);
   if (viewport.width === 1280) {
     const screenshot = path.join(output, 'editable-roster-25-players.png');
     execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox', '--disable-extensions',

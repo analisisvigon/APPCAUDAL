@@ -107,6 +107,10 @@ for (const [name, slots] of Object.entries(fixtures)) {
     player_id: `fixture-player-${index}`, player_name_snapshot: playerName,
     position_key_snapshot: position,
   })) : [];
+  const guests = name === 'roster_24' ? [{
+    id: 'guest-pablo', name: 'PABLO', origin_team: 'JUV',
+    position_group: 'forward', status: 'available', is_guest: true,
+  }] : [];
   const positionKeys = ['goalkeeper', 'goalkeeper', 'right_back', 'right_back',
     'centre_back', null, 'centre_back', 'centre_back', 'left_back', 'centre_back', 'left_back',
     'holding_midfield', 'central_midfield', 'central_midfield', 'attacking_midfield', 'left_midfield',
@@ -122,7 +126,7 @@ for (const [name, slots] of Object.entries(fixtures)) {
   const markup = renderToStaticMarkup(React.createElement(PlannedSessionPrintPages, { editor,
     selected: { team_id: '85a16f33-9fe5-44d4-b85d-37d73651ebf6', team_name: 'C.D. Caudal', label: '2026/2027' },
     exerciseDimensions: name === 'two_brief' ? { m1: { length_m: 30, width_m: 20 } } : {},
-    roster, positionById, playerDistribution: savedPlayerDistribution,
+    roster, guests, positionById, playerDistribution: savedPlayerDistribution,
     availability: (name === 'roster_24' || playerBoard) ? {
       'fixture-player-1': { status: 'injured' },
       'fixture-player-10': { status: 'absent' },
@@ -139,7 +143,9 @@ for (const [name, slots] of Object.entries(fixtures)) {
   if (name === 'board_teams') assert.match(markup, /Pepe[\s\S]*Luis/);
   if (name === 'roster_24') {
     for (const [, playerName] of approvedRosterNames) assert.ok(markup.includes(playerName), playerName);
-    assert.match(markup, /Nº jugadores[\s\S]*22/);
+    assert.match(markup, /Participantes[\s\S]*23/);
+    assert.match(markup, /Plantilla <strong>24<\/strong>[\s\S]*Invitados <strong>1<\/strong>/);
+    assert.match(markup, /PABLO \(JUV\)<\/span><small class="planned-roster-guest-badge">INV<\/small>/);
     assert.equal((markup.match(/planned-roster-group-two-columns/g) || []).length, 2,
       'los grupos con más de cuatro jugadores usan dos columnas');
     assert.equal((markup.match(/planned-roster-player-no-training/g) || []).length, 2);

@@ -41,6 +41,9 @@ import {
   savePlannedSessionMaterial,
   loadPlannedRosterCandidates,
   loadPlannedSessionPlayers,
+  checkPlannedSessionGuestsReady,
+  loadPlannedSessionGuests,
+  savePlannedSessionGuests,
   freezePlannedRoster,
   savePlannedAvailability,
   reconcilePlannedDate,
@@ -58,7 +61,7 @@ import {
   SESSION_RETIREMENT_BACKEND_VERIFIED,
   changePlannedSessionLifecycle,
 } from '../../data/plannedSessionsStore';
-import { availabilityChanges, eligibleRosterCandidates, hasUncertainRosterDate } from '../../utils/plannedSessionPlayers';
+import { availabilityChanges, eligibleRosterCandidates, hasUncertainRosterDate, PLAYER_STATUSES } from '../../utils/plannedSessionPlayers';
 import { summarizePlayerRealizedTraining } from '../../utils/playerRealizedTrainingStats';
 import { calendarWeekDays } from '../../utils/teamCalendar';
 import { autoPlayerLayout, distributionForSave, distributionPayloadKey, emptyDistribution, movePlayerBoardLayout, normalizeDistribution,
@@ -98,6 +101,14 @@ const unsupportedSession = (data, next) => data.items.some((item) =>
     !item.task_snapshot.source || !item.task_snapshot.working ||
     item.task_snapshot.source_task_id !== item.source_task_uuid_snapshot))) ||
   next.slots.some((slot) => slot.items.length > 2);
+const guestCollectionKey = (guests) => JSON.stringify(guests.map(({ id, name, origin_team, position_group, status }) => ({
+  id, name: String(name || '').trim(), origin_team: String(origin_team || '').trim(),
+  position_group, status: status || 'available',
+})).sort((a, b) => a.id.localeCompare(b.id)));
+const guestSnapshotKey = (guests) => guestCollectionKey(guests.map((guest) => ({
+  id: guest.guest_id, name: guest.player_name, origin_team: guest.origin_team,
+  position_group: guest.position_group, status: guest.status,
+})));
 
 export default function PlannedSessionsSection({ client, membership, userId, onDirtyChange, leagueLogoUrl = '', openSessionRequest = null }) {
   const [contexts, setContexts] = useState([]);
@@ -146,6 +157,11 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [validationIssues, setValidationIssues] = useState([]);
   const [expandedSlotId, setExpandedSlotId] = useState(null);
   const [roster, setRoster] = useState([]);
+  const [guests, setGuests] = useState([]);
+  const [guestsBaseline, setGuestsBaseline] = useState([]);
+  const [guestsReady, setGuestsReady] = useState(false);
+  const [guestsProbeComplete, setGuestsProbeComplete] = useState(false);
+  const [guestsProbeError, setGuestsProbeError] = useState('');
   const [candidates, setCandidates] = useState([]);
   const [selectedMembershipIds, setSelectedMembershipIds] = useState([]);
   const [initialSelectedMembershipIds, setInitialSelectedMembershipIds] = useState([]);
@@ -189,7 +205,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const selected = contexts.find((row) => row.id === contextId) || null;
   const localNow = new Date();
   const localToday = `${localNow.getFullYear()}-${String(localNow.getMonth() + 1).padStart(2, '0')}-${String(localNow.getDate()).padStart(2, '0')}`;
-  const defaultAvailableCount = roster.filter((player) => !availability[player.player_id]).length;
+  const defaultAvailableCount = roster.filter((player) => !availability[player.player_id]).length +
+    guests.filter((guest) => guest.status === 'available').length;
   const currentRealization = realization?.session_id === editor?.id ? realization : null;
   const realizationStats = currentRealization
     ? summarizePlayerRealizedTraining(currentRealization.players.map(({ session_id, status }) => ({ session_id, status })))
@@ -200,6 +217,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     !(editor?.id && editor.planning_state === 'confirmed' && editor.session_number == null);
   const editorDirty = Boolean(editor && (!baseline || JSON.stringify(editor) !== JSON.stringify(baseline)));
   const availabilityDirty = Boolean(roster.length && availabilityChanges(availability, availabilityBaseline, roster).length);
+  const guestsDirty = guestCollectionKey(guests) !== guestCollectionKey(guestsBaseline);
   const selectionDirty = Boolean(editor?.id && !roster.length &&
     JSON.stringify([...selectedMembershipIds].sort()) !== JSON.stringify([...initialSelectedMembershipIds].sort()));
   const savedBoardPayload = distribution ? distributionForSave(distribution, roster) : null;
@@ -217,7 +235,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const valueDirty = valueSupported && sessionValue !== baselineSessionValue;
   const mcDirty = mcV4Supported && mcNumber !== mcBaseline;
   const materialDirty = materialSupported && JSON.stringify(materialState) !== JSON.stringify(materialBaseline);
-  const dirty = editorDirty || availabilityDirty || selectionDirty || distributionDirty ||
+  const dirty = editorDirty || availabilityDirty || guestsDirty || selectionDirty || distributionDirty ||
     fieldDirty || exerciseDimensionsDirty || valueDirty || mcDirty || materialDirty;
   const boardDefaultSource = {
     sessionId: editor?.id, canEdit, busy: busy || operationRef.current,
@@ -251,6 +269,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setEditor(null); setBaseline(null); setSessions([]); setSessionsLoadError(false);
     setDeleteTarget(null);
     setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
+    setGuests([]); setGuestsBaseline([]);
     setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
     setDistribution(null); setDistributionBaseline(null); setSpecificPositions([]); setBoardsError('');
     setBoardDefaults(null); setSessionSeedFormation(null); setFieldDimensions({ length_m: '', width_m: '' });
@@ -300,6 +319,18 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     return () => { active = false; };
   }, [client]);
   useEffect(() => {
+    let active = true;
+    setGuestsReady(false);
+    setGuestsProbeComplete(false);
+    setGuestsProbeError('');
+    checkPlannedSessionGuestsReady(client).then((ready) => {
+      if (active) { setGuestsReady(ready); setGuestsProbeComplete(true); }
+    }).catch((cause) => {
+      if (active) { setGuestsProbeError(readError(cause)); setGuestsProbeComplete(true); }
+    });
+    return () => { active = false; };
+  }, [client]);
+  useEffect(() => {
     if (!editor?.id || !realizationReady) {
       setRealization(null);
       setRealizationLoading(false);
@@ -312,7 +343,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setRealizationLoading(true);
     setRealizationLoadedFor('');
     setRealizationLoadError('');
-    loadPlannedSessionRealization(client, editor.id).then((record) => {
+    loadPlannedSessionRealization(client, editor.id, guestsReady).then((record) => {
       if (active) { setRealization(record); setRealizationLoadedFor(editor.id); }
     }).catch((cause) => {
       if (active) {
@@ -324,7 +355,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       if (active) setRealizationLoading(false);
     });
     return () => { active = false; };
-  }, [client, editor?.id, editor?.revision, realizationReady, realizationReloadRequest]);
+  }, [client, editor?.id, editor?.revision, realizationReady, guestsReady, realizationReloadRequest]);
   useEffect(() => {
     let cancelled = false;
     setV12ProbeReady(false);
@@ -393,6 +424,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       setExportResult(null);
       if (editor?.id === deleteTarget.id) {
         setEditor(null); setBaseline(null); setRoster([]); setAvailability({}); setAvailabilityBaseline({});
+        setGuests([]); setGuestsBaseline([]);
         setDistribution(null); setDistributionBaseline(null); setSessionValue(''); setBaselineSessionValue('');
         setExerciseDimensions({}); setExerciseDimensionsBaseline({}); setExerciseDimensionsLoadedFor('');
         materialStateRef.current = null; setMaterialState(null); setMaterialBaseline(null);
@@ -428,6 +460,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       if (editor?.id === deleteTarget.id) {
         if (lifecycleAction === 'retire') {
           setEditor(null); setBaseline(null); setRoster([]); setAvailability({}); setAvailabilityBaseline({});
+          setGuests([]); setGuestsBaseline([]);
           setDistribution(null); setDistributionBaseline(null); setSessionValue(''); setBaselineSessionValue('');
           materialStateRef.current = null; setMaterialState(null); setMaterialBaseline(null);
         } else {
@@ -596,6 +629,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setDeleteTarget(null);
     setEditor(null); setBaseline(null); setUnsupportedItems(false); setValidationIssues([]); setExpandedSlotId(null);
     setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
+    setGuests([]); setGuestsBaseline([]);
     setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
     setDistribution(null); setDistributionBaseline(null); setSessionSeedFormation(null); setSpecificPositions([]); setBoardsError('');
     setExerciseDimensions({}); setExerciseDimensionsBaseline({}); setExerciseDimensionsLoadedFor('');
@@ -610,9 +644,13 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     operationRef.current = true;
     setBusy(true); setError(''); setNotice('');
     try {
+      const guestSupport = guestsProbeComplete ? guestsReady : await checkPlannedSessionGuestsReady(client);
+      setGuestsReady(guestSupport);
+      setGuestsProbeComplete(true);
       const [data, players] = await Promise.all([
         loadPlannedSession(client, sessionId, contextId), loadPlannedSessionPlayers(client, sessionId),
       ]);
+      const nextGuests = guestSupport ? await loadPlannedSessionGuests(client, sessionId) : [];
       const next = hydratePlannedEditor(data.session, data.slots, data.items);
       const savedMaterialState = readSessionMaterialState(data.session.material_state);
       if (data.session.material_state != null && !savedMaterialState)
@@ -661,6 +699,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       setUnsupportedItems(unsupportedSession(data, next));
       setEditor(next); setBaseline(next); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null);
       setRoster(players.roster); setCandidates(nextCandidates);
+      setGuests(nextGuests); setGuestsBaseline(nextGuests);
       const initialIds = eligibleRosterCandidates(nextCandidates, next.session_date).map((row) => row.id);
       setSelectedMembershipIds(initialIds); setInitialSelectedMembershipIds(initialIds);
       setAvailability(nextAvailability); setAvailabilityBaseline(nextAvailability); setPlayersError('');
@@ -708,6 +747,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       setBoardDefaults(latestDefaults);
       setEditor(createEmptyPlannedEditor()); setBaseline(null);
       setRoster([]); setCandidates([]); setSelectedMembershipIds([]); setInitialSelectedMembershipIds([]);
+      setGuests([]); setGuestsBaseline([]);
       setAvailability({}); setAvailabilityBaseline({}); setPlayersError('');
       const initialBoard = initialBoardFromDefaults(latestDefaults);
       setDistribution(initialBoard.distribution); setDistributionBaseline(emptyDistribution());
@@ -822,6 +862,21 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     if (availabilityPatch.some((row) => row.observation?.length > 1000)) {
       setError('Las observaciones individuales no pueden superar 1000 caracteres.'); return;
     }
+    if (guestsDirty) {
+      if (!guestsReady) {
+        setError(guestsProbeError || 'El almacenamiento seguro de invitados no está instalado o verificado.');
+        return;
+      }
+      const invalidGuest = guests.find((guest) =>
+        !guest.id || !guest.name?.trim() || guest.name.trim().length > 300 ||
+        guest.origin_team?.trim().length > 120 ||
+        !['goalkeeper', 'central', 'lateral', 'midfielder', 'winger', 'forward'].includes(guest.position_group) ||
+        !['available', 'absent', 'injured', 'adapted', 'first_team'].includes(guest.status));
+      if (invalidGuest) {
+        setError('Revisa los invitados: cada uno requiere un nombre, una posición y un estado válidos.');
+        return;
+      }
+    }
     const emptyField = fieldDimensions.length_m === '' && fieldDimensions.width_m === '';
     if (fieldDirty && !emptyField && !fieldIsMeasured(fieldDimensions)) {
       setError('Indica largo y ancho válidos para el campo, o deja ambos vacíos.'); return;
@@ -932,6 +987,15 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           throw new Error('La disponibilidad recargada no coincide con los cambios enviados.');
         setAvailability(nextAvailability); setAvailabilityBaseline(nextAvailability);
         completed.push('disponibilidad');
+      }
+      if (guestsDirty) {
+        stage = 'guardar invitados';
+        await savePlannedSessionGuests(client, working.id, revision, guests);
+        const savedGuests = await loadPlannedSessionGuests(client, working.id);
+        if (guestCollectionKey(savedGuests) !== guestCollectionKey(guests))
+          throw new Error('Los invitados recargados no coinciden con los cambios enviados.');
+        setGuests(savedGuests); setGuestsBaseline(savedGuests);
+        completed.push('invitados');
       }
       if (fieldDirty) {
         stage = 'guardar dimensiones del campo';
@@ -1087,7 +1151,11 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     }
     const reviewMessage = [
       '¿Confirmas que el entrenamiento se celebró y que revisaste la lista completa?',
-      `${roster.length} jugadores; ${defaultAvailableCount} con Disponible por defecto.`,
+      `${roster.length} jugadores de plantilla y ${guests.length} invitados.`,
+      `Invitados revisados: ${guests.length
+        ? guests.map((guest) => `${guest.name}${guest.origin_team ? ` (${guest.origin_team})` : ''} · ${PLAYER_STATUSES.find((item) => item.key === guest.status)?.label || guest.status}`).join(', ')
+        : 'ninguno'}.`,
+      `${defaultAvailableCount} participantes constan como disponibles.`,
       'Los valores por defecto se tomarán como estados finales solo tras esta confirmación conjunta.',
       'Podrás corregir estados después; cada corrección autorizada quedará auditada.',
     ].join('\n\n');
@@ -1100,13 +1168,14 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     try {
       await confirmPlannedSessionRealization(client, editor.id, editor.revision, true);
       confirmationAccepted = true;
-      const fresh = await loadPlannedSessionRealization(client, editor.id);
-      if (!fresh || fresh.roster_count !== roster.length || fresh.players.length !== roster.length) {
-        throw new Error('La lectura posterior no confirma la plantilla completa como realizada.');
+      const fresh = await loadPlannedSessionRealization(client, editor.id, guestsReady);
+      if (!fresh || fresh.roster_count !== roster.length || fresh.players.length !== roster.length ||
+          (guestsReady && guestSnapshotKey(fresh.guests || []) !== guestCollectionKey(guests))) {
+        throw new Error('La lectura posterior no confirma la plantilla y los invitados revisados.');
       }
       setRealization(fresh);
       realizationVerified = true;
-      setNotice(`Sesión marcada como realizada. ${fresh.default_available_count} jugadores quedaron como Disponible por defecto tras tu revisión conjunta.`);
+      setNotice(`Sesión marcada como realizada. Se conservaron ${fresh.guests?.length || 0} invitados en el historial.`);
       window.dispatchEvent(new Event('planned-session-data-changed'));
       await refreshList(selected.id);
     } catch (cause) {
@@ -1575,9 +1644,10 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setExportBusy(true); setExportError(''); setExportProgress('');
     const printSessions = [];
     try {
+      const guestsSupported = await checkPlannedSessionGuestsReady(client);
       for (const [index, row] of exportResult.rows.entries()) {
         setExportProgress(`Preparando sesión ${index + 1} de ${exportResult.rows.length}…`);
-        printSessions.push(await loadPlannedSessionPrintData(client, row, contextId, v12Supported));
+        printSessions.push(await loadPlannedSessionPrintData(client, row, contextId, v12Supported, guestsSupported));
       }
       setExportProgress('Componiendo las hojas A4…');
       setBatchPrint({ sessions: printSessions,
@@ -1775,7 +1845,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
             {editor.id ? <button type="button" className={`${button} border border-white/15 text-slate-200`}
               onClick={() => { if (requestDiscard()) openSession(editor.id, true); }} disabled={busy}>Recargar</button> : null}
             <button type="button" className={`${button} border border-white/15 text-slate-200`}
-              onClick={() => { if (requestDiscard()) { setEditor(null); setBaseline(null); setDistribution(null); setDistributionBaseline(null); setSpecificPositions([]); setBoardsError(''); setSessionValue(''); setBaselineSessionValue(''); setValueSupported(false); materialStateRef.current = null; setMaterialState(null); setMaterialBaseline(null); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null); } }}
+              onClick={() => { if (requestDiscard()) { setEditor(null); setBaseline(null); setGuests([]); setGuestsBaseline([]); setDistribution(null); setDistributionBaseline(null); setSpecificPositions([]); setBoardsError(''); setSessionValue(''); setBaselineSessionValue(''); setValueSupported(false); materialStateRef.current = null; setMaterialState(null); setMaterialBaseline(null); setConflict(false); setCreationUncertain(false); setValidationIssues([]); setExpandedSlotId(null); } }}
               disabled={busy}>Cerrar plantilla</button>
           </div>
           {dirty ? <p className="w-full text-xs text-amber-200">Cambios sin guardar. Guarda antes de confirmar.</p> : null}
@@ -1795,7 +1865,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
             <div className={`${panel} space-y-2 text-sm`} role="status">
               <p className="font-bold text-emerald-100">Entrenamiento marcado como realizado</p>
               <p className="text-xs text-slate-300">
-                {new Date(currentRealization.realized_at).toLocaleString('es-ES')} · {currentRealization.roster_count} jugadores ·
+                {new Date(currentRealization.realized_at).toLocaleString('es-ES')} · {currentRealization.roster_count} jugadores de plantilla ·
+                {' '}{currentRealization.guests?.length || 0} invitados ·
                 {' '}{currentRealization.default_available_count} Disponibles por defecto aceptados en la revisión conjunta.
               </p>
               <p className="text-xs text-slate-400">
@@ -1832,11 +1903,13 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
             <p className={`${panel} text-xs text-amber-200`} role="status">La temporada está cerrada; no se puede confirmar ni corregir la realización.</p>
           ) : (
             <p className={`${panel} text-xs text-slate-400`} role="status">
-              Antes de confirmar, revisa la disponibilidad guardada. {defaultAvailableCount} jugadores tienen Disponible por defecto; la confirmación conjunta los aceptará como estado final de esta sesión.
+              Antes de confirmar, revisa los estados guardados y la lista de invitados. {defaultAvailableCount} participantes constan como disponibles; la confirmación conjunta conservará también el snapshot de invitados.
             </p>
           )
         ) : null}
         {playersError ? <p role="alert" className="rounded-xl border border-red-400/30 p-3 text-sm text-red-100">{playersError} Recarga la sesión; no se habilitarán operaciones de jugadores con datos incompletos.</p> : null}
+        {guestsProbeError ? <p role="alert" className="rounded-xl border border-amber-300/30 p-3 text-sm text-amber-100">No se pudo verificar el almacenamiento de invitados: {guestsProbeError}. La sesión permanece disponible, pero no se pueden editar invitados.</p>
+          : guestsProbeComplete && !guestsReady ? <p role="status" className="rounded-xl border border-amber-300/30 p-3 text-sm text-amber-100">Los invitados requieren aplicar y verificar la migración manual Sesiones 08. No se modificarán plantillas ni perfiles globales.</p> : null}
         {boardsError ? <p role="alert" className="rounded-xl border border-red-400/30 p-3 text-sm text-red-100">{boardsError} La edición de pizarras está deshabilitada; la sesión y sus ejercicios siguen disponibles.</p> : null}
         {suggestionsError ? <p role="status" className="text-xs text-amber-200">{suggestionsError} Los campos Lugar y Rival siguen siendo editables.</p> : null}
         {!mcV4Supported ? <p role="status" className="text-xs text-amber-200">MC manual pendiente de instalar y verificar. MD sigue editable.</p> : null}
@@ -1851,6 +1924,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         {editor.id && frozen ? <div className={`${panel} space-y-2 text-sm`}>
           <p className="font-bold">Plantilla histórica congelada · {roster.length} jugadores</p>
           {availabilityDirty ? <p>La disponibilidad visible se guardará con «Guardar cambios».</p> : null}
+          {guestsDirty ? <p>Los cambios de invitados se guardarán con «Guardar cambios».</p> : null}
+          {currentRealization && guests.length ? <p>Invitados conservados en el historial: {guests.length}.</p> : null}
         </div> : null}
         <PlannedSessionDocument pitchAppearance={pitchAppearance} onPitchAppearanceChange={setPitchAppearance} editor={editor} selected={selected} canEdit={canEdit} busy={busy}
           seriesSupported={seriesSupported}
@@ -1879,6 +1954,9 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           onMaterialChange={updateMaterial} onEnableMaterialAutofill={enableMaterialAutofill}
           manualMaterial={materialState?.manual || []} onPinMaterialManually={pinMaterialManually}
           roster={frozen ? roster : proposed} frozen={frozen} selectedMembershipIds={selectedMembershipIds}
+          guests={guests} onGuestsChange={setGuests}
+          canEditGuests={guestsReady && canEdit && !currentRealization &&
+            !editor.cancelled_at && !editor.retired_at && !creationUncertain}
           availability={availability} onSelectPlayer={(id, checked) => setSelectedMembershipIds((current) =>
             checked ? [...new Set([...current, id])] : current.filter((entry) => entry !== id))}
           onAvailability={(id, key, value) => setAvailability((current) => ({ ...current,

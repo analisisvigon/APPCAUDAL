@@ -4,7 +4,7 @@ import { PlannedSessionPrintPages } from './PlannedSessionPrint';
 export function PlannedSessionBatchPrintPages({ sessions, selected, leagueLogoUrl, pitchAppearance = 'green' }) {
   return sessions.map((session) => <PlannedSessionPrintPages key={session.id}
       editor={session.editor} selected={selected} pitchAppearance={pitchAppearance}
-      roster={session.roster} availability={session.availability}
+      roster={session.roster} guests={session.guests} availability={session.availability}
       distribution={session.distribution} playerDistribution={session.distribution}
       positionById={session.positionById} leagueLogoUrl={leagueLogoUrl}
       sessionValue={session.sessionValue} fieldDimensions={session.fieldDimensions}

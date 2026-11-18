@@ -41,12 +41,23 @@ for (const frozen of [false, true]) {
   assert.equal(grouped.flatMap((group) => group.players).length, classifiedRoster.length,
     'cada jugador queda exactamente en un grupo, incluidos quienes no tienen demarcación específica');
 }
+const invited = [
+  { id: 'guest-1', name: 'Pablo', position_group: 'forward', status: 'available', is_guest: true },
+  { id: 'guest-2', name: 'Mario', position_group: 'midfielder', status: 'absent', is_guest: true },
+];
+const groupsWithGuests = groupSessionPlayers([...classifiedRoster, ...invited], true, primaryPositionMap);
+assert.equal(groupsWithGuests.find((group) => group.key === 'forward').players.some((row) => row.id === 'guest-1'), true);
+assert.equal(groupsWithGuests.find((group) => group.key === 'midfielder').players.some((row) => row.id === 'guest-2'), true);
 
 const roster = Array.from({ length: 24 }, (_, i) => ({ player_id: `p${i}` }));
 const states = { p0: { status: 'absent', observation: '' }, p1: { status: 'injured', observation: 'Lesión' },
   p2: { status: 'adapted', observation: '' } };
 assert.deepEqual(sessionPlayerCounts(roster, states), {
-  total: 24, available: 21, absent: 1, injured: 1, adapted: 1, first_team: 0, participants: 22,
+  total: 24, template: 24, guests: 0, available: 21, absent: 1, injured: 1, adapted: 1, first_team: 0, participants: 22,
+});
+assert.deepEqual(sessionPlayerCounts(roster.slice(0, 2), {}, invited), {
+  total: 4, template: 2, guests: 2, available: 3, absent: 1, injured: 0,
+  adapted: 0, first_team: 0, participants: 3,
 });
 assert.deepEqual(availabilityChanges(states, {}, roster), [
   { player_id: 'p0', status: 'absent', observation: null },
@@ -58,6 +69,9 @@ console.log('planned session players tests passed');
 
 const firstTeam = { ...states, p3: { status: 'first_team', observation: 'Convocatoria' } };
 const before = JSON.stringify(roster);
-assert.deepEqual(sessionPlayerCounts(roster, firstTeam), { total: 24, available: 20, absent: 1, injured: 1, adapted: 1, first_team: 1, participants: 21 });
+assert.deepEqual(sessionPlayerCounts(roster, firstTeam), {
+  total: 24, template: 24, guests: 0, available: 20, absent: 1,
+  injured: 1, adapted: 1, first_team: 1, participants: 21,
+});
 assert.deepEqual(availabilityChanges(firstTeam, states, roster), [{ player_id: 'p3', status: 'first_team', observation: 'Convocatoria' }]);
 assert.equal(JSON.stringify(roster), before, 'no cambia la pertenencia ni los snapshots');

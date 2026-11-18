@@ -278,8 +278,8 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   pitchAppearance = 'green', onPitchAppearanceChange,
   updateEditor, updateSlot, updateTask, moveSlot, moveItem, moveItemToSlot,
   addExercise, addTask, removeTask, removeSlot, changePhase, libraryTasks, libraryLoading,
-  libraryError, selectLibraryTask, switchToFreeTask, roster, frozen,
-  selectedMembershipIds, availability, onSelectPlayer, onAvailability,
+  libraryError, selectLibraryTask, switchToFreeTask, roster, guests = [], frozen,
+  selectedMembershipIds, availability, onSelectPlayer, onAvailability, onGuestsChange, canEditGuests = false,
   distribution, printedPlayerDistribution, printedSpaceDistribution, fieldDimensions, printedFieldDimensions,
   boardV11Enabled, onFieldDimensionsChange, onZoneMetresChange, onFixBoardDefault,
   playerDefaultBlockReason, fieldDefaultBlockReason,
@@ -331,7 +331,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
     }) : null;
     printRef.current?.querySelectorAll('.planned-print-sheet').forEach((sheet) => observer?.observe(sheet));
     return () => { window.cancelAnimationFrame(frame); observer?.disconnect(); };
-  }, [editor, selected, roster, availability, selectedMembershipIds, distribution, printSheets.length]);
+  }, [editor, selected, roster, guests, availability, selectedMembershipIds, distribution, printSheets.length]);
   const printDocument = () => {
     if (boardsError) return;
     if (printOverflow && !window.confirm('El contenido supera dos hojas A4. La impresión conservará todo el contenido y puede necesitar más páginas. ¿Continuar?')) return;
@@ -340,7 +340,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   const ordered = PLANNED_PHASES.flatMap((phase) => editor.slots.filter((slot) => slot.phase === phase.key));
   const numberOf = (id) => ordered.findIndex((slot) => slot.id === id) + 1;
   const visibleRoster = frozen ? roster : roster.filter((row) => selectedMembershipIds.includes(row.id));
-  const playerCounts = sessionPlayerCounts(visibleRoster, frozen ? availability : {});
+  const playerCounts = sessionPlayerCounts(visibleRoster, frozen ? availability : {}, guests);
   const exerciseMaterials = materialAutofillEnabled ? sessionExerciseMaterials(editor.slots) : [];
   const field = (label, value, onChange, issue, options = {}) =>
     <SheetField label={label} value={value} onChange={onChange} issue={issue}
@@ -397,7 +397,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
               {field('Hora', editor.header.starts_at, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, starts_at: value } })), fieldIssue('starts_at'), { type: 'time' })}
               {field('Lugar', editor.header.location, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, location: value } })), fieldIssue('location'),
                 { suggestions: locationOptions, suggestionListId: 'planned-session-locations' })}
-              <div className="planned-sheet-roster-metric"><b>Nº jugadores</b><span>{frozen ? playerCounts.participants : '—'}</span></div>
+              <div className="planned-sheet-roster-metric"><b>Participantes</b><span>{frozen || guests.length ? playerCounts.participants : '—'}</span></div>
               {field('Periodo', editor.header.period_label, (value) => updateEditor((current) => ({ ...current, header: { ...current.header, period_label: value } })), fieldIssue('period_label'))}
               <div className="planned-sheet-field planned-sheet-microcycle-pair">
                 <label className="planned-sheet-microcycle"><span>Microciclo</span>
@@ -477,7 +477,8 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
             <PlannedSessionRoster roster={roster} frozen={frozen} selectedIds={selectedMembershipIds}
               availability={availability} positionById={positionById}
               onSelect={onSelectPlayer} onAvailability={onAvailability}
-              canEdit={canEdit && !busy && Boolean(editor.id)} />
+              guests={guests} onGuestsChange={onGuestsChange}
+              canEdit={canEdit && !busy} canEditGuests={canEditGuests && !busy} />
             <div className="planned-sheet-cover-lower">
               <SessionPlayerDistribution distribution={distribution} roster={frozen ? roster : []}
                 availability={availability} positionById={positionById}
@@ -528,7 +529,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
     <PlannedSessionPrint editor={editor} selected={selected} pages={printSheets} printRef={printRef} pitchAppearance={pitchAppearance}
       mcNumber={printedMcNumber}
       leagueLogoUrl={leagueLogoUrl} sessionValue={printedSessionValue}
-      roster={frozen ? roster : []} availability={availability}
+      roster={frozen ? roster : []} guests={guests} availability={availability}
       distribution={printedSpaceDistribution || distribution}
       fieldDimensions={boardV11Enabled ? printedFieldDimensions : null}
       exerciseDimensions={exerciseDimensionsSupported ? printedExerciseDimensions : {}}

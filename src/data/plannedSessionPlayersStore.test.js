@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { freezePlannedRoster, loadPlannedRosterCandidates, loadPlannedSessionPlayers,
-  reconcilePlannedDate, savePlannedAvailability } from './plannedSessionsStore.js';
+import { checkPlannedSessionGuestsReady, freezePlannedRoster, loadPlannedRosterCandidates,
+  loadPlannedSessionGuests, loadPlannedSessionPlayers, reconcilePlannedDate,
+  savePlannedAvailability, savePlannedSessionGuests } from './plannedSessionsStore.js';
 
 const calls = [];
 const rows = {
@@ -15,6 +16,8 @@ const rows = {
     source_membership_id: 'membership-1', player_name_snapshot: 'Nombre histórico', position_key_snapshot: 'goalkeeper' }],
   planned_session_player_availability: [{ session_id: 'session-1', player_id: 'player-1',
     status: 'injured', observation: 'Observación propia de esta sesión' }],
+  planned_session_guests_v1: [{ id: 'guest-other-session', session_id: 'session-2',
+    player_name: 'Invitado ajeno', origin_team: null, position_group: 'forward', status: 'available' }],
 };
 const client = {
   from(table) {
@@ -30,6 +33,14 @@ const client = {
     calls.push({ name, args });
     if (name === 'save_planned_session_availability_04b') {
       rows.planned_session_player_availability = args.p_changes.map((change) => ({ session_id: args.p_session_id, ...change }));
+    }
+    if (name === 'planned_session_guests_ready_v1') return { data: true, error: null };
+    if (name === 'save_planned_session_guests_v1') {
+      rows.planned_session_guests_v1 = rows.planned_session_guests_v1
+        .filter((guest) => guest.session_id !== args.p_session_id)
+        .concat(args.p_guests.map((guest) => ({ ...guest, player_name: guest.player_name,
+          session_id: args.p_session_id })));
+      return { data: args.p_guests.length, error: null };
     }
     return { data: 5, error: null };
   },
@@ -80,3 +91,27 @@ assert.equal(reopened.availability[0].observation, 'Convocatoria del primer equi
 assert.equal(JSON.stringify(reopened.roster), historicalRoster);
 assert.equal(JSON.stringify(rows.club_team_season_players), generalRoster);
 assert.ok(calls.every((call) => call.table !== 'jugadores'), 'no lee ni modifica la disponibilidad general');
+
+assert.equal(await checkPlannedSessionGuestsReady(client), true);
+const invited = [
+  { id: 'guest-1', name: 'Pablo', origin_team: 'JUV', position_group: 'forward', status: 'available', is_guest: true },
+  { id: 'guest-2', name: 'Mario', origin_team: '', position_group: 'midfielder', status: 'adapted', is_guest: true },
+];
+assert.equal(await savePlannedSessionGuests(client, 'session-1', 8, invited), 2);
+const savedGuests = await loadPlannedSessionGuests(client, 'session-1');
+assert.deepEqual(savedGuests.map(({ name, origin_team, position_group, status }) =>
+  [name, origin_team, position_group, status]), [
+  ['Pablo', 'JUV', 'forward', 'available'],
+  ['Mario', '', 'midfielder', 'adapted'],
+]);
+assert.equal(savedGuests.every((guest) => guest.is_guest), true);
+assert.equal((await loadPlannedSessionGuests(client, 'session-2'))[0].name, 'Invitado ajeno',
+  'los invitados de otras sesiones no se cambian');
+await savePlannedSessionGuests(client, 'session-1', 9, [
+  { ...invited[0], name: 'Pablo editado', status: 'absent' },
+]);
+assert.deepEqual((await loadPlannedSessionGuests(client, 'session-1')).map((guest) =>
+  [guest.name, guest.status]), [['Pablo editado', 'absent']],
+'editar y quitar invitados se conserva al volver a cargar la sesión');
+assert.ok(calls.some((call) => call.name === 'save_planned_session_guests_v1' &&
+  call.args.p_session_id === 'session-1'));

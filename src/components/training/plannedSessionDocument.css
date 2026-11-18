@@ -78,6 +78,24 @@
 .planned-roster-player-no-training .planned-roster-status-abbreviation { color: #ae1d32; font-weight: 700; }
 .planned-roster-player-adapted .planned-roster-name,
 .planned-roster-player-adapted .planned-roster-status-abbreviation { color: #986500; font-weight: 700; }
+.planned-roster-guest-badge { flex: none; padding: 0 .7mm; border: 1px solid currentColor; border-radius: 2mm; color: #315d78; font-size: .72em; font-weight: 800; line-height: 1.3; }
+.planned-roster-guest-adder { padding: .5mm 1mm; color: #315d78; font-size: 7pt; }
+.planned-roster-guest-adder summary { width: fit-content; cursor: pointer; list-style: none; border: 1px solid #b6c8d4; border-radius: 2mm; padding: .5mm 1.5mm; }
+.planned-roster-guest-adder form,
+.planned-roster-guest-editor { position: relative; z-index: 4; display: grid; gap: 1mm; padding: 1mm; border: 1px solid #b6c8d4; background: #fff; color: #17364b; font-size: 7pt; }
+.planned-roster-guest-adder form { position: absolute; width: 52mm; box-shadow: 0 2mm 4mm #0003; }
+.planned-roster-guest-adder label,
+.planned-roster-guest-editor label { display: grid; gap: .5mm; }
+.planned-roster-guest-adder input,
+.planned-roster-guest-adder select,
+.planned-roster-guest-editor input,
+.planned-roster-guest-editor select { min-width: 0; border: 1px solid #aebdc8; background: #fff; padding: .7mm; font-size: 8pt; }
+.planned-roster-guest-adder button,
+.planned-roster-guest-editor button { width: fit-content; border: 1px solid #9db5c4; border-radius: 1mm; padding: .5mm 1.5mm; background: #f3f7fa; color: #17364b; font-size: 7pt; font-weight: 700; }
+.planned-roster-guest-editor { position: absolute; right: 0; top: 100%; width: 48mm; box-shadow: 0 2mm 4mm #0003; }
+.planned-roster-guest-editor summary { cursor: pointer; color: #1263a7; font-size: 6pt; white-space: nowrap; }
+.planned-roster-guest-editor > label,
+.planned-roster-guest-editor > button { margin-top: 1mm; }
 .planned-roster-player select { min-width: 0; max-width: 19mm; margin-left: auto; border: 1px solid #bbb; background: #fff; font-size: 6pt; }
 .planned-roster-group-two-columns .planned-roster-player select { max-width: 12mm; }
 .planned-roster-observation-editor { flex: none; font-size: 6pt; }
@@ -178,6 +196,8 @@
 .planned-board-zone-metres { margin-top: 1mm; text-align: left; font-size: 6pt; }
 .planned-board-zone-metres > div { display: grid; grid-template-columns: 8mm 1fr 1fr; gap: 1mm; align-items: end; margin-top: 1mm; }
 @media print { .planned-board-default-button, .planned-board-field-controls, .planned-board-zone-metres,
+  .planned-roster-guest-adder,
+  .planned-roster-guest-editor { display: none !important; } .planned-board-default-button, .planned-board-field-controls, .planned-board-zone-metres,
   .planned-zone-metre-label { display: none !important; } }
 .planned-distribution-zone-blue { --zone-ink: #1657a1; --zone-fill: #2388e266; }
 .planned-distribution-zone-red { --zone-ink: #a42331; --zone-fill: #e23d4a66; }

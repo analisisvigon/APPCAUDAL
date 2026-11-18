@@ -99,19 +99,35 @@ export const checkPlannedSessionRealizationReady = async (client) => {
   throw result.error;
 };
 
-export const loadPlannedSessionRealization = async (client, sessionId) => {
+export const checkPlannedSessionGuestsReady = async (client) => {
+  const result = await client.rpc('planned_session_guests_ready_v1');
+  if (!result.error) return result.data === true;
+  if (['42883', 'PGRST202', 'PGRST205'].includes(result.error.code)) return false;
+  throw result.error;
+};
+
+export const loadPlannedSessionRealization = async (client, sessionId, includeGuestSnapshots = false) => {
   if (!sessionId) throw new Error('Falta el identificador de sesión para cargar su realización.');
   const realization = unwrap(await client.from('planned_session_realizations')
     .select('session_id,realized_at,realized_by_membership_id,roster_count,default_available_count')
     .eq('session_id', sessionId).maybeSingle());
   if (!realization) return null;
-  const players = unwrap(await client.from('planned_session_realized_player_statuses')
-    .select('session_id,player_id,status,status_source')
-    .eq('session_id', sessionId)) || [];
-  if (players.length !== realization.roster_count) {
+  const [players, guests] = await Promise.all([
+    client.from('planned_session_realized_player_statuses')
+      .select('session_id,player_id,status,status_source')
+      .eq('session_id', sessionId),
+    includeGuestSnapshots
+      ? client.from('planned_session_realized_guest_snapshots_v1')
+        .select('session_id,guest_id,player_name,origin_team,position_group,status')
+        .eq('session_id', sessionId)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const playerRows = unwrap(players) || [];
+  const guestRows = unwrap(guests) || [];
+  if (playerRows.length !== realization.roster_count) {
     throw new Error('La lista de estados realizados no coincide con la plantilla confirmada.');
   }
-  return { ...realization, players };
+  return { ...realization, players: playerRows, guests: guestRows };
 };
 
 export const confirmPlannedSessionRealization = async (client, sessionId, revision, reviewAcknowledged) => {
@@ -353,6 +369,28 @@ export const loadPlannedSessionPlayers = async (client, sessionId) => {
     throw new Error('La disponibilidad no coincide con la plantilla histórica de la sesión.');
   return { roster, availability };
 };
+
+export const loadPlannedSessionGuests = async (client, sessionId) => {
+  if (!sessionId) throw new Error('Falta el identificador de sesión para cargar sus invitados.');
+  return (unwrap(await client.from('planned_session_guests_v1')
+    .select('id,session_id,player_name,origin_team,position_group,status')
+    .eq('session_id', sessionId)) || []).map((row) => ({
+    ...row, name: row.player_name, origin_team: row.origin_team || '', is_guest: true,
+  }));
+};
+
+export const savePlannedSessionGuests = async (client, sessionId, revision, guests) =>
+  unwrap(await client.rpc('save_planned_session_guests_v1', {
+    p_session_id: sessionId,
+    p_expected_revision: revision,
+    p_guests: guests.map(({ id, name, origin_team, position_group, status }) => ({
+      id,
+      player_name: name,
+      origin_team: origin_team || null,
+      position_group,
+      status,
+    })),
+  }));
 
 export const loadPlannedDistribution = async (client, sessionId) => unwrap(await client
   .from('planned_session_distributions')
