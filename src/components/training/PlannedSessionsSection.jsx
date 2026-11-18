@@ -450,7 +450,10 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       const revision = await changePlannedSessionLifecycle(client, deleteTarget.id,
         deleteTarget.revision, lifecycleAction, retirementReason);
       const fresh = await loadPlannedSession(client, deleteTarget.id, contextId);
-      if (fresh.session.revision !== revision ||
+      if (fresh.session.revision < revision ||
+          fresh.session.session_date !== deleteTarget.session_date ||
+          String(fresh.session.starts_at || '').slice(0, 5) !==
+            String(deleteTarget.starts_at || '').slice(0, 5) ||
           (lifecycleAction === 'retire' ? !fresh.session.retired_at
             : lifecycleAction === 'cancel' ? !fresh.session.cancelled_at : Boolean(fresh.session.cancelled_at))) {
         throw new Error('La lectura posterior no confirma el cambio. Actualiza la lista antes de repetirlo.');
@@ -944,9 +947,16 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         advance(nextRevision);
         const data = await loadPlannedSession(client, working.id, selected.id);
         const fresh = hydratePlannedEditor(data.session, data.slots, data.items);
-        if (fresh.revision !== revision) throw new Error('La revisión devuelta no coincide con la sesión recargada.');
-        if (use03c) assertPlanned03cReload(working, fresh, revision);
+        const orderChanged = !wasNew && working.planning_state === 'confirmed' &&
+          (working.session_date !== original.session_date ||
+            working.header.starts_at !== original.header.starts_at);
+        if (orderChanged ? fresh.revision < revision : fresh.revision !== revision) {
+          throw new Error('La revisión devuelta no coincide con la sesión recargada.');
+        }
+        assertPlanned03cReload(working, fresh, revision, orderChanged);
+        revision = fresh.revision;
         setEditor(fresh); setBaseline(fresh);
+        working = fresh; original = fresh;
         const savedLocation = String(fresh.header.location || '').trim().replace(/\s+/g, ' ');
         if (savedLocation) setLocationOptions((current) => [...new Set([...current, savedLocation])]
           .filter((name, index, all) => all.findIndex((entry) => entry.toLocaleLowerCase('es') === name.toLocaleLowerCase('es')) === index)
@@ -1119,8 +1129,10 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       try {
         const data = await loadPlannedSession(client, editor.id, selected.id);
         const fresh = hydratePlannedEditor(data.session, data.slots, data.items);
-        if (fresh.revision !== revision || fresh.planning_state !== 'confirmed' || fresh.session_number == null)
+        const expected = { ...editor, planning_state: 'confirmed' };
+        if (fresh.planning_state !== 'confirmed' || fresh.session_number == null)
           throw new Error('La confirmación aún no se refleja en la lectura; recarga la ficha antes de continuar.');
+        assertPlanned03cReload(expected, fresh, revision, true);
         setEditor(fresh); setBaseline(fresh);
         setNotice(`Sesión confirmada con el número ${fresh.session_number}.`);
       } catch (reloadError) {
@@ -1195,11 +1207,15 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     } finally { operationRef.current = false; setBusy(false); }
   };
 
-  const reloadPlayersAfter04b = async (expectedRevision, pendingDate = null) => {
+  const reloadPlayersAfter04b = async (expectedRevision, pendingDate = null, allowOperationalRenumber = false) => {
     const [data, players] = await Promise.all([
       loadPlannedSession(client, editor.id, selected.id), loadPlannedSessionPlayers(client, editor.id),
     ]);
-    if (data.session.revision !== expectedRevision) throw new Error('La revisión devuelta no coincide con la sesión recargada. Recarga la ficha.');
+    if ((allowOperationalRenumber
+      ? data.session.revision < expectedRevision || data.session.session_date !== pendingDate
+      : data.session.revision !== expectedRevision)) {
+      throw new Error('La revisión devuelta no coincide con la sesión recargada. Recarga la ficha.');
+    }
     const fresh = hydratePlannedEditor(data.session, data.slots, data.items);
     const nextAvailability = Object.fromEntries(players.availability.map((row) => [row.player_id,
       { status: row.status, observation: row.observation || '' }]));
@@ -1305,7 +1321,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     try {
       const revision = await reconcilePlannedDate(client, editor.id, editor.revision, editor.session_date,
         roster.map((row) => row.source_membership_id), true);
-      await reloadPlayersAfter04b(revision);
+      await reloadPlayersAfter04b(revision, editor.session_date, true);
       setNotice('Fecha conciliada y recargada desde el servidor.');
       await refreshList(selected.id);
     } catch (cause) { handle04bError(cause, 'conciliar la fecha'); }

@@ -116,7 +116,7 @@ const stableJson = (value) => Array.isArray(value) ? value.map(stableJson)
     ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableJson(value[key])]))
     : value;
 
-export const assertPlanned03cReload = (expected, actual, revision) => {
+export const assertPlanned03cReload = (expected, actual, revision, allowOperationalRenumber = false) => {
   const expectedItems = expected.slots.flatMap((slot) => slot.items);
   const actualItems = actual.slots.flatMap((slot) => slot.items);
   const actualById = new Map(actualItems.map((item) => [item.id, item]));
@@ -129,8 +129,14 @@ export const assertPlanned03cReload = (expected, actual, revision) => {
         Number(received.duration) === Number(slot.duration) &&
         received.items.map((item) => item.id).join(',') === slot.items.map((item) => item.id).join(',');
     });
-  if (actual.revision !== revision || !sameSlots ||
-      (expected.session_number != null && actual.session_number !== expected.session_number) ||
+  if ((allowOperationalRenumber ? actual.revision < revision : actual.revision !== revision) ||
+      actual.session_date !== expected.session_date ||
+      JSON.stringify(stableJson(actual.header)) !== JSON.stringify(stableJson(expected.header)) ||
+      !sameSlots ||
+      (!allowOperationalRenumber && expected.session_number != null &&
+        actual.session_number !== expected.session_number) ||
+      (allowOperationalRenumber && expected.session_number != null &&
+        actual.session_number == null) ||
       expectedItems.length !== actualItems.length ||
       expectedItems.some((item) => {
         const received = actualById.get(item.id);
@@ -138,7 +144,7 @@ export const assertPlanned03cReload = (expected, actual, revision) => {
           (item.kind === 'library_task' && (!received.snapshot ||
             received.sourceTaskId !== item.sourceTaskId ||
             JSON.stringify(stableJson(received.working)) !== JSON.stringify(stableJson(item.working))));
-      })) throw new Error('La lectura posterior no coincide con el guardado 03C; recarga antes de continuar.');
+      })) throw new Error('La lectura posterior no coincide con el guardado de sesión; recarga antes de continuar.');
 };
 
 export const createPlannedLibraryItem = (id, task) => ({

@@ -11,7 +11,12 @@ const all = [
   { id: 'other-cts', club_team_season_id: 'cts-b', session_date: '2026-10-21', starts_at: '09:00', session_number: 6 },
 ];
 const offsets = [];
+const reconciliationCalls = [];
 const client = {
+  async rpc(name, args) {
+    reconciliationCalls.push({ name, args });
+    return { data: true, error: null };
+  },
   from(table) {
     assert.equal(table, 'planned_training_sessions');
     const filters = [];
@@ -40,6 +45,10 @@ const rows = await listPlannedSessionsForExport(client, 'cts-a', '2026-10-20', '
 assert.deepEqual(rows.map((row) => row.id), ['first', 'second', 'third', 'last']);
 assert.deepEqual(offsets, [0, 2], 'la paginación conserva todas las filas aun si el servidor devuelve lotes más cortos');
 assert.deepEqual(await listPlannedSessionsForExport(client, 'cts-a', '2026-10-23', '2026-10-24'), []);
+assert.deepEqual(reconciliationCalls, [
+  { name: 'reconcile_planned_session_numbering_v1', args: { p_club_team_season_id: 'cts-a' } },
+  { name: 'reconcile_planned_session_numbering_v1', args: { p_club_team_season_id: 'cts-a' } },
+], 'reconcilia numeración antes de cada lectura usada por la exportación');
 await assert.rejects(listPlannedSessionsForExport(client, 'cts-a', '2026-10-22', '2026-10-20'),
   /intervalo de fechas válido/);
 assert.equal(plannedSessionExportFileName('2026-10-20', '2026-10-22'),

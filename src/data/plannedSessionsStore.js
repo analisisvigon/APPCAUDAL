@@ -210,6 +210,7 @@ export const savePlannedSessionMaterial = async (client, sessionId, revision, st
   }));
 
 export const listPlannedSessions = async (client, clubTeamSeasonId, withMcV4 = false) => {
+  await reconcilePlannedSessionNumbering(client, clubTeamSeasonId);
   let query = client.from('planned_training_sessions')
     .select(`id,club_team_season_id,session_date,starts_at,planning_state,session_number,revision,morphology_pattern,objectives${withMcV4 ? ',mc_number' : ''}${SESSION_RETIREMENT_BACKEND_VERIFIED ? ',cancelled_at' : ''}`)
     .eq('club_team_season_id', clubTeamSeasonId);
@@ -237,6 +238,7 @@ export const listPlannedSessionsForExport = async (client, clubTeamSeasonId, fro
   if (!clubTeamSeasonId || !/^\d{4}-\d{2}-\d{2}$/.test(fromDate) ||
       !/^\d{4}-\d{2}-\d{2}$/.test(toDate) || fromDate > toDate)
     throw new Error('Selecciona un intervalo de fechas válido.');
+  await reconcilePlannedSessionNumbering(client, clubTeamSeasonId);
   const pageSize = 500;
   const rows = [];
   for (let offset = 0; ;) {
@@ -256,6 +258,16 @@ export const listPlannedSessionsForExport = async (client, clubTeamSeasonId, fro
     offset += batch.length;
   }
   return rows;
+};
+
+export const reconcilePlannedSessionNumbering = async (client, clubTeamSeasonId) => {
+  if (!clubTeamSeasonId || typeof client?.rpc !== 'function') return false;
+  const result = await client.rpc('reconcile_planned_session_numbering_v1', {
+    p_club_team_season_id: clubTeamSeasonId,
+  });
+  if (!result.error) return result.data === true;
+  if (['42883', 'PGRST202'].includes(result.error.code)) return false;
+  throw result.error;
 };
 
 // Los valores sugeridos proceden solo de registros visibles del CTS actual.

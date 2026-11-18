@@ -68,6 +68,24 @@ const hydrated = hydratePlannedEditor({ ...session, revision: 5 }, [slot], [
 assert.equal(hydrated.slots[0].items[1].snapshot.source.description, 'Biblioteca original');
 assert.equal(getPlannedLibraryValue(hydrated.slots[0].items[1], 'exercise_rules'), 'Dos toques');
 assert.doesNotThrow(() => assertPlanned03cReload(mixed, hydrated, 5));
+const confirmedExpected = { ...hydrated, planning_state: 'confirmed', session_number: 4 };
+const chronologicallyRenumbered = { ...confirmedExpected, revision: 7, session_number: 1 };
+assert.doesNotThrow(() =>
+  assertPlanned03cReload(confirmedExpected, chronologicallyRenumbered, 5, true),
+'acepta la revisión adicional y el número cronológico confirmados por el trigger diferido');
+assert.throws(() => assertPlanned03cReload(confirmedExpected, chronologicallyRenumbered, 5),
+  /lectura posterior/, 'sin cambio de orden no se relaja la revisión exacta');
+assert.throws(() => assertPlanned03cReload(confirmedExpected,
+  { ...chronologicallyRenumbered, session_date: '2026-10-19' }, 5, true),
+/lectura posterior/, 'la tolerancia solo permite cambios en número/revisión, no en la fecha guardada');
+assert.throws(() => assertPlanned03cReload(confirmedExpected, {
+  ...chronologicallyRenumbered,
+  header: { ...chronologicallyRenumbered.header, location: 'Campo alterado' },
+}, 5, true), /lectura posterior/,
+'la tolerancia no oculta cambios concurrentes a los datos generales');
+assert.throws(() => assertPlanned03cReload(confirmedExpected,
+  { ...chronologicallyRenumbered, session_number: null }, 5, true),
+/lectura posterior/, 'una sesión confirmada no puede quedar sin número operativo');
 assert.throws(() => assertPlanned03cReload(mixed, draft, 5), /lectura posterior/,
   'no se acepta una recarga que oculte el snapshot recién incorporado');
 assert.throws(() => assertPlanned03cReload(mixed, hydrated, 6), /lectura posterior/,

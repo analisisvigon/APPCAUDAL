@@ -6,6 +6,7 @@ import {
   checkPlannedMaterialAutofill,
   loadPlannedContexts,
   listPlannedSessions,
+  reconcilePlannedSessionNumbering,
   listPlannedLocations,
   listPlannedOpponents,
   savePlannedSession,
@@ -59,7 +60,16 @@ rows.equipos_rivales[0].name = 'C.D. Caudal';
 assert.equal(contexts[0].label, '2026/2027');
 assert.equal(await checkPlannedMicrocycleV4(client), true);
 assert.equal(await checkPlannedMaterialAutofill(client), true);
+assert.equal(await reconcilePlannedSessionNumbering({ rpc: async () => ({
+  data: null, error: { code: 'PGRST202', message: 'function not found' },
+}) }, 'cts-id'), false, 'solo permite omitir la reconciliación si aún no está instalada');
+await assert.rejects(reconcilePlannedSessionNumbering({ rpc: async () => ({
+  data: null, error: { code: '40001', message: 'revision conflict' },
+}) }, 'cts-id'), (error) => error.code === '40001',
+'los errores inesperados de reconciliación se notifican');
 const listed = await listPlannedSessions(client, 'cts-id');
+assert.equal(calls.filter((call) => call.name === 'reconcile_planned_session_numbering_v1').length, 1,
+  'reconcilia la secuencia operativa antes de cargar el listado');
 assert.equal(SESSION_RETIREMENT_BACKEND_VERIFIED, false,
   'no consultar una columna de retirada antes de instalar y verificar el backend');
 await assert.rejects(changePlannedSessionLifecycle(client, 'session-id', 2, 'retire'),
@@ -69,6 +79,8 @@ assert.equal(listed[0].total_minutes, 15);
 assert.equal(listed[0].durationKnown, true);
 rows.planned_training_sessions[0].mc_number = 1;
 assert.equal((await listPlannedSessions(client, 'cts-id', true))[0].mc_number, 1);
+assert.equal(calls.filter((call) => call.name === 'reconcile_planned_session_numbering_v1').length, 2,
+  'cada lectura de Sesiones y Calendario vuelve a validar la numeración');
 assert.ok(selects.some(([table, columns]) => table === 'planned_training_sessions' &&
   columns.split(',').includes('mc_number')), 'el MC solo se consulta tras detectar V4');
 assert.ok(equalFilters.some(([table, column, value]) =>
@@ -91,13 +103,15 @@ assert.ok(equalFilters.some(([table, column, value]) => table === 'partidos' &&
 assert.equal(await createPlannedDraft(client, 'cts-id', '2026-10-18'), 'session-id');
 assert.equal(await savePlannedSession(client, { p_session_id: 'session-id' }), 2);
 assert.equal(await confirmPlannedSession(client, 'session-id', 2), 2);
-assert.deepEqual(calls.map((call) => call.name), [
+const sessionOperationCalls = () => calls.filter((call) =>
+  call.name !== 'reconcile_planned_session_numbering_v1');
+assert.deepEqual(sessionOperationCalls().map((call) => call.name), [
   'create_planned_session_draft', 'save_planned_session', 'confirm_planned_session',
 ]);
-assert.deepEqual(calls[0].args, {
+assert.deepEqual(sessionOperationCalls()[0].args, {
   p_club_team_season_id: 'cts-id', p_session_date: '2026-10-18',
 });
-assert.deepEqual(calls[2].args, { p_session_id: 'session-id', p_expected_revision: 2 });
+assert.deepEqual(sessionOperationCalls()[2].args, { p_session_id: 'session-id', p_expected_revision: 2 });
 assert.equal(await savePlannedSessionMcV4(client, 'session-id', 2, 1), 2);
 assert.deepEqual(calls.at(-1), { name: 'save_planned_session_mc_v4',
   args: { p_session_id: 'session-id', p_expected_revision: 2, p_mc_number: 1 } });
