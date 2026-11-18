@@ -48,13 +48,24 @@ begin
       and lower(pg_get_indexdef(i.indexrelid)) like '%where (session_number is not null)%') then
     raise exception 'Sesiones 09: falta el indice unico parcial de numeracion 03A';
   end if;
+  if not exists(select 1 from pg_constraint c
+      where c.conrelid=to_regclass('public.planned_session_audit_events')
+        and c.conname='planned_audit_event_check' and c.contype='c' and c.convalidated
+        and pg_get_constraintdef(c.oid) like '%renumbered%')
+     or not exists(select 1 from pg_constraint c
+      where c.conrelid=to_regclass('public.planned_session_audit_events')
+        and c.conname='planned_audit_sections_check' and c.contype='c' and c.convalidated
+        and regexp_replace(replace(lower(pg_get_constraintdef(c.oid)),'::text',''),
+          '[[:space:]()]','','g')='checkcardinalitychanged_sections>0') then
+    raise exception 'Sesiones 09: auditoria 03A incompatible con renumbered/number';
+  end if;
   select regexp_replace(replace(lower(pg_get_constraintdef(c.oid)),'::text',''),
       '[[:space:]()]','','g') into v_state_check
     from pg_constraint c
     where c.conrelid=to_regclass('public.planned_training_sessions')
       and c.conname='planned_sessions_state_check' and c.contype='c' and c.convalidated;
   if v_state_check is distinct from
-      'checkplanning_state=''draft''andsession_numberisnullandconfirmed_atisnullorplanning_state=''confirmed''andsession_numberisnotnullandconfirmed_atisnotnullandnullif(btrim(team_name_snapshot),'''')isnotnullandnullif(btrim(season_label_snapshot),'''')isnotnull' then
+      'checkplanning_state=''draft''andsession_numberisnullandconfirmed_atisnullorplanning_state=''confirmed''andsession_numberisnotnullandconfirmed_atisnotnullandnullifbtrimteam_name_snapshot,''''isnotnullandnullifbtrimseason_label_snapshot,''''isnotnull' then
     raise exception 'Sesiones 09: la restriccion de estado no coincide con 03A';
   end if;
   if to_regclass('public.planned_session_number_reindex_authorizations_v1') is not null
@@ -221,7 +232,9 @@ declare
   v_revision integer;
 begin
   if p_session_id is null or (p_new_number is not null and p_new_number<1)
-     or p_reason is null or p_reason not in ('inactive','chronological','temporary') then
+     or p_reason is null or p_reason not in (
+       'bootstrap','chronological','confirm','cancel','reactivate','retire','delete','date',
+       'inactive','temporary') then
     raise exception 'Cambio de numeracion invalido' using errcode='22023';
   end if;
   select * into v_session from public.planned_training_sessions s
@@ -289,7 +302,9 @@ declare
   v_changed boolean:=false;
 begin
   if auth.uid() is null or p_club_team_season_id is null or p_reason is null
-     or p_reason not in ('bootstrap','chronological','confirm','cancel','reactivate','retire','delete','date') then
+     or p_reason not in (
+       'bootstrap','chronological','confirm','cancel','reactivate','retire','delete','date',
+       'inactive','temporary') then
     raise exception 'Reconciliacion de numeracion no autorizada'
       using errcode='42501';
   end if;
