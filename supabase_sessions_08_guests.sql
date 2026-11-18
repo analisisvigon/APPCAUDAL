@@ -205,7 +205,12 @@ declare
   v_origin text;
   v_position text;
   v_status text;
-  v_count integer:=0;
+  v_revision integer;
+  v_before_guests jsonb;
+  v_desired_guests jsonb;
+  v_after_guests jsonb;
+  v_before_hash text;
+  v_after_hash text;
   v_cancelled_at timestamptz;
   v_retired_at timestamptz;
 begin
@@ -257,6 +262,29 @@ begin
     v_ids:=array_append(v_ids,v_id);
   end loop;
 
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'id',(guest.item->>'id')::uuid,
+      'player_name',btrim(guest.item->>'player_name'),
+      'origin_team',nullif(btrim(guest.item->>'origin_team'),''),
+      'position_group',guest.item->>'position_group',
+      'status',coalesce(guest.item->>'status','available')
+    ) order by (guest.item->>'id')::uuid),'[]'::jsonb)
+    into v_desired_guests
+    from jsonb_array_elements(p_guests) as guest(item);
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'id',g.id,'player_name',g.player_name,'origin_team',g.origin_team,
+      'position_group',g.position_group,'status',g.status
+    ) order by g.id),'[]'::jsonb)
+    into v_before_guests
+    from public.planned_session_guests_v1 g
+    where g.session_id=p_session_id;
+  if v_before_guests is not distinct from v_desired_guests then
+    return p_expected_revision;
+  end if;
+  v_before_hash:=md5(jsonb_build_object(
+    'session',public.planned_session_04b_state(p_session_id),
+    'guests',v_before_guests)::text);
+
   delete from public.planned_session_guests_v1 g
     where g.session_id=p_session_id and not (g.id=any(v_ids));
   for v_item in select value from jsonb_array_elements(p_guests)
@@ -280,9 +308,28 @@ begin
       raise exception 'El identificador del invitado pertenece a otra sesion'
         using errcode='23505';
     end if;
-    v_count:=v_count+1;
   end loop;
-  return v_count;
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'id',g.id,'player_name',g.player_name,'origin_team',g.origin_team,
+      'position_group',g.position_group,'status',g.status
+    ) order by g.id),'[]'::jsonb)
+    into v_after_guests
+    from public.planned_session_guests_v1 g
+    where g.session_id=p_session_id;
+  update public.planned_training_sessions set revision=revision+1
+    where id=p_session_id returning revision into v_revision;
+  v_after_hash:=md5(jsonb_build_object(
+    'session',public.planned_session_04b_state(p_session_id),
+    'guests',v_after_guests)::text);
+  insert into public.planned_session_audit_events
+    (session_id,revision,actor_membership_id,event_type,changed_sections,
+     before_hash,after_hash,metadata)
+    values (p_session_id,v_revision,v_ctx.actor_id,
+      case when v_ctx.planning_state='draft' then 'draft_saved' else 'confirmed_saved' end,
+      array['guests'],v_before_hash,v_after_hash,
+      jsonb_build_object('operation','save_session_guests_08',
+        'guest_count',jsonb_array_length(v_after_guests)));
+  return v_revision;
 end $fn$;
 comment on function public.save_planned_session_guests_v1(uuid,integer,jsonb) is
   'NEXO Sesiones 08: save session guest participants';

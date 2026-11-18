@@ -8,6 +8,9 @@ const sql = await readFile(path.join(root, 'supabase_sessions_08_guests.sql'), '
 const realization = await readFile(path.join(root, 'supabase_sessions_07_realization.sql'), 'utf8');
 const store = await readFile(path.join(root, 'src/data/plannedSessionsStore.js'), 'utf8');
 const roster = await readFile(path.join(root, 'src/components/training/PlannedSessionRoster.jsx'), 'utf8');
+const section = await readFile(path.join(root, 'src/components/training/PlannedSessionsSection.jsx'), 'utf8');
+const guestSave = sql.match(/create or replace function public\.save_planned_session_guests_v1\([\s\S]*?end \$fn\$/)?.[0];
+assert.ok(guestSave, 'la RPC de guardado de invitados debe existir');
 
 assert.match(sql, /PROPUESTA MANUAL\. NO EJECUTAR AUTOMATICAMENTE/);
 assert.match(sql, /public\.planned_session_04b_lock\(\s*p_session_id,p_expected_revision\)/);
@@ -24,11 +27,19 @@ assert.match(sql, /revoke all on table public\.planned_session_guests_v1,[\s\S]*
 assert.match(sql, /grant execute on function public\.save_planned_session_guests_v1\(uuid,integer,jsonb\)[\s\S]*to authenticated/);
 assert.match(sql, /planned_session_guests_v1_read/);
 assert.match(sql, /planned_session_realized_guest_snapshots_v1_read/);
+assert.match(guestSave, /public\.planned_session_04b_lock\(\s*p_session_id,p_expected_revision\)/);
+assert.match(guestSave, /if v_before_guests is not distinct from v_desired_guests then\s+return p_expected_revision/);
+assert.match(guestSave, /update public\.planned_training_sessions set revision=revision\+1/);
+assert.match(guestSave, /insert into public\.planned_session_audit_events/);
+assert.match(guestSave, /array\['guests'\]/);
+assert.match(guestSave, /return v_revision/);
+assert.match(guestSave, /delete from public\.planned_session_guests_v1 g\s+where g\.session_id=p_session_id/);
 assert.doesNotMatch(sql, /insert into public\.(?:players_database|club_team_season_players|planned_session_player_roster)/i);
 assert.match(realization, /NEXO Sesiones 07: explicit session realization/);
 assert.match(store, /planned_session_guests_v1/);
 assert.match(store, /planned_session_realized_guest_snapshots_v1/);
 assert.match(roster, /planned-roster-guest-badge/);
 assert.match(roster, /onGuestsChange/);
+assert.match(section, /const nextRevision = await savePlannedSessionGuests\(client, working\.id, revision, guests\)[\s\S]*?advance\(nextRevision\)/);
 
 console.log('planned session guests SQL audit passed');

@@ -990,7 +990,10 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       }
       if (guestsDirty) {
         stage = 'guardar invitados';
-        await savePlannedSessionGuests(client, working.id, revision, guests);
+        const nextRevision = await savePlannedSessionGuests(client, working.id, revision, guests);
+        advance(nextRevision);
+        working = { ...working, revision: nextRevision };
+        original = { ...original, revision: nextRevision };
         const savedGuests = await loadPlannedSessionGuests(client, working.id);
         if (guestCollectionKey(savedGuests) !== guestCollectionKey(guests))
           throw new Error('Los invitados recargados no coinciden con los cambios enviados.');

@@ -40,7 +40,7 @@ const client = {
         .filter((guest) => guest.session_id !== args.p_session_id)
         .concat(args.p_guests.map((guest) => ({ ...guest, player_name: guest.player_name,
           session_id: args.p_session_id })));
-      return { data: args.p_guests.length, error: null };
+      return { data: args.p_expected_revision + 1, error: null };
     }
     return { data: 5, error: null };
   },
@@ -97,7 +97,13 @@ const invited = [
   { id: 'guest-1', name: 'Pablo', origin_team: 'JUV', position_group: 'forward', status: 'available', is_guest: true },
   { id: 'guest-2', name: 'Mario', origin_team: '', position_group: 'midfielder', status: 'adapted', is_guest: true },
 ];
-assert.equal(await savePlannedSessionGuests(client, 'session-1', 8, invited), 2);
+assert.equal(await savePlannedSessionGuests(client, 'session-1', 8, invited), 9);
+assert.deepEqual(calls.filter((call) => call.name === 'save_planned_session_guests_v1').at(-1).args.p_guests, [
+  { id: 'guest-1', player_name: 'Pablo', origin_team: 'JUV',
+    position_group: 'forward', status: 'available' },
+  { id: 'guest-2', player_name: 'Mario', origin_team: null,
+    position_group: 'midfielder', status: 'adapted' },
+], 'el guardado envía la colección completa de invitados de la sesión');
 const savedGuests = await loadPlannedSessionGuests(client, 'session-1');
 assert.deepEqual(savedGuests.map(({ name, origin_team, position_group, status }) =>
   [name, origin_team, position_group, status]), [
@@ -115,3 +121,11 @@ assert.deepEqual((await loadPlannedSessionGuests(client, 'session-1')).map((gues
 'editar y quitar invitados se conserva al volver a cargar la sesión');
 assert.ok(calls.some((call) => call.name === 'save_planned_session_guests_v1' &&
   call.args.p_session_id === 'session-1'));
+assert.equal(await savePlannedSessionGuests(client, 'session-1', 10, []), 11);
+assert.deepEqual(await loadPlannedSessionGuests(client, 'session-1'), [],
+  'una lista completa vacía retira todos los invitados solo de esa sesión');
+assert.equal((await loadPlannedSessionGuests(client, 'session-2'))[0].name, 'Invitado ajeno',
+  'el reemplazo completo nunca elimina invitados de otras sesiones');
+await assert.rejects(savePlannedSessionGuests({ rpc: async () => ({ data: null,
+  error: { code: '40001', message: 'Revision obsoleta' } }) }, 'session-1', 10, invited),
+{ code: '40001' }, 'la revisión obsoleta de invitados se propaga como conflicto');
