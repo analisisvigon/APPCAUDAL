@@ -13,6 +13,7 @@ import TrainingTaskBoardEditor from './TrainingTaskBoardEditor';
 import PlannedSessionPrint from './PlannedSessionPrint';
 import SessionPitchAppearance from './SessionPitchAppearance';
 import PlannedSessionRoster from './PlannedSessionRoster';
+import PlannedSessionActivityImageGrid from './PlannedSessionActivityImageGrid';
 import { SessionPlayerDistribution, SessionSpaceDistribution } from './PlannedSessionDistributionBoards';
 import { sessionPlayerCounts } from '../../utils/plannedSessionPlayers';
 import { OWN_CLUB_IDENTITY, getOwnClubDisplayName } from '../../constants/clubIdentity';
@@ -51,6 +52,27 @@ function SheetField({ label, value, onChange, disabled, issue, type = 'text', mu
 function PendingArea({ label, children, className = '' }) {
   return <div className={`planned-sheet-pending ${className}`} aria-label={`${label}: área reservada`}>
     <b>{label}</b>{children}
+  </div>;
+}
+
+function ActivityImages({ task, images, persisted, disabled, onAdd, onRemove, onReplace, onMove }) {
+  return <div className="planned-activity-images-editor">
+    {images.length ? <PlannedSessionActivityImageGrid images={images} /> : <PendingArea label="Pizarra o imágenes de la actividad" />}
+    {!persisted ? <small>Guarda primero la sesión para adjuntar imágenes a esta actividad.</small> : null}
+    {persisted && !disabled ? <div className="planned-activity-image-actions">
+      <label className="planned-activity-image-upload">Adjuntar imágenes
+        <input type="file" accept="image/jpeg,image/png,image/webp" multiple
+          onChange={(event) => { const files = [...event.target.files]; event.target.value = ''; if (files.length) onAdd(task.id, files); }} />
+      </label>
+      {images.map((image, index) => <div key={image.id} className="planned-activity-image-row">
+        <span title={image.originalName}>{index + 1}. {image.originalName}</span>
+        <button type="button" disabled={index === 0} onClick={() => onMove(task.id, index, index - 1)} aria-label={`Mover ${image.originalName} a la izquierda`}>←</button>
+        <button type="button" disabled={index === images.length - 1} onClick={() => onMove(task.id, index, index + 1)} aria-label={`Mover ${image.originalName} a la derecha`}>→</button>
+        <label>Sustituir<input type="file" accept="image/jpeg,image/png,image/webp"
+          onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) onReplace(task.id, image, file); }} /></label>
+        <button type="button" onClick={() => onRemove(task.id, image)}>Quitar</button>
+      </div>)}
+    </div> : null}
   </div>;
 }
 
@@ -105,7 +127,8 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
   swapTasks, moveTaskToSlot, targets, fieldIssue, libraryTasks, libraryLoading,
   libraryError, selectLibraryTask, switchToFreeTask, openBoard,
   exerciseDimensionsSupported, exerciseDimensions, onExerciseDimensionChange, exerciseDimensionIssue,
-  seriesSupported, contentSupported }) {
+  seriesSupported, contentSupported, activityImages, persistedItemIds,
+  onAddActivityImages, onRemoveActivityImage, onReplaceActivityImage, onMoveActivityImage }) {
   if (!slot) return <div className="planned-sheet-exercise planned-sheet-exercise-empty">
     <h3><PhaseName phase={phase} /></h3><p className="planned-sheet-reserved-hint">Sin ejercicio planificado en esta fase.</p>
   </div>;
@@ -118,6 +141,7 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
     </div>
     <div className={`planned-sheet-task-columns ${dual ? 'planned-sheet-task-columns-dual' : ''}`}>
       {slot.items.map((task, index) => {
+        const taskActivityImages = activityImages[task.id] || [];
         const boardPayload = task.kind === 'library_task'
           ? getPlannedLibraryValue(task, 'editor_payload') || {} : {};
         const boardKind = readTrainingTaskEditorPayload(boardPayload).kind;
@@ -138,7 +162,8 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
         return <div className={`planned-sheet-task ${task.kind === 'library_task' ? 'planned-sheet-library-task' : ''}`} key={task.id}>
         <div className="planned-sheet-task-head">Tarea {String.fromCharCode(65 + index)}{index === 0 ? ' · principal' : ' · simultánea'}</div>
         <LibraryTaskPicker task={task} slotId={slot.id} tasks={libraryTasks} loading={libraryLoading}
-          error={libraryError} disabled={!canEdit || busy} onSelect={selectLibraryTask} onFree={switchToFreeTask} />
+          error={libraryError} disabled={!canEdit || busy || taskActivityImages.length > 0} onSelect={selectLibraryTask} onFree={switchToFreeTask} />
+        {taskActivityImages.length ? <small className="planned-activity-image-lock-note">Quita las imágenes antes de sustituir o retirar esta actividad.</small> : null}
         {task.kind === 'library_task' ? <>
           {!task.snapshot ? <p className="planned-sheet-copy-note">Vista previa. Guarda para crear el snapshot en el servidor; después podrás editar la copia.</p> : null}
           <SheetField label="Nombre" value={getPlannedLibraryValue(task, 'name')} className="planned-sheet-objective"
@@ -218,7 +243,10 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
           </div>
           <div className="planned-sheet-representation">
             <b>REPRESENTACIÓN GRÁFICA</b>
-            <PendingArea label="Pizarra de tarea" />
+            <ActivityImages task={task} images={taskActivityImages}
+              persisted={persistedItemIds.has(task.id)} disabled={!canEdit || busy}
+              onAdd={onAddActivityImages} onRemove={onRemoveActivityImage}
+              onReplace={onReplaceActivityImage} onMove={onMoveActivityImage} />
           </div>
         </div>
         <div className="planned-sheet-task-foot">
@@ -231,7 +259,9 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
         </>}
         {canEdit && slot.items.length > 1 ? <div className="planned-sheet-task-tools">
           {index > 0 ? <button type="button" disabled={busy} onClick={() => swapTasks(slot.id, task.id, -1)}>Pasar a Tarea A</button> : null}
-          {index > 0 ? <button type="button" disabled={busy} onClick={() => removeTask(slot.id, task.id)}>Retirar segunda tarea</button> : null}
+          {index > 0 ? <button type="button" disabled={busy || taskActivityImages.length > 0}
+            title={taskActivityImages.length ? 'Quita primero las imágenes adjuntas' : undefined}
+            onClick={() => removeTask(slot.id, task.id)}>Retirar segunda tarea</button> : null}
           {targets.length ? <label>Mover tarea a ejercicio
             <select value={slot.id} disabled={busy} onChange={(event) => moveTaskToSlot(slot.id, task.id, event.target.value)}>
               <option value={slot.id}>Ejercicio {number}</option>
@@ -269,7 +299,9 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
       </select></label>
       {slot.items.length < 2 ? <button type="button" disabled={busy} onClick={() => addTask(slot.id)}>
         {slot.items.length ? '+ Añadir segunda tarea' : '+ Añadir Tarea A'}</button> : null}
-      <button type="button" disabled={busy} onClick={() => removeSlot(slot.id, number)}>Retirar ejercicio</button>
+      <button type="button" disabled={busy || slot.items.some((item) => (activityImages[item.id] || []).length)}
+        title={slot.items.some((item) => (activityImages[item.id] || []).length) ? 'Quita primero las imágenes adjuntas' : undefined}
+        onClick={() => removeSlot(slot.id, number)}>Retirar ejercicio</button>
     </div> : null}
   </section>;
 }
@@ -291,7 +323,9 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   mcNumber = '', printedMcNumber = '', mcEnabled = false, mcOptions = [], onMcChange,
   materialAutofillEnabled = false, materialAvailable = false,
   onMaterialChange, onEnableMaterialAutofill, manualMaterial = [], onPinMaterialManually,
-  locationOptions = [], opponentOptions = [], suggestionsError = '' }) {
+  locationOptions = [], opponentOptions = [], suggestionsError = '',
+  activityImages = {}, persistedItemIds = new Set(), onAddActivityImages = () => {},
+  onRemoveActivityImage = () => {}, onReplaceActivityImage = () => {}, onMoveActivityImage = () => {} }) {
   const [zoom, setZoom] = useState(100);
   const [fitZoom, setFitZoom] = useState(100);
   const viewportRef = useRef(null);
@@ -365,7 +399,10 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
       contentSupported={contentSupported}
       exerciseDimensions={slot ? exerciseDimensions[slot.id] : null}
       onExerciseDimensionChange={onExerciseDimensionChange}
-      exerciseDimensionIssue={slot ? exerciseDimensionIssue(slot.id) : ''} />;
+      exerciseDimensionIssue={slot ? exerciseDimensionIssue(slot.id) : ''}
+      activityImages={activityImages} persistedItemIds={persistedItemIds}
+      onAddActivityImages={onAddActivityImages} onRemoveActivityImage={onRemoveActivityImage}
+      onReplaceActivityImage={onReplaceActivityImage} onMoveActivityImage={onMoveActivityImage} />;
   };
 
   const boardLocation = editor.slots.flatMap((slot) => slot.items.map((item) => ({ slotId: slot.id, item })))
@@ -527,6 +564,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
     </div>
     <p className="planned-document-note">Vista editorial de 03B. La exportación PDF definitiva y las zonas marcadas como pendientes no están activadas.</p>
     <PlannedSessionPrint editor={editor} selected={selected} pages={printSheets} printRef={printRef} pitchAppearance={pitchAppearance}
+      activityImages={activityImages}
       mcNumber={printedMcNumber}
       leagueLogoUrl={leagueLogoUrl} sessionValue={printedSessionValue}
       roster={frozen ? roster : []} guests={guests} availability={availability}

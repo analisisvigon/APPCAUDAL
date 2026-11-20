@@ -40,6 +40,7 @@
     "test:pwa": "node scripts/playerPdfPwaBuildAudit.test.mjs",
     "test:training-task-pdf": "node src/utils/trainingTaskPrint.test.mjs && node src/utils/trainingTaskBatchExport.test.js",
     "test:session-appearance": "node src/utils/plannedSessionPlayers.test.js && node src/data/plannedSessionPlayersStore.test.js && node src/data/plannedSessionsBatchExport.test.js && node src/components/training/PlannedSessionBatchPrint.test.mjs && node src/utils/plannedSessionPrintOrientation.test.js && node scripts/plannedSessionAppearance.test.mjs",
+    "test:session-activity-images": "node src/utils/plannedSessionActivityImages.test.js && node src/data/plannedSessionsBatchExport.test.js && node src/components/training/PlannedSessionBatchPrint.test.mjs && node scripts/plannedSessionActivityImagesSqlAudit.test.mjs",
     "test:session-deletion": "node src/data/plannedSessionDeletionStore.test.js && node scripts/plannedSessionDeletionSqlAudit.test.mjs && node src/data/plannedSessionsStore.test.js",
     "test:session-numbering": "node src/utils/plannedSessions03c.test.js && node src/data/plannedSessionsStore.test.js && node src/data/plannedSessionsBatchExport.test.js && node scripts/plannedSessionOperationalNumberingSqlAudit.test.mjs",
     "test:session-realization": "node src/utils/playerRealizedTrainingStats.test.js && node src/data/playerRealizedTrainingStore.test.js && node scripts/plannedSessionRealizationSqlAudit.test.mjs && node scripts/plannedSessionRealizationUiAudit.test.mjs",

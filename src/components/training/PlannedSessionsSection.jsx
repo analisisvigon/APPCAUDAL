@@ -78,6 +78,11 @@ import PlannedSessionBatchPrint from './PlannedSessionBatchPrint';
 import { printPlannedSessionDocument } from '../../utils/plannedSessionPrintOrientation';
 import SessionPitchAppearance from './SessionPitchAppearance';
 import { loadPlannedSessionPrintData, plannedSessionExportFileName } from '../../utils/plannedSessionBatchExport';
+import {
+  SESSION_ACTIVITY_IMAGE_MAX_COUNT, cleanupDeletedSessionActivityImages, deleteSessionActivityImage, loadSessionActivityImages,
+  reorderSessionActivityImages, replaceSessionActivityImage, uploadSessionActivityImage,
+  validateSessionActivityImage,
+} from '../../utils/plannedSessionActivityImages';
 
 const panel = 'rounded-2xl border border-white/10 bg-[#0b1a2d]/85 p-4 sm:p-5';
 const input = 'min-h-11 w-full rounded-xl border border-white/15 bg-[#071325] px-3 py-2 text-sm text-white outline-none focus:border-caudal-electric';
@@ -146,6 +151,8 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [suggestionsError, setSuggestionsError] = useState('');
   const [editor, setEditor] = useState(null);
   const [baseline, setBaseline] = useState(null);
+  const [activityImages, setActivityImages] = useState({});
+  const [activityImagesError, setActivityImagesError] = useState('');
   const [unsupportedItems, setUnsupportedItems] = useState(false);
   const [busy, setBusy] = useState(false);
   const operationRef = useRef(false);
@@ -419,6 +426,13 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     try {
       await deletePlannedSession(client, { sessionId: deleteTarget.id, contextId,
         revision: deleteTarget.revision, confirmed: true });
+      let cleanupWarning = '';
+      try {
+        const cleanup = await cleanupDeletedSessionActivityImages(client, deleteTarget.id);
+        if (cleanup.failed.length) cleanupWarning = ` ${cleanup.failed.length} archivo(s) privado(s) quedan en la cola de limpieza.`;
+      } catch (cleanupError) {
+        cleanupWarning = ` La sesión se eliminó, pero no pudo verificarse la limpieza de sus imágenes: ${readError(cleanupError)}`;
+      }
       if (scope !== deletionScopeRef.current) return;
       setSessions((rows) => rows.filter((row) => row.id !== deleteTarget.id));
       setExportResult(null);
@@ -430,7 +444,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         materialStateRef.current = null; setMaterialState(null); setMaterialBaseline(null);
       }
       setDeleteTarget(null);
-      setNotice('Sesión eliminada y ausencia verificada en el servidor.');
+      setNotice(`Sesión eliminada y ausencia verificada en el servidor.${cleanupWarning}`);
       window.dispatchEvent(new Event('planned-session-data-changed'));
     } catch (cause) {
       if (scope !== deletionScopeRef.current) return;
@@ -625,6 +639,17 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     }).finally(() => { if (!cancelled) setLibraryLoading(false); });
     return () => { cancelled = true; };
   }, [client, selected?.club_id, Boolean(editor), userId, seriesSupported, contentSupported]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!editor?.id) { setActivityImages({}); setActivityImagesError(''); return undefined; }
+    loadSessionActivityImages(client, editor.id).then((rows) => {
+      if (!cancelled) { setActivityImages(rows); setActivityImagesError(''); }
+    }).catch((cause) => {
+      if (!cancelled) { setActivityImages({}); setActivityImagesError(`Imágenes de actividades: ${readError(cause)}`); }
+    });
+    return () => { cancelled = true; };
+  }, [client, editor?.id, editor?.revision]);
 
   const requestDiscard = () => !dirty || window.confirm('Hay cambios sin guardar. ¿Descartarlos?');
   const changeContext = (nextId) => {
@@ -1656,6 +1681,61 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setExportResult(null); setExportError(''); setExportProgress(''); setExportOpen(true);
   };
 
+  const activityImageContext = (itemId) => ({
+    clubId: selected?.club_id, clubTeamSeasonId: selected?.id, sessionId: editor?.id,
+    itemId, userId,
+  });
+  const addActivityImages = async (itemId, files) => {
+    const current = activityImages[itemId] || [];
+    if (current.length + files.length > SESSION_ACTIVITY_IMAGE_MAX_COUNT) {
+      setActivityImagesError(`Cada actividad admite hasta ${SESSION_ACTIVITY_IMAGE_MAX_COUNT} imágenes.`); return;
+    }
+    try { files.forEach(validateSessionActivityImage); } catch (cause) { setActivityImagesError(readError(cause)); return; }
+    const pending = files.map((file, index) => ({ id: `pending-${crypto.randomUUID()}`, itemId,
+      originalName: file.name, signedUrl: URL.createObjectURL(file), sortOrder: current.length + index, pending: true }));
+    setActivityImages((rows) => ({ ...rows, [itemId]: [...(rows[itemId] || []), ...pending] }));
+    setBusy(true); setActivityImagesError('');
+    try {
+      for (const [index, file] of files.entries()) {
+        const uploaded = await uploadSessionActivityImage(client, activityImageContext(itemId), file, current.length + index);
+        URL.revokeObjectURL(pending[index].signedUrl);
+        setActivityImages((rows) => ({ ...rows, [itemId]: (rows[itemId] || []).map((entry) => entry.id === pending[index].id ? uploaded : entry) }));
+      }
+      setNotice(`${files.length} ${files.length === 1 ? 'imagen adjuntada' : 'imágenes adjuntadas'} a la actividad.`);
+    } catch (cause) {
+      pending.forEach((entry) => URL.revokeObjectURL(entry.signedUrl));
+      setActivityImages((rows) => ({ ...rows, [itemId]: (rows[itemId] || []).filter((entry) => !pending.some((candidate) => candidate.id === entry.id)) }));
+      setActivityImagesError(`No se pudieron adjuntar todas las imágenes: ${readError(cause)}`);
+    }
+    finally { setBusy(false); }
+  };
+  const removeActivityImage = async (itemId, image) => {
+    if (!window.confirm(`¿Quitar «${image.originalName}» de esta actividad?`)) return;
+    setBusy(true); setActivityImagesError('');
+    try {
+      await deleteSessionActivityImage(client, image);
+      setActivityImages((rows) => ({ ...rows, [itemId]: (rows[itemId] || []).filter((entry) => entry.id !== image.id) }));
+    } catch (cause) { setActivityImagesError(`No se pudo quitar la imagen: ${readError(cause)}`); }
+    finally { setBusy(false); }
+  };
+  const moveActivityImage = async (itemId, fromIndex, toIndex) => {
+    setBusy(true); setActivityImagesError('');
+    try {
+      const ordered = await reorderSessionActivityImages(client, activityImages[itemId] || [], fromIndex, toIndex);
+      setActivityImages((rows) => ({ ...rows, [itemId]: ordered }));
+    } catch (cause) { setActivityImagesError(`No se pudo guardar el orden: ${readError(cause)}`); }
+    finally { setBusy(false); }
+  };
+  const replaceActivityImage = async (itemId, image, file) => {
+    try { validateSessionActivityImage(file); } catch (cause) { setActivityImagesError(readError(cause)); return; }
+    setBusy(true); setActivityImagesError('');
+    try {
+      const replacement = await replaceSessionActivityImage(client, activityImageContext(itemId), image, file);
+      setActivityImages((rows) => ({ ...rows, [itemId]: (rows[itemId] || []).map((entry) => entry.id === image.id ? replacement : entry) }));
+    } catch (cause) { setActivityImagesError(`No se pudo sustituir la imagen: ${readError(cause)}`); }
+    finally { setBusy(false); }
+  };
+
   const downloadSessionsPdf = async () => {
     if (!selected || busy || exportBusy || exportLoading || !v12ProbeReady || v12ProbeError ||
         exportResult?.contextId !== contextId || exportResult?.from !== exportFrom ||
@@ -1947,6 +2027,10 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           {currentRealization && guests.length ? <p>Invitados conservados en el historial: {guests.length}.</p> : null}
         </div> : null}
         <PlannedSessionDocument pitchAppearance={pitchAppearance} onPitchAppearanceChange={setPitchAppearance} editor={editor} selected={selected} canEdit={canEdit} busy={busy}
+          activityImages={activityImages}
+          persistedItemIds={new Set((baseline?.slots || []).flatMap((slot) => slot.items.filter((item) => item.kind === 'free').map((item) => item.id)))}
+          onAddActivityImages={addActivityImages} onRemoveActivityImage={removeActivityImage}
+          onReplaceActivityImage={replaceActivityImage} onMoveActivityImage={moveActivityImage}
           seriesSupported={seriesSupported}
           contentSupported={contentSupported}
           mcEnabled={mcV4Supported} mcNumber={mcNumber} printedMcNumber={mcBaseline}
@@ -1986,6 +2070,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
           changePhase={changePhase} libraryTasks={libraryTasks} libraryLoading={libraryLoading}
           libraryError={libraryError} selectLibraryTask={selectLibraryTask}
           switchToFreeTask={switchToFreeTask} />
+        {activityImagesError ? <p role="alert" className="mt-2 rounded-lg border border-amber-400/30 bg-amber-950/30 p-2 text-xs text-amber-100">{activityImagesError}</p> : null}
       </section> : null}
       {batchPrint ? <PlannedSessionBatchPrint sessions={batchPrint.sessions}
         selected={batchPrint.selected} pitchAppearance={batchPrint.pitchAppearance} leagueLogoUrl={safeLeagueLogoUrl} printRef={batchPrintRef} /> : null}

@@ -4,6 +4,7 @@ import { needsPlannedPrintContinuation, planPlannedSessionPrintSheets } from '..
 import { getPlannedSessionBoardTeams } from '../../utils/plannedSessionBoardTeams';
 import TrainingTaskBoardPreview from './TrainingTaskBoardPreview';
 import PlannedSessionRoster from './PlannedSessionRoster';
+import PlannedSessionActivityImageGrid from './PlannedSessionActivityImageGrid';
 import { SessionPlayerDistribution, SessionSpaceDistribution } from './PlannedSessionDistributionBoards';
 import { sessionPlayerCounts } from '../../utils/plannedSessionPlayers';
 import { OWN_CLUB_IDENTITY, getOwnClubDisplayName } from '../../constants/clubIdentity';
@@ -31,7 +32,7 @@ function PrintIdentity({ selected, page, leagueLogoUrl, cancelled }) {
   </header>;
 }
 
-function PrintTask({ item, index, hasExerciseDimensions, pitchAppearance }) {
+function PrintTask({ item, index, hasExerciseDimensions, pitchAppearance, activityImages }) {
   const library = item.kind === 'library_task';
   const name = library ? getPlannedLibraryValue(item, 'name') : item.title;
   const description = library ? getPlannedLibraryValue(item, 'description') : item.description;
@@ -57,6 +58,7 @@ function PrintTask({ item, index, hasExerciseDimensions, pitchAppearance }) {
       </div>
       <div className="planned-print-graphic"><b>REPRESENTACIÓN GRÁFICA</b>
         {hasBoard ? <div className="planned-print-board"><TrainingTaskBoardPreview payload={payload} pitchAppearance={pitchAppearance} /></div>
+          : activityImages?.length ? <PlannedSessionActivityImageGrid images={activityImages} className="planned-print-activity-images" />
           : <div className="planned-print-board-empty" aria-label="Pizarra sin contenido" />}
         {teams.length ? <div className="planned-print-teams">{teams.map((team) =>
           <div key={team.key} style={{ borderLeftColor: team.colorValue || '#333' }}>
@@ -71,7 +73,7 @@ function PrintTask({ item, index, hasExerciseDimensions, pitchAppearance }) {
   </div>;
 }
 
-function PrintExercise({ slot, number, dimensions, pitchAppearance }) {
+function PrintExercise({ slot, number, dimensions, pitchAppearance, activityImages }) {
   if (!slot) return <div className="planned-print-empty-activation">ACTIVACIÓN</div>;
   const longContent = needsPlannedPrintContinuation(slot);
   return <section className={`planned-print-exercise ${slot.items.length > 1 ? 'planned-print-dual' : ''} ${longContent ? 'planned-print-exercise-overflow' : ''}`}
@@ -80,6 +82,7 @@ function PrintExercise({ slot, number, dimensions, pitchAppearance }) {
       <span>{value(slot.duration)} min</span></div>
     <div className="planned-print-tasks">{slot.items.map((item, index) =>
       <PrintTask key={item.id} item={item} index={index} pitchAppearance={pitchAppearance}
+        activityImages={activityImages[item.id] || []}
         hasExerciseDimensions={Boolean(dimensions?.length_m && dimensions?.width_m)} />)}</div>
     <div className="planned-print-exercise-foot"><span>Tiempo total: <b>{value(slot.duration)} min</b></span>
       <span>{dimensions?.length_m && dimensions?.width_m
@@ -92,6 +95,7 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], guests
   distribution = { formation_key: null, player_layout: [], space_zones: [] }, positionById = new Map(),
   playerDistribution = distribution, leagueLogoUrl = '', sessionValue = '', fieldDimensions = null,
   exerciseDimensions = {}, mcNumber = '', pitchAppearance = 'green',
+  activityImages = {},
   pages = planPlannedSessionPrintSheets(editor.slots) }) {
   const ordered = ['activation', 'main', 'cooldown'].flatMap((phase) => editor.slots.filter((slot) => slot.phase === phase));
   const numberOf = (id) => ordered.findIndex((slot) => slot.id === id) + 1;
@@ -140,14 +144,14 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], guests
             fieldDimensions={fieldDimensions} />
           <div className="planned-print-cover-activation">{page.activation
             ? <PrintExercise slot={page.activation} number={numberOf(page.activation.id)}
-              pitchAppearance={pitchAppearance} dimensions={exerciseDimensions[page.activation.id]} />
+              pitchAppearance={pitchAppearance} dimensions={exerciseDimensions[page.activation.id]} activityImages={activityImages} />
             : <div className="planned-print-empty-activation">ACTIVACIÓN · ejercicio en la hoja siguiente o sin planificar</div>}</div>
         </div>
       </> : <>
         <h2 className="planned-print-page-title">{index === 1 ? 'PARTE PRINCIPAL · VUELTA A LA CALMA' : 'EJERCICIOS · CONTINUACIÓN'}</h2>
         <div className="planned-print-exercise-grid" data-layout={layoutOf(page.slots)}>{page.slots.map((slot) =>
           <PrintExercise key={slot.id} slot={slot} number={numberOf(slot.id)}
-            pitchAppearance={pitchAppearance} dimensions={exerciseDimensions[slot.id]} />)}</div>
+            pitchAppearance={pitchAppearance} dimensions={exerciseDimensions[slot.id]} activityImages={activityImages} />)}</div>
       </>}
     </article>)}
   </div>;
@@ -155,13 +159,14 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], guests
 
 export default function PlannedSessionPrint({ editor, selected, pages, printRef, roster, guests = [], availability,
   distribution, playerDistribution, positionById, leagueLogoUrl, sessionValue, fieldDimensions,
-  exerciseDimensions, mcNumber, pitchAppearance = 'green' }) {
+  exerciseDimensions, mcNumber, pitchAppearance = 'green', activityImages = {} }) {
   if (typeof document === 'undefined') return null;
   return createPortal(<div className="planned-print-portal" ref={printRef}>
     <PlannedSessionPrintPages editor={editor} selected={selected} pages={pages}
       roster={roster} guests={guests} availability={availability} distribution={distribution}
       playerDistribution={playerDistribution}
       positionById={positionById} leagueLogoUrl={leagueLogoUrl} sessionValue={sessionValue}
-      fieldDimensions={fieldDimensions} exerciseDimensions={exerciseDimensions} mcNumber={mcNumber} pitchAppearance={pitchAppearance} />
+      fieldDimensions={fieldDimensions} exerciseDimensions={exerciseDimensions} mcNumber={mcNumber} pitchAppearance={pitchAppearance}
+      activityImages={activityImages} />
   </div>, document.body);
 }

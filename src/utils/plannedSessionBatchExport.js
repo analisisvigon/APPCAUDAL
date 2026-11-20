@@ -11,18 +11,20 @@ import { hydratePlannedEditor } from './plannedSessions.js';
 import { BOARD_V11_ENABLED, normalizeExerciseDimensions } from './plannedSessionFieldScale.js';
 import { emptyDistribution, normalizeDistribution, specificPositionMap } from './plannedSessionDistributions.js';
 import { readPlannedSessionValue } from './plannedSessionValue.js';
+import { loadSessionActivityImages } from './plannedSessionActivityImages.js';
 
 export const plannedSessionExportFileName = (fromDate, toDate) =>
   `Sesiones_${fromDate}_a_${toDate}.pdf`;
 
 export const loadPlannedSessionPrintData = async (client, row, clubTeamSeasonId, v12Supported, guestsSupported = false) => {
-  const [data, players, distributionRow, seed, dimensionRows, guests] = await Promise.all([
+  const [data, players, distributionRow, seed, dimensionRows, guests, activityImages] = await Promise.all([
     loadPlannedSession(client, row.id, clubTeamSeasonId),
     loadPlannedSessionPlayers(client, row.id),
     loadPlannedDistribution(client, row.id),
     BOARD_V11_ENABLED ? loadPlannedBoardSeedV11(client, row.id) : Promise.resolve(null),
     v12Supported ? loadPlannedExerciseDimensionsV12(client, row.id) : Promise.resolve([]),
     guestsSupported ? loadPlannedSessionGuests(client, row.id) : Promise.resolve([]),
+    loadSessionActivityImages(client, row.id),
   ]);
   if (data.session?.club_team_season_id !== clubTeamSeasonId ||
       data.session?.session_date !== row.session_date ||
@@ -47,5 +49,6 @@ export const loadPlannedSessionPrintData = async (client, row, clubTeamSeasonId,
     exerciseDimensions: normalizeExerciseDimensions(dimensionRows),
     sessionValue: readPlannedSessionValue(data.session).value,
     mcNumber: data.session.mc_number == null ? '' : String(data.session.mc_number),
+    activityImages,
   };
 };

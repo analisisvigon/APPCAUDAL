@@ -71,6 +71,7 @@ const detailRows = {
   planned_session_distributions: [{ session_id: 'first', formation_key: null,
     player_layout: [], space_zones: [], specific_positions_snapshot: [] }],
   planned_session_board_seed_v11: [{ session_id: 'first', field_length_m: 105, field_width_m: 68 }],
+  planned_session_activity_images: [],
   player_positions: [{ player_id: 'player-id', position_key: 'right_back',
     position_type: 'specific', is_primary: true }],
 };
@@ -84,11 +85,13 @@ const detailClient = {
       select() { return this; },
       eq(key, value) { filters.push([key, value]); return this; },
       in(key, values) { filters.push([key, { includes: values }]); return this; },
+      order() { return this; },
       single() { const response = result(); return Promise.resolve({ ...response, data: response.data[0] }); },
       maybeSingle() { const response = result(); return Promise.resolve({ ...response, data: response.data[0] || null }); },
       then(resolve) { resolve(result()); },
     };
   },
+  storage: { from() { return { async createSignedUrl(path) { return { data: { signedUrl: `signed:${path}` }, error: null }; } }; } },
 };
 const printed = await loadPlannedSessionPrintData(detailClient, rows[0], 'cts-a', false);
 assert.equal(printed.editor.slots[0].items[0].snapshot, snapshot,

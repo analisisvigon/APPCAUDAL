@@ -33,6 +33,10 @@ try {
     roster: [], availability: {},
     distribution: { formation_key: null, player_layout: [], space_zones: [] },
     positionById: new Map(), sessionValue: '', fieldDimensions: null, exerciseDimensions: {}, mcNumber: '',
+    activityImages: id === 'one' ? { 'activation-task': [
+      { id: 'image-1', originalName: 'Uno.png', signedUrl: 'https://example.test/uno.png' },
+      { id: 'image-2', originalName: 'Dos.webp', signedUrl: 'https://example.test/dos.webp' },
+    ] } : {},
   });
   const markup = renderToStaticMarkup(React.createElement(PlannedSessionBatchPrintPages, {
     sessions: [session('one', 7, [slot('activation', 'activation'), librarySlot]),
@@ -54,6 +58,8 @@ try {
   for (const content of ['Tres toques', 'Gol doble', 'Contenido heredado',
     'Atacar por fuera', 'Cerrar el centro']) assert.ok(markup.includes(content), content);
   assert.doesNotMatch(markup, /Dos toques/, 'la copia editada sustituye su valor original en el PDF');
+  assert.ok(markup.includes('data-image-count="2"') && markup.includes('https://example.test/uno.png'),
+    'las imágenes de actividades libres se incluyen en el PDF conjunto con su cuadrícula');
   assert.doesNotMatch(markup, /<button|<input|<textarea/, 'las hojas no contienen controles de edición');
   const css = readFileSync('src/components/training/plannedSessionPrint.css', 'utf8');
   assert.match(css, /\.planned-print-batch-portal \.planned-print-pages:not\(:last-child\) > \.planned-print-sheet:last-child \{ break-after: page;/,

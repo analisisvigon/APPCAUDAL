@@ -8,7 +8,8 @@ export function PlannedSessionBatchPrintPages({ sessions, selected, leagueLogoUr
       distribution={session.distribution} playerDistribution={session.distribution}
       positionById={session.positionById} leagueLogoUrl={leagueLogoUrl}
       sessionValue={session.sessionValue} fieldDimensions={session.fieldDimensions}
-      exerciseDimensions={session.exerciseDimensions} mcNumber={session.mcNumber} />);
+      exerciseDimensions={session.exerciseDimensions} mcNumber={session.mcNumber}
+      activityImages={session.activityImages || {}} />);
 }
 
 export default function PlannedSessionBatchPrint({ sessions, selected, leagueLogoUrl, printRef, pitchAppearance = 'green' }) {

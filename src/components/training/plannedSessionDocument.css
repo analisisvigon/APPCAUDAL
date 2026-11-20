@@ -254,6 +254,14 @@
 .planned-sheet-description textarea:disabled { background: #fff; }
 .planned-sheet-representation .planned-sheet-pending { display: grid; flex: 1; place-items: center; border: 1px dashed #ccc; }
 .planned-sheet-representation .planned-sheet-pending b { font-size: 7pt; }
+.planned-activity-images-editor { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 1mm; }
+.planned-activity-image-actions { display: grid; gap: 2px; font-size: 7pt; }
+.planned-activity-image-lock-note { display: block; padding: 0 1mm; color: #8a5a00; font-size: 6.5pt; }
+.planned-activity-image-upload, .planned-activity-image-row label { cursor: pointer; color: #123b60; font-weight: 700; }
+.planned-activity-image-upload input, .planned-activity-image-row label input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
+.planned-activity-image-row { display: grid; grid-template-columns: minmax(0,1fr) auto auto auto auto; align-items: center; gap: 2px; }
+.planned-activity-image-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.planned-activity-image-row button, .planned-activity-image-row label { border: 1px solid #abc3d5; padding: 1px 3px; background: #fff; font-size: 7pt; }
 .planned-sheet-library-task .planned-sheet-task-body { height: 60mm; min-height: 60mm; overflow: hidden; }
 .planned-sheet-library-task .planned-sheet-explanation { overflow: auto; }
 .planned-sheet-library-task .planned-sheet-representation { overflow: hidden; }
