@@ -15,6 +15,8 @@ select
   exists(select 1 from pg_trigger where tgrelid=to_regclass('public.planned_session_activity_images')
     and tgname='planned_session_activity_images_guard' and tgenabled in('O','A')) as guarda_activa,
   public.planned_session_delete_contract_v1() as contrato_borrado_actualizado,
+  to_regprocedure('public.planned_session_delete_contract_diagnostics_v1()') is not null
+    as diagnostico_contrato_instalado,
   to_regclass('public.planned_session_activity_image_cleanup') is not null as cola_limpieza_instalada,
   not has_table_privilege('authenticated','public.planned_session_activity_image_cleanup','SELECT,INSERT,UPDATE,DELETE')
     and not has_table_privilege('anon','public.planned_session_activity_image_cleanup','SELECT,INSERT,UPDATE,DELETE') as cola_no_accesible_a_clientes,
@@ -50,6 +52,14 @@ order by schemaname,policyname;
 
 select count(*) as objetos_pendientes_de_limpieza
 from public.planned_session_activity_image_cleanup;
+
+select * from public.planned_session_delete_contract_diagnostics_v1()
+order by check_name;
+
+select
+  (select count(*) from public.planned_session_delete_fk_manifest_v1) as fk_base_validadas,
+  (select count(*) from public.planned_session_delete_trigger_manifest_v1) as triggers_delete_base_validados,
+  (select count(*) from public.planned_session_delete_target_manifest_v1) as tablas_objetivo_base;
 
 select proname,pg_get_functiondef(oid) definicion
 from pg_proc where oid in(

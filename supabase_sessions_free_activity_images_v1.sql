@@ -18,6 +18,67 @@ begin
   end if;
 end $$;
 
+-- Conserva exactamente el inventario que el contrato instalado acaba de validar.
+-- No presupone cantidades: guarda firmas completas de FK y triggers DELETE de
+-- las diez tablas que ya forman el núcleo transaccional de delete_planned_session_v1.
+create table public.planned_session_delete_target_manifest_v1(
+  relation_name text primary key
+);
+insert into public.planned_session_delete_target_manifest_v1(relation_name) values
+  ('planned_training_sessions'),('planned_session_slots'),('planned_session_items'),
+  ('planned_session_player_roster'),('planned_session_player_availability'),
+  ('planned_session_audit_events'),('planned_session_date_change_authorizations'),
+  ('planned_session_distributions'),('planned_session_board_seed_v11'),
+  ('planned_session_exercise_dimensions_v12');
+
+create table public.planned_session_delete_fk_manifest_v1(
+  child_schema text not null,child_name text not null,parent_schema text not null,parent_name text not null,
+  child_columns text[] not null,parent_columns text[] not null,
+  delete_action text not null,update_action text not null,
+  is_validated boolean not null,is_deferrable boolean not null
+);
+insert into public.planned_session_delete_fk_manifest_v1
+select child_ns.nspname,child.relname,parent_ns.nspname,parent.relname,
+  array(select a.attname::text from unnest(c.conkey) with ordinality k(num,ord)
+    join pg_catalog.pg_attribute a on a.attrelid=c.conrelid and a.attnum=k.num order by k.ord),
+  array(select a.attname::text from unnest(c.confkey) with ordinality k(num,ord)
+    join pg_catalog.pg_attribute a on a.attrelid=c.confrelid and a.attnum=k.num order by k.ord),
+  c.confdeltype::text,c.confupdtype::text,c.convalidated,c.condeferrable
+from pg_catalog.pg_constraint c
+join pg_catalog.pg_class child on child.oid=c.conrelid
+join pg_catalog.pg_class parent on parent.oid=c.confrelid
+join pg_catalog.pg_namespace child_ns on child_ns.oid=child.relnamespace
+join pg_catalog.pg_namespace parent_ns on parent_ns.oid=parent.relnamespace
+where c.contype='f' and c.confrelid in(
+  select to_regclass('public.'||relation_name) from public.planned_session_delete_target_manifest_v1);
+
+create table public.planned_session_delete_trigger_manifest_v1(
+  relation_schema text not null,relation_name text not null,trigger_name text not null,
+  routine_schema text not null,routine_name text not null,identity_arguments text not null,
+  trigger_type integer not null,enabled text not null,has_when boolean not null,
+  argument_count integer not null,security_definer boolean not null,
+  owner_name text not null,config text[]
+);
+insert into public.planned_session_delete_trigger_manifest_v1
+select relation_ns.nspname,relation.relname,t.tgname,routine_ns.nspname,p.proname,
+  pg_catalog.pg_get_function_identity_arguments(p.oid),t.tgtype::integer,t.tgenabled::text,
+  t.tgqual is not null,t.tgnargs::integer,p.prosecdef,owner.rolname,p.proconfig
+from pg_catalog.pg_trigger t
+join pg_catalog.pg_class relation on relation.oid=t.tgrelid
+join pg_catalog.pg_namespace relation_ns on relation_ns.oid=relation.relnamespace
+join pg_catalog.pg_proc p on p.oid=t.tgfoid
+join pg_catalog.pg_namespace routine_ns on routine_ns.oid=p.pronamespace
+join pg_catalog.pg_roles owner on owner.oid=p.proowner
+where not t.tgisinternal and (t.tgtype&8)<>0 and t.tgrelid in(
+  select to_regclass('public.'||relation_name) from public.planned_session_delete_target_manifest_v1);
+
+revoke all on public.planned_session_delete_target_manifest_v1,
+  public.planned_session_delete_fk_manifest_v1,
+  public.planned_session_delete_trigger_manifest_v1 from public,anon,authenticated;
+grant select,insert,update,delete on public.planned_session_delete_target_manifest_v1,
+  public.planned_session_delete_fk_manifest_v1,
+  public.planned_session_delete_trigger_manifest_v1 to service_role;
+
 -- La FK compuesta necesita un candidato UNIQUE no diferible en el mismo orden.
 -- Sesiones 03A ya crea planned_items_id_session_key; este ajuste solo cubre una
 -- instalación antigua compatible y no modifica ninguna fila histórica.
@@ -260,64 +321,104 @@ grant select,insert,update,delete on public.planned_session_activity_images to a
 revoke all on function public.planned_session_activity_image_path_matches(text,uuid,uuid,uuid,uuid,uuid),
   public.guard_planned_session_activity_image() from public,anon,authenticated;
 
--- La RPC de borrado mantiene su lógica y reconoce la nueva FK y su guarda.
+
+-- Extiende el inventario previamente validado sin olvidar dependencias añadidas
+-- por Invitados, Realización, numeración operativa u otros módulos instalados.
+create function public.planned_session_delete_contract_diagnostics_v1()
+returns table(check_name text,ok boolean,detail text)
+language sql stable security definer set search_path=pg_catalog as $diag$
+with expected_targets(relation_name) as (
+  select relation_name from public.planned_session_delete_target_manifest_v1
+  union all select 'planned_session_activity_images'
+), target_oids as (
+  select relation_name,to_regclass('public.'||relation_name)::oid oid from expected_targets
+), expected_fk as (
+  select child_schema,child_name,parent_schema,parent_name,child_columns,parent_columns,
+    delete_action,update_action,is_validated,is_deferrable
+  from public.planned_session_delete_fk_manifest_v1
+  union all select 'public','planned_session_activity_images','public','planned_session_items',
+    array['item_id','session_id']::text[],array['id','session_id']::text[],'c','a',true,false
+), actual_fk as (
+  select child_ns.nspname,child.relname,parent_ns.nspname,parent.relname,
+    array(select a.attname::text from unnest(c.conkey) with ordinality k(num,ord)
+      join pg_catalog.pg_attribute a on a.attrelid=c.conrelid and a.attnum=k.num order by k.ord),
+    array(select a.attname::text from unnest(c.confkey) with ordinality k(num,ord)
+      join pg_catalog.pg_attribute a on a.attrelid=c.confrelid and a.attnum=k.num order by k.ord),
+    c.confdeltype::text,c.confupdtype::text,c.convalidated,c.condeferrable
+  from pg_catalog.pg_constraint c
+  join pg_catalog.pg_class child on child.oid=c.conrelid
+  join pg_catalog.pg_class parent on parent.oid=c.confrelid
+  join pg_catalog.pg_namespace child_ns on child_ns.oid=child.relnamespace
+  join pg_catalog.pg_namespace parent_ns on parent_ns.oid=parent.relnamespace
+  where c.contype='f' and c.confrelid in(select oid from target_oids)
+), expected_trigger as (
+  select relation_schema,relation_name,trigger_name,routine_schema,routine_name,identity_arguments,trigger_type,enabled,
+    has_when,argument_count,security_definer,owner_name,config
+  from public.planned_session_delete_trigger_manifest_v1
+  union all select 'public','planned_session_activity_images','planned_session_activity_images_guard',
+    'public','guard_planned_session_activity_image','',31,'O',false,0,true,'postgres',
+    array['search_path=pg_catalog']::text[]
+), actual_trigger as (
+  select relation_ns.nspname,relation.relname,t.tgname,routine_ns.nspname,p.proname,
+    pg_catalog.pg_get_function_identity_arguments(p.oid),
+    t.tgtype::integer,t.tgenabled::text,t.tgqual is not null,t.tgnargs::integer,
+    p.prosecdef,owner.rolname,p.proconfig
+  from pg_catalog.pg_trigger t
+  join pg_catalog.pg_class relation on relation.oid=t.tgrelid
+  join pg_catalog.pg_namespace relation_ns on relation_ns.oid=relation.relnamespace
+  join pg_catalog.pg_proc p on p.oid=t.tgfoid
+  join pg_catalog.pg_namespace routine_ns on routine_ns.oid=p.pronamespace
+  join pg_catalog.pg_roles owner on owner.oid=p.proowner
+  where not t.tgisinternal and (t.tgtype&8)<>0 and t.tgrelid in(select oid from target_oids)
+), differences(kind,value) as (
+  select 'fk_faltante',row_to_json(x)::text from (select * from expected_fk except select * from actual_fk) x
+  union all select 'fk_no_revisada',row_to_json(x)::text from (select * from actual_fk except select * from expected_fk) x
+  union all select 'trigger_faltante',row_to_json(x)::text from (select * from expected_trigger except select * from actual_trigger) x
+  union all select 'trigger_no_revisado',row_to_json(x)::text from (select * from actual_trigger except select * from expected_trigger) x
+), checks(check_name,ok,detail) as (
+  select 'tablas_objetivo',not exists(select 1 from target_oids t
+      left join pg_catalog.pg_class c on c.oid=t.oid
+      where t.oid is null or c.relkind<>'r' or c.relhassubclass or not c.relrowsecurity),
+    coalesce((select string_agg(relation_name,', ' order by relation_name) from target_oids t
+      left join pg_catalog.pg_class c on c.oid=t.oid
+      where t.oid is null or c.relkind<>'r' or c.relhassubclass or not c.relrowsecurity),'Tablas, RLS e herencia correctas')
+  union all select 'reglas_delete',not exists(select 1 from pg_catalog.pg_rewrite r
+      where r.ev_class in(select oid from target_oids) and r.ev_type='4'),
+    'No se admiten reglas de reescritura DELETE en tablas objetivo'
+  union all select 'foreign_keys',not exists(select 1 from differences where kind like 'fk_%'),
+    coalesce((select string_agg(kind||': '||value,E'\n') from differences where kind like 'fk_%'),'Firmas FK exactas')
+  union all select 'triggers_delete',not exists(select 1 from differences where kind like 'trigger_%'),
+    coalesce((select string_agg(kind||': '||value,E'\n') from differences where kind like 'trigger_%'),'Firmas de triggers exactas')
+  union all select 'cola_imagenes',exists(select 1 from pg_catalog.pg_proc
+      where oid=to_regprocedure('public.guard_planned_session_activity_image()')
+        and position('planned_session_activity_image_cleanup' in prosrc)>0),
+    'El trigger de imágenes debe encolar storage_path antes del CASCADE'
+  union all select 'rpc_eliminacion',exists(select 1 from pg_catalog.pg_proc
+      where oid=to_regprocedure('public.delete_planned_session_v1(uuid,uuid,integer,boolean)')
+        and position('planned_session_delete_contract_v1' in prosrc)>0
+        and position('planned_session_items' in prosrc)>0),
+    'La RPC valida el contrato y borra items; la FK de imágenes aplica CASCADE'
+)
+select check_name,ok,detail from checks;
+$diag$;
+alter function public.planned_session_delete_contract_diagnostics_v1() owner to postgres;
+revoke all on function public.planned_session_delete_contract_diagnostics_v1() from public,anon,authenticated,service_role;
+
 create or replace function public.planned_session_delete_contract_v1()
-returns boolean language sql stable security definer set search_path=pg_catalog as $fn$
-  with expected_fk(child,parent,child_columns,parent_columns,delete_action) as (values
-    ('planned_session_slots','planned_training_sessions',array['session_id'],array['id'],'r'),
-    ('planned_session_items','planned_training_sessions',array['session_id'],array['id'],'r'),
-    ('planned_session_items','planned_session_slots',array['slot_id','session_id'],array['id','session_id'],'r'),
-    ('planned_session_player_roster','planned_training_sessions',array['session_id'],array['id'],'r'),
-    ('planned_session_player_availability','planned_session_player_roster',array['session_id','player_id'],array['session_id','player_id'],'r'),
-    ('planned_session_audit_events','planned_training_sessions',array['session_id'],array['id'],'r'),
-    ('planned_session_date_change_authorizations','planned_training_sessions',array['session_id'],array['id'],'r'),
-    ('planned_session_distributions','planned_training_sessions',array['session_id'],array['id'],'r'),
-    ('planned_session_board_seed_v11','planned_training_sessions',array['session_id'],array['id'],'r'),
-    ('planned_session_exercise_dimensions_v12','planned_session_slots',array['slot_id','session_id'],array['id','session_id'],'c'),
-    ('planned_session_activity_images','planned_session_items',array['item_id','session_id'],array['id','session_id'],'c')
-  ), target_tables as (
-    select to_regclass('public.'||child)::oid oid from expected_fk
-    union select to_regclass('public.planned_training_sessions')::oid
-  ), actual_fk as (
-    select c.*,array(select a.attname::text from unnest(c.conkey) with ordinality k(num,ord)
-      join pg_attribute a on a.attrelid=c.conrelid and a.attnum=k.num order by k.ord) child_columns,
-      array(select a.attname::text from unnest(c.confkey) with ordinality k(num,ord)
-      join pg_attribute a on a.attrelid=c.confrelid and a.attnum=k.num order by k.ord) parent_columns
-    from pg_constraint c where c.contype='f' and c.confrelid in(select oid from target_tables)
-  ), expected_trigger(relation,name,routine) as (values
-    ('planned_training_sessions','planned_sessions_guard','guard_planned_session_row()'),
-    ('planned_session_slots','planned_slots_guard','guard_planned_session_child()'),
-    ('planned_session_items','planned_items_guard','guard_planned_session_child()'),
-    ('planned_session_player_roster','planned_session_player_roster_guard','guard_planned_session_player_roster()'),
-    ('planned_session_player_availability','planned_session_player_availability_guard','guard_planned_session_player_availability()'),
-    ('planned_session_audit_events','planned_audit_guard','guard_planned_session_audit()'),
-    ('planned_session_activity_images','planned_session_activity_images_guard','guard_planned_session_activity_image()')
-  ), actual_trigger as (
-    select * from pg_trigger where not tgisinternal and (tgtype&8)<>0 and tgrelid in(select oid from target_tables)
-  )
-  select (select count(*)=11 from target_tables)
-    and (select count(*)=11 from pg_class c where c.oid in(select oid from target_tables)
-      and c.relkind='r' and not c.relhassubclass and c.relrowsecurity)
-    and not exists(select 1 from pg_rewrite r where r.ev_class in(select oid from target_tables) and r.ev_type='4')
-    and (select count(*)=11 from actual_fk)
-    and not exists(select 1 from expected_fk e where not exists(select 1 from actual_fk c
-      where c.conrelid=to_regclass('public.'||e.child) and c.confrelid=to_regclass('public.'||e.parent)
-        and c.child_columns=e.child_columns and c.parent_columns=e.parent_columns
-        and c.confdeltype::text=e.delete_action and c.confupdtype='a' and c.convalidated and not c.condeferrable))
-    and (select count(*)=7 from actual_trigger)
-    and not exists(select 1 from expected_trigger e where not exists(select 1 from actual_trigger t join pg_proc p on p.oid=t.tgfoid
-      where t.tgrelid=to_regclass('public.'||e.relation) and t.tgname=e.name
-        and t.tgfoid=to_regprocedure('public.'||e.routine) and t.tgtype=31 and t.tgenabled in('O','A')
-        and t.tgqual is null and t.tgnargs=0 and p.prosecdef and p.proowner='postgres'::regrole
-        and p.proconfig=array['search_path=pg_catalog']::text[]));
-$fn$;
+returns boolean language sql stable security definer set search_path=pg_catalog as $contract$
+  select coalesce(bool_and(ok),false)
+  from public.planned_session_delete_contract_diagnostics_v1();
+$contract$;
 alter function public.planned_session_delete_contract_v1() owner to postgres;
 revoke all on function public.planned_session_delete_contract_v1() from public,anon,authenticated,service_role;
 
 do $$
+declare v_failed text;
 begin
-  if public.planned_session_delete_contract_v1() is not true then
-    raise exception 'El contrato ampliado de eliminación de sesiones no es válido; se revierte toda la migración';
+  select string_agg(check_name||': '||coalesce(detail,'sin detalle'),E'\n')
+    into v_failed from public.planned_session_delete_contract_diagnostics_v1() where not ok;
+  if v_failed is not null then
+    raise exception 'El contrato ampliado de eliminación de sesiones no es válido:%',E'\n'||v_failed;
   end if;
 end $$;
 
