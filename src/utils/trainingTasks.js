@@ -178,7 +178,8 @@ export const normalizeTrainingTask = (row = {}) => ({
   attachmentName: row.attachment_name || '',
   attachmentMime: row.attachment_mime || '',
   attachmentSize: row.attachment_size ?? null,
-  isShared: Boolean(row.is_shared),
+  libraryVisibility: row.library_visibility === 'club' ? 'club' : 'private',
+  isShared: row.library_visibility === 'club' || Boolean(row.is_shared),
   editorPayload: cloneJson(row.editor_payload),
 });
 

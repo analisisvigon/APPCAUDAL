@@ -11,6 +11,9 @@ const v11Patch = fs.readFileSync(new URL('../supabase_training_tasks_patch_v11_f
 const v11Postcheck = fs.readFileSync(new URL('../supabase_training_tasks_patch_v11_feedback_postcheck.sql', import.meta.url), 'utf8');
 const multimediaPatch = fs.readFileSync(new URL('../supabase_training_tasks_patch_v12_multimedia.sql', import.meta.url), 'utf8');
 const multimediaPostcheck = fs.readFileSync(new URL('../supabase_training_tasks_patch_v12_multimedia_postcheck.sql', import.meta.url), 'utf8');
+const collaborativeLibrary = fs.readFileSync(new URL('../supabase_training_tasks_collaborative_library_v1.sql', import.meta.url), 'utf8');
+const collaborativeInventory = fs.readFileSync(new URL('../supabase_training_tasks_collaborative_library_v1_inventory.sql', import.meta.url), 'utf8');
+const collaborativeVerify = fs.readFileSync(new URL('../supabase_training_tasks_collaborative_library_v1_verify.sql', import.meta.url), 'utf8');
 const store = fs.readFileSync(new URL('../src/utils/trainingTaskStore.js', import.meta.url), 'utf8');
 const trainingTasksSection = fs.readFileSync(new URL('../src/components/training/TrainingTasksSection.jsx', import.meta.url), 'utf8');
 
@@ -197,4 +200,23 @@ assert.match(trainingTasksSection, /borderTopColor:\s*card\.type\.color[\s\S]*ta
 assert.match(trainingTasksSection, /TRAINING_TASK_STAGES[\s\S]*filters\.stage[\s\S]*filters\.ratingMin/i);
 assert.match(trainingTasksSection, /POST · Después de realizarla/i);
 assert.match(trainingTasksSection, /aria-label=\{`\$\{star\} de 5 estrellas`\}/i);
+assert.match(collaborativeLibrary, /add column library_visibility text not null default 'private'/i);
+assert.match(collaborativeLibrary, /alter column library_visibility set default 'club'/i);
+assert.match(collaborativeLibrary, /task\.library_visibility = 'club'/i);
+assert.match(collaborativeLibrary, /task\.author_user_id = auth\.uid\(\)/i);
+assert.match(collaborativeLibrary, /p_action = 'read'[\s\S]*training_task_shares/i);
+assert.match(collaborativeLibrary, /create or replace function public\.set_training_task_sharing_v1/i);
+assert.match(collaborativeLibrary, /for update/i);
+assert.match(collaborativeLibrary, /recipient\.club_id <> v_task\.club_id/i);
+assert.match(collaborativeLibrary, /recipient\.role not in \('owner', 'admin', 'staff'\)/i);
+assert.match(collaborativeLibrary, /revoke all on function public\.set_training_task_sharing_v1[\s\S]*from public, anon, authenticated/i);
+assert.doesNotMatch(collaborativeLibrary, /service_role|disable row level security|update public\.planned_|delete from public\.planned_/i);
+assert.match(collaborativeInventory, /set transaction read only/i);
+assert.match(collaborativeInventory, /group by task\.club_id, task\.author_user_id/i);
+assert.doesNotMatch(collaborativeInventory, /\binsert\b|\bupdate\b|\bdelete\b|\balter\b|\bcreate\b/i);
+assert.match(collaborativeVerify, /set transaction read only/i);
+assert.match(collaborativeVerify, /contract_ok/i);
+assert.match(store, /payload\.library_visibility = 'club'/i);
+assert.match(store, /rpc\('set_training_task_sharing_v1'/i);
+assert.match(trainingTasksSection, /Biblioteca común del club/i);
 console.log('training tasks static SQL audit passed (not PostgreSQL execution)');

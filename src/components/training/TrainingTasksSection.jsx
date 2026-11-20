@@ -167,6 +167,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
   const [contentSupported, setContentSupported] = useState(false);
   const [shareTask, setShareTask] = useState(null);
   const [shareIds, setShareIds] = useState([]);
+  const [shareWithClub, setShareWithClub] = useState(false);
   const [feedbackRows, setFeedbackRows] = useState([]);
   const [feedbackDraft, setFeedbackDraft] = useState(createTrainingTaskFeedbackDraft);
   const feedbackDraftBaseline = useRef(feedbackDraft);
@@ -429,8 +430,29 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
       setError(deleteError.message || 'No se pudo eliminar la tarea. No se ha confirmado ningún cambio.');
     }
   };
-  const startShare = async (task) => { if (task.author_user_id !== userId) return; const { data, error: shareError } = await supabase.from('training_task_shares').select('membership_id').eq('task_id', task.id); if (shareError) { setError(shareError.message); return; } setShareTask(task); setShareIds((data || []).map((row) => row.membership_id)); };
-  const saveShare = async () => { try { await shareTrainingTask(supabase, shareTask.id, shareIds, userId); setShareTask(null); await refresh(); setStatus('Compartición actualizada.'); } catch (shareError) { setError(shareError.message || 'No se pudo compartir.'); } };
+  const startShare = async (task) => {
+    if (task.author_user_id !== userId) return;
+    const { data, error: shareError } = await supabase
+      .from('training_task_shares')
+      .select('membership_id')
+      .eq('task_id', task.id);
+    if (shareError) { setError(shareError.message); return; }
+    setShareTask(task);
+    setShareWithClub(task.libraryVisibility === 'club');
+    setShareIds((data || []).map((row) => row.membership_id));
+  };
+  const saveShare = async () => {
+    try {
+      await shareTrainingTask(supabase, shareTask.id, shareIds, { clubWide: shareWithClub });
+      setShareTask(null);
+      await refresh();
+      setStatus(shareWithClub
+        ? 'Tarea incorporada a la biblioteca común.'
+        : 'Visibilidad privada actualizada.');
+    } catch (shareError) {
+      setError(shareError.message || 'No se pudo actualizar la visibilidad.');
+    }
+  };
 
   const applyFeedbackRows = (taskId, nextRows) => {
     const summary = summarizeTrainingTaskRatings(nextRows);
@@ -551,7 +573,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     </section>
     {loading ? <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm text-slate-500">Cargando tareas…</div> : error && !tasks.length ? <div role="alert" className="rounded-2xl border border-red-300/20 bg-red-400/10 p-8 text-center text-sm text-red-100">No se pudieron cargar las tareas.</div> : visibleTasks.length ? <div className="grid items-stretch gap-4 md:grid-cols-2 2xl:grid-cols-3">{visibleTasks.map((task) => <TaskCard key={task.id} task={task} userId={userId} playerLookup={playerLookup} canManage={task.author_user_id === userId} canDelete={deleteReady && membership?.is_active && ['owner', 'admin', 'staff'].includes(membership.role) && task.club_id === clubId} onOpen={openTask} onEdit={openEdit} onDuplicate={duplicate} onDelete={remove} onShare={startShare} onDownload={download} onPdf={exportSingleTask} pdfBusy={exportBusy} onPowerPoint={exportSingleTaskPowerPoint} powerpointBusy={Boolean(powerpointBusyTaskId)} powerpointError={powerpointError?.taskId === task.id ? powerpointError.message : ''} />)}</div> : tasks.length ? <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] p-8 text-center"><p className="text-sm font-black text-white">No hay coincidencias</p><p className="mt-1 text-xs text-slate-500">Prueba a quitar algún filtro o a usar otros términos.</p><button type="button" onClick={clearFilters} className="mt-4 rounded-xl bg-white/10 px-4 py-2 text-xs font-black text-white">Limpiar filtros</button></div> : <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] p-8 text-center"><p className="text-sm font-black text-white">No hay tareas todavía</p><p className="mt-1 text-xs text-slate-500">Crea la primera tarea de entrenamiento para tu biblioteca.</p><button type="button" onClick={openNew} className="mt-4 rounded-xl bg-caudal-electric px-4 py-2 text-xs font-black text-slate-950">+ Nueva tarea</button></div>}
     </> : null}
-    {shareTask ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"><section className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#071327] p-5 shadow-2xl"><h2 className="text-lg font-black text-white">Compartir tarea</h2><p className="mt-1 text-xs text-slate-500">Selecciona miembros STAFF del mismo club. No se comparte con jugadores.</p><div className="mt-4 grid max-h-64 gap-2 overflow-y-auto">{memberships.filter((member) => member.user_id !== userId).map((member) => <label key={member.id} className="flex items-center gap-3 rounded-xl bg-white/[0.04] px-3 py-2 text-xs text-slate-300"><input type="checkbox" checked={shareIds.includes(member.id)} onChange={(event) => setShareIds((current) => event.target.checked ? [...current, member.id] : current.filter((id) => id !== member.id))} />{member.role.toUpperCase()} · {member.user_id}</label>)}</div><div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => setShareTask(null)} className="rounded-xl bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-300">Cancelar</button><button type="button" onClick={saveShare} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black text-slate-950">Guardar compartición</button></div></section></div> : null}
+    {shareTask ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"><section className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#071327] p-5 shadow-2xl"><h2 className="text-lg font-black text-white">Visibilidad de la tarea</h2><p className="mt-1 text-xs text-slate-500">La biblioteca común es visible para OWNER, ADMIN y STAFF activos de este club. Nadie obtiene permisos de edición o borrado.</p><label className="mt-4 flex items-start gap-3 rounded-xl border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-3 text-sm font-bold text-white"><input type="checkbox" className="mt-0.5" checked={shareWithClub} onChange={(event) => setShareWithClub(event.target.checked)} /><span><span className="block">Biblioteca común del club</span><span className="mt-1 block text-[11px] font-medium text-slate-400">Independiente de la temporada y reutilizable por el STAFF autorizado.</span></span></label>{!shareWithClub ? <><p className="mt-4 text-xs font-bold text-slate-400">Compartición individual compatible con tareas privadas anteriores</p><div className="mt-2 grid max-h-52 gap-2 overflow-y-auto">{memberships.filter((member) => member.user_id !== userId).map((member) => <label key={member.id} className="flex items-center gap-3 rounded-xl bg-white/[0.04] px-3 py-2 text-xs text-slate-300"><input type="checkbox" checked={shareIds.includes(member.id)} onChange={(event) => setShareIds((current) => event.target.checked ? [...current, member.id] : current.filter((id) => id !== member.id))} />{member.role.toUpperCase()} · {member.user_id}</label>)}</div></> : null}<div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => setShareTask(null)} className="rounded-xl bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-300">Cancelar</button><button type="button" onClick={saveShare} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black text-slate-950">Guardar visibilidad</button></div></section></div> : null}
     {batchPrint ? <TrainingTaskBatchPrint tasks={batchPrint.tasks} playerLookup={playerLookup} printRef={batchPrintRef} /> : null}
   </main>;
 }

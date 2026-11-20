@@ -32,7 +32,8 @@ export const loadTrainingTasks = async (client, clubId) => {
         .map((entry) => entry.post_text)
         .filter(Boolean)
         .join('\n'),
-      is_shared: Array.isArray(row.training_task_shares) && row.training_task_shares.length > 0,
+      is_shared: row.library_visibility === 'club'
+        || (Array.isArray(row.training_task_shares) && row.training_task_shares.length > 0),
     }),
     media: sortTrainingTaskMedia(row.training_task_media || []),
   }));
@@ -43,6 +44,8 @@ export const saveTrainingTask = async (client, draft, context, existing = null) 
   if (existing) {
     delete payload.club_id;
     delete payload.author_user_id;
+  } else {
+    payload.library_visibility = 'club';
   }
   let data;
   let error;
@@ -64,6 +67,7 @@ export const duplicateTrainingTask = async (client, task, context) => {
   payload.attachment_name = null;
   payload.attachment_mime = null;
   payload.attachment_size = null;
+  payload.library_visibility = 'club';
   const { data, error } = await client.from('training_tasks').insert(payload).select('*').single();
   if (error) throw error;
   const copy = normalizeTrainingTask(data);
@@ -83,11 +87,13 @@ export const deleteTrainingTask = async (client, id) => {
   if (!data?.length) throw new Error('No se eliminó la tarea: comprueba tus permisos.');
 };
 
-export const shareTrainingTask = async (client, taskId, membershipIds, sharedByUserId) => {
-  const rows = membershipIds.map((membershipId) => ({ task_id: taskId, membership_id: membershipId, shared_by_user_id: sharedByUserId }));
-  const { error: deleteError } = await client.from('training_task_shares').delete().eq('task_id', taskId);
-  if (deleteError) throw deleteError;
-  if (!rows.length) return;
-  const { error } = await client.from('training_task_shares').insert(rows);
+export const shareTrainingTask = async (client, taskId, membershipIds, { clubWide = false } = {}) => {
+  const recipients = [...new Set((membershipIds || []).filter(Boolean))];
+  const { data, error } = await client.rpc('set_training_task_sharing_v1', {
+    p_task_id: taskId,
+    p_library_visibility: clubWide ? 'club' : 'private',
+    p_membership_ids: recipients,
+  });
   if (error) throw error;
+  if (data !== true) throw new Error('No se confirmó la actualización de la biblioteca.');
 };

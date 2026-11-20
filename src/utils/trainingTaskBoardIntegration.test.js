@@ -80,7 +80,8 @@ inserted.editor_payload.assignments.players[0].playerRef.snapshot.name = 'Mutada
 assert.equal(task.editorPayload.board.elements[0].x, 20, 'la copia no comparte referencias con la original');
 assert.equal(task.editorPayload.assignments.players[0].playerRef.snapshot.name, 'Ada', 'duplicar desacopla profundamente identidades y snapshots');
 assert.equal(copy.previewPath, '', 'duplicar sigue sin copiar preview');
-assert.equal(copy.isShared, false, 'duplicar sigue sin copiar sharing');
+assert.equal(copy.libraryVisibility, 'club', 'una copia nueva nace en la biblioteca común');
+assert.equal(copy.isShared, true, 'la copia no hereda receptores individuales pero sí el ámbito común nuevo');
 
 const sectionSource = await readFile(new URL('../components/training/TrainingTasksSection.jsx', import.meta.url), 'utf8');
 const detailSource = await readFile(new URL('../components/training/TrainingTaskDetail.jsx', import.meta.url), 'utf8');
