@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo, useState } from 'react';
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { OWN_CLUB_IDENTITY } from '../../constants/clubIdentity';
 
 import {
@@ -379,6 +379,9 @@ function GlobalPlayerDatabase({
   const [playerToDelete, setPlayerToDelete] = useState(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const deleteInFlight = useRef(false);
+  useEffect(() => { setDeleteConfirmation(''); setDeleteError(''); }, [playerToDelete]);
   const [viewMode, setViewMode] = useState(() => {
     if (typeof window === 'undefined') return 'grid';
     return window.localStorage.getItem(VIEW_STORAGE_KEY) === 'list' ? 'list' : 'grid';
@@ -420,16 +423,19 @@ function GlobalPlayerDatabase({
     setFilterNotice('');
   };
   const confirmDelete = async () => {
-    if (!playerToDelete || deleteBusy || !deleteAvailable || !onDelete) return;
+    if (!playerToDelete || deleteInFlight.current || !canDelete || !deleteAvailable || !onDelete
+      || deleteConfirmation !== 'ELIMINAR') return;
+    deleteInFlight.current = true;
     setDeleteBusy(true);
     setDeleteError('');
     try {
-      await onDelete(playerToDelete);
+      await onDelete(playerToDelete, { confirmation: deleteConfirmation });
       setSelectedPlayerId('');
       setPlayerToDelete(null);
     } catch (cause) {
       setDeleteError(cause?.message || 'No se pudo eliminar el perfil. No se ha confirmado ningún cambio.');
     } finally {
+      deleteInFlight.current = false;
       setDeleteBusy(false);
     }
   };
@@ -488,7 +494,7 @@ function GlobalPlayerDatabase({
       ) : <div className="empty-state">No hay jugadores que coincidan con los filtros.</div>}
 
       {selectedPlayer ? <PlayerQuickView player={selectedPlayer} teamById={teamById} onClose={() => setSelectedPlayerId('')} onOpenProfile={onOpenProfile} onManageTeam={onManageTeam} /> : null}
-      {playerToDelete ? <div role="presentation" className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/85 p-4"><div role="dialog" aria-modal="true" aria-labelledby="delete-player-title" className="w-full max-w-md rounded-2xl border border-red-300/20 bg-[#091428] p-5 shadow-2xl"><h3 id="delete-player-title" className="text-lg font-black text-white">Eliminar jugador · {playerToDelete.name}</h3><p className="mt-3 text-sm text-slate-300">Se eliminarán definitivamente el perfil y sus datos individuales asociados. Esta acción no se puede deshacer. Los partidos y sesiones compartidos se conservarán.</p>{deleteError ? <p role="alert" className="mt-3 text-sm text-red-300">{deleteError}</p> : null}<div className="mt-5 flex justify-end gap-2"><button type="button" disabled={deleteBusy} onClick={() => { setPlayerToDelete(null); setDeleteError(''); }} className="rounded-xl border border-white/10 px-4 py-2 text-xs font-black text-white">Cancelar</button><button type="button" disabled={deleteBusy} onClick={confirmDelete} className="rounded-xl bg-red-500/20 px-4 py-2 text-xs font-black text-red-100 disabled:opacity-50">{deleteBusy ? 'Eliminando…' : 'Eliminar definitivamente'}</button></div></div></div> : null}
+      {playerToDelete ? <div role="presentation" className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/85 p-4"><div role="dialog" aria-modal="true" aria-labelledby="delete-player-title" className="w-full max-w-md rounded-2xl border border-red-300/20 bg-[#091428] p-5 shadow-2xl"><h3 id="delete-player-title" className="text-lg font-black text-white">Eliminar jugador · {playerToDelete.name}</h3><p className="mt-3 text-sm text-slate-300">Se eliminarán definitivamente el perfil y sus datos individuales asociados de todas las temporadas. Esta acción no se puede deshacer. Los partidos y sesiones compartidos se conservarán.</p><label className="mt-4 block text-sm text-white">Escribe ELIMINAR para confirmar<input aria-label="Confirmación de eliminación definitiva" autoComplete="off" value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} disabled={deleteBusy} className="field-input mt-2" /></label>{deleteError ? <p role="alert" className="mt-3 text-sm text-red-300">{deleteError}</p> : null}<div className="mt-5 flex justify-end gap-2"><button type="button" disabled={deleteBusy} onClick={() => { setPlayerToDelete(null); setDeleteError(''); }} className="rounded-xl border border-white/10 px-4 py-2 text-xs font-black text-white">Cancelar</button><button type="button" disabled={deleteBusy || !canDelete || !deleteAvailable || deleteConfirmation !== 'ELIMINAR'} onClick={confirmDelete} className="rounded-xl bg-red-500/20 px-4 py-2 text-xs font-black text-red-100 disabled:opacity-50">{deleteBusy ? 'Eliminando…' : 'Eliminar definitivamente'}</button></div></div></div> : null}
     </main>
   );
 }
