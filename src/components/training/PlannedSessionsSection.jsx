@@ -428,7 +428,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         revision: deleteTarget.revision, confirmed: true });
       let cleanupWarning = '';
       try {
-        const cleanup = await cleanupDeletedSessionActivityImages(client, deleteTarget.id);
+        const cleanup = await cleanupDeletedSessionActivityImages(client, contextId, deleteTarget.id);
         if (cleanup.failed.length) cleanupWarning = ` ${cleanup.failed.length} archivo(s) privado(s) quedan en la cola de limpieza.`;
       } catch (cleanupError) {
         cleanupWarning = ` La sesión se eliminó, pero no pudo verificarse la limpieza de sus imágenes: ${readError(cleanupError)}`;
@@ -650,6 +650,20 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     });
     return () => { cancelled = true; };
   }, [client, editor?.id, editor?.revision]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!contextId) return undefined;
+    cleanupDeletedSessionActivityImages(client, contextId).then((result) => {
+      if (!cancelled && result.failed.length) {
+        setActivityImagesError(`${result.failed.length} archivo(s) privado(s) siguen pendientes de limpieza; se reintentará al volver a abrir este CTS.`);
+      }
+    }).catch((cause) => {
+      if (!cancelled && !['42883', 'PGRST202'].includes(cause?.code))
+        setActivityImagesError(`Limpieza pendiente de imágenes: ${readError(cause)}`);
+    });
+    return () => { cancelled = true; };
+  }, [client, contextId]);
 
   const requestDiscard = () => !dirty || window.confirm('Hay cambios sin guardar. ¿Descartarlos?');
   const changeContext = (nextId) => {

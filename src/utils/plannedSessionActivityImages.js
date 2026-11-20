@@ -1,7 +1,5 @@
 export const SESSION_ACTIVITY_IMAGE_BUCKET = 'planned-session-activity-images';
 export const SESSION_ACTIVITY_IMAGE_MAX_SIZE = 10 * 1024 * 1024;
-// La tabla admite ocho filas; la interfaz reserva la octava temporalmente para
-// poder sustituir una imagen sin borrar antes el original.
 export const SESSION_ACTIVITY_IMAGE_MAX_COUNT = 7;
 export const SESSION_ACTIVITY_IMAGE_TYPES = Object.freeze(['image/jpeg', 'image/png', 'image/webp']);
 
@@ -86,20 +84,25 @@ export const deleteSessionActivityImage = async (client, image) => {
   if (storageError) throw storageError;
   const { error } = await client.from('planned_session_activity_images').delete().eq('id', image.id);
   if (error) throw error;
-  await client.from('planned_session_activity_image_cleanup').delete().eq('storage_path', image.storagePath);
+  const { error: confirmError } = await client.rpc('confirm_planned_session_activity_cleanup_v1', {
+    p_storage_path: image.storagePath,
+  });
+  if (confirmError) throw confirmError;
 };
 
-export const cleanupDeletedSessionActivityImages = async (client, sessionId) => {
-  const { data, error } = await client.from('planned_session_activity_image_cleanup').select('storage_path')
-    .eq('session_id', sessionId);
+export const cleanupDeletedSessionActivityImages = async (client, clubTeamSeasonId, sessionId = null) => {
+  const { data, error } = await client.rpc('list_planned_session_activity_cleanup_v1', {
+    p_club_team_season_id: clubTeamSeasonId, p_session_id: sessionId,
+  });
   if (error) throw error;
   const failed = [];
   for (const row of data || []) {
     const { error: storageError } = await client.storage.from(SESSION_ACTIVITY_IMAGE_BUCKET).remove([row.storage_path]);
     if (storageError) { failed.push(row.storage_path); continue; }
-    const { error: queueError } = await client.from('planned_session_activity_image_cleanup')
-      .delete().eq('storage_path', row.storage_path);
-    if (queueError) failed.push(row.storage_path);
+    const { error: confirmError } = await client.rpc('confirm_planned_session_activity_cleanup_v1', {
+      p_storage_path: row.storage_path,
+    });
+    if (confirmError) failed.push(row.storage_path);
   }
   return { total: (data || []).length, failed };
 };
@@ -107,28 +110,28 @@ export const cleanupDeletedSessionActivityImages = async (client, sessionId) => 
 export const reorderSessionActivityImages = async (client, rows, fromIndex, toIndex) => {
   const ordered = sortSessionActivityImages(rows);
   if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= ordered.length || toIndex >= ordered.length) return ordered;
-  const original = new Map(ordered.map((row) => [row.id, row.sortOrder]));
   const [moved] = ordered.splice(fromIndex, 1);
   ordered.splice(toIndex, 0, moved);
-  const changed = [];
-  for (const [index, row] of ordered.entries()) {
-    const { error } = await client.from('planned_session_activity_images').update({ sort_order: index }).eq('id', row.id);
-    if (error) {
-      await Promise.allSettled(changed.map((id) => client.from('planned_session_activity_images').update({ sort_order: original.get(id) }).eq('id', id)));
-      throw error;
-    }
-    changed.push(row.id);
-  }
+  const { error } = await client.rpc('reorder_planned_session_activity_images_v1', {
+    p_item_id: ordered[0].itemId, p_image_ids: ordered.map((row) => row.id),
+  });
+  if (error) throw error;
   return ordered.map((row, index) => ({ ...row, sortOrder: index, sort_order: index }));
 };
 
-export const replaceSessionActivityImage = async (client, context, image, file) => {
-  const replacement = await uploadSessionActivityImage(client, context, file, image.sortOrder);
-  try {
-    await deleteSessionActivityImage(client, image);
-    return replacement;
-  } catch (error) {
-    await deleteSessionActivityImage(client, replacement).catch(() => {});
-    throw error;
-  }
+export const replaceSessionActivityImage = async (client, _context, image, file) => {
+  validateSessionActivityImage(file);
+  const bucket = client.storage.from(SESSION_ACTIVITY_IMAGE_BUCKET);
+  const { data: previous, error: downloadError } = await bucket.download(image.storagePath);
+  if (downloadError) throw downloadError;
+  const { error: storageError } = await bucket.update(image.storagePath, file, { upsert: false, contentType: file.type });
+  if (storageError) throw storageError;
+  const payload = { original_name: clean(file.name), mime_type: file.type, size_bytes: file.size };
+  const { data, error } = await client.from('planned_session_activity_images').update(payload).eq('id', image.id).select('*').single();
+  if (!error) return { ...normalizeSessionActivityImage(data), signedUrl: URL.createObjectURL(file) };
+  const { error: rollbackError } = await bucket.update(image.storagePath, previous, {
+    upsert: false, contentType: image.mimeType,
+  });
+  if (rollbackError) throw new Error(`${error.message} Tampoco se pudo restaurar el archivo anterior: ${rollbackError.message}.`);
+  throw error;
 };
