@@ -5,6 +5,11 @@ select
   (select count(*)=4 from pg_policies where schemaname='public' and tablename='planned_session_activity_images') as cuatro_politicas_tabla,
   (select count(*)=4 from pg_policies where schemaname='storage' and tablename='objects'
     and policyname in('planned_session_activity_storage_select','planned_session_activity_storage_insert','planned_session_activity_storage_update','planned_session_activity_storage_delete')) as cuatro_politicas_storage,
+  exists(select 1 from pg_policies where schemaname='storage' and tablename='objects'
+    and policyname='planned_session_activity_storage_select' and cmd='SELECT'
+    and position('planned_session_activity_images' in coalesce(qual,''))>0
+    and position('can_delete_planned_session_activity_storage' in coalesce(qual,''))>0)
+    as select_permite_media_o_limpieza_autorizada,
   exists(select 1 from storage.buckets where id='planned-session-activity-images' and not public
     and file_size_limit=10485760 and allowed_mime_types @> array['image/jpeg','image/png','image/webp']::text[]) as bucket_privado,
   exists(select 1 from pg_trigger where tgrelid=to_regclass('public.planned_session_activity_images')
@@ -28,6 +33,11 @@ select
     and not has_function_privilege('anon','public.can_delete_planned_session_activity_storage(text)','EXECUTE') as limpieza_privada,
   exists(select 1 from pg_constraint where conrelid=to_regclass('public.planned_session_activity_images')
     and conname='planned_session_activity_images_item_order_key' and condeferrable and condeferred) as limite_concurrente_instalado,
+  exists(select 1 from pg_constraint c where c.conrelid=to_regclass('public.planned_session_items')
+    and c.contype in('p','u') and c.convalidated and not c.condeferrable
+    and array(select a.attname::text from unnest(c.conkey) with ordinality k(num,ord)
+      join pg_attribute a on a.attrelid=c.conrelid and a.attnum=k.num order by k.ord)
+      =array['id','session_id']::text[]) as clave_items_compuesta_compatible,
   not has_table_privilege('anon','public.planned_session_activity_images','SELECT,INSERT,UPDATE,DELETE') as anon_bloqueado;
 
 select c.conname,pg_get_constraintdef(c.oid) definicion

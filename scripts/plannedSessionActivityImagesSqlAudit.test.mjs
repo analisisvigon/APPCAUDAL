@@ -11,6 +11,7 @@ for (const fragment of [
   'list_planned_session_activity_cleanup_v1', 'confirm_planned_session_activity_cleanup_v1',
   'planned_session_activity_storage_update', 'planned_session_activity_images_item_order_key',
   'public.planned_session_delete_contract_v1() is not true',
+  "array['id','session_id']::text[]", 'or public.can_delete_planned_session_activity_storage(name)',
   "mime_type in ('image/jpeg','image/png','image/webp')", 'size_bytes between 1 and 10485760',
 ]) assert.ok(sql.toLowerCase().includes(fragment.toLowerCase()), `falta contrato SQL: ${fragment}`);
 assert.ok(!/disable\s+row\s+level\s+security/i.test(sql));

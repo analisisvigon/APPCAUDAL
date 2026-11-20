@@ -18,6 +18,29 @@ begin
   end if;
 end $$;
 
+-- La FK compuesta necesita un candidato UNIQUE no diferible en el mismo orden.
+-- Sesiones 03A ya crea planned_items_id_session_key; este ajuste solo cubre una
+-- instalación antigua compatible y no modifica ninguna fila histórica.
+do $$
+begin
+  if not exists(
+    select 1 from pg_catalog.pg_constraint c
+    where c.conrelid='public.planned_session_items'::regclass
+      and c.contype in ('p','u') and c.convalidated and not c.condeferrable
+      and array(select a.attname::text from unnest(c.conkey) with ordinality k(num,ord)
+        join pg_catalog.pg_attribute a on a.attrelid=c.conrelid and a.attnum=k.num
+        order by k.ord)=array['id','session_id']::text[]
+  ) then
+    if exists(select 1 from pg_catalog.pg_constraint c
+      where c.conrelid='public.planned_session_items'::regclass
+        and c.conname='planned_items_id_session_key') then
+      raise exception 'planned_items_id_session_key existe con una definición incompatible';
+    end if;
+    alter table public.planned_session_items
+      add constraint planned_items_id_session_key unique(id,session_id);
+  end if;
+end $$;
+
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
 values('planned-session-activity-images','planned-session-activity-images',false,10485760,
   array['image/jpeg','image/png','image/webp']::text[]);
@@ -209,9 +232,11 @@ create policy planned_session_activity_images_delete on public.planned_session_a
   for delete to authenticated using(public.can_write_club_team_season(club_team_season_id));
 
 create policy planned_session_activity_storage_select on storage.objects for select to authenticated
-using(bucket_id='planned-session-activity-images' and exists(
-  select 1 from public.planned_session_activity_images i where i.storage_path=name
-    and public.can_read_club_team_season(i.club_team_season_id)));
+using(bucket_id='planned-session-activity-images' and (
+  exists(select 1 from public.planned_session_activity_images i where i.storage_path=name
+    and public.can_read_club_team_season(i.club_team_season_id))
+  or public.can_delete_planned_session_activity_storage(name)
+));
 create policy planned_session_activity_storage_insert on storage.objects for insert to authenticated
 with check(bucket_id='planned-session-activity-images' and exists(
   select 1 from public.planned_session_activity_images i where i.storage_path=name
