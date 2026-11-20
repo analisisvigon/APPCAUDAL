@@ -14,11 +14,18 @@ select
   not has_table_privilege('authenticated','public.planned_session_activity_image_cleanup','SELECT,INSERT,UPDATE,DELETE')
     and not has_table_privilege('anon','public.planned_session_activity_image_cleanup','SELECT,INSERT,UPDATE,DELETE') as cola_no_accesible_a_clientes,
   to_regprocedure('public.list_planned_session_activity_cleanup_v1(uuid,uuid)') is not null
-    and to_regprocedure('public.confirm_planned_session_activity_cleanup_v1(text)') is not null as procedimiento_limpieza_instalado,
+    and to_regprocedure('public.confirm_planned_session_activity_cleanup_v1(text)') is not null
+    and to_regprocedure('public.can_delete_planned_session_activity_storage(text)') is not null as procedimiento_limpieza_instalado,
+  (select position('can_write_club_team_season' in prosrc)=0
+      and position('club_team_season_permissions' in prosrc)>0
+    from pg_proc where oid=to_regprocedure('public.can_manage_planned_session_activity_cleanup(uuid)'))
+    as limpieza_independiente_del_estado_temporada,
   has_function_privilege('authenticated','public.list_planned_session_activity_cleanup_v1(uuid,uuid)','EXECUTE')
     and has_function_privilege('authenticated','public.confirm_planned_session_activity_cleanup_v1(text)','EXECUTE')
+    and has_function_privilege('authenticated','public.can_delete_planned_session_activity_storage(text)','EXECUTE')
     and not has_function_privilege('anon','public.list_planned_session_activity_cleanup_v1(uuid,uuid)','EXECUTE')
-    and not has_function_privilege('anon','public.confirm_planned_session_activity_cleanup_v1(text)','EXECUTE') as limpieza_privada,
+    and not has_function_privilege('anon','public.confirm_planned_session_activity_cleanup_v1(text)','EXECUTE')
+    and not has_function_privilege('anon','public.can_delete_planned_session_activity_storage(text)','EXECUTE') as limpieza_privada,
   exists(select 1 from pg_constraint where conrelid=to_regclass('public.planned_session_activity_images')
     and conname='planned_session_activity_images_item_order_key' and condeferrable and condeferred) as limite_concurrente_instalado,
   not has_table_privilege('anon','public.planned_session_activity_images','SELECT,INSERT,UPDATE,DELETE') as anon_bloqueado;
@@ -38,6 +45,7 @@ select proname,pg_get_functiondef(oid) definicion
 from pg_proc where oid in(
   to_regprocedure('public.guard_planned_session_activity_image()'),
   to_regprocedure('public.can_manage_planned_session_activity_cleanup(uuid)'),
+  to_regprocedure('public.can_delete_planned_session_activity_storage(text)'),
   to_regprocedure('public.list_planned_session_activity_cleanup_v1(uuid,uuid)'),
   to_regprocedure('public.confirm_planned_session_activity_cleanup_v1(text)'),
   to_regprocedure('public.reorder_planned_session_activity_images_v1(uuid,uuid[])'))
