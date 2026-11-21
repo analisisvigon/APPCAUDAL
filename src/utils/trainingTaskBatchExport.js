@@ -1,4 +1,5 @@
 import { normalizeTrainingTask } from './trainingTasks.js';
+import { chunkTrainingTaskIds, loadTrainingTaskLibraryScope } from './trainingTaskLibraryScope.js';
 
 const EXPORT_PAGE_SIZE = 250;
 
@@ -19,30 +20,25 @@ export const trainingTaskCreationRange = (fromDate, toDate) => {
   return { from: from.toISOString(), until: until.toISOString() };
 };
 
-export const listTrainingTasksForExport = async (client, clubId, fromDate, toDate) => {
-  if (!clubId) throw new Error('No hay un club activo para exportar tareas.');
+export const listTrainingTasksForExport = async (client, clubTeamSeasonId, fromDate, toDate) => {
+  if (!clubTeamSeasonId) throw new Error('No hay un equipo y temporada autorizados para exportar tareas.');
   const range = trainingTaskCreationRange(fromDate, toDate);
+  const scope = await loadTrainingTaskLibraryScope(client, clubTeamSeasonId, {
+    createdFrom: range.from,
+    createdUntil: range.until,
+  });
+  if (!scope.length) return [];
   const rows = [];
-  let offset = 0;
-  let total = null;
-
-  do {
-    const { data, count, error } = await client
+  for (const ids of chunkTrainingTaskIds(scope.map((entry) => entry.taskId), EXPORT_PAGE_SIZE)) {
+    const { data, error } = await client
       .from('training_tasks')
-      .select('*', { count: 'exact' })
-      .eq('club_id', clubId)
-      .gte('created_at', range.from)
-      .lt('created_at', range.until)
+      .select('*')
+      .in('id', ids)
       .order('created_at', { ascending: true })
-      .order('id', { ascending: true })
-      .range(offset, offset + EXPORT_PAGE_SIZE - 1);
+      .order('id', { ascending: true });
     if (error) throw error;
-    if (total === null) total = Number.isInteger(count) ? count : null;
-    const page = data || [];
-    rows.push(...page);
-    offset += page.length;
-    if (!page.length || (total !== null && offset >= total) || (total === null && page.length < EXPORT_PAGE_SIZE)) break;
-  } while (true);
+    rows.push(...(data || []));
+  }
 
   const unique = new Map();
   rows.forEach((row) => unique.set(row.id, row));

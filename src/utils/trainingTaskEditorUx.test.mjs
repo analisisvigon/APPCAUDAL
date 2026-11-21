@@ -55,7 +55,7 @@ assert.match(sectionSource, /FeedbackPanel \{\.\.\.feedback\}/, 'POST está inte
 assert.match(sectionSource, /summary\.ratingAverage[\s\S]*rows\.length/, 'POST muestra valoración media y número de registros');
 assert.match(sectionSource, /canManage && showForm/, 'el formulario POST no aparece en readonly');
 assert.match(sectionSource, /canManage && entry\.author_user_id === userId/, 'editar y eliminar experiencias exige modo editable y autoría');
-assert.match(sectionSource, /feedbackContent=\{<FeedbackPanel[\s\S]*canManage=\{false\}/, 'la ficha consulta POST sin habilitar formularios');
+assert.match(sectionSource, /feedbackContent=\{<FeedbackPanel[\s\S]*canManage=\{canManageClubTrainingTasks\}/, 'la ficha habilita POST solo con escritura CTS vigente');
 assert.match(detailSource, /canEdit \? <button[^>]+onClick=\{\(\) => onEdit/, 'Editar solo aparece para la autoría real');
 assert.match(sectionSource, /setSelected\(savedTask\);[\s\S]*setDraft\(null\)/, 'guardar vuelve a la ficha unificada actualizada');
 assert.match(sectionSource, /Hay cambios sin guardar[\s\S]*setDraft\(null\)/, 'cancelar protege y descarta únicamente el borrador no confirmado');

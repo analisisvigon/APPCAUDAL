@@ -151,10 +151,9 @@ function TaskCard({ task, canManage, canDelete, userId, playerLookup, onOpen, on
   </article>;
 }
 
-export default function TrainingTasksSection({ membership = null, userId = '', players = [] }) {
+export default function TrainingTasksSection({ membership = null, userId = '', players = [], clubTeamSeasonId = '', canWrite = true }) {
   const clubId = membership?.club_id || '';
   const [tasks, setTasks] = useState([]);
-  const [memberships, setMemberships] = useState([]);
   const [selected, setSelected] = useState(null);
   const [draft, setDraft] = useState(null);
   const [filters, setFilters] = useState(createTrainingTaskFilters);
@@ -166,8 +165,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
   const [seriesSupported, setSeriesSupported] = useState(false);
   const [contentSupported, setContentSupported] = useState(false);
   const [shareTask, setShareTask] = useState(null);
-  const [shareIds, setShareIds] = useState([]);
-  const [shareWithClub, setShareWithClub] = useState(false);
+  const [shareWithTeam, setShareWithTeam] = useState(false);
   const [feedbackRows, setFeedbackRows] = useState([]);
   const [feedbackDraft, setFeedbackDraft] = useState(createTrainingTaskFeedbackDraft);
   const feedbackDraftBaseline = useRef(feedbackDraft);
@@ -192,8 +190,8 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
   const batchPrintRef = useRef(null);
   const playerLookup = useMemo(() => createTrainingTaskPlayerLookup(players), [players]);
 
-  const refresh = async () => { if (!clubId) return; setLoading(true); setError(''); try { const [loaded, members, deletion] = await Promise.all([loadTrainingTasks(supabase, clubId), supabase.from('club_memberships').select('id,user_id,role,is_active').eq('club_id', clubId).eq('is_active', true).in('role', ['owner', 'admin', 'staff']), supabase.rpc('training_task_delete_ready_v1')]); if (members.error) throw members.error; setTasks(loaded); setMemberships(members.data || []); setDeleteReady(!deletion.error && deletion.data === true); } catch (loadError) { setError(loadError.message || 'No se pudieron cargar las tareas.'); setDeleteReady(false); } finally { setLoading(false); } };
-  useEffect(() => { refresh(); }, [clubId]);
+  const refresh = async () => { if (!clubTeamSeasonId) { setLoading(false); return; } setLoading(true); setError(''); try { const [loaded, deletion] = await Promise.all([loadTrainingTasks(supabase, clubTeamSeasonId), supabase.rpc('training_task_delete_ready_v1')]); setTasks(loaded); setDeleteReady(!deletion.error && deletion.data === true); } catch (loadError) { setError(loadError.message || 'No se pudieron cargar las tareas.'); setDeleteReady(false); } finally { setLoading(false); } };
+  useEffect(() => { refresh(); }, [clubTeamSeasonId]);
   useEffect(() => {
     let active = true;
     checkPlannedTaskSeries(supabase).then((ready) => { if (active) setSeriesSupported(ready); })
@@ -201,18 +199,18 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     return () => { active = false; };
   }, []);
   useEffect(() => {
-    if (!exportOpen || !clubId || !exportFrom || !exportTo || exportFrom > exportTo) {
+    if (!exportOpen || !clubTeamSeasonId || !exportFrom || !exportTo || exportFrom > exportTo) {
       setExportResult(null); setExportLoading(false);
       return undefined;
     }
     let cancelled = false;
     setExportResult(null); setExportLoading(true); setExportError(''); setExportProgress('');
-    listTrainingTasksForExport(supabase, clubId, exportFrom, exportTo)
-      .then((rows) => { if (!cancelled) setExportResult({ clubId, from: exportFrom, to: exportTo, rows }); })
+    listTrainingTasksForExport(supabase, clubTeamSeasonId, exportFrom, exportTo)
+      .then((rows) => { if (!cancelled) setExportResult({ clubTeamSeasonId, from: exportFrom, to: exportTo, rows }); })
       .catch((cause) => { if (!cancelled) setExportError(cause.message || 'No se pudieron consultar las tareas.'); })
       .finally(() => { if (!cancelled) setExportLoading(false); });
     return () => { cancelled = true; };
-  }, [clubId, exportOpen, exportFrom, exportTo]);
+  }, [clubTeamSeasonId, exportOpen, exportFrom, exportTo]);
   useEffect(() => {
     if (!batchPrint?.tasks.length) return undefined;
     let cancelled = false;
@@ -255,7 +253,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
 
   const visibleTasks = useMemo(() => filterTrainingTasks(tasks, filters, userId), [tasks, filters, userId]);
   const canManageClubTrainingTasks = Boolean(
-    membership?.is_active && ['owner', 'admin', 'staff'].includes(membership.role)
+    canWrite && membership?.is_active && ['owner', 'admin', 'staff'].includes(membership.role)
   );
   const advancedFilterCount = countActiveTrainingTaskAdvancedFilters(filters);
   const activeFilterChips = useMemo(() => {
@@ -296,7 +294,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
       const complete = [];
       for (const row of rows) {
         setExportProgress(`Preparando ficha ${complete.length + 1} de ${rows.length}…`);
-        complete.push(await loadTrainingTaskPrintData(supabase, row.id, clubId));
+        complete.push(await loadTrainingTaskPrintData(supabase, row.id));
       }
       setBatchPrint({ tasks: complete, fileName });
     } catch (cause) {
@@ -322,7 +320,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     }
   };
   const exportTasksPdf = () => {
-    if (exportBusy || exportLoading || exportResult?.clubId !== clubId ||
+    if (exportBusy || exportLoading || exportResult?.clubTeamSeasonId !== clubTeamSeasonId ||
         exportResult?.from !== exportFrom || exportResult?.to !== exportTo || !exportResult.rows.length) return;
     prepareTaskPdf(exportResult.rows, trainingTaskExportFileName(exportFrom, exportTo));
   };
@@ -331,6 +329,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     setSelected((current) => current?.id === taskId ? { ...current, media } : current);
   };
   const openNew = () => {
+    if (!canWrite) return;
     const nextDraft = createTrainingTaskDraft();
     setSelected(null); setFeedbackRows([]); setDraftBaseline(nextDraft); setDraft(nextDraft); setError('');
     resetFeedbackDraft();
@@ -344,7 +343,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     finally { setFeedbackLoading(false); }
   };
   const openEdit = (task) => {
-    if (task.author_user_id !== userId) return;
+    if (!canWrite || task.author_user_id !== userId) return;
     const nextDraft = trainingTaskToDraft(task);
     setSelected(task); setDraftBaseline(nextDraft); setDraft(nextDraft); setError(''); setStatus(''); loadFeedback(task);
   };
@@ -361,6 +360,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     return () => window.removeEventListener('beforeunload', warnBeforeUnload);
   }, [draftDirty, feedbackDraftDirty]);
   const save = async () => {
+    if (!canWrite) return;
     if (feedbackDraftDirty) {
       setStatus('');
       setError('Hay una experiencia POST sin guardar. Pulsa «Guardar POST» para conservarla antes de guardar la tarea.');
@@ -379,7 +379,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     setError('');
     try {
       const { task: saved, cleanupPending, cleanupError } = await saveTrainingTaskWithFile(
-        supabase, draft, { clubId, authorUserId: userId, seriesEnabled: seriesSupported,
+        supabase, draft, { clubId, clubTeamSeasonId, authorUserId: userId, seriesEnabled: seriesSupported,
           contentEnabled: contentSupported }, selected
       );
       const savedTask = selected
@@ -414,9 +414,9 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     setStatus('');
   };
   const download = async (task) => { const { data, error: urlError } = await supabase.storage.from(BUCKET).createSignedUrl(task.attachmentPath, 3600, { download: task.attachmentName || true }); if (urlError) { setError(urlError.message); return; } window.open(data.signedUrl, '_blank', 'noopener,noreferrer'); };
-  const duplicate = async (task) => { if (!seriesSupported && (task.seriesCount || task.minutesPerSeries)) { setError('No se ha verificado la compatibilidad de series; vuelve a cargar antes de duplicar.'); return; } if (!contentSupported && (task.exerciseRules || task.tacticalOffensiveContent || task.tacticalDefensiveContent)) { setError('No se ha verificado la compatibilidad del contenido nuevo; vuelve a cargar antes de duplicar.'); return; } try { const copy = await duplicateTrainingTask(supabase, task, { clubId, authorUserId: userId, seriesEnabled: seriesSupported, contentEnabled: contentSupported }); setTasks((current) => [copy, ...current]); setStatus('Tarea duplicada en tu biblioteca.'); } catch (duplicateError) { setError(duplicateError.message || 'No se pudo duplicar.'); } };
+  const duplicate = async (task) => { if (!canWrite) return; if (!seriesSupported && (task.seriesCount || task.minutesPerSeries)) { setError('No se ha verificado la compatibilidad de series; vuelve a cargar antes de duplicar.'); return; } if (!contentSupported && (task.exerciseRules || task.tacticalOffensiveContent || task.tacticalDefensiveContent)) { setError('No se ha verificado la compatibilidad del contenido nuevo; vuelve a cargar antes de duplicar.'); return; } try { const copy = await duplicateTrainingTask(supabase, task, { clubId, clubTeamSeasonId, authorUserId: userId, seriesEnabled: seriesSupported, contentEnabled: contentSupported }); setTasks((current) => [copy, ...current]); setStatus('Tarea duplicada en la biblioteca compartida del equipo.'); } catch (duplicateError) { setError(duplicateError.message || 'No se pudo duplicar.'); } };
   const remove = async (task) => {
-    if (task.author_user_id !== userId || !window.confirm(`¿Eliminar definitivamente «${task.name}»? Esta acción no se puede deshacer.`)) return;
+    if (!canWrite || task.author_user_id !== userId || !window.confirm(`¿Eliminar definitivamente «${task.name}»? Esta acción no se puede deshacer.`)) return;
     setError('');
     setStatus('');
     try {
@@ -431,24 +431,18 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     }
   };
   const startShare = async (task) => {
-    if (task.author_user_id !== userId) return;
-    const { data, error: shareError } = await supabase
-      .from('training_task_shares')
-      .select('membership_id')
-      .eq('task_id', task.id);
-    if (shareError) { setError(shareError.message); return; }
+    if (!canWrite || task.author_user_id !== userId) return;
     setShareTask(task);
-    setShareWithClub(task.libraryVisibility === 'club');
-    setShareIds((data || []).map((row) => row.membership_id));
+    setShareWithTeam(task.isSharedWithTeam === true);
   };
   const saveShare = async () => {
     try {
-      await shareTrainingTask(supabase, shareTask.id, shareIds, { clubWide: shareWithClub });
+      await shareTrainingTask(supabase, shareTask.id, clubTeamSeasonId, shareWithTeam);
       setShareTask(null);
       await refresh();
-      setStatus(shareWithClub
-        ? 'Tarea incorporada a la biblioteca común.'
-        : 'Visibilidad privada actualizada.');
+      setStatus(shareWithTeam
+        ? 'Tarea incorporada a la biblioteca compartida del equipo.'
+        : 'Tarea retirada del equipo; permanece en la biblioteca personal del autor.');
     } catch (shareError) {
       setError(shareError.message || 'No se pudo actualizar la visibilidad.');
     }
@@ -504,9 +498,9 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     } catch (deleteError) { setFeedbackError(trainingTaskFeedbackErrorMessage(deleteError, 'eliminar')); }
   };
 
-  if (!clubId) return <section className="rounded-2xl border border-amber-200/20 bg-amber-200/10 p-5 text-sm text-amber-100">No hay un club activo disponible para cargar Tareas.</section>;
+  if (!clubId || !clubTeamSeasonId) return <section className="rounded-2xl border border-amber-200/20 bg-amber-200/10 p-5 text-sm text-amber-100">Selecciona un equipo y temporada autorizados para cargar Tareas.</section>;
   return <main className="space-y-5">
-    {!draft && !selected ? <header className="rounded-[1.35rem] border border-white/10 bg-white/[0.04] p-4 shadow-[0_16px_48px_rgba(0,0,0,0.16)] sm:p-5"><div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric">Biblioteca operativa</p><h1 className="mt-1 text-2xl font-black text-white">Tareas</h1><p className="mt-1 text-sm text-slate-400">Biblioteca de tareas de entrenamiento para el cuerpo técnico.</p></div><div className="flex flex-wrap gap-2"><button type="button" onClick={openExportDialog} disabled={loading || exportBusy} className="rounded-xl border border-white/15 bg-white/[0.04] px-4 py-2.5 text-xs font-black text-slate-200 disabled:opacity-50">Exportar PDF</button><button type="button" onClick={openNew} className="rounded-xl bg-caudal-electric px-4 py-2.5 text-xs font-black text-slate-950">+ Nueva tarea</button></div></div>{status ? <p className="mt-3 rounded-xl bg-emerald-400/10 px-3 py-2 text-xs font-bold text-emerald-100">{status}</p> : null}{error ? <p role="alert" className="mt-3 rounded-xl bg-red-400/10 px-3 py-2 text-xs font-bold text-red-100">{error}</p> : null}</header> : null}
+    {!draft && !selected ? <header className="rounded-[1.35rem] border border-white/10 bg-white/[0.04] p-4 shadow-[0_16px_48px_rgba(0,0,0,0.16)] sm:p-5"><div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><p className="text-[10px] font-black uppercase tracking-[0.22em] text-caudal-electric">Biblioteca operativa</p><h1 className="mt-1 text-2xl font-black text-white">Tareas</h1><p className="mt-1 text-sm text-slate-400">Biblioteca personal y compartida del equipo, independiente de la temporada.</p></div><div className="flex flex-wrap gap-2"><button type="button" onClick={openExportDialog} disabled={loading || exportBusy} className="rounded-xl border border-white/15 bg-white/[0.04] px-4 py-2.5 text-xs font-black text-slate-200 disabled:opacity-50">Exportar PDF</button><button type="button" onClick={openNew} disabled={!canWrite} className="rounded-xl bg-caudal-electric px-4 py-2.5 text-xs font-black text-slate-950 disabled:opacity-40">+ Nueva tarea</button></div></div>{!canWrite ? <p className="mt-3 rounded-xl bg-amber-300/10 px-3 py-2 text-xs font-bold text-amber-100">Temporada cerrada o sin permiso de escritura: biblioteca en modo consulta.</p> : null}{status ? <p className="mt-3 rounded-xl bg-emerald-400/10 px-3 py-2 text-xs font-bold text-emerald-100">{status}</p> : null}{error ? <p role="alert" className="mt-3 rounded-xl bg-red-400/10 px-3 py-2 text-xs font-bold text-red-100">{error}</p> : null}</header> : null}
     {exportOpen ? <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/75 p-3" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !exportBusy) setExportOpen(false); }}>
       <section role="dialog" aria-modal="true" aria-labelledby="task-export-title" className="w-full max-w-lg rounded-2xl border border-white/15 bg-[#0b1a2d] p-4 text-white shadow-2xl sm:p-5">
         <div className="flex items-start justify-between gap-3"><div><h2 id="task-export-title" className="text-lg font-black">Exportar tareas a PDF</h2><p className="mt-1 text-xs text-slate-400">Se incluyen solo las tareas de Biblioteca que puedes consultar, según su fecha real de creación.</p></div><button type="button" disabled={exportBusy} onClick={() => setExportOpen(false)} aria-label="Cerrar exportación" className="rounded-lg bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-300">Cerrar</button></div>
@@ -516,12 +510,12 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
         </div>
         {!exportFrom || !exportTo || exportFrom > exportTo ? <p role="alert" className="mt-3 text-sm text-amber-200">Selecciona un intervalo válido.</p>
           : exportLoading ? <p className="mt-3 text-sm text-slate-300" role="status">Consultando tareas autorizadas…</p>
-            : exportResult?.clubId === clubId && exportResult.from === exportFrom && exportResult.to === exportTo
+            : exportResult?.clubTeamSeasonId === clubTeamSeasonId && exportResult.from === exportFrom && exportResult.to === exportTo
               ? <p className={`mt-3 text-sm ${exportResult.rows.length ? 'text-slate-200' : 'text-amber-200'}`} role="status">{exportResult.rows.length} {exportResult.rows.length === 1 ? 'tarea encontrada' : 'tareas encontradas'} (ambas fechas incluidas).{!exportResult.rows.length ? ' No se generará un PDF vacío.' : ''}</p> : null}
         {exportError ? <p role="alert" className="mt-3 rounded-xl bg-red-400/10 px-3 py-2 text-xs font-bold text-red-100">{exportError}</p> : null}
         {exportProgress ? <p role="status" className="mt-3 rounded-xl bg-caudal-electric/10 px-3 py-2 text-xs font-bold text-caudal-electric">{exportProgress}</p> : null}
         <p className="mt-3 text-[11px] text-slate-500">Una página A4 horizontal por tarea. Si el contenido no cabe con letra legible, se avisará antes de imprimir. Selecciona A4 horizontal, escala 100 % y desactiva los encabezados y pies del navegador.</p>
-        <div className="mt-5 flex justify-end gap-2"><button type="button" disabled={exportBusy} onClick={() => setExportOpen(false)} className="rounded-xl border border-white/15 px-4 py-2.5 text-xs font-black text-slate-200">Cancelar</button><button type="button" onClick={exportTasksPdf} disabled={exportBusy || exportLoading || exportResult?.clubId !== clubId || exportResult?.from !== exportFrom || exportResult?.to !== exportTo || !exportResult?.rows.length} className="rounded-xl bg-caudal-electric px-4 py-2.5 text-xs font-black text-slate-950 disabled:opacity-40">{exportBusy ? 'Preparando…' : 'Generar PDF'}</button></div>
+        <div className="mt-5 flex justify-end gap-2"><button type="button" disabled={exportBusy} onClick={() => setExportOpen(false)} className="rounded-xl border border-white/15 px-4 py-2.5 text-xs font-black text-slate-200">Cancelar</button><button type="button" onClick={exportTasksPdf} disabled={exportBusy || exportLoading || exportResult?.clubTeamSeasonId !== clubTeamSeasonId || exportResult?.from !== exportFrom || exportResult?.to !== exportTo || !exportResult?.rows.length} className="rounded-xl bg-caudal-electric px-4 py-2.5 text-xs font-black text-slate-950 disabled:opacity-40">{exportBusy ? 'Preparando…' : 'Generar PDF'}</button></div>
       </section>
     </div> : null}
     {exportBusy && !exportOpen ? <p role="status" className="text-sm text-caudal-electric">{exportProgress || 'Preparando PDF…'}</p> : null}
@@ -571,9 +565,9 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
       {activeFilterChips.length ? <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Filtros activos">{activeFilterChips.map((filter) => <button key={filter.key} type="button" onClick={() => clearFilter(filter.key)} aria-label={`Quitar filtro ${filter.label}`} className="rounded-full border border-caudal-electric/25 bg-caudal-electric/10 px-2.5 py-1 text-[10px] font-black text-caudal-electric">{filter.label}: {filter.display} <span aria-hidden="true">×</span></button>)}</div> : null}
       <div className="mt-3 flex items-center justify-between gap-3"><p className="text-xs font-bold text-slate-400">{visibleTasks.length} {visibleTasks.length === 1 ? 'resultado' : 'resultados'}</p><button type="button" onClick={clearFilters} className="rounded-lg bg-white/[0.06] px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-300 hover:bg-white/10">Limpiar filtros</button></div>
     </section>
-    {loading ? <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm text-slate-500">Cargando tareas…</div> : error && !tasks.length ? <div role="alert" className="rounded-2xl border border-red-300/20 bg-red-400/10 p-8 text-center text-sm text-red-100">No se pudieron cargar las tareas.</div> : visibleTasks.length ? <div className="grid items-stretch gap-4 md:grid-cols-2 2xl:grid-cols-3">{visibleTasks.map((task) => <TaskCard key={task.id} task={task} userId={userId} playerLookup={playerLookup} canManage={task.author_user_id === userId} canDelete={deleteReady && membership?.is_active && ['owner', 'admin', 'staff'].includes(membership.role) && task.club_id === clubId} onOpen={openTask} onEdit={openEdit} onDuplicate={duplicate} onDelete={remove} onShare={startShare} onDownload={download} onPdf={exportSingleTask} pdfBusy={exportBusy} onPowerPoint={exportSingleTaskPowerPoint} powerpointBusy={Boolean(powerpointBusyTaskId)} powerpointError={powerpointError?.taskId === task.id ? powerpointError.message : ''} />)}</div> : tasks.length ? <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] p-8 text-center"><p className="text-sm font-black text-white">No hay coincidencias</p><p className="mt-1 text-xs text-slate-500">Prueba a quitar algún filtro o a usar otros términos.</p><button type="button" onClick={clearFilters} className="mt-4 rounded-xl bg-white/10 px-4 py-2 text-xs font-black text-white">Limpiar filtros</button></div> : <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] p-8 text-center"><p className="text-sm font-black text-white">No hay tareas todavía</p><p className="mt-1 text-xs text-slate-500">Crea la primera tarea de entrenamiento para tu biblioteca.</p><button type="button" onClick={openNew} className="mt-4 rounded-xl bg-caudal-electric px-4 py-2 text-xs font-black text-slate-950">+ Nueva tarea</button></div>}
+    {loading ? <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm text-slate-500">Cargando tareas…</div> : error && !tasks.length ? <div role="alert" className="rounded-2xl border border-red-300/20 bg-red-400/10 p-8 text-center text-sm text-red-100">No se pudieron cargar las tareas.</div> : visibleTasks.length ? <div className="grid items-stretch gap-4 md:grid-cols-2 2xl:grid-cols-3">{visibleTasks.map((task) => <TaskCard key={task.id} task={task} userId={userId} playerLookup={playerLookup} canManage={canWrite && task.author_user_id === userId} canDelete={deleteReady && canWrite && task.author_user_id === userId} onOpen={openTask} onEdit={openEdit} onDuplicate={duplicate} onDelete={remove} onShare={startShare} onDownload={download} onPdf={exportSingleTask} pdfBusy={exportBusy} onPowerPoint={exportSingleTaskPowerPoint} powerpointBusy={Boolean(powerpointBusyTaskId)} powerpointError={powerpointError?.taskId === task.id ? powerpointError.message : ''} />)}</div> : tasks.length ? <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] p-8 text-center"><p className="text-sm font-black text-white">No hay coincidencias</p><p className="mt-1 text-xs text-slate-500">Prueba a quitar algún filtro o a usar otros términos.</p><button type="button" onClick={clearFilters} className="mt-4 rounded-xl bg-white/10 px-4 py-2 text-xs font-black text-white">Limpiar filtros</button></div> : <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.025] p-8 text-center"><p className="text-sm font-black text-white">No hay tareas todavía</p><p className="mt-1 text-xs text-slate-500">Crea la primera tarea compartida para este equipo.</p>{canWrite ? <button type="button" onClick={openNew} className="mt-4 rounded-xl bg-caudal-electric px-4 py-2 text-xs font-black text-slate-950">+ Nueva tarea</button> : null}</div>}
     </> : null}
-    {shareTask ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"><section className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#071327] p-5 shadow-2xl"><h2 className="text-lg font-black text-white">Visibilidad de la tarea</h2><p className="mt-1 text-xs text-slate-500">La biblioteca común es visible para OWNER, ADMIN y STAFF activos de este club. Nadie obtiene permisos de edición o borrado.</p><label className="mt-4 flex items-start gap-3 rounded-xl border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-3 text-sm font-bold text-white"><input type="checkbox" className="mt-0.5" checked={shareWithClub} onChange={(event) => setShareWithClub(event.target.checked)} /><span><span className="block">Biblioteca común del club</span><span className="mt-1 block text-[11px] font-medium text-slate-400">Independiente de la temporada y reutilizable por el STAFF autorizado.</span></span></label>{!shareWithClub ? <><p className="mt-4 text-xs font-bold text-slate-400">Compartición individual compatible con tareas privadas anteriores</p><div className="mt-2 grid max-h-52 gap-2 overflow-y-auto">{memberships.filter((member) => member.user_id !== userId).map((member) => <label key={member.id} className="flex items-center gap-3 rounded-xl bg-white/[0.04] px-3 py-2 text-xs text-slate-300"><input type="checkbox" checked={shareIds.includes(member.id)} onChange={(event) => setShareIds((current) => event.target.checked ? [...current, member.id] : current.filter((id) => id !== member.id))} />{member.role.toUpperCase()} · {member.user_id}</label>)}</div></> : null}<div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => setShareTask(null)} className="rounded-xl bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-300">Cancelar</button><button type="button" onClick={saveShare} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black text-slate-950">Guardar visibilidad</button></div></section></div> : null}
+    {shareTask ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"><section className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#071327] p-5 shadow-2xl"><h2 className="text-lg font-black text-white">Visibilidad de la tarea</h2><p className="mt-1 text-xs text-slate-500">El enlace pertenece al equipo actual y se reutiliza en sus temporadas. Solo accede el STAFF con un CTS abierto y autorizado.</p><label className="mt-4 flex items-start gap-3 rounded-xl border border-caudal-electric/25 bg-caudal-electric/10 px-3 py-3 text-sm font-bold text-white"><input type="checkbox" className="mt-0.5" checked={shareWithTeam} onChange={(event) => setShareWithTeam(event.target.checked)} /><span><span className="block">Biblioteca compartida del equipo</span><span className="mt-1 block text-[11px] font-medium text-slate-400">Al desmarcarla, la tarea continúa disponible únicamente en la biblioteca personal del autor.</span></span></label><div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => setShareTask(null)} className="rounded-xl bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-300">Cancelar</button><button type="button" onClick={saveShare} className="rounded-xl bg-caudal-electric px-3 py-2 text-xs font-black text-slate-950">Guardar visibilidad</button></div></section></div> : null}
     {batchPrint ? <TrainingTaskBatchPrint tasks={batchPrint.tasks} playerLookup={playerLookup} printRef={batchPrintRef} /> : null}
   </main>;
 }

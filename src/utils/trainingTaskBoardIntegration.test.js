@@ -11,7 +11,7 @@ import { createTrainingTaskEditorSceneV1 } from './trainingTaskEditorPayload.js'
 import { duplicateTrainingTask, saveTrainingTask } from './trainingTaskStore.js';
 import { saveTrainingTaskWithFile } from './trainingTaskFiles.js';
 
-const context = { clubId: 'club-1', authorUserId: 'author-1' };
+const context = { clubId: 'club-1', clubTeamSeasonId: 'cts-1', authorUserId: 'author-1' };
 const validDraft = { ...createTrainingTaskDraft(), name: 'Posesión', objective: 'Conservar' };
 assert.deepEqual(buildTrainingTaskPayload(validDraft, context).editor_payload, {}, 'crear sin tocar la pizarra persiste el contrato vacio');
 
@@ -63,15 +63,15 @@ await assert.rejects(saveTrainingTaskWithFile({
 assert.equal(externalCalls, 0, 'el limite se comprueba antes de DB y Storage aunque exista un archivo');
 
 let inserted;
-const duplicateClient = { from(table) {
+const duplicateClient = { async rpc(name, params) {
+  assert.equal(name, 'create_shared_training_task_v1');
+  inserted = params.p_task_payload;
+  return { data: { ...inserted, id: params.p_task_id, club_id: 'club-1', author_user_id: 'author-1', is_shared_with_team: true }, error: null };
+}, from(table) {
   if (table === 'training_task_media') return {
     select: () => ({ eq: () => ({ order: () => ({ order: async () => ({ data: [], error: null }) }) }) }),
   };
-  assert.equal(table, 'training_tasks');
-  return { insert(payload) {
-    inserted = payload;
-    return { select: () => ({ single: async () => ({ data: { ...payload, id: 'copy-1', library_visibility: 'club' }, error: null }) }) };
-  } };
+  throw new Error(`Tabla inesperada: ${table}`);
 } };
 const copy = await duplicateTrainingTask(duplicateClient, task, context);
 assert.deepEqual(inserted.editor_payload, initialScene, 'duplicar conserva la escena');
@@ -80,8 +80,8 @@ inserted.editor_payload.assignments.players[0].playerRef.snapshot.name = 'Mutada
 assert.equal(task.editorPayload.board.elements[0].x, 20, 'la copia no comparte referencias con la original');
 assert.equal(task.editorPayload.assignments.players[0].playerRef.snapshot.name, 'Ada', 'duplicar desacopla profundamente identidades y snapshots');
 assert.equal(copy.previewPath, '', 'duplicar sigue sin copiar preview');
-assert.equal(copy.libraryVisibility, 'club', 'una copia nueva nace en la biblioteca común');
-assert.equal(copy.isShared, true, 'la copia no hereda receptores individuales pero sí el ámbito común nuevo');
+assert.equal(copy.isSharedWithTeam, true, 'una copia nueva nace enlazada al equipo');
+assert.equal(copy.isShared, true, 'la copia no hereda receptores individuales pero sí el enlace del equipo');
 
 const sectionSource = await readFile(new URL('../components/training/TrainingTasksSection.jsx', import.meta.url), 'utf8');
 const detailSource = await readFile(new URL('../components/training/TrainingTaskDetail.jsx', import.meta.url), 'utf8');

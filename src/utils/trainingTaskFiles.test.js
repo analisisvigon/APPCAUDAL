@@ -7,7 +7,7 @@ import {
   trainingTaskFilePath,
 } from './trainingTaskFiles.js';
 
-const context = { clubId: 'club-id', authorUserId: 'my-user' };
+const context = { clubId: 'club-id', clubTeamSeasonId: 'cts-id', authorUserId: 'my-user' };
 const original = {
   id: 'task-id', club_id: 'club-id', author_user_id: 'other-user',
   name: 'Rondo', taskCode: 'Vigón', objective: 'Control', taskType: 'rondos', gamePhase: 'offensive', gameMoment: 'creation',
@@ -17,20 +17,36 @@ const original = {
 };
 
 let inserted;
-const duplicateClient = { from(table) {
+const duplicateClient = {
+  async rpc(name, params) {
+    assert.equal(name, 'create_shared_training_task_v1');
+    assert.equal(params.p_cts_id, 'cts-id');
+    inserted = params.p_task_payload;
+    return {
+      data: {
+        ...inserted,
+        id: params.p_task_id,
+        club_id: 'club-id',
+        author_user_id: 'my-user',
+        is_personal: true,
+        is_shared_with_team: true,
+      },
+      error: null,
+    };
+  },
+  from(table) {
   if (table === 'training_task_media') return {
     select: () => ({ eq: () => ({ order: () => ({ order: async () => ({ data: [], error: null }) }) }) }),
   };
-  assert.equal(table, 'training_tasks');
-  return { insert(payload) {
-    inserted = payload;
-    return { select() { return { async single() { return { data: { ...payload, id: 'new-task' }, error: null }; } }; } };
-  } };
+  throw new Error(`Tabla inesperada: ${table}`);
 } };
 const copy = await duplicateTrainingTask(duplicateClient, original, context);
-assert.equal(copy.id, 'new-task');
-assert.equal(inserted.author_user_id, 'my-user');
-assert.equal(inserted.club_id, 'club-id');
+assert.notEqual(copy.id, original.id);
+assert.equal(copy.author_user_id, 'my-user');
+assert.equal(copy.club_id, 'club-id');
+assert.equal(copy.isSharedWithTeam, true);
+assert.equal(inserted.author_user_id, undefined, 'la RPC deriva el autor autenticado');
+assert.equal(inserted.club_id, undefined, 'la RPC deriva el club desde el CTS');
 assert.equal(inserted.task_code, 'Vigón', 'duplicar conserva el código de tarea');
 assert.deepEqual(inserted.stage_keys, ['juvenil', 'senior'], 'duplicar conserva las etapas');
 assert.equal(inserted.variants, 'Limitar a dos contactos.', 'duplicar conserva variantes');
@@ -49,15 +65,24 @@ assert.equal(trainingTaskFilePath(original, file, 'file-id'), 'club-id/task-id/o
 
 const calls = [];
 const client = {
+  async rpc(name, params) {
+    assert.equal(name, 'create_shared_training_task_v1');
+    calls.push(['insert', params.p_task_payload]);
+    return {
+      data: {
+        ...params.p_task_payload,
+        id: params.p_task_id,
+        club_id: 'club-id',
+        author_user_id: 'my-user',
+        is_personal: true,
+        is_shared_with_team: true,
+      },
+      error: null,
+    };
+  },
   from(table) {
     assert.equal(table, 'training_tasks');
     return {
-      insert(payload) {
-        calls.push(['insert', payload]);
-        return { select() { return { async single() {
-          return { data: { ...payload, id: 'new-task' }, error: null };
-        } }; } };
-      },
       update(payload) {
         calls.push(['update', payload]);
         return { eq() { return { select() { return { async single() {

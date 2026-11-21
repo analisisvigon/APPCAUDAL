@@ -33768,7 +33768,9 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
           <LibrarySection players={players} />
         ) : null}
         {activeTab === 'Tareas' ? (
-          <TrainingTasksSection membership={identity?.membership} userId={session?.user?.id || ''} players={players} />
+          <TrainingTasksSection membership={identity?.membership} userId={session?.user?.id || ''}
+            players={players} clubTeamSeasonId={rosterAccess.context?.id || ''}
+            canWrite={rosterAccess.canWrite === true} />
         ) : null}
         {activeTab === 'Calendario' ? (
           <TeamCalendarSection mode="calendar" client={supabase} clubId={identity?.membership?.club_id || ''}
@@ -38323,7 +38325,7 @@ const CTS_NAV_TABS = [
   'Registro Delegado', 'Análisis Grupal', 'Mi historial',
   ...(LOCAL_VIDEO_LAB_ENABLED ? ['Videoanálisis'] : []),
 ];
-const CTS_READ_TABS = new Set(['Inicio', 'Plantilla', 'Partidos',
+const CTS_READ_TABS = new Set(['Inicio', 'Plantilla', 'Partidos', 'Tareas',
   ...(LOCAL_VIDEO_LAB_ENABLED ? ['Videoanálisis'] : [])]);
 
 function CtsPlayerForm({ player, busy, error, onCancel, onSave }) {
@@ -38400,7 +38402,7 @@ function CtsMatchForm({ match, busy, error, onCancel, onSave }) {
   </form>;
 }
 
-function CtsWorkspace({ controlledSession, selectedCtsId, availableContexts = [],
+function CtsWorkspace({ controlledSession, identity, selectedCtsId, availableContexts = [],
   onSelectContext, onChangeTeam, onControlledSignOut }) {
   const [activeTab, setActiveTab] = useState('Inicio');
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
@@ -38586,6 +38588,13 @@ function CtsWorkspace({ controlledSession, selectedCtsId, availableContexts = []
             </article>)}</div>
             {!matches.length && <p className="mt-4 rounded-2xl bg-white/5 p-5 text-slate-400">No hay partidos vinculados a este CTS.</p>}
           </section>}
+          {activeTab === 'Tareas' && <TrainingTasksSection
+            membership={identity?.membership}
+            userId={controlledSession?.user?.id || ''}
+            players={players}
+            clubTeamSeasonId={context.id}
+            canWrite={snapshot.canWrite === true}
+          />}
           {LOCAL_VIDEO_LAB_ENABLED && activeTab === 'Videoanálisis' && LocalVideoAnalysisLab &&
             <React.Suspense fallback={<p role="status">Cargando Videoanálisis local…</p>}>
               <LocalVideoAnalysisLab key={`${controlledSession?.user?.id || ''}:${context.id}:${context.role}:${context.seasonStatus}`}

@@ -13,11 +13,11 @@ async function readRelated(client, table, taskId) {
   }
 }
 
-export async function loadTrainingTaskPrintData(client, taskId, clubId) {
+export async function loadTrainingTaskPrintData(client, taskId) {
   const { data, error } = await client.from('training_tasks').select('*')
-    .eq('club_id', clubId).eq('id', taskId).single();
+    .eq('id', taskId).single();
   if (error) throw error;
-  if (!data || data.id !== taskId || data.club_id !== clubId) throw new Error('La tarea ya no está disponible para exportar.');
+  if (!data || data.id !== taskId) throw new Error('La tarea ya no está disponible para exportar.');
   const [media, feedback] = await Promise.all([
     readRelated(client, 'training_task_media', taskId),
     readRelated(client, 'training_task_feedback', taskId),

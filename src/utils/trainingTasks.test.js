@@ -65,10 +65,10 @@ assert.equal(formatTrainingTaskPlayers(draft), '4v4+3', 'se conserva el formato 
 assert.equal(buildTrainingTaskPayload(draft, { clubId: 'club-1', authorUserId: 'user-1' }).author_user_id, 'user-1', 'la identidad usa el UUID del autor');
 assert.equal(buildTrainingTaskPayload(draft, { clubId: 'club-1', authorUserId: 'user-1' }).task_code, 'Vigón', 'el código se recorta sin perder tilde ni mayúscula');
 assert.equal(normalizeTrainingTask({ task_code: 'Vigón' }).taskCode, 'Vigón', 'READ normaliza task_code');
-assert.equal(normalizeTrainingTask({ library_visibility: 'club' }).libraryVisibility, 'club', 'READ conserva el ámbito común');
-assert.equal(normalizeTrainingTask({ library_visibility: 'club' }).isShared, true, 'una tarea común se considera compartida sin receptores individuales');
-assert.equal(normalizeTrainingTask({ library_visibility: 'private', is_shared: true }).isShared, true, 'la compartición individual legacy sigue visible');
-assert.equal(normalizeTrainingTask({}).libraryVisibility, 'private', 'una tarea legacy sin visibilidad no se publica desde el cliente');
+assert.equal(normalizeTrainingTask({ is_shared_with_team: true }).isSharedWithTeam, true, 'READ conserva el enlace al equipo');
+assert.equal(normalizeTrainingTask({ is_shared_with_team: true }).isShared, true, 'una tarea enlazada se considera compartida');
+assert.equal(normalizeTrainingTask({ is_shared: true }).isShared, true, 'la compartición legacy sigue normalizada');
+assert.equal(normalizeTrainingTask({ is_personal: false }).isPersonal, false, 'una tarea ajena no se presenta como personal');
 assert.equal(trainingTaskToDraft({ taskCode: 'Vigón' }).taskCode, 'Vigón', 'EDIT carga el código existente');
 const editedDraft = trainingTaskToDraft({ taskCode: 'Vigón', name: 'Rondo', objective: 'Presión', taskType: 'rondos' });
 editedDraft.taskCode = 'Vigón 2';
