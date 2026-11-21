@@ -39,6 +39,47 @@ select
   to_regprocedure('public.set_training_task_sharing_v1(uuid,text,uuid[])') is null
     as obsolete_club_rpc_absent;
 
+select
+  exists (
+    select 1 from pg_catalog.pg_constraint constraint_row
+    where constraint_row.conrelid = 'public.club_teams'::regclass
+      and constraint_row.contype in ('p', 'u')
+      and constraint_row.convalidated
+      and (
+        select array_agg(attribute.attname order by key_row.ordinality)
+        from unnest(constraint_row.conkey) with ordinality key_row(attnum, ordinality)
+        join pg_catalog.pg_attribute attribute
+          on attribute.attrelid = constraint_row.conrelid
+         and attribute.attnum = key_row.attnum
+      ) = array['id', 'club_id']::name[]
+  ) as club_teams_composite_key_ok,
+  (
+    select count(*) = 4
+    from pg_catalog.pg_policy policy_row
+    where policy_row.polrelid = 'storage.objects'::regclass
+      and policy_row.polname in (
+        'training_task_files_select', 'training_task_files_insert',
+        'training_task_files_update', 'training_task_files_delete'
+      )
+      and (
+        coalesce(pg_catalog.pg_get_expr(policy_row.polqual, policy_row.polrelid), '')
+        || coalesce(pg_catalog.pg_get_expr(policy_row.polwithcheck, policy_row.polrelid), '')
+      ) ~ 'training_task_storage_allowed'
+  ) as storage_policy_contract_ok,
+  (
+    select count(*) = 4
+    from pg_catalog.pg_policy policy_row
+    where policy_row.polrelid = 'public.training_task_media'::regclass
+      and policy_row.polname in (
+        'training_task_media_select', 'training_task_media_insert',
+        'training_task_media_update', 'training_task_media_delete'
+      )
+      and (
+        coalesce(pg_catalog.pg_get_expr(policy_row.polqual, policy_row.polrelid), '')
+        || coalesce(pg_catalog.pg_get_expr(policy_row.polwithcheck, policy_row.polrelid), '')
+      ) ~ 'training_task_authorized'
+  ) as media_policy_contract_ok;
+
 with expected(email, expected_role) as (values
   ('analisisvigon@gmail.com', 'owner'),
   ('2samuelbc79@gmail.com', 'staff'),
@@ -92,6 +133,10 @@ select
     select 1 from public.training_task_shares share where share.task_id = candidates.id
   )) as tasks_with_legacy_shares,
   md5(string_agg(id::text, ',' order by id)) as ordered_task_id_hash,
+  format(
+    'array[%s]::uuid[]',
+    string_agg(quote_literal(id::text) || '::uuid', ', ' order by id)
+  ) as approved_uuid_array_sql,
   min(created_at) as oldest_created_at,
   max(created_at) as newest_created_at
 from candidates;

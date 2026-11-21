@@ -36,8 +36,11 @@ begin
     raise exception 'Backfill: la lista contiene UUID duplicados';
   end if;
 
-  if not exists (
-    select 1
+  -- Congela durante esta transacción el conjunto revisado y sus comparticiones;
+  -- una creación o compartición concurrente espera y no invalida el preflight.
+  lock table public.training_tasks, public.training_task_shares in share mode;
+
+  perform 1
     from public.club_team_seasons relation
     join public.club_teams team
       on team.id = relation.team_id and team.club_id = relation.club_id and team.is_active
@@ -49,7 +52,8 @@ begin
       and season.label = '2026/2027'
       and season.status = 'open'
       and season.is_active
-  ) then
+    for share of relation, team, season;
+  if not found then
     raise exception 'Backfill: club, equipo o CTS objetivo ya no coinciden con el inventario';
   end if;
 

@@ -91,6 +91,13 @@ select public.create_shared_training_task_v1(
     'editor_payload', '{}'::jsonb
   )
 );
+insert into public.training_task_media (
+  task_id, kind, source, original_url, provider, title
+) values (
+  current_setting('nexo.shared_task_id')::uuid,
+  'link', 'url', 'https://example.com/nexo-verificacion', 'external',
+  'Multimedia transaccional'
+);
 reset role;
 
 -- OWNER y los otros STAFF leen la tarea creada por Samuel mediante RLS real.
@@ -118,8 +125,31 @@ begin
       where id = current_setting('nexo.shared_task_id')::uuid) <> 1 then
     raise exception 'Otro STAFF no lee la tarea compartida';
   end if;
+  if (select count(*) from public.training_task_media
+      where task_id = current_setting('nexo.shared_task_id')::uuid) <> 1 then
+    raise exception 'Otro STAFF no lee la multimedia compartida';
+  end if;
 end
 $staff_reads_staff_task$;
+insert into public.training_task_feedback (task_id, used_on, rating, post_text)
+values (
+  current_setting('nexo.shared_task_id')::uuid,
+  current_date, 5, 'Feedback transaccional de STAFF autorizado'
+);
+reset role;
+
+select set_config('request.jwt.claim.sub', (
+  select id::text from auth.users where lower(email) = 'analisisvigon@gmail.com'
+), true);
+set local role authenticated;
+do $owner_reads_staff_feedback$
+begin
+  if (select count(*) from public.training_task_feedback
+      where task_id = current_setting('nexo.shared_task_id')::uuid) <> 1 then
+    raise exception 'OWNER no lee el feedback creado por STAFF';
+  end if;
+end
+$owner_reads_staff_feedback$;
 reset role;
 
 -- Una tarea personal del OWNER sin enlace debe permanecer privada.
@@ -152,14 +182,21 @@ end
 $private_is_hidden$;
 reset role;
 
--- Simula revocación de Turonovo dentro de la transacción. Debe perder lectura
--- de la tarea de Samuel; ROLLBACK restaura el permiso al finalizar.
+-- Simula la revocación completa de los permisos abiertos de Turonovo para el
+-- equipo dentro de la transacción. ROLLBACK los restaura al finalizar.
 delete from public.club_team_season_permissions permission
-using public.club_memberships membership, auth.users account
+using public.club_memberships membership, auth.users account,
+  public.club_team_seasons relation, public.club_seasons season
 where permission.membership_id = membership.id
   and membership.user_id = account.id
   and lower(account.email) = 'turonovo@gmail.com'
-  and permission.club_team_season_id = '961970c8-0fcf-4c45-94d6-787647619c61'::uuid;
+  and relation.id = permission.club_team_season_id
+  and relation.club_id = permission.club_id
+  and relation.team_id = '85a16f33-9fe5-44d4-b85d-37d73651ebf6'::uuid
+  and season.id = relation.season_id
+  and season.club_id = relation.club_id
+  and season.status = 'open'
+  and season.is_active;
 
 select set_config('request.jwt.claim.sub', (
   select id::text from auth.users where lower(email) = 'turonovo@gmail.com'

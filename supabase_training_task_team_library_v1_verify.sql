@@ -9,6 +9,11 @@ with contracts as (
     to_regprocedure('public.training_task_library_scope_v1(uuid,timestamptz,timestamptz,integer,integer)') is not null as scope_rpc_ok,
     to_regprocedure('public.create_shared_training_task_v1(uuid,uuid,jsonb)') is not null as create_rpc_ok,
     to_regprocedure('public.set_training_task_team_link_v1(uuid,uuid,boolean)') is not null as link_rpc_ok,
+    exists (
+      select 1 from pg_catalog.pg_class table_row
+      where table_row.oid = 'public.training_task_library_links'::regclass
+        and table_row.relrowsecurity
+    ) as link_rls_ok,
     to_regprocedure('public.set_training_task_sharing_v1(uuid,text,uuid[])') is null as obsolete_rpc_absent,
     not exists (
       select 1 from information_schema.columns
@@ -35,7 +40,25 @@ with contracts as (
     and count(*) filter (where polrelid = 'public.training_task_feedback'::regclass
       and polname = 'training_task_feedback_insert' and polcmd = 'a'
       and pg_get_expr(polwithcheck, polrelid) ~ 'training_task_authorized'
-      and pg_get_expr(polwithcheck, polrelid) !~ 'can_edit_club_data') = 1 as ok
+      and pg_get_expr(polwithcheck, polrelid) !~ 'can_edit_club_data') = 1
+    and count(*) filter (where polrelid = 'public.training_task_media'::regclass
+      and polname in (
+        'training_task_media_select', 'training_task_media_insert',
+        'training_task_media_update', 'training_task_media_delete'
+      )
+      and (
+        coalesce(pg_get_expr(polqual, polrelid), '')
+        || coalesce(pg_get_expr(polwithcheck, polrelid), '')
+      ) ~ 'training_task_authorized') = 4
+    and count(*) filter (where polrelid = 'storage.objects'::regclass
+      and polname in (
+        'training_task_files_select', 'training_task_files_insert',
+        'training_task_files_update', 'training_task_files_delete'
+      )
+      and (
+        coalesce(pg_get_expr(polqual, polrelid), '')
+        || coalesce(pg_get_expr(polwithcheck, polrelid), '')
+      ) ~ 'training_task_storage_allowed') = 4 as ok
   from pg_catalog.pg_policy
 ), grants_ok as (
   select
@@ -43,6 +66,9 @@ with contracts as (
     and has_function_privilege('authenticated', 'public.create_shared_training_task_v1(uuid,uuid,jsonb)', 'EXECUTE')
     and has_function_privilege('authenticated', 'public.set_training_task_team_link_v1(uuid,uuid,boolean)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.create_shared_training_task_v1(uuid,uuid,jsonb)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.training_task_library_scope_v1(uuid,timestamptz,timestamptz,integer,integer)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.set_training_task_team_link_v1(uuid,uuid,boolean)', 'EXECUTE')
+    and not has_table_privilege('anon', 'public.training_task_library_links', 'SELECT')
     and not has_table_privilege('authenticated', 'public.training_task_library_links', 'INSERT')
     and not has_table_privilege('authenticated', 'public.training_task_library_links', 'UPDATE')
     and not has_table_privilege('authenticated', 'public.training_task_library_links', 'DELETE') as ok
@@ -50,7 +76,7 @@ with contracts as (
 select contracts.*, constraints_ok.ok as constraints_ok,
   policies_ok.ok as policies_ok, grants_ok.ok as grants_ok,
   contracts.link_table_ok and contracts.team_helper_ok and contracts.scope_rpc_ok
-    and contracts.create_rpc_ok and contracts.link_rpc_ok
+    and contracts.create_rpc_ok and contracts.link_rpc_ok and contracts.link_rls_ok
     and contracts.obsolete_rpc_absent and contracts.obsolete_column_absent
     and constraints_ok.ok and policies_ok.ok and grants_ok.ok as contract_ok
 from contracts, constraints_ok, policies_ok, grants_ok;

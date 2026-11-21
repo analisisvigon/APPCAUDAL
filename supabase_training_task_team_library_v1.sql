@@ -6,6 +6,7 @@ begin;
 do $preflight$
 declare
   v_existing_table oid;
+  v_authorization_definition text;
 begin
   if to_regclass('public.training_tasks') is null
      or to_regclass('public.training_task_shares') is null
@@ -33,26 +34,73 @@ begin
   end if;
 
   if not exists (
-    select 1 from information_schema.columns
-    where table_schema = 'public' and table_name = 'training_tasks'
-      and column_name = 'task_code'
+    select 1 from pg_catalog.pg_policy policy_row
+    where policy_row.polrelid = 'public.training_tasks'::regclass
+      and policy_row.polname = 'training_tasks_select' and policy_row.polcmd = 'r'
   ) or not exists (
-    select 1 from information_schema.columns
-    where table_schema = 'public' and table_name = 'training_tasks'
-      and column_name = 'series_count'
+    select 1 from pg_catalog.pg_policy policy_row
+    where policy_row.polrelid = 'public.training_tasks'::regclass
+      and policy_row.polname = 'training_tasks_update' and policy_row.polcmd = 'w'
   ) or not exists (
-    select 1 from information_schema.columns
-    where table_schema = 'public' and table_name = 'training_tasks'
-      and column_name = 'exercise_rules'
+    select 1 from pg_catalog.pg_policy policy_row
+    where policy_row.polrelid = 'public.training_tasks'::regclass
+      and policy_row.polname = 'training_tasks_delete' and policy_row.polcmd = 'd'
   ) or not exists (
-    select 1 from information_schema.columns
-    where table_schema = 'public' and table_name = 'training_tasks'
-      and column_name = 'stage_keys'
+    select 1 from pg_catalog.pg_policy policy_row
+    where policy_row.polrelid = 'public.training_task_feedback'::regclass
+      and policy_row.polname = 'training_task_feedback_insert' and policy_row.polcmd = 'a'
+  ) or (
+    select count(*)
+    from pg_catalog.pg_policy policy_row
+    where policy_row.polrelid = 'storage.objects'::regclass
+      and policy_row.polname in (
+        'training_task_files_select', 'training_task_files_insert',
+        'training_task_files_update', 'training_task_files_delete'
+      )
+      and (
+        coalesce(pg_catalog.pg_get_expr(policy_row.polqual, policy_row.polrelid), '')
+        || coalesce(pg_catalog.pg_get_expr(policy_row.polwithcheck, policy_row.polrelid), '')
+      ) ~ 'training_task_storage_allowed'
+  ) <> 4 then
+    raise exception 'Biblioteca por equipo: faltan policies base esperadas';
+  end if;
+
+  v_existing_table := to_regclass('public.training_task_library_links')::oid;
+  select pg_catalog.pg_get_functiondef(
+    'public.training_task_authorized(uuid,text)'::regprocedure
+  ) into v_authorization_definition;
+  if v_existing_table is null then
+    if v_authorization_definition !~ 'author_user_id'
+       or v_authorization_definition !~ 'can_edit_club_data'
+       or v_authorization_definition !~ 'training_task_shares' then
+      raise exception 'Biblioteca por equipo: contrato de autorización base desconocido';
+    end if;
+  elsif v_authorization_definition !~ 'training_task_library_links'
+        or v_authorization_definition !~ 'training_task_team_authorized' then
+    raise exception 'Biblioteca por equipo: contrato V1 instalado incompatible';
+  end if;
+
+  if exists (
+    select 1
+    from unnest(array[
+      'id','club_id','author_user_id','name','task_code','description','objective','task_type',
+      'players_spec','players_min','players_max','duration_minutes','series_count','minutes_per_series',
+      'space_width_m','space_length_m','material','technical_content','tactical_content',
+      'exercise_rules','tactical_content_offensive','tactical_content_defensive',
+      'game_phase','game_moment','observations','stage_keys','variants',
+      'preview_path','attachment_path','attachment_name','attachment_mime','attachment_size',
+      'editor_payload'
+    ]::text[]) required(column_name)
+    where not exists (
+      select 1 from information_schema.columns actual
+      where actual.table_schema = 'public'
+        and actual.table_name = 'training_tasks'
+        and actual.column_name = required.column_name
+    )
   ) then
     raise exception 'Biblioteca por equipo: training_tasks no tiene el contrato funcional completo';
   end if;
 
-  v_existing_table := to_regclass('public.training_task_library_links')::oid;
   if v_existing_table is not null
      and obj_description(v_existing_table, 'pg_class') is distinct from
        'NEXO CLUB team-scoped shared training task libraries V1' then
@@ -306,7 +354,8 @@ begin
   if auth.uid() is null then
     raise exception 'Biblioteca de Tareas: autenticación requerida' using errcode = '42501';
   end if;
-  if p_task_id is null or jsonb_typeof(p_task_payload) <> 'object' then
+  if p_task_id is null or p_task_payload is null
+     or jsonb_typeof(p_task_payload) is distinct from 'object' then
     raise exception 'Biblioteca de Tareas: tarea no válida' using errcode = '22023';
   end if;
 
@@ -320,7 +369,8 @@ begin
   where relation.id = p_cts_id
     and season.status = 'open'
     and season.is_active
-    and public.can_write_club_team_season(relation.id);
+    and public.can_write_club_team_season(relation.id)
+  for share of relation, team, season;
   if v_relation.id is null then
     raise exception 'Biblioteca de Tareas: CTS abierto no autorizado' using errcode = '42501';
   end if;
@@ -417,7 +467,8 @@ begin
   where relation.id = p_cts_id
     and season.status = 'open'
     and season.is_active
-    and public.can_write_club_team_season(relation.id);
+    and public.can_write_club_team_season(relation.id)
+  for share of relation, team, season;
   if v_relation.id is null then
     raise exception 'Biblioteca de Tareas: CTS abierto no autorizado' using errcode = '42501';
   end if;
@@ -526,6 +577,13 @@ begin
      or to_regprocedure('public.create_shared_training_task_v1(uuid,uuid,jsonb)') is null
      or to_regprocedure('public.set_training_task_team_link_v1(uuid,uuid,boolean)') is null then
     raise exception 'Biblioteca por equipo: contrato incompleto; se revierte';
+  end if;
+  if not exists (
+    select 1 from pg_catalog.pg_class table_row
+    where table_row.oid = 'public.training_task_library_links'::regclass
+      and table_row.relrowsecurity
+  ) then
+    raise exception 'Biblioteca por equipo: RLS no quedó habilitado; se revierte';
   end if;
   if not exists (
     select 1 from pg_catalog.pg_constraint constraint_row
