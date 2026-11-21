@@ -216,7 +216,8 @@ assert.match(collaborativeInventory, /group by task\.club_id, task\.author_user_
 assert.doesNotMatch(collaborativeInventory, /\binsert\b|\bupdate\b|\bdelete\b|\balter\b|\bcreate\b/i);
 assert.match(collaborativeVerify, /set transaction read only/i);
 assert.match(collaborativeVerify, /contract_ok/i);
-assert.match(store, /payload\.library_visibility = 'club'/i);
+assert.doesNotMatch(store, /payload\.library_visibility\s*=/i);
+assert.match(collaborativeLibrary, /alter column library_visibility set default 'club'/i);
 assert.match(store, /rpc\('set_training_task_sharing_v1'/i);
 assert.match(trainingTasksSection, /Biblioteca común del club/i);
 console.log('training tasks static SQL audit passed (not PostgreSQL execution)');

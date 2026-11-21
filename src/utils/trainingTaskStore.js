@@ -44,8 +44,6 @@ export const saveTrainingTask = async (client, draft, context, existing = null) 
   if (existing) {
     delete payload.club_id;
     delete payload.author_user_id;
-  } else {
-    payload.library_visibility = 'club';
   }
   let data;
   let error;
@@ -67,7 +65,6 @@ export const duplicateTrainingTask = async (client, task, context) => {
   payload.attachment_name = null;
   payload.attachment_mime = null;
   payload.attachment_size = null;
-  payload.library_visibility = 'club';
   const { data, error } = await client.from('training_tasks').insert(payload).select('*').single();
   if (error) throw error;
   const copy = normalizeTrainingTask(data);

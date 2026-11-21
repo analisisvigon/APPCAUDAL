@@ -4,6 +4,8 @@
 begin;
 
 do $$
+declare
+  v_authorization_definition text;
 begin
   if to_regclass('public.training_tasks') is null
      or to_regclass('public.training_task_shares') is null
@@ -13,6 +15,25 @@ begin
   if to_regprocedure('public.training_task_authorized(uuid,text)') is null
      or to_regprocedure('public.can_edit_club_data(uuid)') is null then
     raise exception 'Biblioteca colaborativa: faltan helpers de autorización';
+  end if;
+  if to_regprocedure('public.set_training_task_sharing_v1(uuid,text,uuid[])') is not null then
+    raise exception 'Biblioteca colaborativa: set_training_task_sharing_v1 ya existe; revisar antes de sobrescribir';
+  end if;
+  if not exists (
+    select 1
+    from pg_catalog.pg_policy policy_row
+    where policy_row.polrelid = 'public.training_tasks'::regclass
+      and policy_row.polname = 'training_tasks_select'
+      and policy_row.polcmd = 'r'
+  ) then
+    raise exception 'Biblioteca colaborativa: falta la policy training_tasks_select esperada';
+  end if;
+  select pg_catalog.pg_get_functiondef('public.training_task_authorized(uuid,text)'::regprocedure)
+  into v_authorization_definition;
+  if v_authorization_definition !~ 'author_user_id'
+     or v_authorization_definition !~ 'can_edit_club_data'
+     or v_authorization_definition !~ 'training_task_shares' then
+    raise exception 'Biblioteca colaborativa: contrato de autorización desconocido; revisar inventario antes de instalar';
   end if;
   if exists (
     select 1

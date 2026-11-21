@@ -70,7 +70,7 @@ const duplicateClient = { from(table) {
   assert.equal(table, 'training_tasks');
   return { insert(payload) {
     inserted = payload;
-    return { select: () => ({ single: async () => ({ data: { ...payload, id: 'copy-1' }, error: null }) }) };
+    return { select: () => ({ single: async () => ({ data: { ...payload, id: 'copy-1', library_visibility: 'club' }, error: null }) }) };
   } };
 } };
 const copy = await duplicateTrainingTask(duplicateClient, task, context);
