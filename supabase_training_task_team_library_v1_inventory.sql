@@ -113,7 +113,7 @@ left join public.club_team_season_permissions permission
  and permission.membership_id = membership.id
 order by expected.expected_role, expected.email;
 
--- Contrato exacto de las 30 tareas candidatas. El hash permite comprobar que
+-- Contrato exacto de las 31 tareas candidatas. El hash permite comprobar que
 -- la lista de UUID copiada al backfill no ha cambiado entre revisión e instalación.
 with target as (
   select 'ca0da100-0000-4000-8000-000000000001'::uuid as club_id
@@ -132,11 +132,20 @@ select
   count(*) filter (where exists (
     select 1 from public.training_task_shares share where share.task_id = candidates.id
   )) as tasks_with_legacy_shares,
+  count(*) filter (where exists (
+    select 1 from public.training_task_shares share where share.task_id = candidates.id
+  )) = 0 as no_individual_shares_ok,
   md5(string_agg(id::text, ',' order by id)) as ordered_task_id_hash,
   format(
     'array[%s]::uuid[]',
     string_agg(quote_literal(id::text) || '::uuid', ', ' order by id)
   ) as approved_uuid_array_sql,
+  count(*) = 31 as exact_task_count_ok,
+  count(*) filter (
+    where author_user_id = '4fb13f6f-3241-4ccc-8dcc-d6a4e855c3e3'::uuid
+  ) = 31 as exact_owner_ok,
+  count(*) filter (where id = '31f43e5c-e988-4c88-9d6c-8c67e58c5c7e'::uuid) = 1
+    as additional_task_present,
   min(created_at) as oldest_created_at,
   max(created_at) as newest_created_at
 from candidates;

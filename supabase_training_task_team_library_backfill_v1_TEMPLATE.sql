@@ -1,5 +1,5 @@
--- NEXO CLUB · Backfill revisable de las 30 tareas de Al-Madina SC
--- NO EJECUTAR hasta sustituir v_task_ids por los 30 UUID exactos del inventario.
+-- NEXO CLUB · Backfill revisable de las 31 tareas de Al-Madina SC
+-- NO EJECUTAR hasta sustituir v_task_ids por los 31 UUID exactos del inventario.
 -- No modifica training_tasks: solo crea enlaces idempotentes al team_id indicado.
 begin;
 
@@ -8,9 +8,11 @@ declare
   v_club_id constant uuid := 'ca0da100-0000-4000-8000-000000000001'::uuid;
   v_team_id constant uuid := '85a16f33-9fe5-44d4-b85d-37d73651ebf6'::uuid;
   v_cts_id constant uuid := '961970c8-0fcf-4c45-94d6-787647619c61'::uuid;
+  v_expected_owner_id constant uuid := '4fb13f6f-3241-4ccc-8dcc-d6a4e855c3e3'::uuid;
+  v_required_task_id constant uuid := '31f43e5c-e988-4c88-9d6c-8c67e58c5c7e'::uuid;
   v_owner_id uuid;
   v_task_ids uuid[] := array[
-    -- PEGAR AQUÍ LOS 30 UUID REVISADOS, por ejemplo:
+    -- PEGAR AQUÍ LOS 31 UUID REVISADOS, por ejemplo:
     -- '00000000-0000-4000-8000-000000000000'::uuid
   ]::uuid[];
   v_distinct_count integer;
@@ -24,16 +26,19 @@ begin
   from auth.users
   where lower(email) = 'analisisvigon@gmail.com'
   having count(*) = 1;
-  if v_owner_id is null then
-    raise exception 'Backfill: no existe exactamente una cuenta propietaria esperada';
+  if v_owner_id is distinct from v_expected_owner_id then
+    raise exception 'Backfill: la identidad propietaria no coincide con el inventario';
   end if;
 
-  if cardinality(v_task_ids) <> 30 or array_position(v_task_ids, null) is not null then
-    raise exception 'Backfill: se requieren exactamente 30 UUID no nulos, recibidos %', cardinality(v_task_ids);
+  if cardinality(v_task_ids) <> 31 or array_position(v_task_ids, null) is not null then
+    raise exception 'Backfill: se requieren exactamente 31 UUID no nulos, recibidos %', cardinality(v_task_ids);
   end if;
   select count(distinct item) into v_distinct_count from unnest(v_task_ids) item;
-  if v_distinct_count <> 30 then
+  if v_distinct_count <> 31 then
     raise exception 'Backfill: la lista contiene UUID duplicados';
+  end if;
+  if array_position(v_task_ids, v_required_task_id) is null then
+    raise exception 'Backfill: falta la tarea adicional revisada %', v_required_task_id;
   end if;
 
   -- Congela durante esta transacción el conjunto revisado y sus comparticiones;
@@ -69,7 +74,7 @@ begin
     select 1 from public.training_tasks task
     where task.id = any(v_task_ids)
       and (task.club_id <> v_club_id or task.author_user_id <> v_owner_id)
-  ) or (select count(*) from public.training_tasks task where task.id = any(v_task_ids)) <> 30 then
+  ) or (select count(*) from public.training_tasks task where task.id = any(v_task_ids)) <> 31 then
     raise exception 'Backfill: club, autor o conjunto de tareas no coincide';
   end if;
   if exists (
@@ -88,8 +93,8 @@ begin
   if (
     select count(*) from public.training_task_library_links linked
     where linked.team_id = v_team_id and linked.task_id = any(v_task_ids)
-  ) <> 30 then
-    raise exception 'Backfill: no quedaron enlazadas exactamente las 30 tareas; se revierte';
+  ) <> 31 then
+    raise exception 'Backfill: no quedaron enlazadas exactamente las 31 tareas; se revierte';
   end if;
 end
 $backfill$;

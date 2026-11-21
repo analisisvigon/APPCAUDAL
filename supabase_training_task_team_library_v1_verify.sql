@@ -94,7 +94,13 @@ select
   count(*) filter (where task.club_id = target.club_id) as links_to_target_club_tasks,
   count(*) filter (where task.author_user_id = (select id from owner_account)) as owner_authored_links,
   count(*) filter (where linked.club_id <> target.club_id) as wrong_link_club,
-  count(*) filter (where linked.team_id <> target.team_id) as wrong_link_team
+  count(*) filter (where linked.team_id <> target.team_id) as wrong_link_team,
+  count(*) = 31
+    and count(distinct linked.task_id) = 31
+    and count(*) filter (where task.author_user_id = (select id from owner_account)) = 31
+    and count(*) filter (where linked.club_id <> target.club_id) = 0
+    and count(*) filter (where linked.team_id <> target.team_id) = 0
+    as exact_31_task_backfill_ok
 from target
 left join public.training_task_library_links linked on linked.team_id = target.team_id
 left join public.training_tasks task on task.id = linked.task_id;

@@ -18,7 +18,7 @@ begin
 end
 $identity_precheck$;
 
--- OWNER: debe ver las 30 tareas tras el backfill.
+-- OWNER: debe ver las 31 tareas tras el backfill.
 select set_config('request.jwt.claim.sub', (
   select id::text from auth.users where lower(email) = 'analisisvigon@gmail.com'
 ), true);
@@ -27,14 +27,14 @@ do $owner_count$
 begin
   if (select count(*) from public.training_task_library_scope_v1(
     '961970c8-0fcf-4c45-94d6-787647619c61'::uuid, null, null, 0, 250
-  )) <> 30 then
-    raise exception 'OWNER no ve exactamente las 30 tareas iniciales';
+  )) <> 31 then
+    raise exception 'OWNER no ve exactamente las 31 tareas iniciales';
   end if;
 end
 $owner_count$;
 reset role;
 
--- Cada STAFF autorizado debe ver las mismas 30 tareas.
+-- Cada STAFF autorizado debe ver las mismas 31 tareas.
 select set_config('request.jwt.claim.sub', (
   select id::text from auth.users where lower(email) = '2samuelbc79@gmail.com'
 ), true);
@@ -43,7 +43,7 @@ do $samuel_count$
 begin
   if (select count(*) from public.training_task_library_scope_v1(
     '961970c8-0fcf-4c45-94d6-787647619c61'::uuid, null, null, 0, 250
-  )) <> 30 then raise exception 'Samuel no ve exactamente 30 tareas'; end if;
+  )) <> 31 then raise exception 'Samuel no ve exactamente 31 tareas'; end if;
 end
 $samuel_count$;
 reset role;
@@ -56,7 +56,7 @@ do $calvillo_count$
 begin
   if (select count(*) from public.training_task_library_scope_v1(
     '961970c8-0fcf-4c45-94d6-787647619c61'::uuid, null, null, 0, 250
-  )) <> 30 then raise exception 'Calvillo no ve exactamente 30 tareas'; end if;
+  )) <> 31 then raise exception 'Calvillo no ve exactamente 31 tareas'; end if;
 end
 $calvillo_count$;
 reset role;
@@ -69,7 +69,7 @@ do $turono_count$
 begin
   if (select count(*) from public.training_task_library_scope_v1(
     '961970c8-0fcf-4c45-94d6-787647619c61'::uuid, null, null, 0, 250
-  )) <> 30 then raise exception 'Turonovo no ve exactamente 30 tareas'; end if;
+  )) <> 31 then raise exception 'Turonovo no ve exactamente 31 tareas'; end if;
 end
 $turono_count$;
 reset role;

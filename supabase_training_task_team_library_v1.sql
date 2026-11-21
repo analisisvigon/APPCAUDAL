@@ -1,5 +1,5 @@
 -- NEXO CLUB · Biblioteca de Tareas compartida por equipo V1
--- Instalar después de revisar el inventario y antes del backfill de las 30 tareas.
+-- Instalar después de revisar el inventario y antes del backfill de las 31 tareas.
 -- Aditiva, idempotente y transaccional. No modifica tareas ni snapshots existentes.
 begin;
 

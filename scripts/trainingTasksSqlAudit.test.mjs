@@ -221,8 +221,9 @@ assert.doesNotMatch(teamLibrary, /add column (?:if not exists )?library_visibili
 assert.match(teamLibraryInventory, /set transaction read only/i);
 assert.match(teamLibraryInventory, /md5\(string_agg\(id::text/i);
 assert.doesNotMatch(teamLibraryInventory, /\binsert\b|\bupdate\b|\bdelete\b|\balter\b|\bcreate\b/i);
-assert.match(teamLibraryBackfill, /PEGAR AQU[IÍ] LOS 30 UUID/i);
-assert.match(teamLibraryBackfill, /cardinality\(v_task_ids\) <> 30/i);
+assert.match(teamLibraryBackfill, /PEGAR AQU[IÍ] LOS 31 UUID/i);
+assert.match(teamLibraryBackfill, /cardinality\(v_task_ids\) <> 31/i);
+assert.match(teamLibraryBackfill, /31f43e5c-e988-4c88-9d6c-8c67e58c5c7e/i);
 assert.match(teamLibraryBackfill, /v_actual_ids[\s\S]*is distinct from[\s\S]*unnest\(v_task_ids\)/i);
 assert.match(teamLibraryBackfill, /begin;[\s\S]*raise exception[\s\S]*commit;/i);
 assert.match(teamLibraryVerify, /set transaction read only/i);
