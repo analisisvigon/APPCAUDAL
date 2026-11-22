@@ -136,10 +136,19 @@ select
     select 1 from public.training_task_shares share where share.task_id = candidates.id
   )) = 0 as no_individual_shares_ok,
   md5(string_agg(id::text, ',' order by id)) as ordered_task_id_hash,
-  format(
-    'array[%s]::uuid[]',
-    string_agg(quote_literal(id::text) || '::uuid', ', ' order by id)
-  ) as approved_uuid_array_sql,
+  case when count(*) = 31
+    and bool_and(author_user_id = '4fb13f6f-3241-4ccc-8dcc-d6a4e855c3e3'::uuid)
+    and count(*) filter (where exists (
+      select 1 from public.training_task_shares share where share.task_id = candidates.id
+    )) = 0
+    and count(*) filter (
+      where id = '31f43e5c-e988-4c88-9d6c-8c67e58c5c7e'::uuid
+    ) = 1
+  then format(
+      'array[%s]::uuid[]',
+      string_agg(quote_literal(id::text) || '::uuid', ', ' order by id)
+    )
+  else null end as approved_uuid_array_sql,
   count(*) = 31 as exact_task_count_ok,
   count(*) filter (
     where author_user_id = '4fb13f6f-3241-4ccc-8dcc-d6a4e855c3e3'::uuid

@@ -89,13 +89,13 @@ with target as (
   select id from auth.users where lower(email) = 'analisisvigon@gmail.com'
 )
 select
-  count(*) as target_team_links,
+  count(linked.task_id) as target_team_links,
   count(distinct linked.task_id) as distinct_linked_tasks,
   count(*) filter (where task.club_id = target.club_id) as links_to_target_club_tasks,
   count(*) filter (where task.author_user_id = (select id from owner_account)) as owner_authored_links,
   count(*) filter (where linked.club_id <> target.club_id) as wrong_link_club,
   count(*) filter (where linked.team_id <> target.team_id) as wrong_link_team,
-  count(*) = 31
+  count(linked.task_id) = 31
     and count(distinct linked.task_id) = 31
     and count(*) filter (where task.author_user_id = (select id from owner_account)) = 31
     and count(*) filter (where linked.club_id <> target.club_id) = 0
