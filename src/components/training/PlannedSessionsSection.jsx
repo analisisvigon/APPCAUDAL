@@ -153,6 +153,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [baseline, setBaseline] = useState(null);
   const [activityImages, setActivityImages] = useState({});
   const [activityImagesError, setActivityImagesError] = useState('');
+  const activityImageOperationRef = useRef(false);
   const [unsupportedItems, setUnsupportedItems] = useState(false);
   const [busy, setBusy] = useState(false);
   const operationRef = useRef(false);
@@ -210,6 +211,9 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   const [baselineSessionValue, setBaselineSessionValue] = useState('');
   const [valueSupported, setValueSupported] = useState(false);
   const selected = contexts.find((row) => row.id === contextId) || null;
+  const libraryTaskImages = Object.fromEntries(libraryTasks
+    .filter((task) => task.representationImage)
+    .map((task) => [task.id, task.representationImage]));
   const localNow = new Date();
   const localToday = `${localNow.getFullYear()}-${String(localNow.getMonth() + 1).padStart(2, '0')}-${String(localNow.getDate()).padStart(2, '0')}`;
   const defaultAvailableCount = roster.filter((player) => !availability[player.player_id]).length +
@@ -643,13 +647,14 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
   useEffect(() => {
     let cancelled = false;
     if (!editor?.id) { setActivityImages({}); setActivityImagesError(''); return undefined; }
+    if (activityImageOperationRef.current) return undefined;
     loadSessionActivityImages(client, editor.id).then((rows) => {
       if (!cancelled) { setActivityImages(rows); setActivityImagesError(''); }
     }).catch((cause) => {
       if (!cancelled) { setActivityImages({}); setActivityImagesError(`Imágenes de actividades: ${readError(cause)}`); }
     });
     return () => { cancelled = true; };
-  }, [client, editor?.id, editor?.revision]);
+  }, [client, editor?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1133,7 +1138,12 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       setNotice(pending.length
         ? `${completed.length ? `Guardado: ${completed.join(', ')}. ` : ''}Pendiente: ${pending.join(' y ')}. Confirma la plantilla para continuar.`
         : completed.length ? `Guardado y verificado: ${completed.join(', ')}.` : 'No hay cambios que guardar.');
-      return { id: working.id, revision };
+      return {
+        id: working.id,
+        revision,
+        persistedItemIds: new Set(working.slots.flatMap((slot) =>
+          slot.items.filter((item) => item.kind === 'free').map((item) => item.id))),
+      };
     } catch (cause) {
       if (creating && ['42501', '23514', '22023'].includes(cause?.code)) {
         setError(`${errorKind(cause)}: no se pudo crear el borrador. Los cambios siguen en el formulario. ${readError(cause)}`);
@@ -1695,23 +1705,35 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     setExportResult(null); setExportError(''); setExportProgress(''); setExportOpen(true);
   };
 
-  const activityImageContext = (itemId) => ({
-    clubId: selected?.club_id, clubTeamSeasonId: selected?.id, sessionId: editor?.id,
+  const activityImageContext = (itemId, sessionId = editor?.id) => ({
+    clubId: selected?.club_id, clubTeamSeasonId: selected?.id, sessionId,
     itemId, userId,
   });
-  const addActivityImages = async (itemId, files) => {
+  const addActivityImages = async (itemId, files, persisted = false) => {
     const current = activityImages[itemId] || [];
     if (current.length + files.length > SESSION_ACTIVITY_IMAGE_MAX_COUNT) {
       setActivityImagesError(`Cada actividad admite hasta ${SESSION_ACTIVITY_IMAGE_MAX_COUNT} imágenes.`); return;
     }
     try { files.forEach(validateSessionActivityImage); } catch (cause) { setActivityImagesError(readError(cause)); return; }
+    activityImageOperationRef.current = true;
+    let sessionId = editor?.id;
+    if (!persisted) {
+      setActivityImagesError('');
+      const saved = await save();
+      if (!saved?.id || !saved.persistedItemIds?.has(itemId)) {
+        activityImageOperationRef.current = false;
+        setActivityImagesError('No se inició la subida porque no se pudo guardar y verificar primero la sesión y la actividad. Revisa los campos señalados.');
+        return;
+      }
+      sessionId = saved.id;
+    }
     const pending = files.map((file, index) => ({ id: `pending-${crypto.randomUUID()}`, itemId,
       originalName: file.name, signedUrl: URL.createObjectURL(file), sortOrder: current.length + index, pending: true }));
     setActivityImages((rows) => ({ ...rows, [itemId]: [...(rows[itemId] || []), ...pending] }));
     setBusy(true); setActivityImagesError('');
     try {
       for (const [index, file] of files.entries()) {
-        const uploaded = await uploadSessionActivityImage(client, activityImageContext(itemId), file, current.length + index);
+        const uploaded = await uploadSessionActivityImage(client, activityImageContext(itemId, sessionId), file, current.length + index);
         URL.revokeObjectURL(pending[index].signedUrl);
         setActivityImages((rows) => ({ ...rows, [itemId]: (rows[itemId] || []).map((entry) => entry.id === pending[index].id ? uploaded : entry) }));
       }
@@ -1721,7 +1743,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       setActivityImages((rows) => ({ ...rows, [itemId]: (rows[itemId] || []).filter((entry) => !pending.some((candidate) => candidate.id === entry.id)) }));
       setActivityImagesError(`No se pudieron adjuntar todas las imágenes: ${readError(cause)}`);
     }
-    finally { setBusy(false); }
+    finally { activityImageOperationRef.current = false; setBusy(false); }
   };
   const removeActivityImage = async (itemId, image) => {
     if (!window.confirm(`¿Quitar «${image.originalName}» de esta actividad?`)) return;
@@ -2042,6 +2064,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
         </div> : null}
         <PlannedSessionDocument pitchAppearance={pitchAppearance} onPitchAppearanceChange={setPitchAppearance} editor={editor} selected={selected} canEdit={canEdit} busy={busy}
           activityImages={activityImages}
+          libraryTaskImages={libraryTaskImages}
           persistedItemIds={new Set((baseline?.slots || []).flatMap((slot) => slot.items.filter((item) => item.kind === 'free').map((item) => item.id)))}
           onAddActivityImages={addActivityImages} onRemoveActivityImage={removeActivityImage}
           onReplaceActivityImage={replaceActivityImage} onMoveActivityImage={moveActivityImage}

@@ -27,6 +27,12 @@ try {
       editor_payload: conditionalPayload,
     } }, working: { exercise_rules: 'Tres toques\nGol doble' },
   }] };
+  const photoSlot = { id: 'photo', phase: 'main', duration: '15', items: [{
+    id: 'photo-task', kind: 'library_task', sourceTaskId: 'photo-source', minutes: '15',
+    snapshot: { snapshot_version: 1, source_task_id: 'photo-source', working: {}, source: {
+      name: 'Tarea con fotografía', description: 'Referencia visual completa', editor_payload: {},
+    } }, working: {},
+  }] };
   const session = (id, number, slots) => ({
     id,
     editor: { session_date: '2026-10-20', session_number: number, header: { material: `Material ${id}` }, slots },
@@ -37,9 +43,13 @@ try {
       { id: 'image-1', originalName: 'Uno.png', signedUrl: 'https://example.test/uno.png' },
       { id: 'image-2', originalName: 'Dos.webp', signedUrl: 'https://example.test/dos.webp' },
     ] } : {},
+    libraryTaskImages: id === 'one' ? { 'photo-source': {
+      id: 'photo-image', originalName: 'Fotografía completa.webp',
+      signedUrl: 'https://example.test/fotografia-completa.webp',
+    } } : {},
   });
   const markup = renderToStaticMarkup(React.createElement(PlannedSessionBatchPrintPages, {
-    sessions: [session('one', 7, [slot('activation', 'activation'), librarySlot]),
+    sessions: [session('one', 7, [slot('activation', 'activation'), librarySlot, photoSlot]),
       session('two', 8, Array.from({ length: 5 }, (_, index) => slot(`main-${index}`, 'main')))],
     selected: { team_name: 'Equipo', label: '2026/27' }, leagueLogoUrl: '',
   }));
@@ -60,6 +70,8 @@ try {
   assert.doesNotMatch(markup, /Dos toques/, 'la copia editada sustituye su valor original en el PDF');
   assert.ok(markup.includes('data-image-count="2"') && markup.includes('https://example.test/uno.png'),
     'las imágenes de actividades libres se incluyen en el PDF conjunto con su cuadrícula');
+  assert.match(markup, /planned-print-library-image[\s\S]*https:\/\/example\.test\/fotografia-completa\.webp/,
+    'una tarea sin pizarra representa su fotografía completa en el PDF conjunto');
   assert.doesNotMatch(markup, /<button|<input|<textarea/, 'las hojas no contienen controles de edición');
   const css = readFileSync('src/components/training/plannedSessionPrint.css', 'utf8');
   assert.match(css, /\.planned-print-batch-portal \.planned-print-pages:not\(:last-child\) > \.planned-print-sheet:last-child \{ break-after: page;/,

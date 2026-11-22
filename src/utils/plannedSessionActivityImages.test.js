@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   SESSION_ACTIVITY_IMAGE_MAX_COUNT, cleanupDeletedSessionActivityImages, normalizeSessionActivityImage,
   reorderSessionActivityImages, sessionActivityImagePath, sortSessionActivityImages, validateSessionActivityImage,
@@ -45,4 +46,21 @@ assert.ok(cleanupCalls.some(([name, args]) => name === 'confirm_planned_session_
   && args.p_storage_path === 'ok.webp'));
 assert.ok(!cleanupCalls.some(([name, args]) => name === 'confirm_planned_session_activity_cleanup_v1'
   && args.p_storage_path === 'retry.webp'), 'la cola solo se confirma después de borrar Storage');
+
+const documentSource = readFileSync(new URL('../components/training/PlannedSessionDocument.jsx', import.meta.url), 'utf8');
+const sectionSource = readFileSync(new URL('../components/training/PlannedSessionsSection.jsx', import.meta.url), 'utf8');
+const documentCss = readFileSync(new URL('../components/training/plannedSessionDocument.css', import.meta.url), 'utf8');
+const printCss = readFileSync(new URL('../components/training/plannedSessionPrint.css', import.meta.url), 'utf8');
+assert.match(documentSource, /<div className="planned-activity-image-actions">[\s\S]*?Añadir imágenes[\s\S]*?disabled=\{disabled\}/,
+  'la actividad nueva muestra el selector antes de guardarse');
+assert.match(documentSource, /onAdd\(task\.id, files, persisted\)/,
+  'el controlador conoce si debe guardar automáticamente');
+assert.match(sectionSource, /const saved = await save\(\);[\s\S]*?saved\.persistedItemIds\?\.has\(itemId\)[\s\S]*?uploadSessionActivityImage/,
+  'la subida solo comienza después de guardar y verificar el item exacto');
+assert.match(sectionSource, /No se inició la subida porque no se pudo guardar y verificar primero/,
+  'un fallo de guardado informa claramente y aborta la subida');
+assert.match(documentCss, /\.planned-sheet-library-image img \{[^}]*object-fit: contain;[^}]*object-position: center;/,
+  'la fotografía se centra y conserva completa en la ficha');
+assert.match(printCss, /\.planned-print-library-image img \{[^}]*object-fit: contain;[^}]*object-position: center;/,
+  'la fotografía también conserva su proporción en PDF');
 console.log('planned session activity image tests passed');

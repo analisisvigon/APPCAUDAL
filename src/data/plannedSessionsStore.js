@@ -2,6 +2,12 @@ import { parsePlannedSessionValue } from '../utils/plannedSessionValue.js';
 import { summarizePlayerRealizedTraining } from '../utils/playerRealizedTrainingStats.js';
 import { summarizePlayerSessionAvailability } from '../utils/playerSessionAvailability.js';
 import { normalizeOwnClubName } from '../constants/clubIdentity.js';
+import {
+  getTaskMediaSignedUrl,
+  normalizeTrainingTaskMedia,
+  selectTrainingTaskPreviewMedia,
+  TRAINING_TASK_MEDIA_BUCKET,
+} from '../utils/trainingTaskMedia.js';
 
 // Activar solo después de instalar y verificar el backend de ciclo de vida con identidades reales.
 export const SESSION_RETIREMENT_BACKEND_VERIFIED = false;
@@ -307,11 +313,59 @@ export const loadPlannedSession = async (client, sessionId, clubTeamSeasonId) =>
 
 // La consulta del cliente respeta RLS de training_tasks; el filtro de club
 // impide ofrecer tareas ajenas al contexto aunque sean legibles por otra vía.
+const hydratePlannedLibraryImages = async (client, tasks) => {
+  if (!tasks.length) return {};
+  const ids = tasks.map((task) => task.id);
+  const media = unwrap(await client.from('training_task_media').select('*')
+    .in('task_id', ids).eq('kind', 'image')) || [];
+  const byTask = media.reduce((groups, row) => {
+    groups[row.task_id] = [...(groups[row.task_id] || []), normalizeTrainingTaskMedia(row)];
+    return groups;
+  }, {});
+  const entries = await Promise.all(tasks.map(async (task) => {
+    const featured = selectTrainingTaskPreviewMedia(byTask[task.id] || []);
+    const legacyPath = task.preview_path ||
+      (String(task.attachment_mime || '').startsWith('image/') ? task.attachment_path : '');
+    try {
+      if (featured?.source === 'url' && featured.originalUrl) {
+        return [task.id, { id: featured.id, signedUrl: featured.originalUrl,
+          originalName: featured.title || featured.originalName || task.name }];
+      }
+      if (featured?.storagePath) {
+        return [task.id, { id: featured.id, signedUrl: await getTaskMediaSignedUrl(client, featured),
+          originalName: featured.title || featured.originalName || task.name }];
+      }
+      if (legacyPath) {
+        const { data, error } = await client.storage.from(TRAINING_TASK_MEDIA_BUCKET)
+          .createSignedUrl(legacyPath, 3600);
+        if (error) throw error;
+        return [task.id, { id: `legacy-${task.id}`, signedUrl: data.signedUrl,
+          originalName: task.attachment_name || task.name }];
+      }
+    } catch {
+      // Una imagen inaccesible no debe impedir abrir ni imprimir la sesión.
+    }
+    return [task.id, null];
+  }));
+  return Object.fromEntries(entries.filter(([, image]) => image));
+};
+
+export const loadPlannedLibraryTaskImages = async (client, taskIds) => {
+  const ids = [...new Set((taskIds || []).filter(Boolean))];
+  if (!ids.length) return {};
+  const tasks = unwrap(await client.from('training_tasks')
+    .select('id,name,preview_path,attachment_path,attachment_name,attachment_mime')
+    .in('id', ids)) || [];
+  return hydratePlannedLibraryImages(client, tasks);
+};
+
 export const listPlannedLibraryTasks = async (client, clubId, seriesEnabled = false, contentEnabled = false) => {
   if (!clubId) return [];
-  return unwrap(await client.from('training_tasks')
-    .select(`id,club_id,name,description,objective,material,technical_content,tactical_content,observations,editor_payload,duration_minutes,space_width_m,space_length_m,task_type,game_phase,game_moment${seriesEnabled ? ',series_count,minutes_per_series' : ''}${contentEnabled ? ',exercise_rules,tactical_content_offensive,tactical_content_defensive' : ''}`)
+  const tasks = unwrap(await client.from('training_tasks')
+    .select(`id,club_id,name,description,objective,material,technical_content,tactical_content,observations,editor_payload,duration_minutes,space_width_m,space_length_m,task_type,game_phase,game_moment,preview_path,attachment_path,attachment_name,attachment_mime${seriesEnabled ? ',series_count,minutes_per_series' : ''}${contentEnabled ? ',exercise_rules,tactical_content_offensive,tactical_content_defensive' : ''}`)
     .eq('club_id', clubId).order('name', { ascending: true }))?.filter((row) => row.club_id === clubId) || [];
+  const images = await hydratePlannedLibraryImages(client, tasks);
+  return tasks.map((task) => ({ ...task, representationImage: images[task.id] || null }));
 };
 
 export const createPlannedDraft = async (client, clubTeamSeasonId, sessionDate) =>

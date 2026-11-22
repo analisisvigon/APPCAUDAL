@@ -6,6 +6,7 @@ import {
   loadPlannedBoardSeedV11,
   loadPlannedExerciseDimensionsV12,
   loadPlannedSpecificPositions,
+  loadPlannedLibraryTaskImages,
 } from '../data/plannedSessionsStore.js';
 import { hydratePlannedEditor } from './plannedSessions.js';
 import { BOARD_V11_ENABLED, normalizeExerciseDimensions } from './plannedSessionFieldScale.js';
@@ -32,6 +33,10 @@ export const loadPlannedSessionPrintData = async (client, row, clubTeamSeasonId,
       data.items.some((item) => item.session_id !== row.id))
     throw new Error('Los datos de la sesión no coinciden con el equipo, temporada o fecha consultados.');
   const editor = hydratePlannedEditor(data.session, data.slots, data.items);
+  const libraryTaskImages = await loadPlannedLibraryTaskImages(client,
+    editor.slots.flatMap((slot) => slot.items)
+      .filter((item) => item.kind === 'library_task')
+      .map((item) => item.sourceTaskId));
   const distribution = distributionRow ? normalizeDistribution(distributionRow) : emptyDistribution();
   const positions = distribution.specific_positions_snapshot.length
     ? distribution.specific_positions_snapshot
@@ -50,5 +55,6 @@ export const loadPlannedSessionPrintData = async (client, row, clubTeamSeasonId,
     sessionValue: readPlannedSessionValue(data.session).value,
     mcNumber: data.session.mc_number == null ? '' : String(data.session.mc_number),
     activityImages,
+    libraryTaskImages,
   };
 };

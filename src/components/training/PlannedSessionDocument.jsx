@@ -58,21 +58,21 @@ function PendingArea({ label, children, className = '' }) {
 function ActivityImages({ task, images, persisted, disabled, onAdd, onRemove, onReplace, onMove }) {
   return <div className="planned-activity-images-editor">
     {images.length ? <PlannedSessionActivityImageGrid images={images} /> : <PendingArea label="Pizarra o imágenes de la actividad" />}
-    {!persisted ? <small>Guarda primero la sesión para adjuntar imágenes a esta actividad.</small> : null}
-    {persisted && !disabled ? <div className="planned-activity-image-actions">
-      <label className="planned-activity-image-upload">Adjuntar imágenes
-        <input type="file" accept="image/jpeg,image/png,image/webp" multiple
-          onChange={(event) => { const files = [...event.target.files]; event.target.value = ''; if (files.length) onAdd(task.id, files); }} />
+    {!persisted ? <small>La sesión y esta actividad se guardarán antes de iniciar la subida.</small> : null}
+    <div className="planned-activity-image-actions">
+      <label className="planned-activity-image-upload" aria-disabled={disabled}>Añadir imágenes
+        <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={disabled}
+          onChange={(event) => { const files = [...event.target.files]; event.target.value = ''; if (files.length) onAdd(task.id, files, persisted); }} />
       </label>
       {images.map((image, index) => <div key={image.id} className="planned-activity-image-row">
         <span title={image.originalName}>{index + 1}. {image.originalName}</span>
-        <button type="button" disabled={index === 0} onClick={() => onMove(task.id, index, index - 1)} aria-label={`Mover ${image.originalName} a la izquierda`}>←</button>
-        <button type="button" disabled={index === images.length - 1} onClick={() => onMove(task.id, index, index + 1)} aria-label={`Mover ${image.originalName} a la derecha`}>→</button>
-        <label>Sustituir<input type="file" accept="image/jpeg,image/png,image/webp"
+        <button type="button" disabled={disabled || index === 0} onClick={() => onMove(task.id, index, index - 1)} aria-label={`Mover ${image.originalName} a la izquierda`}>←</button>
+        <button type="button" disabled={disabled || index === images.length - 1} onClick={() => onMove(task.id, index, index + 1)} aria-label={`Mover ${image.originalName} a la derecha`}>→</button>
+        <label aria-disabled={disabled}>Sustituir<input type="file" accept="image/jpeg,image/png,image/webp" disabled={disabled}
           onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) onReplace(task.id, image, file); }} /></label>
-        <button type="button" onClick={() => onRemove(task.id, image)}>Quitar</button>
+        <button type="button" disabled={disabled} onClick={() => onRemove(task.id, image)}>Quitar</button>
       </div>)}
-    </div> : null}
+    </div>
   </div>;
 }
 
@@ -128,6 +128,7 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
   libraryError, selectLibraryTask, switchToFreeTask, openBoard,
   exerciseDimensionsSupported, exerciseDimensions, onExerciseDimensionChange, exerciseDimensionIssue,
   seriesSupported, contentSupported, activityImages, persistedItemIds,
+  libraryTaskImages,
   onAddActivityImages, onRemoveActivityImage, onReplaceActivityImage, onMoveActivityImage }) {
   if (!slot) return <div className="planned-sheet-exercise planned-sheet-exercise-empty">
     <h3><PhaseName phase={phase} /></h3><p className="planned-sheet-reserved-hint">Sin ejercicio planificado en esta fase.</p>
@@ -144,7 +145,11 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
         const taskActivityImages = activityImages[task.id] || [];
         const boardPayload = task.kind === 'library_task'
           ? getPlannedLibraryValue(task, 'editor_payload') || {} : {};
-        const boardKind = readTrainingTaskEditorPayload(boardPayload).kind;
+        const parsedBoard = readTrainingTaskEditorPayload(boardPayload);
+        const boardKind = parsedBoard.kind;
+        const hasBoard = boardKind === 'v1' && Boolean(parsedBoard.scene.board.elements?.length);
+        const libraryImage = !hasBoard && boardKind === 'empty'
+          ? libraryTaskImages[task.sourceTaskId] : null;
         const boardTeams = task.kind === 'library_task' ? getPlannedSessionBoardTeams(boardPayload) : [];
         const secondary = [
           ['objective', 'Objetivo'], ['technical_content', 'Contenido técnico'],
@@ -201,7 +206,11 @@ function ExerciseBlock({ slot, number, phase, canEdit, busy, issue, updateSlot, 
               </details> : null}
             </div>
             <div className="planned-sheet-representation"><b>REPRESENTACIÓN GRÁFICA</b>
-              <div className="planned-sheet-board-visual"><TrainingTaskBoardPreview payload={boardPayload} /></div>
+              <div className={`planned-sheet-board-visual${libraryImage ? ' planned-sheet-library-image' : ''}`}>
+                {libraryImage
+                  ? <img src={libraryImage.signedUrl} alt={libraryImage.originalName || `Representación de ${getPlannedLibraryValue(task, 'name')}`} />
+                  : <TrainingTaskBoardPreview payload={boardPayload} />}
+              </div>
               {boardTeams.length ? <div className="planned-sheet-team-lists" aria-label="Equipos y jugadores asignados en la pizarra">
                 {boardTeams.map((team) => <div className="planned-sheet-team-line" key={team.key}
                   style={{ borderLeftColor: team.colorValue || '#333' }}>
@@ -325,6 +334,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   onMaterialChange, onEnableMaterialAutofill, manualMaterial = [], onPinMaterialManually,
   locationOptions = [], opponentOptions = [], suggestionsError = '',
   activityImages = {}, persistedItemIds = new Set(), onAddActivityImages = () => {},
+  libraryTaskImages = {},
   onRemoveActivityImage = () => {}, onReplaceActivityImage = () => {}, onMoveActivityImage = () => {} }) {
   const [zoom, setZoom] = useState(100);
   const [fitZoom, setFitZoom] = useState(100);
@@ -401,6 +411,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
       onExerciseDimensionChange={onExerciseDimensionChange}
       exerciseDimensionIssue={slot ? exerciseDimensionIssue(slot.id) : ''}
       activityImages={activityImages} persistedItemIds={persistedItemIds}
+      libraryTaskImages={libraryTaskImages}
       onAddActivityImages={onAddActivityImages} onRemoveActivityImage={onRemoveActivityImage}
       onReplaceActivityImage={onReplaceActivityImage} onMoveActivityImage={onMoveActivityImage} />;
   };
@@ -565,6 +576,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
     <p className="planned-document-note">Vista editorial de 03B. La exportación PDF definitiva y las zonas marcadas como pendientes no están activadas.</p>
     <PlannedSessionPrint editor={editor} selected={selected} pages={printSheets} printRef={printRef} pitchAppearance={pitchAppearance}
       activityImages={activityImages}
+      libraryTaskImages={libraryTaskImages}
       mcNumber={printedMcNumber}
       leagueLogoUrl={leagueLogoUrl} sessionValue={printedSessionValue}
       roster={frozen ? roster : []} guests={guests} availability={availability}

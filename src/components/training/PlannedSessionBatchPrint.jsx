@@ -9,7 +9,8 @@ export function PlannedSessionBatchPrintPages({ sessions, selected, leagueLogoUr
       positionById={session.positionById} leagueLogoUrl={leagueLogoUrl}
       sessionValue={session.sessionValue} fieldDimensions={session.fieldDimensions}
       exerciseDimensions={session.exerciseDimensions} mcNumber={session.mcNumber}
-      activityImages={session.activityImages || {}} />);
+      activityImages={session.activityImages || {}}
+      libraryTaskImages={session.libraryTaskImages || {}} />);
 }
 
 export default function PlannedSessionBatchPrint({ sessions, selected, leagueLogoUrl, printRef, pitchAppearance = 'green' }) {
