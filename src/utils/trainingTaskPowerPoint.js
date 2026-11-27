@@ -8,6 +8,12 @@ import {
 } from './trainingTaskBoardElements.js';
 import { readTrainingTaskEditorPayload } from './trainingTaskEditorPayload.js';
 import {
+  getTrainingTaskBoardBounds,
+  getTrainingTaskMeasurementDistance,
+  readTrainingTaskMetricCalibration,
+  resolveTrainingTaskMeasurementPoint,
+} from './trainingTaskSpatial.js';
+import {
   TRAINING_TASK_PHASES,
   formatTrainingTaskPlayers,
   formatTrainingTaskSpace,
@@ -48,10 +54,23 @@ const cleanValue = (value) => (
 
 const toHex = (value) => String(value || '').replace(/^#/, '').toUpperCase();
 
+const boardViewWidth = (board) => Number(board?.viewWidth) || BOARD_VIEW_WIDTH;
+const boardViewHeight = (board) => Number(board?.viewHeight) || BOARD_VIEW_HEIGHT;
+
 const inchPoint = (x, y, board) => ({
-  x: board.x + (Number(x) / BOARD_VIEW_WIDTH) * board.w,
-  y: board.y + (Number(y) / BOARD_VIEW_HEIGHT) * board.h,
+  x: board.x + (Number(x) / boardViewWidth(board)) * board.w,
+  y: board.y + (Number(y) / boardViewHeight(board)) * board.h,
 });
+
+const boardForScene = (layout, sceneBoard) => {
+  const bounds = getTrainingTaskBoardBounds(sceneBoard);
+  return {
+    ...layout,
+    h: Math.min(layout.h, layout.w * bounds.height / bounds.width),
+    viewWidth: bounds.width,
+    viewHeight: bounds.height,
+  };
+};
 
 const rotatePoint = (point, center, degrees = 0) => {
   const radians = (Number(degrees) || 0) * Math.PI / 180;
@@ -99,7 +118,8 @@ const addBoardLine = (slide, board, start, end, {
 };
 
 const addFieldLines = (slide, board, pitchType) => {
-  const point = (x, y) => inchPoint(x, y, board);
+  const fieldBoard = { ...board, viewWidth: BOARD_VIEW_WIDTH, viewHeight: BOARD_VIEW_HEIGHT };
+  const point = (x, y) => inchPoint(x, y, fieldBoard);
   slide.addShape('roundRect', {
     x: board.x,
     y: board.y,
@@ -123,6 +143,52 @@ const addFieldLines = (slide, board, pitchType) => {
   }
 
   if (pitchType === 'blank') return;
+
+  if (boardViewWidth(board) !== BOARD_VIEW_WIDTH || boardViewHeight(board) !== BOARD_VIEW_HEIGHT) {
+    const width = boardViewWidth(board);
+    const height = boardViewHeight(board);
+    const centerY = height / 2;
+    const edge = 0.35;
+    const goalWidth = 7.32;
+    const penaltyWidth = Math.min(height - 2, goalWidth + 33);
+    const goalAreaWidth = Math.min(height - 2, goalWidth + 11);
+    const penaltyTop = (height - penaltyWidth) / 2;
+    const goalAreaTop = (height - goalAreaWidth) / 2;
+    const metricPoint = (x, y) => inchPoint(x, y, board);
+    const metricRect = (x, y, w, h, name) => slide.addShape('rect', {
+      ...metricPoint(x, y),
+      w: board.w * w / width,
+      h: board.h * h / height,
+      fill: { color: COLORS.pitch, transparency: 100 },
+      line: { color: COLORS.pitchLine, transparency: 12, width: 0.7 },
+      objectName: name,
+    });
+    const metricCircle = (x, y, radius, name) => slide.addShape('ellipse', {
+      ...metricPoint(x - radius, y - radius),
+      w: board.w * radius * 2 / width,
+      h: board.h * radius * 2 / height,
+      fill: { color: COLORS.pitch, transparency: 100 },
+      line: { color: COLORS.pitchLine, transparency: 12, width: 0.7 },
+      objectName: name,
+    });
+    metricRect(edge, edge, width - edge * 2, height - edge * 2, 'Pizarra - límites métricos 105 × 60 m');
+    if (pitchType === 'half') {
+      addBoardLine(slide, board, metricPoint(edge, edge), metricPoint(edge, height - edge), { name: 'Pizarra - línea de medio campo' });
+    } else {
+      addBoardLine(slide, board, metricPoint(width / 2, edge), metricPoint(width / 2, height - edge), { name: 'Pizarra - línea de medio campo' });
+      metricCircle(width / 2, centerY, 9.15, 'Pizarra - círculo central reglamentario');
+      metricCircle(width / 2, centerY, 0.45, 'Pizarra - punto central');
+      metricRect(edge, penaltyTop, 16.5, penaltyWidth, 'Pizarra - área izquierda');
+      metricRect(edge, goalAreaTop, 5.5, goalAreaWidth, 'Pizarra - área pequeña izquierda');
+      metricRect(0, (height - goalWidth) / 2, edge + 0.8, goalWidth, 'Pizarra - portería izquierda');
+      metricCircle(11, centerY, 0.42, 'Pizarra - punto de penalti izquierdo');
+    }
+    metricRect(width - edge - 16.5, penaltyTop, 16.5, penaltyWidth, 'Pizarra - área derecha');
+    metricRect(width - edge - 5.5, goalAreaTop, 5.5, goalAreaWidth, 'Pizarra - área pequeña derecha');
+    metricRect(width - edge - 0.15, (height - goalWidth) / 2, edge + 0.8, goalWidth, 'Pizarra - portería derecha');
+    metricCircle(width - edge - 11, centerY, 0.42, 'Pizarra - punto de penalti derecho');
+    return;
+  }
 
   const fieldRect = (x, y, w, h, name) => slide.addShape('rect', {
     ...point(x, y),
@@ -173,6 +239,41 @@ const addFieldLines = (slide, board, pitchType) => {
   addBoardLine(slide, board, point(80, 29), point(78, 32), { name: 'Pizarra - área curva derecha 1' });
   addBoardLine(slide, board, point(78, 32), point(78, 40), { name: 'Pizarra - área curva derecha 2' });
   addBoardLine(slide, board, point(78, 40), point(80, 43), { name: 'Pizarra - área curva derecha 3' });
+};
+
+const addBoardMeasurements = (slide, board, sceneBoard) => {
+  const calibration = readTrainingTaskMetricCalibration(sceneBoard);
+  if (!calibration?.showMeasurements) return;
+  const elements = sceneBoard.elements || [];
+  (sceneBoard.measurements || []).filter((entry) => entry.visible !== false).forEach((measurement, index) => {
+    const from = resolveTrainingTaskMeasurementPoint(measurement.from, elements);
+    const to = resolveTrainingTaskMeasurementPoint(measurement.to, elements);
+    const distance = getTrainingTaskMeasurementDistance(measurement, elements);
+    if (!from || !to || distance == null) return;
+    const start = inchPoint(from.x, from.y, board);
+    const end = inchPoint(to.x, to.y, board);
+    addBoardLine(slide, board, start, end, {
+      color: 'FACC15',
+      width: 1.4,
+      dashType: 'dash',
+      name: `Pizarra - medición ${index + 1}`,
+    });
+    slide.addText(cleanValue(measurement.label) || `${distance.toFixed(1)} m`, {
+      x: (start.x + end.x) / 2 - 0.3,
+      y: (start.y + end.y) / 2 - 0.16,
+      w: 0.6,
+      h: 0.22,
+      fontFace: FONT_FACE,
+      fontSize: 7,
+      bold: true,
+      color: 'FFFFFF',
+      fill: { color: COLORS.ink, transparency: 15 },
+      align: 'center',
+      margin: 0,
+      fit: 'shrink',
+      objectName: `Pizarra - etiqueta de medición ${index + 1}`,
+    });
+  });
 };
 
 const addBoardParticipant = (slide, board, element, players) => {
@@ -426,8 +527,8 @@ const addBoardElement = (slide, board, rawElement, players) => {
   if (type === 'zone') {
     const widthUnits = Math.max(0.1, Number(element.width) || 22);
     const heightUnits = Math.max(0.1, Number(element.height) || 12);
-    const width = board.w * widthUnits / BOARD_VIEW_WIDTH;
-    const height = board.h * heightUnits / BOARD_VIEW_HEIGHT;
+    const width = board.w * widthUnits / boardViewWidth(board);
+    const height = board.h * heightUnits / boardViewHeight(board);
     const transparency = Math.max(0, Math.min(100, 100 - (Number(element.opacity) || 0.18) * 100));
     slide.addShape('rect', {
       x: point.x,
@@ -876,7 +977,9 @@ const addMainSlide = (pptx, task, players, parsedBoard) => {
     });
   }
 
-  const board = { x: 6.82, y: 1.55, w: 5.95, h: 5.95 * BOARD_VIEW_HEIGHT / BOARD_VIEW_WIDTH };
+  const boardLayout = { x: 6.82, y: 1.55, w: 5.95, h: 5.95 * BOARD_VIEW_HEIGHT / BOARD_VIEW_WIDTH };
+  const board = parsedBoard.kind === 'v1'
+    ? boardForScene(boardLayout, parsedBoard.scene.board) : boardLayout;
   slide.addText('PIZARRA TÁCTICA', {
     x: board.x,
     y: 1.3,
@@ -894,6 +997,7 @@ const addMainSlide = (pptx, task, players, parsedBoard) => {
     addFieldLines(slide, board, parsedBoard.scene.board.pitchType);
     sortTrainingBoardElements(parsedBoard.scene.board.elements)
       .forEach((element) => addBoardElement(slide, board, element, players));
+    addBoardMeasurements(slide, board, parsedBoard.scene.board);
   } else {
     slide.addShape('roundRect', {
       x: board.x,
@@ -1356,9 +1460,11 @@ const addSingleTaskSlide = (pptx, task, players, parsedBoard, layout) => {
     margin: 0,
   });
   if (parsedBoard.kind === 'v1') {
-    addFieldLines(slide, BOARD_RECT, parsedBoard.scene.board.pitchType);
+    const board = boardForScene(BOARD_RECT, parsedBoard.scene.board);
+    addFieldLines(slide, board, parsedBoard.scene.board.pitchType);
     sortTrainingBoardElements(parsedBoard.scene.board.elements)
-      .forEach((element) => addBoardElement(slide, BOARD_RECT, element, players));
+      .forEach((element) => addBoardElement(slide, board, element, players));
+    addBoardMeasurements(slide, board, parsedBoard.scene.board);
   } else {
     slide.addShape('roundRect', {
       x: BOARD_RECT.x,

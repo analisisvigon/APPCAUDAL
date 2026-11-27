@@ -59,6 +59,7 @@ export function TrainingTaskPrintSheet({ task, index = 0, total = 1, playerLooku
     <div className="task-export-visual">
     {parsed.kind === 'v1' ? <section className="task-export-board" data-pitch-type={pitchType}><h2>Diseño de la tarea</h2>
       <TrainingTaskDiagramCanvas elements={parsed.scene.board.elements} pitchType={pitchType}
+        metricCalibration={parsed.scene.board.metricCalibration} measurements={parsed.scene.board.measurements}
         players={playerLookup} readOnly renderMode="preview" />
     </section> : parsed.kind !== 'empty' ? <p>Pizarra guardada en un formato no compatible con esta versión.</p> : null}
     {teams.map((team) => <PrintText key={team.key} label={team.teamName + ' · ' + team.colorName}>{team.players.join(', ')}</PrintText>)}

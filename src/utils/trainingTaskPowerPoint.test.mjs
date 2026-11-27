@@ -11,6 +11,7 @@ import {
   TRAINING_CONDITIONAL_MATERIALS,
 } from './trainingTaskBoardElements.js';
 import { createTrainingTaskEditorSceneV1 } from './trainingTaskEditorPayload.js';
+import { createTrainingTaskMetricCalibration } from './trainingTaskSpatial.js';
 
 const task = {
   id: 'task-123',
@@ -126,6 +127,32 @@ test('keeps task text exportable when the board schema is unsupported', async ()
   assert.equal(slideFiles.length, 1);
   assert.match(slideXml, /Tarea sin pizarra compatible/);
   assert.match(slideXml, /formato no es compatible/);
+});
+
+test('exports calibrated field geometry and distance labels as editable shapes', async () => {
+  const editorPayload = createTrainingTaskEditorSceneV1({
+    pitchType: 'full',
+    metricCalibration: createTrainingTaskMetricCalibration('full'),
+    elements: [
+      { id: 'cone-metric-1', type: 'cone', x: 15, y: 20, colorKey: 'yellow' },
+      { id: 'cone-metric-2', type: 'cone', x: 25, y: 20, colorKey: 'yellow' },
+      { id: 'zone-metric', type: 'zone', x: 30, y: 15, width: 25, height: 20, colorKey: 'blue' },
+    ],
+    measurements: [{
+      id: 'metric-distance',
+      from: { kind: 'element', elementId: 'cone-metric-1' },
+      to: { kind: 'element', elementId: 'cone-metric-2' },
+      visible: true,
+    }],
+  });
+  const presentation = createTrainingTaskPowerPoint({ name: 'Campo métrico', editorPayload });
+  const archive = await JSZip.loadAsync(await presentation.write({ outputType: 'nodebuffer' }));
+  const slideXml = await archive.file('ppt/slides/slide1.xml').async('string');
+
+  assert.match(slideXml, /Pizarra - límites métricos 105 × 60 m/);
+  assert.match(slideXml, /Pizarra - medición 1/);
+  assert.match(slideXml, /10.0 m/);
+  assert.doesNotMatch(slideXml, /<p:pic>/, 'campo, zonas y mediciones siguen siendo formas editables');
 });
 
 test('exports every conditional catalog material as native editable PowerPoint shapes', async () => {

@@ -1,8 +1,11 @@
 import {
-  clampDiagramCoordinate,
   DIAGRAM_PITCH_CATALOG,
   DIAGRAM_PITCH_TYPES,
 } from './diagramScene.js';
+import {
+  getTrainingTaskBoardBounds,
+  readTrainingTaskMetricCalibration,
+} from './trainingTaskSpatial.js';
 
 export const TRAINING_TASK_EDITOR_SCHEMA_VERSION = 1;
 export const TRAINING_TASK_EDITOR_PAYLOAD_LIMIT_BYTES = 256 * 1024;
@@ -54,20 +57,55 @@ const isEmptyPayload = (payload) => (
   payload == null || (isPlainObject(payload) && Object.keys(payload).length === 0)
 );
 
-const normalizeElement = (element) => {
+const normalizeElement = (element, bounds) => {
   const normalized = { ...element, id: String(element.id), type: String(element.type) };
   POSITION_COORDINATES.forEach(([field, axis]) => {
     if (!(field in element)) return;
-    const coordinate = clampDiagramCoordinate(element[field], axis);
+    const numeric = Number(element[field]);
+    const coordinate = Number.isFinite(numeric)
+      ? Math.max(0, Math.min(axis === 'y' ? bounds.height : bounds.width, numeric))
+      : null;
     if (coordinate !== null) normalized[field] = coordinate;
   });
   return normalized;
 };
 
+const validMeasurementEndpoint = (endpoint) => isPlainObject(endpoint) && (
+  (endpoint.kind === 'element' && Boolean(String(endpoint.elementId || '').trim())) ||
+  (endpoint.kind === 'point' && Number.isFinite(Number(endpoint.x)) && Number.isFinite(Number(endpoint.y)))
+);
+
+const normalizeMeasurement = (measurement, bounds) => ({
+  ...measurement,
+  id: String(measurement.id),
+  from: measurement.from.kind === 'point' ? {
+    ...measurement.from,
+    x: Math.max(0, Math.min(bounds.width, Number(measurement.from.x))),
+    y: Math.max(0, Math.min(bounds.height, Number(measurement.from.y))),
+  } : { ...measurement.from, elementId: String(measurement.from.elementId) },
+  to: measurement.to.kind === 'point' ? {
+    ...measurement.to,
+    x: Math.max(0, Math.min(bounds.width, Number(measurement.to.x))),
+    y: Math.max(0, Math.min(bounds.height, Number(measurement.to.y))),
+  } : { ...measurement.to, elementId: String(measurement.to.elementId) },
+});
+
 const validateV1Board = (board) => {
   if (!isPlainObject(board)) return 'board debe ser un objeto.';
   if (!Object.prototype.hasOwnProperty.call(DIAGRAM_PITCH_CATALOG, board.pitchType)) return 'pitchType no esta soportado en V1.';
   if (!Array.isArray(board.elements)) return 'elements debe ser una coleccion.';
+  if (board.metricCalibration && !readTrainingTaskMetricCalibration(board)) {
+    return 'metricCalibration no contiene una calibración 105 × 60 m compatible.';
+  }
+  if (board.measurements != null && !Array.isArray(board.measurements)) return 'measurements debe ser una colección.';
+  const measurementIds = new Set();
+  if ((board.measurements || []).some((measurement) => {
+    const id = String(measurement?.id || '').trim();
+    if (!isPlainObject(measurement) || !id || measurementIds.has(id) ||
+        !validMeasurementEndpoint(measurement.from) || !validMeasurementEndpoint(measurement.to)) return true;
+    measurementIds.add(id);
+    return false;
+  })) return 'Cada medición debe tener un id único y dos extremos válidos.';
   const ids = new Set();
   for (const element of board.elements) {
     if (!isPlainObject(element) || !String(element.id || '').trim() || !String(element.type || '').trim()) {
@@ -89,10 +127,13 @@ const validateV1Board = (board) => {
 export const createTrainingTaskEditorSceneV1 = ({
   pitchType = DIAGRAM_PITCH_TYPES.FULL,
   elements = [],
+  metricCalibration = null,
+  measurements = [],
 } = {}) => {
   const payload = {
     schemaVersion: TRAINING_TASK_EDITOR_SCHEMA_VERSION,
-    board: { pitchType, elements },
+    board: { pitchType, elements,
+      ...(metricCalibration ? { metricCalibration, measurements } : {}) },
   };
   const result = readTrainingTaskEditorPayload(payload);
   if (result.kind !== 'v1') throw new TypeError(result.error || 'Escena V1 no valida.');
@@ -108,13 +149,17 @@ export const readTrainingTaskEditorPayload = (payload) => {
   }
   const error = validateV1Board(payload.board);
   if (error) return { kind: 'invalid', scene: null, sourcePayload: cloneJsonValue(payload), error };
+  const bounds = getTrainingTaskBoardBounds(payload.board);
   const scene = {
     ...cloneJsonValue(payload),
     schemaVersion: TRAINING_TASK_EDITOR_SCHEMA_VERSION,
     board: {
       ...cloneJsonValue(payload.board),
       pitchType: payload.board.pitchType,
-      elements: payload.board.elements.map(normalizeElement),
+      elements: payload.board.elements.map((element) => normalizeElement(element, bounds)),
+      ...(payload.board.measurements ? {
+        measurements: payload.board.measurements.map((measurement) => normalizeMeasurement(measurement, bounds)),
+      } : {}),
     },
   };
   return { kind: 'v1', scene, sourcePayload: cloneJsonValue(payload) };

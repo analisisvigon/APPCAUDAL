@@ -26,17 +26,17 @@ const feedback = Array.from({ length: 205 }, (_, i) => ({ id: String(i), task_id
 const client = { from(table) {
   const filters = [];
   return { select() { return this; }, eq(key, value) { filters.push([key, value]); return this; }, order() { return this; },
-    single() { assert.deepEqual(filters, [['club_id', 'club'], ['id', 'a']]); return { data: base }; },
+    single() { assert.deepEqual(filters, [['id', 'a']]); return { data: base }; },
     range(start, end) { assert.deepEqual(filters, [['task_id', 'a']]);
       return { data: (table === 'training_task_media' ? media : feedback).slice(start, Math.min(end + 1, start + 50)) }; },
   };
 } };
 const before = JSON.stringify({ base, media, feedback });
-const task = await loadTrainingTaskPrintData(client, 'a', 'club');
+const task = await loadTrainingTaskPrintData(client, 'a');
 assert.equal(task.feedback.length, 205);
 assert.equal(task.media.length, 2);
 assert.equal(JSON.stringify({ base, media, feedback }), before);
-await assert.rejects(loadTrainingTaskPrintData({ from: () => ({ select() { return this; }, eq() { return this; }, single: () => ({ error: new Error('denied') }) }) }, 'a', 'club'), /denied/);
+await assert.rejects(loadTrainingTaskPrintData({ from: () => ({ select() { return this; }, eq() { return this; }, single: () => ({ error: new Error('denied') }) }) }, 'a'), /denied/);
 assert.equal(printableMediaUrl({ source: 'url', originalUrl: 'javascript:alert(1)' }), '');
 assert.equal(printableMediaUrl({ source: 'url', originalUrl: 'https://example.com/video?token=secret' }), '');
 assert.equal(printableMediaUrl({ source: 'upload', originalUrl: 'https://example.com/private' }), '');

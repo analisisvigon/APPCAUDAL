@@ -1,5 +1,4 @@
 import { useId, useMemo, useRef, useState } from 'react';
-import { clampDiagramCoordinate } from '../../utils/diagramScene';
 import { getSetPieceCurveControlPoint } from '../../utils/setPieceEditorInteractions';
 import {
   adaptLegacyTrainingBoardElement,
@@ -11,18 +10,63 @@ import {
 } from '../../utils/trainingTaskBoardElements';
 import { resolveTrainingTaskPlayerRef } from '../../utils/trainingTaskRoster';
 import TrainingTaskConditionalMaterialGraphic from './TrainingTaskConditionalMaterialGraphic';
+import {
+  getTrainingTaskBoardBounds,
+  getTrainingTaskMeasurementDistance,
+  readTrainingTaskMetricCalibration,
+  resolveTrainingTaskMeasurementPoint,
+  snapTrainingTaskMetricValue,
+} from '../../utils/trainingTaskSpatial';
 
 const TRACE_TYPES = new Set(['arrow', 'curved_arrow', 'dashed_arrow', 'double_arrow', 'line', 'dashed_line']);
 const DRAW_TOOLS = new Set(['arrow', 'curved_arrow', 'dashed_arrow', 'line', 'dashed_line', 'zone']);
-const snapValue = (value, snap) => snap ? Math.round(value / 4) * 4 : value;
-const clamp = (value, axis) => clampDiagramCoordinate(value, axis) ?? 0;
+const MEASURABLE_ELEMENT_TYPES = new Set(['participant', 'player', 'opponent', 'ball', 'cone', 'pole', 'mannequin', 'hoop', 'goal', 'mini_goal', 'block', 'conditional_material']);
+const snapValue = (value, snap, calibration) => snap
+  ? calibration ? snapTrainingTaskMetricValue(value, calibration) : Math.round(value / 4) * 4
+  : value;
 
-function TrainingPitch({ pitchType, monochrome = false }) {
+function TrainingPitch({ pitchType, monochrome = false, width = 100, height = 72, metric = false }) {
   const ink = monochrome ? '#374151' : 'rgba(255,255,255,.82)';
   const line = { fill: 'none', stroke: ink, strokeWidth: 0.48 };
+  if (metric) {
+    const centerY = height / 2;
+    const goalWidth = 7.32;
+    const penaltyWidth = Math.min(height - 2, goalWidth + 33);
+    const goalAreaWidth = Math.min(height - 2, goalWidth + 11);
+    const penaltyTop = (height - penaltyWidth) / 2;
+    const goalAreaTop = (height - goalAreaWidth) / 2;
+    const edge = .35;
+    const goalX = width - edge;
+    const penaltyX = Math.max(edge, goalX - 16.5);
+    const goalAreaX = Math.max(edge, goalX - 5.5);
+    return <>
+      <rect width={width} height={height} rx="1.5" fill={monochrome ? '#ffffff' : '#176b3a'} />
+      {!monochrome && Array.from({ length: 8 }, (_, stripe) => <rect key={stripe} x={stripe * width / 8} width={width / 8} height={height} fill={stripe % 2 ? '#ffffff' : '#071f14'} opacity={stripe % 2 ? 0.025 : 0.035} />)}
+      {pitchType === 'blank' ? null : <g {...line}>
+        <rect x={edge} y={edge} width={width - edge * 2} height={height - edge * 2} rx=".5" />
+        {pitchType === 'half' ? <>
+          <line x1={edge} y1={edge} x2={edge} y2={height - edge} />
+          <path d={`M${edge} ${centerY - 9.15} A9.15 9.15 0 0 1 ${edge} ${centerY + 9.15}`} />
+        </> : <>
+          <line x1={width / 2} y1={edge} x2={width / 2} y2={height - edge} />
+          <circle cx={width / 2} cy={centerY} r="9.15" />
+          <circle cx={width / 2} cy={centerY} r=".45" fill={ink} stroke="none" />
+          <rect x={edge} y={penaltyTop} width="16.5" height={penaltyWidth} />
+          <rect x={edge} y={goalAreaTop} width="5.5" height={goalAreaWidth} />
+          <rect x="0" y={(height - goalWidth) / 2} width={edge + .8} height={goalWidth} />
+          <circle cx={11} cy={centerY} r=".42" fill={ink} stroke="none" />
+        </>}
+        <rect x={penaltyX} y={penaltyTop} width={goalX - penaltyX} height={penaltyWidth} />
+        <rect x={goalAreaX} y={goalAreaTop} width={goalX - goalAreaX} height={goalAreaWidth} />
+        <rect x={goalX - .15} y={(height - goalWidth) / 2} width={edge + .8} height={goalWidth} />
+        <circle cx={goalX - 11} cy={centerY} r=".42" fill={ink} stroke="none" />
+      </g>}
+    </>;
+  }
   return <>
-    <rect width="100" height="72" rx="2.5" fill={monochrome ? '#ffffff' : '#176b3a'} />
-    {!monochrome && [0, 1, 2, 3, 4, 5, 6, 7].map((stripe) => <rect key={stripe} x={stripe * 12.5} width="12.5" height="72" fill={stripe % 2 ? '#ffffff' : '#071f14'} opacity={stripe % 2 ? 0.025 : 0.035} />)}
+    <rect width={width} height={height} rx={Math.min(width, height) * .035} fill={monochrome ? '#ffffff' : '#176b3a'} />
+    {!monochrome && [0, 1, 2, 3, 4, 5, 6, 7].map((stripe) => <rect key={stripe} x={stripe * width / 8} width={width / 8} height={height} fill={stripe % 2 ? '#ffffff' : '#071f14'} opacity={stripe % 2 ? 0.025 : 0.035} />)}
+    <g transform={`scale(${width / 100} ${height / 72})`}>
     {pitchType === 'blank' ? null : pitchType === 'half' ? <g {...line}>
       <rect x="1" y="1" width="98" height="70" rx="1.5" />
       <line x1="1" y1="1" x2="1" y2="71" />
@@ -42,6 +86,7 @@ function TrainingPitch({ pitchType, monochrome = false }) {
       <rect x="0" y="30" width="2" height="12" /><rect x="98" y="30" width="2" height="12" />
       <path d="M20 29 A10 10 0 0 1 20 43 M80 29 A10 10 0 0 0 80 43" />
     </g>}
+    </g>
   </>;
 }
 
@@ -73,7 +118,7 @@ function Material({ element, color }) {
   return null;
 }
 
-export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = 'full', selectedId = '', activeTool = 'select', onSelect, onChange, onInsert, readOnly = false, snap = false, players = [], renderMode = 'editor', fitViewport = false, pitchAppearance = 'green' }) {
+export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = 'full', selectedId = '', activeTool = 'select', onSelect, onChange, onInsert, readOnly = false, snap = false, players = [], renderMode = 'editor', fitViewport = false, pitchAppearance = 'green', metricCalibration = null, measurements = [], temporaryMeasurement = null, onMeasurePoint = null }) {
   const monochrome = pitchAppearance === 'bw';
   const preview = renderMode === 'preview';
   const svgRef = useRef(null);
@@ -83,6 +128,13 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
   const markerId = `training-arrow-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const rendered = useMemo(() => sortTrainingBoardElements(elements), [elements]);
   const selected = elements.find((element) => element.id === selectedId) || null;
+  const calibration = readTrainingTaskMetricCalibration({ metricCalibration });
+  const bounds = getTrainingTaskBoardBounds({ metricCalibration });
+  const clamp = (value, axis) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric)
+      ? Math.max(0, Math.min(axis === 'y' ? bounds.height : bounds.width, numeric)) : 0;
+  };
 
   const pointFromEvent = (event) => {
     const transform = svgRef.current?.getScreenCTM();
@@ -91,7 +143,14 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
       return { x: clamp(point.x, 'x'), y: clamp(point.y, 'y') };
     }
     const rect = svgRef.current.getBoundingClientRect();
-    return { x: clamp(((event.clientX - rect.left) / rect.width) * 100, 'x'), y: clamp(((event.clientY - rect.top) / rect.height) * 72, 'y') };
+    return { x: clamp(((event.clientX - rect.left) / rect.width) * bounds.width, 'x'), y: clamp(((event.clientY - rect.top) / rect.height) * bounds.height, 'y') };
+  };
+  const pointForInteraction = (event) => {
+    const point = pointFromEvent(event);
+    return snap ? {
+      x: clamp(snapValue(point.x, true, calibration), 'x'),
+      y: clamp(snapValue(point.y, true, calibration), 'y'),
+    } : point;
   };
   const updateElement = (id, fields) => {
     const nextElements = elements.map((element) => element.id === id ? { ...element, ...fields } : element);
@@ -110,7 +169,7 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
   };
   const move = (event) => {
     if (insertionRef.current) {
-      const end = pointFromEvent(event);
+      const end = pointForInteraction(event);
       insertionRef.current = { ...insertionRef.current, end };
       setInsertionDraft(insertionRef.current);
       return;
@@ -119,22 +178,22 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
     if (!drag || readOnly) return;
     const point = pointFromEvent(event);
     const dx = point.x - drag.start.x; const dy = point.y - drag.start.y;
-    const x = (value) => snapValue(clamp(Number(value) + dx, 'x'), snap);
-    const y = (value) => snapValue(clamp(Number(value) + dy, 'y'), snap);
+    const x = (value) => snapValue(clamp(Number(value) + dx, 'x'), snap, calibration);
+    const y = (value) => snapValue(clamp(Number(value) + dy, 'y'), snap, calibration);
     if (drag.mode === 'start') return updateElement(drag.element.id, { x1: x(drag.origin.x1), y1: y(drag.origin.y1) });
     if (drag.mode === 'end') return updateElement(drag.element.id, { x2: x(drag.origin.x2), y2: y(drag.origin.y2) });
     if (drag.mode === 'control') return updateElement(drag.element.id, { controlX: x(drag.origin.controlX), controlY: y(drag.origin.controlY) });
-    if (drag.mode === 'resize') return updateElement(drag.element.id, resizeTrainingBoardZone(drag.origin, dx, dy));
+    if (drag.mode === 'resize') return updateElement(drag.element.id, resizeTrainingBoardZone(drag.origin, dx, dy, bounds));
     const anchorX = TRACE_TYPES.has(drag.element.type) ? drag.origin.x1 : drag.origin.x;
     const anchorY = TRACE_TYPES.has(drag.element.type) ? drag.origin.y1 : drag.origin.y;
-    const movementDx = snap ? snapValue(Number(anchorX) + dx, true) - Number(anchorX) : dx;
-    const movementDy = snap ? snapValue(Number(anchorY) + dy, true) - Number(anchorY) : dy;
-    return updateElement(drag.element.id, moveTrainingBoardElement(drag.origin, movementDx, movementDy));
+    const movementDx = snap ? snapValue(Number(anchorX) + dx, true, calibration) - Number(anchorX) : dx;
+    const movementDy = snap ? snapValue(Number(anchorY) + dy, true, calibration) - Number(anchorY) : dy;
+    return updateElement(drag.element.id, moveTrainingBoardElement(drag.origin, movementDx, movementDy, bounds));
   };
   const stop = (event) => {
     if (insertionRef.current) {
       const insertion = insertionRef.current;
-      const end = pointFromEvent(event);
+      const end = pointForInteraction(event);
       insertionRef.current = null;
       setInsertionDraft(null);
       if (insertion.pointerId != null && svgRef.current?.hasPointerCapture?.(insertion.pointerId)) svgRef.current.releasePointerCapture(insertion.pointerId);
@@ -154,7 +213,11 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
       return;
     }
     event.preventDefault();
-    const point = pointFromEvent(event);
+    const point = pointForInteraction(event);
+    if (activeTool === 'measure') {
+      onMeasurePoint?.({ kind: 'point', x: point.x, y: point.y });
+      return;
+    }
     if (!DRAW_TOOLS.has(activeTool)) {
       onInsert?.(activeTool, { point });
       return;
@@ -170,32 +233,40 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
     // White equipment/traces need contrast on paper; participant colours stay intact.
     const color = monochrome && element.type !== 'participant' && palette.key === 'white'
       ? '#374151' : palette.value;
+    const elementPointerDown = preview ? undefined : (event) => {
+      if (activeTool === 'measure' && onMeasurePoint && MEASURABLE_ELEMENT_TYPES.has(element.type)) {
+        event.stopPropagation(); event.preventDefault();
+        onMeasurePoint({ kind: 'element', elementId: raw.id });
+      } else startDrag(event, raw);
+    };
     if (TRACE_TYPES.has(element.type)) {
       const curved = element.type === 'curved_arrow';
       const control = getSetPieceCurveControlPoint(element);
       const path = curved ? `M${element.x1} ${element.y1} Q${control.x} ${control.y} ${element.x2} ${element.y2}` : `M${element.x1} ${element.y1} L${element.x2} ${element.y2}`;
       const arrow = !['line', 'dashed_line'].includes(element.type);
       const dashed = ['dashed_arrow', 'dashed_line'].includes(element.type) || element.dashed;
-      return <g key={element.id} className={readOnly ? '' : 'diagram-draggable'} onPointerDown={preview ? undefined : (event) => startDrag(event, raw)}>{preview ? null : <path d={path} fill="none" stroke="transparent" strokeWidth="3.5" />}<path d={path} fill="none" stroke={color} strokeWidth={preview ? '.72' : '.55'} strokeDasharray={dashed ? '2 1.6' : undefined} markerEnd={arrow ? `url(#${markerId})` : undefined} pointerEvents="none" /></g>;
+      return <g key={element.id} className={readOnly ? '' : 'diagram-draggable'} onPointerDown={elementPointerDown}>{preview ? null : <path d={path} fill="none" stroke="transparent" strokeWidth="3.5" />}<path d={path} fill="none" stroke={color} strokeWidth={preview ? '.72' : '.55'} strokeDasharray={dashed ? '2 1.6' : undefined} markerEnd={arrow ? `url(#${markerId})` : undefined} pointerEvents="none" /></g>;
     }
     if (element.type === 'zone') {
-      return <g key={element.id} onPointerDown={(event) => startDrag(event, raw)} className={readOnly ? '' : 'diagram-draggable'}><rect x={element.x} y={element.y} width={element.width || 22} height={element.height || 12} rx=".8" fill={color} fillOpacity={Number(element.opacity) || .18} stroke={color} strokeWidth=".38" strokeDasharray={element.borderStyle === 'dashed' ? '2 1.5' : undefined} />{element.label ? <text x={Number(element.x) + 1.4} y={Number(element.y) + 3} fontSize="1.8" fontWeight="700" fill="#fff" paintOrder="stroke" stroke="#123522" strokeWidth=".35">{element.label}</text> : null}</g>;
+      const metricLabel = calibration?.showZoneDimensions
+        ? `${Number(element.width || 0).toFixed(1)} × ${Number(element.height || 0).toFixed(1)} m` : '';
+      return <g key={element.id} onPointerDown={elementPointerDown} className={readOnly ? '' : 'diagram-draggable'}><rect x={element.x} y={element.y} width={element.width || 22} height={element.height || 12} rx=".8" fill={color} fillOpacity={Number(element.opacity) || .18} stroke={color} strokeWidth=".38" strokeDasharray={element.borderStyle === 'dashed' ? '2 1.5' : undefined} />{element.label ? <text x={Number(element.x) + 1.4} y={Number(element.y) + 3} fontSize="1.8" fontWeight="700" fill="#fff" paintOrder="stroke" stroke="#123522" strokeWidth=".35">{element.label}</text> : null}{metricLabel ? <text x={Number(element.x) + Number(element.width || 22) / 2} y={Number(element.y) + Number(element.height || 12) / 2} textAnchor="middle" fontSize="1.8" fontWeight="800" fill="#fff" paintOrder="stroke" stroke="#123522" strokeWidth=".45">{metricLabel}</text> : null}</g>;
     }
     if (element.type === 'participant') {
       const role = element.role || 'player';
       const resolvedPlayer = element.playerRef ? resolveTrainingTaskPlayerRef(element.playerRef, players) : null;
       const participantLabel = resolvedPlayer?.display.number || element.label || (role === 'goalkeeper' ? 'P' : role === 'neutral' ? 'C' : '');
       const participantTitle = resolvedPlayer ? `${resolvedPlayer.display.name}${resolvedPlayer.unavailable ? ' · no disponible' : ''}` : '';
-      if (role === 'coach') return <g key={element.id} onPointerDown={(event) => startDrag(event, raw)} className={readOnly ? '' : 'diagram-draggable'}><circle cx={element.x} cy={element.y} r="3.4" fill="transparent" /><rect x={element.x - 2.1} y={element.y - 1.7} width="4.2" height="3.4" rx=".7" fill={color} stroke={monochrome ? '#374151' : 'rgba(255,255,255,.85)'} strokeWidth=".35" pointerEvents="none" /><text x={element.x} y={element.y + .55} textAnchor="middle" fontSize="1.55" fontWeight="900" fill={palette.contrast} pointerEvents="none">{element.label || 'E'}</text></g>;
+      if (role === 'coach') return <g key={element.id} onPointerDown={elementPointerDown} className={readOnly ? '' : 'diagram-draggable'}><circle cx={element.x} cy={element.y} r="3.4" fill="transparent" /><rect x={element.x - 2.1} y={element.y - 1.7} width="4.2" height="3.4" rx=".7" fill={color} stroke={monochrome ? '#374151' : 'rgba(255,255,255,.85)'} strokeWidth=".35" pointerEvents="none" /><text x={element.x} y={element.y + .55} textAnchor="middle" fontSize="1.55" fontWeight="900" fill={palette.contrast} pointerEvents="none">{element.label || 'E'}</text></g>;
       const goalkeeper = role === 'goalkeeper';
-      return <g key={element.id} onPointerDown={(event) => startDrag(event, raw)} className={readOnly ? '' : 'diagram-draggable'}>{participantTitle ? <title>{participantTitle}</title> : null}<circle cx={element.x} cy={element.y} r="3.2" fill="transparent" /><circle cx={element.x} cy={element.y} r="1.52" fill={color} stroke={monochrome ? '#374151' : 'rgba(255,255,255,.9)'} strokeWidth=".34" pointerEvents="none" /><circle cx={element.x} cy={element.y} r="1.9" fill="none" stroke={goalkeeper ? '#fef08a' : 'transparent'} strokeWidth=".32" pointerEvents="none" /><text x={element.x} y={element.y + .43} textAnchor="middle" fontSize="1.32" fontWeight="900" fill={palette.contrast} pointerEvents="none">{participantLabel}</text></g>;
+      return <g key={element.id} onPointerDown={elementPointerDown} className={readOnly ? '' : 'diagram-draggable'}>{participantTitle ? <title>{participantTitle}</title> : null}<circle cx={element.x} cy={element.y} r="3.2" fill="transparent" /><circle cx={element.x} cy={element.y} r="1.52" fill={color} stroke={monochrome ? '#374151' : 'rgba(255,255,255,.9)'} strokeWidth=".34" pointerEvents="none" /><circle cx={element.x} cy={element.y} r="1.9" fill="none" stroke={goalkeeper ? '#fef08a' : 'transparent'} strokeWidth=".32" pointerEvents="none" /><text x={element.x} y={element.y + .43} textAnchor="middle" fontSize="1.32" fontWeight="900" fill={palette.contrast} pointerEvents="none">{participantLabel}</text></g>;
     }
     if (element.type === 'conditional_material') {
       const material = getTrainingConditionalMaterial(element.materialKey);
       const width = Number(element.width) || material?.geometry.width || 10;
       const height = Number(element.height) || material?.geometry.height || 8;
       return <g key={element.id} transform={`rotate(${Number(element.rotation) || 0} ${element.x} ${element.y})`}
-        onPointerDown={(event) => startDrag(event, raw)} className={readOnly ? '' : 'diagram-draggable'}>
+        onPointerDown={elementPointerDown} className={readOnly ? '' : 'diagram-draggable'}>
         <rect x={element.x - width / 2} y={element.y - height / 2} width={width} height={height}
           fill="transparent" />
         <TrainingTaskConditionalMaterialGraphic materialKey={element.materialKey} color={color} monochrome={monochrome}
@@ -207,11 +278,11 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
       const hitRadius = element.type === 'pole' ? 3.5 : element.type === 'mannequin' ? 3.2 : 2.8;
       const width = Number(element.width) || (element.type === 'goal' ? 10 : 6);
       const height = Number(element.height) || (element.type === 'goal' ? 4.5 : 3);
-      return <g key={element.id} onPointerDown={(event) => startDrag(event, raw)} className={readOnly ? '' : 'diagram-draggable'}>{goal ? <rect x={element.x - width / 2 - 1} y={element.y - height / 2 - 1} width={width + 2} height={height + 2} transform={`rotate(${Number(element.rotation) || 0} ${element.x} ${element.y})`} fill="transparent" /> : <circle cx={element.x} cy={element.y} r={hitRadius} fill="transparent" />}<g pointerEvents="none"><Material element={element} color={color} /></g></g>;
+      return <g key={element.id} onPointerDown={elementPointerDown} className={readOnly ? '' : 'diagram-draggable'}>{goal ? <rect x={element.x - width / 2 - 1} y={element.y - height / 2 - 1} width={width + 2} height={height + 2} transform={`rotate(${Number(element.rotation) || 0} ${element.x} ${element.y})`} fill="transparent" /> : <circle cx={element.x} cy={element.y} r={hitRadius} fill="transparent" />}<g pointerEvents="none"><Material element={element} color={color} /></g></g>;
     }
     if (element.type === 'text' || element.type === 'text_box') {
       const label = element.label || 'Texto'; const hitWidth = Math.max(6, label.length * 1.7);
-      return <g key={element.id} onPointerDown={(event) => startDrag(event, raw)} className={readOnly ? '' : 'diagram-draggable'}><rect x={element.x - hitWidth / 2} y={element.y - 3.2} width={hitWidth} height="4.5" fill="transparent" /><text x={element.x} y={element.y} textAnchor="middle" fontSize="3" fontWeight="900" fill={color} paintOrder="stroke" stroke={monochrome ? '#fff' : '#123522'} strokeWidth=".7" pointerEvents="none">{label}</text></g>;
+      return <g key={element.id} onPointerDown={elementPointerDown} className={readOnly ? '' : 'diagram-draggable'}><rect x={element.x - hitWidth / 2} y={element.y - 3.2} width={hitWidth} height="4.5" fill="transparent" /><text x={element.x} y={element.y} textAnchor="middle" fontSize="3" fontWeight="900" fill={color} paintOrder="stroke" stroke={monochrome ? '#fff' : '#123522'} strokeWidth=".7" pointerEvents="none">{label}</text></g>;
     }
     return null;
   };
@@ -227,10 +298,19 @@ export default function TrainingTaskDiagramCanvas({ elements = [], pitchType = '
     height: Math.abs(insertionDraft.end.y - insertionDraft.start.y),
   } : null;
   const interactionProps = preview ? {} : { onPointerMove: move, onPointerUp: stop, onPointerCancel: stop, onPointerDown: onBoardPointerDown };
-  return <svg ref={preview ? null : svgRef} viewBox="0 0 100 72" preserveAspectRatio={fitViewport ? 'xMidYMid meet' : undefined} role={preview ? undefined : 'img'} aria-label={preview ? undefined : readOnly ? 'Pizarra de entrenamiento' : 'Editor de pizarra de entrenamiento'} aria-hidden={preview ? true : undefined} data-interaction-mode={preview ? 'preview' : readOnly ? 'readonly' : activeTool === 'select' ? 'select' : 'insert'} className={`training-task-diagram-canvas block select-none ${fitViewport === 'all' ? 'h-full max-h-full w-full max-w-full' : fitViewport === 'desktop' ? 'h-auto w-full lg:h-full lg:max-h-full lg:max-w-full' : 'h-auto w-full'} ${preview ? 'pointer-events-none' : activeTool !== 'select' ? 'cursor-crosshair' : ''}`} {...interactionProps}>
+  const visibleMeasurements = [
+    ...(calibration?.showMeasurements ? measurements.filter((entry) => entry.visible !== false) : []),
+    ...(calibration && temporaryMeasurement ? [temporaryMeasurement] : []),
+  ];
+  return <svg ref={preview ? null : svgRef} viewBox={`0 0 ${bounds.width} ${bounds.height}`} preserveAspectRatio={fitViewport ? 'xMidYMid meet' : undefined} role={preview ? undefined : 'img'} aria-label={preview ? undefined : readOnly ? 'Pizarra de entrenamiento' : 'Editor de pizarra de entrenamiento'} aria-hidden={preview ? true : undefined} data-interaction-mode={preview ? 'preview' : readOnly ? 'readonly' : activeTool === 'select' ? 'select' : 'insert'} className={`training-task-diagram-canvas block select-none ${fitViewport === 'all' ? 'h-full max-h-full w-full max-w-full' : fitViewport === 'desktop' ? 'h-auto w-full lg:h-full lg:max-h-full lg:max-w-full' : 'h-auto w-full'} ${preview ? 'pointer-events-none' : activeTool !== 'select' ? 'cursor-crosshair' : ''}`} {...interactionProps}>
     <defs><marker id={markerId} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="2.7" markerHeight="2.7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="context-stroke" /></marker></defs>
-    <TrainingPitch pitchType={pitchType} monochrome={monochrome} />
+    <TrainingPitch pitchType={pitchType} monochrome={monochrome} width={bounds.width} height={bounds.height} metric={bounds.metric} />
+    {calibration?.showGrid ? <g opacity=".28" pointerEvents="none">
+      {Array.from({ length: Math.floor(bounds.width / calibration.gridStepM) + 1 }, (_, index) => index * calibration.gridStepM).map((x) => <line key={`grid-x-${x}`} x1={x} y1="0" x2={x} y2={bounds.height} stroke="#e2e8f0" strokeWidth=".16" />)}
+      {Array.from({ length: Math.floor(bounds.height / calibration.gridStepM) + 1 }, (_, index) => index * calibration.gridStepM).map((y) => <line key={`grid-y-${y}`} x1="0" y1={y} x2={bounds.width} y2={y} stroke="#e2e8f0" strokeWidth=".16" />)}
+    </g> : null}
     {rendered.map(renderElement)}
+    {visibleMeasurements.map((measurement) => { const from = resolveTrainingTaskMeasurementPoint(measurement.from, elements); const to = resolveTrainingTaskMeasurementPoint(measurement.to, elements); const distance = getTrainingTaskMeasurementDistance(measurement, elements); return from && to && distance != null ? <g key={measurement.id} pointerEvents="none"><line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="#facc15" strokeWidth=".55" strokeDasharray="1.5 1" /><circle cx={from.x} cy={from.y} r=".75" fill="#facc15" /><circle cx={to.x} cy={to.y} r=".75" fill="#facc15" /><text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 1} textAnchor="middle" fontSize="1.9" fontWeight="900" fill="#fff" paintOrder="stroke" stroke="#172033" strokeWidth=".55">{measurement.label || `${distance.toFixed(1)} m`}</text></g> : null; })}
     {draftPath ? <path d={draftPath} fill="none" stroke="#38bdf8" strokeWidth=".8" strokeDasharray="2 1.5" pointerEvents="none" /> : null}
     {draftZone ? <rect {...draftZone} fill="#38bdf8" fillOpacity=".14" stroke="#38bdf8" strokeWidth=".45" strokeDasharray="2 1.5" pointerEvents="none" /> : null}
     {adaptedSelected && !readOnly ? <g className="training-board-selection">

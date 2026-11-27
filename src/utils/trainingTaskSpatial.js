@@ -132,14 +132,18 @@ export const createTrainingTaskMeasurement = (from, to, id = crypto.randomUUID()
   id, from, to, colorKey: 'yellow', label: '', visible: true,
 });
 
-export const setTrainingTaskMeasurementDistance = (measurement, elements, distanceM) => {
+export const setTrainingTaskMeasurementDistance = (measurement, elements, distanceM, board = null) => {
   const desired = finitePositive(distanceM);
   const from = resolveTrainingTaskMeasurementPoint(measurement?.from, elements);
   const to = resolveTrainingTaskMeasurementPoint(measurement?.to, elements);
   if (!desired || !from || !to || measurement?.to?.kind !== 'element') return elements;
   const length = Math.hypot(to.x - from.x, to.y - from.y);
   const direction = length > 0 ? { x: (to.x - from.x) / length, y: (to.y - from.y) / length } : { x: 1, y: 0 };
-  const target = { x: from.x + direction.x * desired, y: from.y + direction.y * desired };
+  const bounds = getTrainingTaskBoardBounds(board);
+  const target = {
+    x: clamp(from.x + direction.x * desired, 0, bounds.width),
+    y: clamp(from.y + direction.y * desired, 0, bounds.height),
+  };
   return elements.map((element) => element.id === measurement.to.elementId
     ? { ...element, x: target.x, y: target.y } : element);
 };

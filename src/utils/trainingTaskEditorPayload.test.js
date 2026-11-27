@@ -8,6 +8,7 @@ import {
   serializeTrainingTaskEditorScene,
   TRAINING_TASK_EDITOR_PAYLOAD_LIMIT_BYTES,
 } from './trainingTaskEditorPayload.js';
+import { createTrainingTaskMetricCalibration } from './trainingTaskSpatial.js';
 
 assert.equal(readTrainingTaskEditorPayload({}).kind, 'empty', 'el objeto historico vacio significa sin pizarra');
 assert.equal(readTrainingTaskEditorPayload(null).kind, 'empty', 'null permitido por frontend significa sin pizarra');
@@ -27,6 +28,21 @@ assert.deepEqual(
   'las coordenadas relativas se limitan al viewBox 100 x 72',
 );
 assert.deepEqual(serializeTrainingTaskEditorScene(v1), v1, 'una escena V1 completa hace round-trip');
+
+const metricV1 = createTrainingTaskEditorSceneV1({
+  pitchType: 'full',
+  metricCalibration: createTrainingTaskMetricCalibration('full'),
+  elements: [{ id: 'cone-metric', type: 'cone', x: 120, y: -5 }],
+  measurements: [{ id: 'metric-line', from: { kind: 'point', x: -3, y: 10 }, to: { kind: 'element', elementId: 'cone-metric' } }],
+});
+assert.deepEqual(
+  { x: metricV1.board.elements[0].x, y: metricV1.board.elements[0].y },
+  { x: 105, y: 0 },
+  'una escena calibrada se limita al campo 105 × 60 m',
+);
+assert.equal(metricV1.board.measurements[0].from.x, 0, 'los puntos de medida también se limitan al campo');
+assert.deepEqual(serializeTrainingTaskEditorScene(metricV1), metricV1, 'calibración y mediciones hacen round-trip');
+assert.equal(readTrainingTaskEditorPayload({ ...metricV1, board: { ...metricV1.board, measurements: [...metricV1.board.measurements, metricV1.board.measurements[0]] } }).kind, 'invalid', 'los ids de medición duplicados se rechazan');
 
 const payloadWithExtensions = {
   schemaVersion: 1,

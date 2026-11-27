@@ -11,7 +11,7 @@ function TrainingTaskBoardPreview({ payload = {}, playerLookup, fallback = null,
   if (parsed.kind === 'empty') return fallback || <Placeholder />;
   if (parsed.kind !== 'v1') return fallback || <Placeholder unavailable />;
   if (!parsed.scene.board.elements?.length) return fallback || <Placeholder />;
-  return <div className="flex h-44 w-full items-center justify-center overflow-hidden bg-[#0b1e16] [&>svg]:h-full [&>svg]:w-auto [&>svg]:max-w-full" style={pitchAppearance === 'bw' ? { background: '#fff' } : undefined} aria-hidden="true"><TrainingTaskDiagramCanvas pitchAppearance={pitchAppearance} elements={parsed.scene.board.elements} pitchType={parsed.scene.board.pitchType === 'penalty-area' ? 'half' : parsed.scene.board.pitchType} players={playerLookup} readOnly renderMode="preview" /></div>;
+  return <div className="flex h-44 w-full items-center justify-center overflow-hidden bg-[#0b1e16] [&>svg]:h-full [&>svg]:w-auto [&>svg]:max-w-full" style={pitchAppearance === 'bw' ? { background: '#fff' } : undefined} aria-hidden="true"><TrainingTaskDiagramCanvas pitchAppearance={pitchAppearance} elements={parsed.scene.board.elements} pitchType={parsed.scene.board.pitchType === 'penalty-area' ? 'half' : parsed.scene.board.pitchType} metricCalibration={parsed.scene.board.metricCalibration} measurements={parsed.scene.board.measurements} players={playerLookup} readOnly renderMode="preview" /></div>;
 }
 
 export default memo(TrainingTaskBoardPreview);

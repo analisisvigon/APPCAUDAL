@@ -29,6 +29,7 @@ import {
   placeTrainingTaskBoardElement,
   resizeTrainingBoardMaterial,
   rotateTrainingBoardElement,
+  moveTrainingBoardElement,
   PARTICIPANT_ROLES,
   TRAINING_BOARD_PALETTE,
   TRAINING_BOARD_TEAM_OPTIONS,
@@ -47,6 +48,16 @@ import {
   getTrainingTaskZoneMetres,
   readTrainingTaskSpace,
   synchronizeTrainingTaskSpatialMetadata,
+  activateTrainingTaskMetricCalibration,
+  applyTrainingTaskMetricZoneDimensions,
+  createTrainingTaskMeasurement,
+  createTrainingTaskMetricCalibration,
+  getTrainingTaskBoardBounds,
+  getTrainingTaskMeasurementDistance,
+  getTrainingTaskMetricZoneDimensions,
+  readTrainingTaskMetricCalibration,
+  setTrainingTaskMeasurementDistance,
+  updateTrainingTaskMetricPitch,
 } from '../../utils/trainingTaskSpatial';
 
 const buttonClass = 'min-h-10 rounded-xl bg-white/[0.07] px-3 text-[11px] font-black text-slate-200 outline-none hover:bg-white/[0.12] focus-visible:ring-2 focus-visible:ring-caudal-electric disabled:opacity-35';
@@ -55,7 +66,7 @@ const TRACE_TYPES = new Set(['arrow', 'curved_arrow', 'dashed_arrow', 'double_ar
 const ROTATABLE_TYPES = new Set(['pole', 'mannequin', 'goal', 'mini_goal', 'conditional_material']);
 const COLOR_TYPES = new Set(['participant', 'player', 'opponent', 'cone', 'pole', 'mannequin', 'hoop', 'goal', 'mini_goal', 'conditional_material', 'arrow', 'curved_arrow', 'dashed_arrow', 'double_arrow', 'line', 'dashed_line', 'zone', 'text']);
 
-function ElementProperties({ element, players = [], space = null, onChange, onDuplicate, onDelete }) {
+function ElementProperties({ element, players = [], space = null, board = null, onChange, onDuplicate, onDelete }) {
   const participant = ['participant', 'player', 'opponent'].includes(element.type);
   const labelEditable = participant || ['zone', 'text', 'text_box'].includes(element.type);
   const selectedColor = getTrainingBoardColor(element, element.type === 'text' ? 'white' : 'blue').key;
@@ -63,6 +74,7 @@ function ElementProperties({ element, players = [], space = null, onChange, onDu
     ? getTrainingConditionalMaterial(element.materialKey) : null;
   const realPlayer = element.playerRef ? resolveTrainingTaskPlayerRef(element.playerRef, players) : null;
   const zoneMetres = getTrainingTaskZoneMetres(element, space);
+  const metricZone = getTrainingTaskMetricZoneDimensions(element, board);
   const materialPosition = getTrainingTaskSpatialPosition(element, space);
   return <aside className="mt-2 w-full shrink-0 rounded-xl bg-[#071526]/90 p-3 xl:mt-0 xl:w-72" aria-label="Propiedades del elemento seleccionado">
     <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[9px] font-black uppercase tracking-[0.16em] text-caudal-electric">Elemento seleccionado</p><p className="mt-0.5 text-sm font-black capitalize text-white">{element.role || conditionalMaterial?.name || element.type.replaceAll('_', ' ')}</p></div><div className="flex gap-1.5"><button type="button" disabled={!onDuplicate} onClick={onDuplicate} className={buttonClass}>Duplicar</button><button type="button" onClick={onDelete} className={`${buttonClass} text-red-200`}>Borrar</button></div></div>
@@ -78,7 +90,11 @@ function ElementProperties({ element, players = [], space = null, onChange, onDu
       {element.type === 'conditional_material' ? <><button type="button" onClick={() => onChange({ rotation: rotateTrainingBoardElement(element).rotation })} className={buttonClass}>Rotar 90°</button><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Tamaño · ancho<input type="number" min="3" max="28" value={element.width || conditionalMaterial?.geometry.width || 10} onChange={(event) => onChange(resizeTrainingBoardMaterial(element, { width: event.target.value }))} className={inputClass} /></label><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Tamaño · alto<input type="number" min="3" max="24" value={element.height || conditionalMaterial?.geometry.height || 8} onChange={(event) => onChange(resizeTrainingBoardMaterial(element, { height: event.target.value }))} className={inputClass} /></label></> : null}
       {['goal', 'mini_goal'].includes(element.type) ? <><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Ancho<input type="number" min="4" max="30" value={element.width || (element.type === 'goal' ? 10 : 6)} onChange={(event) => onChange({ width: Math.max(4, Math.min(30, Number(event.target.value))) })} className={inputClass} /></label><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Fondo<input type="number" min="2" max="14" value={element.height || (element.type === 'goal' ? 4.5 : 3)} onChange={(event) => onChange({ height: Math.max(2, Math.min(14, Number(event.target.value))) })} className={inputClass} /></label></> : null}
     </div>
-    {element.type === 'zone' ? <div className="mt-3 rounded-xl border border-caudal-electric/20 bg-caudal-electric/[0.06] p-2.5">
+    {element.type === 'zone' && metricZone ? <div className="mt-3 rounded-xl border border-caudal-electric/20 bg-caudal-electric/[0.06] p-2.5">
+      <p className="text-[9px] font-black uppercase tracking-wider text-caudal-electric">Dimensiones métricas</p>
+      <p className="mt-0.5 text-[10px] text-slate-400">Se actualizan al redimensionar la zona.</p>
+      <div className="mt-2 grid grid-cols-2 gap-2"><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Largo · m<input type="number" min="0.1" step="0.1" value={metricZone.lengthM} onChange={(event) => onChange(applyTrainingTaskMetricZoneDimensions(element, board, { lengthM: event.target.value, widthM: metricZone.widthM }))} className={inputClass} /></label><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Ancho · m<input type="number" min="0.1" step="0.1" value={metricZone.widthM} onChange={(event) => onChange(applyTrainingTaskMetricZoneDimensions(element, board, { lengthM: metricZone.lengthM, widthM: event.target.value }))} className={inputClass} /></label></div>
+    </div> : element.type === 'zone' ? <div className="mt-3 rounded-xl border border-caudal-electric/20 bg-caudal-electric/[0.06] p-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-[9px] font-black uppercase tracking-wider text-caudal-electric">Escala espacial</p><p className="mt-0.5 text-[10px] text-slate-400">{space ? element.spatialMode === 'measured' ? 'Medidas acreditadas para esta tarea.' : 'Zona visual/provisional.' : 'Añade ancho y largo en Organización para acreditar medidas.'}</p></div>{space ? <button type="button" onClick={() => onChange(accreditTrainingTaskZone(element, space))} className={buttonClass}>{element.spatialMode === 'measured' ? 'Recalcular' : 'Acreditar medidas'}</button> : null}</div>
       {space && zoneMetres ? <div className="mt-2 grid grid-cols-2 gap-2"><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Ancho · m<input type="number" min="0.1" step="0.1" value={element.spatialMode === 'measured' ? element.zoneWidthM ?? zoneMetres.widthM : zoneMetres.widthM} onChange={(event) => onChange(applyTrainingTaskZoneMetres(element, space, { widthM: event.target.value, lengthM: element.zoneLengthM ?? zoneMetres.lengthM }))} className={inputClass} /></label><label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Largo · m<input type="number" min="0.1" step="0.1" value={element.spatialMode === 'measured' ? element.zoneLengthM ?? zoneMetres.lengthM : zoneMetres.lengthM} onChange={(event) => onChange(applyTrainingTaskZoneMetres(element, space, { widthM: element.zoneWidthM ?? zoneMetres.widthM, lengthM: event.target.value }))} className={inputClass} /></label></div> : null}
     </div> : null}
@@ -90,7 +106,9 @@ function ElementProperties({ element, players = [], space = null, onChange, onDu
 const initialEditorState = (payload) => {
   const parsed = readTrainingTaskEditorPayload(payload);
   if (parsed.kind === 'v1') return { parsed, scene: parsed.scene };
-  if (parsed.kind === 'empty') return { parsed, scene: createTrainingTaskEditorSceneV1() };
+  if (parsed.kind === 'empty') return { parsed, scene: createTrainingTaskEditorSceneV1({
+    metricCalibration: createTrainingTaskMetricCalibration('full'),
+  }) };
   return { parsed, scene: null };
 };
 
@@ -101,6 +119,9 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
   const [selectedId, setSelectedId] = useState('');
   const [snap, setSnap] = useState(false);
   const [activeTool, setActiveTool] = useState('select');
+  const [measurementStart, setMeasurementStart] = useState(null);
+  const [temporaryMeasurement, setTemporaryMeasurement] = useState(null);
+  const [persistMeasurements, setPersistMeasurements] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const boardRef = useRef(null);
   const [view, setView] = useState('board');
@@ -110,10 +131,15 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
   const assignments = normalizeTrainingTaskAssignments(scene?.assignments);
   const selectedElement = elements.find((element) => element.id === selectedId) || null;
   const selectedView = selectedElement ? adaptLegacyTrainingBoardElement(selectedElement) : null;
-  const space = readTrainingTaskSpace(spaceWidthM, spaceLengthM);
+  const metricCalibration = readTrainingTaskMetricCalibration(scene?.board);
+  const bounds = getTrainingTaskBoardBounds(scene?.board);
+  const space = metricCalibration ? null : readTrainingTaskSpace(spaceWidthM, spaceLengthM);
 
   const commitScene = (nextScene, { recordHistory = true } = {}) => {
-    const serialized = serializeTrainingTaskEditorScene({ ...nextScene, board: { ...nextScene.board, elements: synchronizeTrainingTaskSpatialMetadata(nextScene.board.elements, space) } });
+    const nextMetricCalibration = readTrainingTaskMetricCalibration(nextScene?.board);
+    const serialized = serializeTrainingTaskEditorScene({ ...nextScene, board: { ...nextScene.board,
+      elements: nextMetricCalibration ? nextScene.board.elements
+        : synchronizeTrainingTaskSpatialMetadata(nextScene.board.elements, space) } });
     setScene(serialized);
     setHasPayload(true);
     if (recordHistory) setHistory((current) => pushDiagramHistory(current, serialized.board.elements));
@@ -122,9 +148,15 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
 
   const updateElements = (nextElements, options = {}) => {
     if (!editable || !scene) return;
+    const retainedIds = new Set(nextElements.map((element) => element.id));
+    const retainedMeasurements = (scene.board.measurements || []).filter((measurement) => (
+      (measurement.from?.kind !== 'element' || retainedIds.has(measurement.from.elementId)) &&
+      (measurement.to?.kind !== 'element' || retainedIds.has(measurement.to.elementId))
+    ));
     commitScene({
       ...scene,
-      board: { ...scene.board, elements: cloneDiagramElements(nextElements) },
+      board: { ...scene.board, elements: cloneDiagramElements(nextElements),
+        ...(scene.board.measurements ? { measurements: retainedMeasurements } : {}) },
     }, options);
   };
 
@@ -140,6 +172,15 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
     if (!selectedElement) return;
     updateElements(deleteSetPieceElement(elements, selectedId));
     setSelectedId('');
+  };
+
+  const duplicateSelected = () => {
+    if (!selectedElement || selectedElement.playerRef) return;
+    const copy = moveTrainingBoardElement(
+      duplicateDiagramElement(selectedElement, undefined, 0), 4, 4, bounds,
+    );
+    updateElements([...elements, copy]);
+    setSelectedId(copy.id);
   };
 
   const updateSelected = (fields) => {
@@ -171,8 +212,8 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
       setSelectedId(rosterElement.id); setActiveTool('select'); return;
     }
     const element = geometry?.point
-      ? placeTrainingTaskBoardElement(tool, geometry.point)
-      : drawTrainingTaskBoardElement(tool, geometry?.start, geometry?.end);
+      ? placeTrainingTaskBoardElement(tool, geometry.point, undefined, bounds)
+      : drawTrainingTaskBoardElement(tool, geometry?.start, geometry?.end, undefined, bounds);
     updateElements([...elements, element]);
     setSelectedId(element.id);
   };
@@ -186,6 +227,21 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
     if (selectedElement?.playerRef && getTrainingTaskPlayerRefKey(selectedElement.playerRef) === getTrainingTaskPlayerRefKey(assignment.playerRef)) setSelectedId('');
   };
   const changeTeamColor = (teamKey, colorKey) => updateAssignments(setTrainingTaskTeamColor(assignments, teamKey, colorKey));
+
+  const measurePoint = (endpoint) => {
+    if (!measurementStart) {
+      setMeasurementStart(endpoint);
+      setTemporaryMeasurement(null);
+      return;
+    }
+    const measurement = createTrainingTaskMeasurement(measurementStart, endpoint);
+    setMeasurementStart(null);
+    if (persistMeasurements) {
+      commitScene({ ...scene, board: { ...scene.board,
+        measurements: [...(scene.board.measurements || []), measurement] } });
+    } else setTemporaryMeasurement(measurement);
+    setActiveTool('select');
+  };
 
   useEffect(() => {
     if (!expanded) return undefined;
@@ -220,6 +276,7 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
       if (event.key === 'Escape' && activeTool !== 'select') {
         event.preventDefault();
         setActiveTool('select');
+        setMeasurementStart(null);
         return;
       }
       if (event.key === 'Escape' && selectedElement) {
@@ -267,8 +324,8 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
           <h3 id="training-task-board-title" className="mt-1 text-base font-black text-white">Pizarra profesional de entrenamiento</h3>
           <p className={`mt-1 text-xs text-slate-500 ${viewportFit && !expanded ? 'lg:hidden' : ''}`}>{readOnly ? 'Vista de la organización guardada.' : 'Opcional. Abrir la pizarra no añade datos hasta que realices un cambio.'}</p>
         </div>
-        <div className="flex items-end gap-2">{!readOnly ? <label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Terreno<select value={scene.board.pitchType === 'penalty-area' ? 'half' : scene.board.pitchType} onChange={(event) => commitScene({ ...scene, board: { ...scene.board, pitchType: event.target.value } })} className="min-h-10 rounded-xl border border-white/10 bg-white px-3 text-xs font-bold text-slate-950"><option value="full">Campo completo</option><option value="half">Medio campo</option><option value="blank">Terreno sin líneas</option></select></label> : null}<button type="button" className={buttonClass} onClick={() => setExpanded((current) => !current)}>{expanded ? 'Cerrar vista' : 'Ampliar pizarra'}</button></div>
-      </div> : <div className="flex shrink-0 items-center justify-between gap-2 px-1 pb-1"><p id="training-task-board-title" className="text-[10px] font-black uppercase tracking-[0.14em] text-caudal-electric">Pizarra · {getTrainingTaskSpatialCaption(space)}</p><button type="button" className={buttonClass} onClick={() => setExpanded((current) => !current)}>{expanded ? 'Cerrar vista' : 'Ampliar pizarra'}</button></div>}
+        <div className="flex items-end gap-2">{!readOnly ? <label className="grid gap-1 text-[9px] font-black uppercase tracking-wider text-slate-500">Terreno<select value={scene.board.pitchType === 'penalty-area' ? 'half' : scene.board.pitchType} onChange={(event) => commitScene({ ...scene, board: metricCalibration ? updateTrainingTaskMetricPitch(scene.board, event.target.value) : { ...scene.board, pitchType: event.target.value } })} className="min-h-10 rounded-xl border border-white/10 bg-white px-3 text-xs font-bold text-slate-950"><option value="full">Campo completo</option><option value="half">Medio campo</option><option value="blank">Terreno sin líneas</option></select></label> : null}<button type="button" className={buttonClass} onClick={() => setExpanded((current) => !current)}>{expanded ? 'Cerrar vista' : 'Ampliar pizarra'}</button></div>
+      </div> : <div className="flex shrink-0 items-center justify-between gap-2 px-1 pb-1"><p id="training-task-board-title" className="text-[10px] font-black uppercase tracking-[0.14em] text-caudal-electric">Pizarra · {metricCalibration ? '105 × 60 m' : getTrainingTaskSpatialCaption(space)}</p><button type="button" className={buttonClass} onClick={() => setExpanded((current) => !current)}>{expanded ? 'Cerrar vista' : 'Ampliar pizarra'}</button></div>}
 
       {!compact ? <div className={`mt-3 flex shrink-0 gap-1 rounded-xl bg-black/20 p-1 ${viewportFit && !expanded ? 'lg:mt-0 lg:w-64' : ''}`} role="tablist" aria-label="Vista del diseño"><button type="button" role="tab" aria-selected={view === 'board'} onClick={() => setView('board')} className={`${buttonClass} flex-1 ${view === 'board' ? 'bg-caudal-electric text-slate-950' : ''}`}>Pizarra</button><button type="button" role="tab" aria-selected={view === 'teams'} onClick={() => setView('teams')} className={`${buttonClass} flex-1 ${view === 'teams' ? 'bg-caudal-electric text-slate-950' : ''}`}>Equipos · {assignments.players.length}</button></div> : null}
       </div>
@@ -278,14 +335,35 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
         <div className={`mt-2 flex shrink-0 flex-wrap items-center gap-1.5 ${viewportFit && !expanded ? 'lg:mt-0' : ''}`} aria-label="Acciones de la pizarra">
         <button type="button" className={buttonClass} disabled={history.index <= 0} onClick={() => moveHistory('undo')}>Deshacer</button>
         <button type="button" className={buttonClass} disabled={history.index >= history.entries.length - 1} onClick={() => moveHistory('redo')}>Rehacer</button>
-        <button type="button" className={buttonClass} aria-pressed={snap} onClick={() => setSnap((current) => !current)}>Imán</button>
-        <button type="button" className={buttonClass} disabled={!selectedElement || Boolean(selectedElement?.playerRef)} onClick={() => { const copy = duplicateDiagramElement(selectedElement); updateElements([...elements, copy]); setSelectedId(copy.id); }}>Duplicar</button>
+        {!metricCalibration ? <button type="button" className={buttonClass} aria-pressed={snap} onClick={() => setSnap((current) => !current)}>Imán</button> : null}
+        <button type="button" className={buttonClass} disabled={!selectedElement || Boolean(selectedElement?.playerRef)} onClick={duplicateSelected}>Duplicar</button>
         <button type="button" className={`${buttonClass} text-amber-100`} disabled={!selectedElement} onClick={deleteSelected}>Borrar</button>
         <button type="button" className={`${buttonClass} text-red-200`} disabled={!elements.length} onClick={() => { updateElements([]); setSelectedId(''); }}>Limpiar</button>
         </div>
       </div> : null}
 
-      {view === 'board' && !readOnly && activeTool !== 'select' ? <p className="mt-1.5 text-center text-[10px] font-bold text-caudal-electric">{activeTool === 'zone' || TRACE_TYPES.has(activeTool) ? 'Arrastra sobre el campo para dibujar' : 'Haz clic en el campo para colocar · Escape para seleccionar'}</p> : null}
+      {view === 'board' && !readOnly ? <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-xl border border-white/10 bg-black/15 p-2" aria-label="Precisión métrica de la pizarra">
+        {metricCalibration ? <>
+          <span className="mr-1 text-[10px] font-black uppercase tracking-wider text-caudal-electric">Campo calibrado · 105 × 60 m</span>
+          <button type="button" className={buttonClass} aria-pressed={metricCalibration.showGrid} onClick={() => commitScene({ ...scene, board: { ...scene.board, metricCalibration: { ...metricCalibration, showGrid: !metricCalibration.showGrid } } })}>Cuadrícula</button>
+          <button type="button" className={buttonClass} aria-pressed={metricCalibration.snapToGrid} onClick={() => commitScene({ ...scene, board: { ...scene.board, metricCalibration: { ...metricCalibration, snapToGrid: !metricCalibration.snapToGrid } } })}>Ajustar</button>
+          <button type="button" className={buttonClass} aria-pressed={metricCalibration.showZoneDimensions} onClick={() => commitScene({ ...scene, board: { ...scene.board, metricCalibration: { ...metricCalibration, showZoneDimensions: !metricCalibration.showZoneDimensions } } })}>Medidas de zonas</button>
+          <button type="button" className={buttonClass} aria-pressed={metricCalibration.showMeasurements} onClick={() => commitScene({ ...scene, board: { ...scene.board, metricCalibration: { ...metricCalibration, showMeasurements: !metricCalibration.showMeasurements } } })}>Líneas medidas</button>
+          <label className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-slate-500">Paso<select value={metricCalibration.gridStepM} onChange={(event) => commitScene({ ...scene, board: { ...scene.board, metricCalibration: { ...metricCalibration, gridStepM: Number(event.target.value) } } })} className="min-h-10 rounded-xl border border-white/10 bg-white px-2 text-xs font-bold text-slate-950"><option value="1">1 m</option><option value="2">2 m</option><option value="5">5 m</option><option value="10">10 m</option></select></label>
+          <button type="button" className={`${buttonClass} ${activeTool === 'measure' ? 'bg-caudal-electric text-slate-950' : ''}`} aria-pressed={activeTool === 'measure'} onClick={() => { setActiveTool('measure'); setSelectedId(''); setMeasurementStart(null); }}>Medir distancia</button>
+          <label className="flex min-h-10 items-center gap-2 rounded-xl bg-white/[0.05] px-3 text-[10px] font-bold text-slate-300"><input type="checkbox" checked={persistMeasurements} onChange={(event) => setPersistMeasurements(event.target.checked)} />Conservar medida</label>
+        </> : <button type="button" className={buttonClass} onClick={() => {
+          if (elements.length && !window.confirm('La pizarra conservará exactamente la composición visual actual y pasará a usar coordenadas reales del campo 105 × 60 m. Esta acción se guardará en la tarea. ¿Continuar?')) return;
+          commitScene({ ...scene, board: activateTrainingTaskMetricCalibration(scene.board) });
+        }}>Activar campo 105 × 60 m</button>}
+      </div> : null}
+
+      {view === 'board' && metricCalibration && !readOnly && (scene.board.measurements?.length || temporaryMeasurement) ? <div className="mt-2 grid gap-1.5 rounded-xl border border-white/10 bg-black/15 p-2 sm:grid-cols-2 xl:grid-cols-3">
+        {(scene.board.measurements || []).map((measurement, index) => { const distance = getTrainingTaskMeasurementDistance(measurement, elements); const adjustable = measurement.to?.kind === 'element'; return <div key={measurement.id} className="flex items-center gap-2 rounded-lg bg-white/[0.05] p-2"><span className="min-w-0 flex-1 text-[10px] font-bold text-slate-300">Medida {index + 1} · {distance?.toFixed(1) || '—'} m</span>{adjustable ? <input type="number" min="0.1" step="0.1" aria-label={`Distancia exacta de la medida ${index + 1}`} value={distance?.toFixed(1) || ''} onChange={(event) => updateElements(setTrainingTaskMeasurementDistance(measurement, elements, event.target.value, scene.board))} className="h-9 w-20 rounded-lg bg-white px-2 text-xs font-bold text-slate-950" /> : null}<button type="button" className={`${buttonClass} min-h-9 px-2 text-red-200`} onClick={() => commitScene({ ...scene, board: { ...scene.board, measurements: scene.board.measurements.filter((entry) => entry.id !== measurement.id) } })}>Quitar</button></div>; })}
+        {temporaryMeasurement ? <div className="flex items-center gap-2 rounded-lg bg-white/[0.05] p-2"><span className="min-w-0 flex-1 text-[10px] font-bold text-slate-300">Medida temporal · {getTrainingTaskMeasurementDistance(temporaryMeasurement, elements)?.toFixed(1)} m</span><button type="button" className={`${buttonClass} min-h-9 px-2`} onClick={() => setTemporaryMeasurement(null)}>Ocultar</button></div> : null}
+      </div> : null}
+
+      {view === 'board' && !readOnly && activeTool !== 'select' ? <p className="mt-1.5 text-center text-[10px] font-bold text-caudal-electric">{activeTool === 'measure' ? measurementStart ? 'Selecciona el segundo punto u objeto' : 'Selecciona el primer punto u objeto' : activeTool === 'zone' || TRACE_TYPES.has(activeTool) ? 'Arrastra sobre el campo para dibujar' : 'Haz clic en el campo para colocar · Escape para seleccionar'}</p> : null}
       {view === 'board' ? <div className={`${compact ? 'mt-1' : 'mt-2'} min-w-0 gap-2 ${expanded ? 'flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row' : viewportFit ? 'lg:flex lg:min-h-0 lg:flex-1 lg:overflow-hidden' : 'xl:flex'}`}>
         <div className={`w-full min-w-0 flex-1 rounded-xl bg-[#0b1e16] p-1 shadow-[0_18px_45px_rgba(0,0,0,.25)] ${expanded ? 'flex min-h-0 items-center justify-center overflow-hidden' : viewportFit ? 'overflow-hidden lg:flex lg:min-h-0 lg:items-center lg:justify-center' : 'overflow-auto'}`}>
           <div className={`${readOnly || expanded || viewportFit ? 'min-w-0' : 'min-w-[520px]'} overflow-hidden rounded-lg ${expanded ? 'flex h-full max-h-full w-full items-center justify-center' : viewportFit ? 'lg:flex lg:h-full lg:max-h-full lg:w-full lg:items-center lg:justify-center' : ''}`}>
@@ -298,13 +376,17 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
             activeTool={activeTool}
             onInsert={insertElement}
             readOnly={!editable}
-            snap={snap}
+            snap={metricCalibration ? metricCalibration.snapToGrid : snap}
+            metricCalibration={metricCalibration}
+            measurements={scene.board.measurements || []}
+            temporaryMeasurement={temporaryMeasurement}
+            onMeasurePoint={measurePoint}
             players={players}
             fitViewport={expanded ? 'all' : viewportFit ? 'desktop' : false}
           />
           </div>
         </div>
-        {!readOnly && selectedView ? <div className={expanded ? 'max-h-[28dvh] min-h-0 overflow-y-auto lg:max-h-none lg:w-60 lg:shrink-0 xl:w-72' : viewportFit ? 'lg:min-h-0 lg:w-60 lg:shrink-0 lg:overflow-y-auto xl:w-72' : ''}><ElementProperties element={selectedView} players={players} space={space} onChange={updateSelected} onDuplicate={selectedElement.playerRef ? null : () => { const copy = duplicateDiagramElement(selectedElement); updateElements([...elements, copy]); setSelectedId(copy.id); }} onDelete={deleteSelected} /></div> : null}
+        {!readOnly && selectedView ? <div className={expanded ? 'max-h-[28dvh] min-h-0 overflow-y-auto lg:max-h-none lg:w-60 lg:shrink-0 xl:w-72' : viewportFit ? 'lg:min-h-0 lg:w-60 lg:shrink-0 lg:overflow-y-auto xl:w-72' : ''}><ElementProperties element={selectedView} players={players} space={space} board={scene.board} onChange={updateSelected} onDuplicate={selectedElement.playerRef ? null : duplicateSelected} onDelete={deleteSelected} /></div> : null}
       </div> : null}
       {!readOnly ? <p className={`mt-2 text-right text-[10px] font-bold ${size.exceedsLimit ? 'text-red-200' : 'text-slate-600'}`}>{size.bytes.toLocaleString('es-ES')} / 262.144 bytes</p> : null}
     </section>

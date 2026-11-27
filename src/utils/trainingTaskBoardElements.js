@@ -270,36 +270,43 @@ export const createTrainingTaskBoardElement = (tool, createId = createDiagramEle
   return { id, type: 'text', x: 50, y: 36, colorKey: 'white', label: 'Texto' };
 };
 
-export const placeTrainingTaskBoardElement = (tool, point, createId = createDiagramElementId) => {
+const boardBounds = (bounds) => ({
+  width: Number.isFinite(Number(bounds?.width)) ? Number(bounds.width) : 100,
+  height: Number.isFinite(Number(bounds?.height)) ? Number(bounds.height) : 72,
+});
+
+export const placeTrainingTaskBoardElement = (tool, point, createId = createDiagramElementId, bounds = null) => {
+  const limit = boardBounds(bounds);
   const element = createTrainingTaskBoardElement(tool, createId);
   const placed = {
     ...element,
-    x: Math.max(0, Math.min(100, finiteNumber(point?.x, element.x))),
-    y: Math.max(0, Math.min(72, finiteNumber(point?.y, element.y))),
+    x: Math.max(0, Math.min(limit.width, finiteNumber(point?.x, element.x))),
+    y: Math.max(0, Math.min(limit.height, finiteNumber(point?.y, element.y))),
   };
-  return placed.type === 'conditional_material' ? moveTrainingBoardElement(placed, 0, 0) : placed;
+  return placed.type === 'conditional_material' ? moveTrainingBoardElement(placed, 0, 0, limit) : placed;
 };
 
-export const drawTrainingTaskBoardElement = (tool, start, end, createId = createDiagramElementId) => {
+export const drawTrainingTaskBoardElement = (tool, start, end, createId = createDiagramElementId, bounds = null) => {
+  const limit = boardBounds(bounds);
   const element = createTrainingTaskBoardElement(tool, createId);
-  const x1 = Math.max(0, Math.min(100, finiteNumber(start?.x, 0)));
-  const y1 = Math.max(0, Math.min(72, finiteNumber(start?.y, 0)));
-  const x2 = Math.max(0, Math.min(100, finiteNumber(end?.x, x1)));
-  const y2 = Math.max(0, Math.min(72, finiteNumber(end?.y, y1)));
+  const x1 = Math.max(0, Math.min(limit.width, finiteNumber(start?.x, 0)));
+  const y1 = Math.max(0, Math.min(limit.height, finiteNumber(start?.y, 0)));
+  const x2 = Math.max(0, Math.min(limit.width, finiteNumber(end?.x, x1)));
+  const y2 = Math.max(0, Math.min(limit.height, finiteNumber(end?.y, y1)));
   if (tool === 'zone') {
-    const x = Math.min(96, Math.min(x1, x2));
-    const y = Math.min(68, Math.min(y1, y2));
+    const x = Math.min(limit.width - 4, Math.min(x1, x2));
+    const y = Math.min(limit.height - 4, Math.min(y1, y2));
     return {
       ...element,
       x,
       y,
-      width: Math.min(100 - x, Math.max(4, Math.abs(x2 - x1))),
-      height: Math.min(72 - y, Math.max(4, Math.abs(y2 - y1))),
+      width: Math.min(limit.width - x, Math.max(4, Math.abs(x2 - x1))),
+      height: Math.min(limit.height - y, Math.max(4, Math.abs(y2 - y1))),
     };
   }
   const trace = { ...element, x1, y1, x2, y2 };
   if (tool !== 'curved_arrow') return trace;
-  return { ...trace, controlX: (x1 + x2) / 2, controlY: Math.max(0, Math.min(72, (y1 + y2) / 2 - 10)) };
+  return { ...trace, controlX: (x1 + x2) / 2, controlY: Math.max(0, Math.min(limit.height, (y1 + y2) / 2 - 10)) };
 };
 
 export const getTrainingBoardColor = (element, fallback = 'blue') => {
@@ -331,14 +338,15 @@ export const rotateTrainingBoardElement = (element, step = 90) => ({
   rotation: ((finiteNumber(element?.rotation, 0) + finiteNumber(step, 90)) % 360 + 360) % 360,
 });
 
-export const moveTrainingBoardElement = (element, deltaX = 0, deltaY = 0) => {
+export const moveTrainingBoardElement = (element, deltaX = 0, deltaY = 0, bounds = null) => {
+  const limit = boardBounds(bounds);
   const dx = finiteNumber(deltaX, 0);
   const dy = finiteNumber(deltaY, 0);
   if (['arrow', 'curved_arrow', 'dashed_arrow', 'double_arrow', 'line', 'dashed_line'].includes(element?.type)) {
     const xValues = [element.x1, element.x2, ...(element.type === 'curved_arrow' ? [element.controlX] : [])].map((value) => finiteNumber(value, 0));
     const yValues = [element.y1, element.y2, ...(element.type === 'curved_arrow' ? [element.controlY] : [])].map((value) => finiteNumber(value, 0));
-    const boundedDx = clampRange(dx, -Math.min(...xValues), 100 - Math.max(...xValues));
-    const boundedDy = clampRange(dy, -Math.min(...yValues), 72 - Math.max(...yValues));
+    const boundedDx = clampRange(dx, -Math.min(...xValues), limit.width - Math.max(...xValues));
+    const boundedDy = clampRange(dy, -Math.min(...yValues), limit.height - Math.max(...yValues));
     const moved = {
       ...element,
       x1: finiteNumber(element.x1, 0) + boundedDx,
@@ -355,7 +363,7 @@ export const moveTrainingBoardElement = (element, deltaX = 0, deltaY = 0) => {
   if (element?.type === 'zone') {
     const width = Math.max(4, finiteNumber(element.width, 22));
     const height = Math.max(4, finiteNumber(element.height, 12));
-    return { ...element, x: clampRange(finiteNumber(element.x, 0) + dx, 0, 100 - width), y: clampRange(finiteNumber(element.y, 0) + dy, 0, 72 - height) };
+    return { ...element, x: clampRange(finiteNumber(element.x, 0) + dx, 0, limit.width - width), y: clampRange(finiteNumber(element.y, 0) + dy, 0, limit.height - height) };
   }
   const goal = ['goal', 'mini_goal'].includes(element?.type);
   const conditional = element?.type === 'conditional_material';
@@ -366,8 +374,8 @@ export const moveTrainingBoardElement = (element, deltaX = 0, deltaY = 0) => {
   const halfHeight = goal || conditional ? (quarterTurn ? width : height) / 2 : 0;
   return {
     ...element,
-    x: clampRange(finiteNumber(element?.x, 0) + dx, halfWidth, 100 - halfWidth),
-    y: clampRange(finiteNumber(element?.y, 0) + dy, halfHeight, 72 - halfHeight),
+    x: clampRange(finiteNumber(element?.x, 0) + dx, halfWidth, limit.width - halfWidth),
+    y: clampRange(finiteNumber(element?.y, 0) + dy, halfHeight, limit.height - halfHeight),
   };
 };
 
@@ -382,14 +390,15 @@ export const resizeTrainingBoardMaterial = (element, fields = {}) => {
   return { width: resized.width, height: resized.height, x: bounded.x, y: bounded.y };
 };
 
-export const resizeTrainingBoardZone = (element, deltaX = 0, deltaY = 0) => {
-  const x = Math.max(0, Math.min(96, finiteNumber(element?.x, 0)));
-  const y = Math.max(0, Math.min(68, finiteNumber(element?.y, 0)));
+export const resizeTrainingBoardZone = (element, deltaX = 0, deltaY = 0, bounds = null) => {
+  const limit = boardBounds(bounds);
+  const x = Math.max(0, Math.min(limit.width - 4, finiteNumber(element?.x, 0)));
+  const y = Math.max(0, Math.min(limit.height - 4, finiteNumber(element?.y, 0)));
   const width = finiteNumber(element?.width, 22) + finiteNumber(deltaX, 0);
   const height = finiteNumber(element?.height, 12) + finiteNumber(deltaY, 0);
   return {
-    width: Math.max(4, Math.min(100 - x, width)),
-    height: Math.max(4, Math.min(72 - y, height)),
+    width: Math.max(4, Math.min(limit.width - x, width)),
+    height: Math.max(4, Math.min(limit.height - y, height)),
   };
 };
 
