@@ -54,8 +54,13 @@ assert.match(materialGraphic, /material\.icon\.shapes\.map/, 'los iconos se dibu
 assert.match(elements, /materialKey,\s*x: 50/);
 assert.match(elements, /'conditional_material'/);
 assert.match(preview, /TrainingTaskDiagramCanvas/, 'la vista previa comparte el renderer del editor');
+assert.match(preview, /metricCalibration=\{parsed\.scene\.board\.metricCalibration\}/, 'la vista previa conserva la calibración');
+assert.match(preview, /measurements=\{parsed\.scene\.board\.measurements\}/, 'la vista previa conserva las mediciones');
 assert.match(sessionPrint, /TrainingTaskBoardPreview/, 'la sesión imprimible utiliza el preview compartido');
 assert.match(libraryPrint, /TrainingTaskDiagramCanvas/, 'el PDF de biblioteca utiliza el renderer compartido');
+assert.match(libraryPrint, /metricCalibration=\{parsed\.scene\.board\.metricCalibration\}/, 'el PDF de biblioteca conserva la calibración');
+assert.match(canvas, /viewBox=\{`0 0 \$\{bounds\.width\} \$\{bounds\.height\}`\}/, 'el SVG usa dimensiones independientes de píxeles');
+assert.match(canvas, /getTrainingTaskMeasurementDistance/, 'el mismo renderer actualiza las distancias al mover objetos');
 assert.match(css, /training-task-diagram-canvas[\s\S]*touch-action: none/, 'Tareas define su interaccion tactil sin depender de estilos ABP');
 assert.match(elements, /label: 'Participantes'/);
 assert.match(elements, /label: 'Material'/);

@@ -1,3 +1,5 @@
+import { moveTrainingBoardElement } from './trainingTaskBoardElements.js';
+
 const BOARD_WIDTH = 100;
 const BOARD_LENGTH = 72;
 const MATERIAL_TYPES = new Set(['ball', 'cone', 'pole', 'mannequin', 'hoop', 'goal', 'mini_goal', 'block']);
@@ -32,13 +34,22 @@ export const createTrainingTaskMetricCalibration = (pitchType = 'full') => ({
 export const readTrainingTaskMetricCalibration = (board) => {
   const value = board?.metricCalibration;
   if (!value || value.version !== TRAINING_TASK_METRIC_CALIBRATION_VERSION || value.unit !== 'm' ||
+      typeof value.fieldLengthM !== 'number' || typeof value.fieldWidthM !== 'number' ||
+      typeof value.viewOriginXM !== 'number' || typeof value.viewLengthM !== 'number' ||
+      typeof value.viewWidthM !== 'number' || typeof value.gridStepM !== 'number' ||
       Number(value.fieldLengthM) !== TRAINING_TASK_REFERENCE_FIELD.lengthM ||
       Number(value.fieldWidthM) !== TRAINING_TASK_REFERENCE_FIELD.widthM) return null;
   const viewLengthM = finitePositive(value.viewLengthM);
   const viewWidthM = finitePositive(value.viewWidthM);
+  const viewOriginXM = Number(value.viewOriginXM);
+  const half = board?.pitchType === 'half' || board?.pitchType === 'penalty-area';
   if (!viewLengthM || !viewWidthM || viewLengthM > TRAINING_TASK_REFERENCE_FIELD.lengthM ||
-      viewWidthM > TRAINING_TASK_REFERENCE_FIELD.widthM) return null;
-  return { ...value, viewLengthM, viewWidthM,
+      viewWidthM !== TRAINING_TASK_REFERENCE_FIELD.widthM || !Number.isFinite(viewOriginXM) ||
+      viewLengthM !== (half ? TRAINING_TASK_REFERENCE_FIELD.lengthM / 2 : TRAINING_TASK_REFERENCE_FIELD.lengthM) ||
+      viewOriginXM !== (half ? TRAINING_TASK_REFERENCE_FIELD.lengthM / 2 : 0) ||
+      !['showGrid', 'snapToGrid', 'showZoneDimensions', 'showMeasurements']
+        .every((key) => typeof value[key] === 'boolean')) return null;
+  return { ...value, viewOriginXM, viewLengthM, viewWidthM,
     gridStepM: [1, 2, 5, 10].includes(Number(value.gridStepM)) ? Number(value.gridStepM) : 5 };
 };
 
@@ -128,7 +139,7 @@ export const getTrainingTaskMeasurementDistance = (measurement, elements = []) =
   return from && to ? round(Math.hypot(to.x - from.x, to.y - from.y)) : null;
 };
 
-export const createTrainingTaskMeasurement = (from, to, id = crypto.randomUUID()) => ({
+export const createTrainingTaskMeasurement = (from, to, id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`) => ({
   id, from, to, colorKey: 'yellow', label: '', visible: true,
 });
 
@@ -145,7 +156,7 @@ export const setTrainingTaskMeasurementDistance = (measurement, elements, distan
     y: clamp(from.y + direction.y * desired, 0, bounds.height),
   };
   return elements.map((element) => element.id === measurement.to.elementId
-    ? { ...element, x: target.x, y: target.y } : element);
+    ? moveTrainingBoardElement(element, target.x - to.x, target.y - to.y, bounds) : element);
 };
 
 export const snapTrainingTaskMetricValue = (value, calibration) => {

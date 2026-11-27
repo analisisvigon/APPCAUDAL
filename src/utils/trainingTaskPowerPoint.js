@@ -64,11 +64,19 @@ const inchPoint = (x, y, board) => ({
 
 const boardForScene = (layout, sceneBoard) => {
   const bounds = getTrainingTaskBoardBounds(sceneBoard);
+  const calibration = readTrainingTaskMetricCalibration(sceneBoard);
+  const contentRatio = bounds.width / bounds.height;
+  const layoutRatio = layout.w / layout.h;
+  const w = contentRatio >= layoutRatio ? layout.w : layout.h * contentRatio;
+  const h = contentRatio >= layoutRatio ? layout.w / contentRatio : layout.h;
   return {
     ...layout,
-    h: Math.min(layout.h, layout.w * bounds.height / bounds.width),
+    x: layout.x + (layout.w - w) / 2,
+    w,
+    h,
     viewWidth: bounds.width,
     viewHeight: bounds.height,
+    showZoneDimensions: calibration?.showZoneDimensions === true,
   };
 };
 
@@ -530,6 +538,8 @@ const addBoardElement = (slide, board, rawElement, players) => {
     const width = board.w * widthUnits / boardViewWidth(board);
     const height = board.h * heightUnits / boardViewHeight(board);
     const transparency = Math.max(0, Math.min(100, 100 - (Number(element.opacity) || 0.18) * 100));
+    const metricLabel = board.showZoneDimensions ? `${widthUnits.toFixed(1)} × ${heightUnits.toFixed(1)} m` : '';
+    const zoneLabel = [cleanValue(element.label), metricLabel].filter(Boolean).join(' · ');
     slide.addShape('rect', {
       x: point.x,
       y: point.y,
@@ -541,10 +551,10 @@ const addBoardElement = (slide, board, rawElement, players) => {
         width: 1,
         dashType: element.borderStyle === 'dashed' ? 'sysDash' : 'solid',
       },
-      objectName: `Pizarra - zona${element.label ? ` ${element.label}` : ''}`,
+      objectName: `Pizarra - zona${zoneLabel ? ` ${zoneLabel}` : ''}`,
     });
-    if (element.label) {
-      slide.addText(String(element.label), {
+    if (zoneLabel) {
+      slide.addText(zoneLabel, {
         x: point.x + board.w * 1.4 / BOARD_VIEW_WIDTH,
         y: point.y + board.h * 0.5 / BOARD_VIEW_HEIGHT,
         w: Math.max(0.5, width - board.w * 2 / BOARD_VIEW_WIDTH),
@@ -555,7 +565,7 @@ const addBoardElement = (slide, board, rawElement, players) => {
         color: 'FFFFFF',
         margin: 0,
         fit: 'shrink',
-        objectName: `Pizarra - texto de zona ${element.label}`,
+        objectName: `Pizarra - texto de zona ${zoneLabel}`,
       });
     }
     return;
@@ -1296,10 +1306,11 @@ const getTaskPowerPointLayout = (task = {}) => {
 
 export const inspectTrainingTaskPowerPointLayout = (task = {}) => {
   const layout = getTaskPowerPointLayout(task);
+  const parsedBoard = readTrainingTaskEditorPayload(task.editorPayload ?? task.editor_payload);
   return {
     page: { width: SLIDE_WIDTH, height: SLIDE_HEIGHT },
     leftSections: layout.leftSections,
-    board: BOARD_RECT,
+    board: parsedBoard.kind === 'v1' ? boardForScene(BOARD_RECT, parsedBoard.scene.board) : BOARD_RECT,
     rightFields: layout.detailFields,
     pageBottom: PAGE_BOTTOM,
   };

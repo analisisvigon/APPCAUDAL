@@ -152,7 +152,16 @@ test('exports calibrated field geometry and distance labels as editable shapes',
   assert.match(slideXml, /Pizarra - límites métricos 105 × 60 m/);
   assert.match(slideXml, /Pizarra - medición 1/);
   assert.match(slideXml, /10.0 m/);
+  assert.match(slideXml, /25.0 × 20.0 m/);
   assert.doesNotMatch(slideXml, /<p:pic>/, 'campo, zonas y mediciones siguen siendo formas editables');
+  const geometry = inspectTrainingTaskPowerPointLayout({ editorPayload });
+  assert.ok(Math.abs(geometry.board.w / geometry.board.h - 105 / 60) < 0.001, 'PowerPoint conserva la proporción 105:60');
+  const halfPayload = createTrainingTaskEditorSceneV1({
+    pitchType: 'half',
+    metricCalibration: createTrainingTaskMetricCalibration('half'),
+  });
+  const halfGeometry = inspectTrainingTaskPowerPointLayout({ editorPayload: halfPayload });
+  assert.ok(Math.abs(halfGeometry.board.w / halfGeometry.board.h - 52.5 / 60) < 0.001, 'PowerPoint conserva la proporción real del medio campo');
 });
 
 test('exports every conditional catalog material as native editable PowerPoint shapes', async () => {

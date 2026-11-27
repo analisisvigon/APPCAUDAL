@@ -227,6 +227,10 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
     if (selectedElement?.playerRef && getTrainingTaskPlayerRefKey(selectedElement.playerRef) === getTrainingTaskPlayerRefKey(assignment.playerRef)) setSelectedId('');
   };
   const changeTeamColor = (teamKey, colorKey) => updateAssignments(setTrainingTaskTeamColor(assignments, teamKey, colorKey));
+  const updateMetricSettings = (fields) => commitScene({
+    ...scene,
+    board: { ...scene.board, metricCalibration: { ...metricCalibration, ...fields } },
+  }, { recordHistory: false });
 
   const measurePoint = (endpoint) => {
     if (!measurementStart) {
@@ -238,7 +242,7 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
     setMeasurementStart(null);
     if (persistMeasurements) {
       commitScene({ ...scene, board: { ...scene.board,
-        measurements: [...(scene.board.measurements || []), measurement] } });
+        measurements: [...(scene.board.measurements || []), measurement] } }, { recordHistory: false });
     } else setTemporaryMeasurement(measurement);
     setActiveTool('select');
   };
@@ -345,11 +349,11 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
       {view === 'board' && !readOnly ? <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-xl border border-white/10 bg-black/15 p-2" aria-label="Precisión métrica de la pizarra">
         {metricCalibration ? <>
           <span className="mr-1 text-[10px] font-black uppercase tracking-wider text-caudal-electric">Campo calibrado · 105 × 60 m</span>
-          <button type="button" className={buttonClass} aria-pressed={metricCalibration.showGrid} onClick={() => commitScene({ ...scene, board: { ...scene.board, metricCalibration: { ...metricCalibration, showGrid: !metricCalibration.showGrid } } })}>Cuadrícula</button>
-          <button type="button" className={buttonClass} aria-pressed={metricCalibration.snapToGrid} onClick={() => commitScene({ ...scene, board: { ...scene.board, metricCalibration: { ...metricCalibration, snapToGrid: !metricCalibration.snapToGrid } } })}>Ajustar</button>
-          <button type="button" className={buttonClass} aria-pressed={metricCalibration.showZoneDimensions} onClick={() => commitScene({ ...scene, board: { ...scene.board, metricCalibration: { ...metricCalibration, showZoneDimensions: !metricCalibration.showZoneDimensions } } })}>Medidas de zonas</button>
-          <button type="button" className={buttonClass} aria-pressed={metricCalibration.showMeasurements} onClick={() => commitScene({ ...scene, board: { ...scene.board, metricCalibration: { ...metricCalibration, showMeasurements: !metricCalibration.showMeasurements } } })}>Líneas medidas</button>
-          <label className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-slate-500">Paso<select value={metricCalibration.gridStepM} onChange={(event) => commitScene({ ...scene, board: { ...scene.board, metricCalibration: { ...metricCalibration, gridStepM: Number(event.target.value) } } })} className="min-h-10 rounded-xl border border-white/10 bg-white px-2 text-xs font-bold text-slate-950"><option value="1">1 m</option><option value="2">2 m</option><option value="5">5 m</option><option value="10">10 m</option></select></label>
+          <button type="button" className={buttonClass} aria-pressed={metricCalibration.showGrid} onClick={() => updateMetricSettings({ showGrid: !metricCalibration.showGrid })}>Cuadrícula</button>
+          <button type="button" className={buttonClass} aria-pressed={metricCalibration.snapToGrid} onClick={() => updateMetricSettings({ snapToGrid: !metricCalibration.snapToGrid })}>Ajustar</button>
+          <button type="button" className={buttonClass} aria-pressed={metricCalibration.showZoneDimensions} onClick={() => updateMetricSettings({ showZoneDimensions: !metricCalibration.showZoneDimensions })}>Medidas de zonas</button>
+          <button type="button" className={buttonClass} aria-pressed={metricCalibration.showMeasurements} onClick={() => updateMetricSettings({ showMeasurements: !metricCalibration.showMeasurements })}>Líneas medidas</button>
+          <label className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-slate-500">Paso<select value={metricCalibration.gridStepM} onChange={(event) => updateMetricSettings({ gridStepM: Number(event.target.value) })} className="min-h-10 rounded-xl border border-white/10 bg-white px-2 text-xs font-bold text-slate-950"><option value="1">1 m</option><option value="2">2 m</option><option value="5">5 m</option><option value="10">10 m</option></select></label>
           <button type="button" className={`${buttonClass} ${activeTool === 'measure' ? 'bg-caudal-electric text-slate-950' : ''}`} aria-pressed={activeTool === 'measure'} onClick={() => { setActiveTool('measure'); setSelectedId(''); setMeasurementStart(null); }}>Medir distancia</button>
           <label className="flex min-h-10 items-center gap-2 rounded-xl bg-white/[0.05] px-3 text-[10px] font-bold text-slate-300"><input type="checkbox" checked={persistMeasurements} onChange={(event) => setPersistMeasurements(event.target.checked)} />Conservar medida</label>
         </> : <button type="button" className={buttonClass} onClick={() => {
@@ -359,7 +363,7 @@ export default function TrainingTaskBoardEditor({ payload = {}, onPayloadChange 
       </div> : null}
 
       {view === 'board' && metricCalibration && !readOnly && (scene.board.measurements?.length || temporaryMeasurement) ? <div className="mt-2 grid gap-1.5 rounded-xl border border-white/10 bg-black/15 p-2 sm:grid-cols-2 xl:grid-cols-3">
-        {(scene.board.measurements || []).map((measurement, index) => { const distance = getTrainingTaskMeasurementDistance(measurement, elements); const adjustable = measurement.to?.kind === 'element'; return <div key={measurement.id} className="flex items-center gap-2 rounded-lg bg-white/[0.05] p-2"><span className="min-w-0 flex-1 text-[10px] font-bold text-slate-300">Medida {index + 1} · {distance?.toFixed(1) || '—'} m</span>{adjustable ? <input type="number" min="0.1" step="0.1" aria-label={`Distancia exacta de la medida ${index + 1}`} value={distance?.toFixed(1) || ''} onChange={(event) => updateElements(setTrainingTaskMeasurementDistance(measurement, elements, event.target.value, scene.board))} className="h-9 w-20 rounded-lg bg-white px-2 text-xs font-bold text-slate-950" /> : null}<button type="button" className={`${buttonClass} min-h-9 px-2 text-red-200`} onClick={() => commitScene({ ...scene, board: { ...scene.board, measurements: scene.board.measurements.filter((entry) => entry.id !== measurement.id) } })}>Quitar</button></div>; })}
+        {(scene.board.measurements || []).map((measurement, index) => { const distance = getTrainingTaskMeasurementDistance(measurement, elements); const adjustable = measurement.to?.kind === 'element'; return <div key={measurement.id} className="flex items-center gap-2 rounded-lg bg-white/[0.05] p-2"><span className="min-w-0 flex-1 text-[10px] font-bold text-slate-300">Medida {index + 1} · {distance?.toFixed(1) || '—'} m</span>{adjustable ? <input type="number" min="0.1" step="0.1" aria-label={`Distancia exacta de la medida ${index + 1}`} value={distance?.toFixed(1) || ''} onChange={(event) => updateElements(setTrainingTaskMeasurementDistance(measurement, elements, event.target.value, scene.board))} className="h-9 w-20 rounded-lg bg-white px-2 text-xs font-bold text-slate-950" /> : null}<button type="button" className={`${buttonClass} min-h-9 px-2 text-red-200`} onClick={() => commitScene({ ...scene, board: { ...scene.board, measurements: scene.board.measurements.filter((entry) => entry.id !== measurement.id) } }, { recordHistory: false })}>Quitar</button></div>; })}
         {temporaryMeasurement ? <div className="flex items-center gap-2 rounded-lg bg-white/[0.05] p-2"><span className="min-w-0 flex-1 text-[10px] font-bold text-slate-300">Medida temporal · {getTrainingTaskMeasurementDistance(temporaryMeasurement, elements)?.toFixed(1)} m</span><button type="button" className={`${buttonClass} min-h-9 px-2`} onClick={() => setTemporaryMeasurement(null)}>Ocultar</button></div> : null}
       </div> : null}
 

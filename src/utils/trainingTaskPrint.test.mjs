@@ -4,6 +4,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 import { loadTrainingTaskPrintData, printableMediaUrl } from './trainingTaskPrintData.js';
 import { createTrainingTaskBoardElement, TRAINING_CONDITIONAL_MATERIALS } from './trainingTaskBoardElements.js';
+import { createTrainingTaskEditorSceneV1 } from './trainingTaskEditorPayload.js';
+import { createTrainingTaskMetricCalibration } from './trainingTaskSpatial.js';
 
 const base = { id: 'a', club_id: 'club', name: 'Ejercicio completo', task_code: 'RON-01', task_type: 'rondos',
   objective: 'Conservar', description: 'Inicio\n' + 'Desarrollo largo. '.repeat(1000) + 'FINAL DESCRIPCIÓN',
@@ -56,6 +58,20 @@ try {
   ));
   assert.match(html, /href="https:\/\/www.youtube.com/);
   assert.doesNotMatch(html, /secret-path|<video|<iframe|<button/);
+  const metricPayload = createTrainingTaskEditorSceneV1({
+    pitchType: 'full',
+    metricCalibration: createTrainingTaskMetricCalibration('full'),
+    elements: [
+      { id: 'cone-metric-a', type: 'cone', x: 10, y: 10 },
+      { id: 'cone-metric-b', type: 'cone', x: 20, y: 10 },
+      { id: 'zone-metric', type: 'zone', x: 30, y: 15, width: 25, height: 20, colorKey: 'blue' },
+    ],
+    measurements: [{ id: 'distance-metric', from: { kind: 'element', elementId: 'cone-metric-a' }, to: { kind: 'element', elementId: 'cone-metric-b' } }],
+  });
+  const metricHtml = render(TrainingTaskPrintSheet, { task: { id: 'metric', name: 'Métrica', editorPayload: metricPayload } });
+  assert.match(metricHtml, /viewBox="0 0 105 60"/, 'el PDF conserva la proporción real del campo');
+  assert.match(metricHtml, /25\.0 × 20\.0 m/, 'el PDF conserva las dimensiones de zona');
+  assert.match(metricHtml, />10\.0 m</, 'el PDF conserva la distancia medida');
   const batch = render(TrainingTaskBatchPrintPages, { tasks: [task, { id: 'b', name: 'Segunda', editorPayload: {} }] });
   assert.equal((batch.match(/class="task-export-sheet"/g) || []).length, 2);
   assert.ok(batch.indexOf('FINAL REGLAS') < batch.indexOf('data-task-id="b"'));
