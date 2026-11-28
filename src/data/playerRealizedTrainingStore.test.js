@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   checkPlannedSessionRealizationReady,
+  confirmAndLoadPlannedSessionRealization,
   confirmPlannedSessionRealization,
   loadPlannedSessionRealization,
   loadPlayerRealizedTrainingStats,
@@ -10,6 +11,8 @@ const rpcCalls = [];
 const queryCalls = [];
 let ready = true;
 let tableRows = {};
+let tableErrors = {};
+let confirmError = null;
 
 class Query {
   constructor(table) {
@@ -21,9 +24,9 @@ class Query {
   is(column, value) { queryCalls.push([this.table, 'is', column, value]); return this; }
   in(column, values) { queryCalls.push([this.table, 'in', column, values]); return this; }
   maybeSingle() {
-    return Promise.resolve({ data: tableRows[this.table]?.[0] || null, error: null });
+    return Promise.resolve({ data: tableRows[this.table]?.[0] || null, error: tableErrors[this.table] || null });
   }
-  then(resolve) { resolve({ data: tableRows[this.table] || [], error: null }); }
+  then(resolve) { resolve({ data: tableRows[this.table] || [], error: tableErrors[this.table] || null }); }
 }
 
 const client = {
@@ -31,7 +34,9 @@ const client = {
   async rpc(name, args) {
     rpcCalls.push({ name, args });
     if (name === 'planned_session_realization_ready_v1') return { data: ready, error: null };
-    if (name === 'confirm_planned_training_session_realized_v1') return { data: { session_id: args.p_session_id }, error: null };
+    if (name === 'confirm_planned_training_session_realized_v1') {
+      return { data: confirmError ? null : { session_id: args.p_session_id }, error: confirmError };
+    }
     throw new Error(`RPC inesperada: ${name}`);
   },
 };
@@ -70,6 +75,27 @@ assert.deepEqual(realization.guests.map(({ player_name, origin_team, status }) =
 assert.ok(!queryCalls.some(([table, operation, columns]) =>
   table === 'planned_session_realizations' && operation === 'select' &&
   columns.includes('initial_status_hash')), 'el hash de confirmación vive solo en la auditoría');
+
+confirmError = { message: 'respuesta de red perdida' };
+const recovered = await confirmAndLoadPlannedSessionRealization(client, 'session-a', 4, true, true);
+assert.equal(recovered.recoveredAfterConfirmationError, true,
+  'una respuesta ambigua consulta y recupera la realización ya persistida');
+assert.equal(recovered.realization.session_id, 'session-a');
+tableErrors.planned_session_realizations = { message: 'lectura temporalmente no disponible' };
+await assert.rejects(
+  confirmAndLoadPlannedSessionRealization(client, 'session-a', 4, true),
+  (error) => error.confirmationUncertain === true,
+  'si tampoco puede leerse el estado persistido, bloquea el reintento automático',
+);
+tableErrors = {};
+tableRows.planned_session_realizations = [];
+await assert.rejects(
+  confirmAndLoadPlannedSessionRealization(client, 'session-a', 4, true),
+  (error) => error?.message === 'respuesta de red perdida',
+  'si el servidor no persistió la realización, conserva el error original sin inventar éxito',
+);
+tableRows.planned_session_realizations = [realization];
+confirmError = null;
 tableRows.planned_session_realized_player_statuses.pop();
 await assert.rejects(loadPlannedSessionRealization(client, 'session-a'), /no coincide con la plantilla/);
 

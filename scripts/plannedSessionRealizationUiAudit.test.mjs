@@ -10,7 +10,7 @@ const summary = await readFile(path.join(root, 'src/components/player/PlayerReal
 
 assert.match(editor, /Confirmar sesión realizada/);
 assert.match(editor, /¿Confirmas que el entrenamiento se celebró y que revisaste la lista completa\?/);
-assert.match(editor, /Disponible por defecto/);
+assert.match(editor, /Disponibles? por defecto/);
 assert.match(editor, /selected\.status !== 'open'/);
 assert.match(editor, /editor\.session_date > localToday/);
 assert.match(editor, /editor\.cancelled_at \|\| editor\.retired_at/);
@@ -18,6 +18,11 @@ assert.match(editor, /estructura de ciclo de vida/);
 assert.match(editor, /savePlannedAvailability\(client, editor\.id, editor\.revision, changes\)/);
 assert.match(editor, /planned-session-data-changed/);
 assert.match(editor, /Reintentar lectura/);
+assert.match(editor, /confirmAndLoadPlannedSessionRealization/);
+assert.match(editor, /summarizeSessionRealizedPlayers\(currentRealization\.players\)/);
+assert.doesNotMatch(editor, /summarizePlayerRealizedTraining\(currentRealization\.players/);
+assert.match(app, /PlannedSessionsErrorBoundary/);
+assert.match(app, /Volver a cargar Sesiones/);
 
 assert.match(app, /PlayerSessionAvailabilitySummary/);
 assert.match(app, /PlayerRealizedTrainingSummary/);
@@ -28,5 +33,6 @@ assert.match(summary, /estructura de ciclo de vida/);
 assert.match(summary, /Trabajo adaptado/);
 assert.match(summary, /Convocatorias|Primer equipo/);
 assert.match(summary, /Participación/);
+assert.match(summary, /summary\.completed/);
 
 console.log('planned session realization UI audit passed');

@@ -139,8 +139,15 @@ export const getTrainingTaskMeasurementDistance = (measurement, elements = []) =
   return from && to ? round(Math.hypot(to.x - from.x, to.y - from.y)) : null;
 };
 
-export const createTrainingTaskMeasurement = (from, to, id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`) => ({
-  id, from, to, colorKey: 'yellow', label: '', visible: true,
+const createTrainingTaskSpatialId = () => {
+  if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+export const createTrainingTaskMeasurement = (from, to, id = null) => ({
+  id: id || createTrainingTaskSpatialId(), from, to, colorKey: 'yellow', label: '', visible: true,
 });
 
 export const setTrainingTaskMeasurementDistance = (measurement, elements, distanceM, board = null) => {

@@ -23,7 +23,7 @@ import {
   confirmPlannedSession,
   checkPlannedSessionRealizationReady,
   loadPlannedSessionRealization,
-  confirmPlannedSessionRealization,
+  confirmAndLoadPlannedSessionRealization,
   createPlannedDraft,
   checkPlannedMicrocycleV4,
   checkPlannedMaterialAutofill,
@@ -62,7 +62,7 @@ import {
   changePlannedSessionLifecycle,
 } from '../../data/plannedSessionsStore';
 import { availabilityChanges, eligibleRosterCandidates, hasUncertainRosterDate, PLAYER_STATUSES } from '../../utils/plannedSessionPlayers';
-import { summarizePlayerRealizedTraining } from '../../utils/playerRealizedTrainingStats';
+import { summarizeSessionRealizedPlayers } from '../../utils/playerRealizedTrainingStats';
 import { calendarWeekDays } from '../../utils/teamCalendar';
 import { autoPlayerLayout, distributionForSave, distributionPayloadKey, emptyDistribution, movePlayerBoardLayout, normalizeDistribution,
   reconcileSpaceZones, specificPositionMap, validateDistribution } from '../../utils/plannedSessionDistributions';
@@ -220,7 +220,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
     guests.filter((guest) => guest.status === 'available').length;
   const currentRealization = realization?.session_id === editor?.id ? realization : null;
   const realizationStats = currentRealization
-    ? summarizePlayerRealizedTraining(currentRealization.players.map(({ session_id, status }) => ({ session_id, status })))
+    ? summarizeSessionRealizedPlayers(currentRealization.players)
     : null;
   const isManager = membership?.is_active === true && ['owner', 'admin'].includes(membership?.role);
   const canWriteContext = canWritePlannedContext(membership, selected);
@@ -1227,29 +1227,29 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
 
     operationRef.current = true;
     setBusy(true); setError(''); setNotice('');
-    let confirmationAccepted = false;
     let realizationVerified = false;
     try {
-      await confirmPlannedSessionRealization(client, editor.id, editor.revision, true);
-      confirmationAccepted = true;
-      const fresh = await loadPlannedSessionRealization(client, editor.id, guestsReady);
+      const { realization: fresh, recoveredAfterConfirmationError } =
+        await confirmAndLoadPlannedSessionRealization(client, editor.id, editor.revision, true, guestsReady);
+      realizationVerified = Boolean(fresh);
       if (!fresh || fresh.roster_count !== roster.length || fresh.players.length !== roster.length ||
           (guestsReady && guestSnapshotKey(fresh.guests || []) !== guestCollectionKey(guests))) {
         throw new Error('La lectura posterior no confirma la plantilla y los invitados revisados.');
       }
       setRealization(fresh);
-      realizationVerified = true;
-      setNotice(`Sesión marcada como realizada. Se conservaron ${fresh.guests?.length || 0} invitados en el historial.`);
+      setNotice(`${recoveredAfterConfirmationError
+        ? 'La respuesta inicial fue ambigua, pero el servidor confirma que la sesión está realizada.'
+        : 'Sesión marcada como realizada.'} Se conservaron ${fresh.guests?.length || 0} invitados en el historial.`);
       window.dispatchEvent(new Event('planned-session-data-changed'));
       await refreshList(selected.id);
     } catch (cause) {
       if (cause?.code === '40001') setConflict(true);
-      if (confirmationAccepted && !realizationVerified) {
+      if (cause?.confirmationUncertain || realizationVerified) {
         setRealizationLoadError(readError(cause));
         setRealizationLoadedFor(editor.id);
-        setError(`La sesión se confirmó, pero no se pudo verificar la lectura posterior. Reintenta la lectura antes de volver a confirmar. ${readError(cause)}`);
-      } else if (confirmationAccepted) {
-        setError(`La sesión y sus estados se verificaron, pero no se pudo actualizar la lista. ${readError(cause)}`);
+        setError(`${realizationVerified
+          ? 'La sesión y sus estados se verificaron, pero no se pudo actualizar la lista.'
+          : 'No se pudo determinar con seguridad el estado final de la confirmación.'} Reintenta la lectura antes de volver a confirmar. ${readError(cause)}`);
       } else {
         setError(`${errorKind(cause)}: no se pudo confirmar la sesión realizada. ${readError(cause)}`);
       }

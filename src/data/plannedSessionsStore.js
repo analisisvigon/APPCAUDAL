@@ -147,6 +147,43 @@ export const confirmPlannedSessionRealization = async (client, sessionId, revisi
   }));
 };
 
+export const confirmAndLoadPlannedSessionRealization = async (
+  client,
+  sessionId,
+  revision,
+  reviewAcknowledged,
+  includeGuestSnapshots = false,
+) => {
+  let confirmationError = null;
+  try {
+    await confirmPlannedSessionRealization(client, sessionId, revision, reviewAcknowledged);
+  } catch (cause) {
+    confirmationError = cause;
+  }
+
+  let realization;
+  try {
+    realization = await loadPlannedSessionRealization(client, sessionId, includeGuestSnapshots);
+  } catch (verificationError) {
+    const error = new Error(confirmationError
+      ? `No se pudo determinar si la confirmación llegó al servidor. ${verificationError.message || ''}`.trim()
+      : `El servidor aceptó la confirmación, pero no se pudo verificar su estado persistido. ${verificationError.message || ''}`.trim());
+    error.confirmationUncertain = true;
+    error.confirmationError = confirmationError;
+    error.verificationError = verificationError;
+    throw error;
+  }
+
+  if (!realization) {
+    if (confirmationError) throw confirmationError;
+    const error = new Error('El servidor aceptó la petición, pero la sesión aún no figura como realizada.');
+    error.confirmationUncertain = true;
+    throw error;
+  }
+
+  return { realization, recoveredAfterConfirmationError: Boolean(confirmationError) };
+};
+
 export const loadPlayerRealizedTrainingStats = async (client, playerId, clubTeamSeasonId, throughDate) => {
   const ready = await checkPlannedSessionRealizationReady(client);
   if (!ready) return { ready: false, summary: null };

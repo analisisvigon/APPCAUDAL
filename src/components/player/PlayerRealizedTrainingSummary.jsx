@@ -18,7 +18,8 @@ export default function PlayerRealizedTrainingSummary({
         </div>
         {summary ? (
           <span className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-bold text-slate-300">
-            {summary.total} {summary.total === 1 ? 'entrenamiento' : 'entrenamientos'}
+            {summary.completed} {summary.completed === 1 ? 'entrenamiento realizado' : 'entrenamientos realizados'}
+            {' '}· {summary.total} {summary.total === 1 ? 'sesión registrada' : 'sesiones registradas'}
           </span>
         ) : null}
       </div>

@@ -27,6 +27,10 @@ assert.match(sql, /v_cancelled_at is not null or v_retired_at is not null/);
 assert.match(sql, /left join public\.planned_session_player_availability a/);
 assert.match(sql, /case when a\.session_id is null then 'default' else 'explicit' end/);
 assert.match(sql, /default_available_count/);
+assert.match(sql, /session_id uuid primary key references public\.planned_training_sessions/);
+assert.match(sql, /planned_session_realized_player_statuses_pkey primary key \(session_id,player_id\)/);
+assert.match(sql, /if exists\(select 1 from public\.planned_session_realizations r[\s\S]*where r\.session_id=p_session_id\)[\s\S]*'already_realized',true/,
+  'la RPC es idempotente y devuelve la realización existente antes de insertar estados');
 assert.match(sql, /planned_session_realization_audit_immutable/);
 assert.match(sql, /planned_session_realized_availability_sync/);
 assert.match(sql, /update public\.planned_session_realized_player_statuses/);

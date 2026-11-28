@@ -56,6 +56,10 @@ const measurement = createTrainingTaskMeasurement(
   'measurement-1',
 );
 assert.equal(getTrainingTaskMeasurementDistance(measurement, elements), 5, 'mide de centro a centro en metros');
+assert.ok(createTrainingTaskMeasurement(
+  { kind: 'point', x: 1, y: 1 },
+  { kind: 'point', x: 2, y: 2 },
+).id, 'genera un identificador sin referencias temporales fuera de alcance');
 const adjusted = setTrainingTaskMeasurementDistance(measurement, elements, 10, calibrated);
 assert.equal(getTrainingTaskMeasurementDistance(measurement, adjusted), 10, 'ajusta el segundo objeto a una distancia exacta');
 

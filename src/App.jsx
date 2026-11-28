@@ -886,6 +886,46 @@ class PreBlockErrorBoundary extends React.Component {
   }
 }
 
+class PlannedSessionsErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Error renderizando Planificación → Sesiones:', error, errorInfo);
+  }
+
+  componentDidUpdate(previousProps) {
+    if (previousProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <section className="rounded-3xl border border-red-300/25 bg-red-400/10 p-6 text-red-100 shadow-glow" role="alert">
+          <h3 className="text-base font-black uppercase tracking-[0.14em] text-white">Sesiones no pudo completar la vista</h3>
+          <p className="mt-3 text-sm leading-6">
+            Los datos que el servidor haya confirmado no se modifican por este error. Vuelve a cargar este módulo para recuperar su estado real.
+          </p>
+          <p className="mt-2 break-words text-xs text-red-200">{this.state.error?.message || String(this.state.error)}</p>
+          <button type="button" onClick={() => this.setState({ error: null })}
+            className="mt-4 min-h-11 rounded-xl border border-white/20 px-4 py-2 text-sm font-bold text-white hover:bg-white/10">
+            Volver a cargar Sesiones
+          </button>
+        </section>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const positions = [
   'Portero',
   'Defensa',
@@ -33797,11 +33837,13 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
             onOpenPerformance={() => setActiveTab('Rendimiento')} />
         ) : null}
         {activeTab === 'Sesiones' ? (
-          <PlannedSessionsSection key={`${session?.user?.id || ''}:${identity?.membership?.club_id || ''}`}
-            client={supabase} membership={identity?.membership}
-            userId={session?.user?.id || ''} onDirtyChange={setPlannedSessionsDirty}
-            openSessionRequest={calendarSessionTarget}
-            leagueLogoUrl={competitions.find((competition) => competition.key === 'league')?.logoUrl || ''} />
+          <PlannedSessionsErrorBoundary resetKey={`${session?.user?.id || ''}:${identity?.membership?.club_id || ''}`}>
+            <PlannedSessionsSection key={`${session?.user?.id || ''}:${identity?.membership?.club_id || ''}`}
+              client={supabase} membership={identity?.membership}
+              userId={session?.user?.id || ''} onDirtyChange={setPlannedSessionsDirty}
+              openSessionRequest={calendarSessionTarget}
+              leagueLogoUrl={competitions.find((competition) => competition.key === 'league')?.logoUrl || ''} />
+          </PlannedSessionsErrorBoundary>
         ) : null}
 
         {LOCAL_VIDEO_LAB_ENABLED && activeTab === 'Videoanálisis' && AuthorizedVideoAnalysis ? (
