@@ -20,6 +20,9 @@ await build({ entryPoints: [path.join(root, 'src/components/training/TrainingTas
   bundle: true, platform: 'node', format: 'esm', jsx: 'automatic', outfile: bundle,
   external: ['react', 'react-dom', 'react/jsx-runtime'], loader: { '.css': 'empty' }, logLevel: 'silent' });
 const { TrainingTaskBatchPrintPages } = await import(`${pathToFileURL(bundle).href}?v=${Date.now()}`);
+const fitBundle = await build({ entryPoints: [path.join(root, 'src/utils/trainingTaskPrintLayout.js')],
+  bundle: true, platform: 'browser', format: 'iife', globalName: 'NexoTaskPrintLayout', write: false, logLevel: 'silent' });
+const fitScript = fitBundle.outputFiles[0].text;
 
 const browserCandidates = [
   process.env.CHROME_PATH,
@@ -47,7 +50,26 @@ const common = { taskType: 'rondos', taskCode: 'VIS-01', created_at: '2026-11-28
   material: 'Balones, petos y conos.', playersMin: 8, playersMax: 12, durationMinutes: 18,
   spaceWidthM: 25, spaceLengthM: 20, media: [], feedback: [] };
 const photo = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500"><rect width="1200" height="500" fill="#dbeafe"/><circle cx="160" cy="250" r="110" fill="#dc2626"/><rect x="360" y="80" width="720" height="340" fill="#1d4ed8"/></svg>');
+const conservationPayload = createTrainingTaskEditorSceneV1({ pitchType: 'full',
+  metricCalibration: createTrainingTaskMetricCalibration('full'),
+  elements: [
+    { id: 'zone-left', type: 'zone', x: 8, y: 8, width: 28, height: 44, colorKey: 'blue' },
+    { id: 'zone-right', type: 'zone', x: 69, y: 8, width: 28, height: 44, colorKey: 'red' },
+    ...Array.from({ length: 14 }, (_, index) => ({ id: `player-${index}`, type: 'participant',
+      x: 14 + (index % 7) * 12.5, y: index < 7 ? 20 : 40, colorKey: index < 7 ? 'blue' : 'red' })),
+  ],
+});
 const tasks = [
+  { ...common, id: 'conservation', name: 'Conservación 6vs6 +1C +1P con zonas', taskCode: 'CON-6611',
+    editorPayload: conservationPayload, playersMin: 14, playersMax: 14, seriesCount: 4, minutesPerSeries: 4,
+    description: 'Dos equipos conservan el balón y progresan entre zonas con apoyo del comodín.\nEl portero participa como apoyo exterior y reinicia tras cada pérdida.',
+    exerciseRules: 'Máximo dos toques.\nPunto al enlazar las tres zonas.\nTras pérdida, presión inmediata durante cinco segundos.',
+    technicalContent: 'Pase, perfil corporal, control orientado y temporización.',
+    tacticalOffensiveContent: 'Crear superioridad, fijar dentro y progresar por el lado débil.',
+    tacticalDefensiveContent: 'Cerrar líneas interiores y orientar la presión.',
+    tacticalContent: 'Conservación y ocupación racional de espacios.',
+    variants: 'Limitar al comodín a un toque y exigir cambio de orientación antes de puntuar.',
+    observations: 'Corregir distancias de relación y altura del apoyo exterior.' },
   { ...common, id: 'metric', name: 'Tarea con pizarra métrica', editorPayload: metricPayload },
   { ...common, id: 'photo', name: 'Tarea con fotografía panorámica', taskCode: 'VIS-02', editorPayload: {},
     printImage: { url: photo, name: 'Fotografía panorámica completa' } },
@@ -58,20 +80,21 @@ const output = mkdtempSync(path.join(tmpdir(), 'appcaudal-task-print-'));
 const htmlPath = path.join(output, 'tasks.html');
 const pdfPath = path.join(output, 'tasks.pdf');
 const screenshotPath = path.join(output, 'tasks-print-render.png');
-const html = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${css}"><style media="print">${TRAINING_TASK_PRINT_PAGE_RULE}</style><style media="screen">body{margin:0}.task-export-portal{position:static;left:auto;visibility:visible;pointer-events:auto}</style></head><body><div class="task-export-portal">${markup}</div><script>addEventListener('load',()=>{const sheets=[...document.querySelectorAll('.task-export-sheet')];const escaped=sheets.some(s=>s.scrollHeight>s.clientHeight+2||s.scrollWidth>s.clientWidth+2);const fonts=[...document.querySelectorAll('.task-export-content p')].map(n=>parseFloat(getComputedStyle(n).fontSize));document.documentElement.dataset.overflow=String(escaped);document.documentElement.dataset.legible=String(fonts.every(size=>size>=12));const image=document.querySelector('.task-export-image img');document.documentElement.dataset.imageFit=image?getComputedStyle(image).objectFit:'missing';});</script></body></html>`;
+const html = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${css}"><style media="print">${TRAINING_TASK_PRINT_PAGE_RULE}</style><style media="screen">body{margin:0}.task-export-portal{position:static;left:auto;visibility:visible;pointer-events:auto}</style></head><body><div class="task-export-portal">${markup}</div><script>${fitScript}</script><script>addEventListener('load',()=>{const sheets=[...document.querySelectorAll('.task-export-sheet')];try{NexoTaskPrintLayout.fitTrainingTaskPrintSheets(sheets);document.documentElement.dataset.fitError='';}catch(error){document.documentElement.dataset.fitError=error.message;}const escaped=sheets.some(s=>s.scrollHeight>s.clientHeight+3||s.scrollWidth>s.clientWidth+3);const fonts=[...document.querySelectorAll('.task-export-content p')].map(n=>parseFloat(getComputedStyle(n).fontSize));document.documentElement.dataset.overflow=String(escaped);document.documentElement.dataset.legible=String(fonts.every(size=>size>=12));const image=document.querySelector('.task-export-image img');document.documentElement.dataset.imageFit=image?getComputedStyle(image).objectFit:'missing';});</script></body></html>`;
 writeFileSync(htmlPath, html, 'utf8');
 execFileSync(browser, ['--headless=new', '--disable-gpu', '--no-sandbox', '--disable-extensions',
   '--no-pdf-header-footer', `--print-to-pdf=${pdfPath}`, pathToFileURL(htmlPath).href], { timeout: 30000, stdio: 'pipe' });
 assert.ok(existsSync(pdfPath));
 const pdf = readFileSync(pdfPath).toString('latin1');
 const pages = (pdf.match(/\/Type\s*\/Page\b/g) || []).length;
-assert.equal(pages, 2, 'dos tareas generan exactamente dos hojas');
+assert.equal(pages, 3, 'tres tareas generan exactamente tres hojas');
 assert.equal((pdf.match(/\/MediaBox\s*\[\s*0\s+0\s+841\.9[\d]*\s+594\.9[\d]*\s*\]/g) || []).length, pages,
   'cada tarea usa A4 horizontal real');
 assert.doesNotMatch(pdf, /\/Rotate\s+(?:90|180|270)\b/, 'el PDF no gira contenido dentro de hojas verticales');
 const dom = execFileSync(browser, ['--headless=new', '--disable-gpu', '--no-sandbox', '--disable-extensions',
   '--dump-dom', pathToFileURL(htmlPath).href], { timeout: 30000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
 assert.match(dom, /data-overflow="false"/);
+assert.match(dom, /data-fit-error=""/);
 assert.match(dom, /data-legible="true"/);
 assert.match(dom, /data-image-fit="contain"/);
 execFileSync(browser, ['--headless=new', '--disable-gpu', '--no-sandbox', '--disable-extensions',

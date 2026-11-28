@@ -8,7 +8,7 @@ import { needsPlannedTextFragmentation, needsPlannedWideSheet, planPlannedSessio
 import { getPlannedSessionBoardTeams } from '../../utils/plannedSessionBoardTeams';
 import { readTrainingTaskEditorPayload } from '../../utils/trainingTaskEditorPayload';
 import { printPlannedSessionDocument } from '../../utils/plannedSessionPrintOrientation';
-import { assertPlannedSessionPrintFits, plannedSessionPrintIssues } from '../../utils/plannedSessionPrintLayout';
+import { assertPlannedSessionPrintFits, fitPlannedSessionPrint } from '../../utils/plannedSessionPrintLayout';
 import TrainingTaskBoardPreview from './TrainingTaskBoardPreview';
 import TrainingTaskBoardEditor from './TrainingTaskBoardEditor';
 import PlannedSessionPrint from './PlannedSessionPrint';
@@ -363,7 +363,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   useEffect(() => {
     let frame = 0;
     const measure = () => {
-      setPrintOverflow(plannedSessionPrintIssues(printRef.current).length > 0);
+      setPrintOverflow(fitPlannedSessionPrint(printRef.current).length > 0);
     };
     frame = window.requestAnimationFrame(measure);
     const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => {

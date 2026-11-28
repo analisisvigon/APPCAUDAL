@@ -130,3 +130,20 @@
 .planned-roster-player-first-team .planned-roster-name,
 .planned-roster-player-first-team .planned-roster-status-abbreviation,
 .planned-distribution-player-first-team { color: #1d4ed8; font-weight: 700; }
+
+/* Ajuste moderado previo al rechazo: el texto deportivo principal nunca baja de 9 pt. */
+.planned-print-pages[data-density="compact"] .planned-print-sheet { padding: 4mm; }
+.planned-print-pages[data-density="compact"] .planned-print-sheet-exercises { padding: 3mm 4mm; }
+.planned-print-pages[data-density="compact"] .planned-print-identity { height: 16mm; }
+.planned-print-pages[data-density="compact"] .planned-print-sheet-exercises .planned-print-identity { height: 13mm; }
+.planned-print-pages[data-density="compact"] .planned-print-meta .planned-print-field { min-height: 7mm; padding: .7mm 1.2mm; }
+.planned-print-pages[data-density="compact"] .planned-print-cover-details { min-height: 23mm; }
+.planned-print-pages[data-density="compact"] .planned-print-cover-notes .planned-print-field { min-height: 9.5mm; padding: .7mm 1.2mm; }
+.planned-print-pages[data-density="compact"] .planned-print-roster { min-height: 28mm; }
+.planned-print-pages[data-density="compact"] .planned-print-cover-lower { min-height: 91mm; }
+.planned-print-pages[data-density="compact"] .planned-print-page-title { padding: .6mm 1.5mm; font-size: 9.5pt; }
+.planned-print-pages[data-density="compact"] .planned-print-task-name { min-height: 6mm; padding: 1mm 1.5mm; }
+.planned-print-pages[data-density="compact"] .planned-print-task-name strong { font-size: 10.5pt; }
+.planned-print-pages[data-density="compact"] .planned-print-development { padding: 1.2mm 2mm; font-size: 9pt; line-height: 1.24; }
+.planned-print-pages[data-density="compact"] .planned-print-graphic { padding: 1mm; }
+.planned-print-pages[data-density="compact"] .planned-print-exercise-head { padding: .7mm 1.5mm; }
