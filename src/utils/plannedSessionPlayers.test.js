@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { availabilityChanges, eligibleRosterCandidates, groupSessionPlayers,
-  hasUncertainRosterDate, sessionPlayerCounts } from './plannedSessionPlayers.js';
+  hasUncertainRosterDate, resolvePlannedSessionPlayerId, sessionPlayerCounts } from './plannedSessionPlayers.js';
+
+assert.equal(resolvePlannedSessionPlayerId({ id: 'legacy-player', globalPlayerId: 'global-player' }),
+  'global-player', 'las estadísticas de Sesiones usan la identidad global canónica');
+assert.equal(resolvePlannedSessionPlayerId({ id: 'legacy-player', global_player_id: ' global-player ' }),
+  'global-player');
+assert.equal(resolvePlannedSessionPlayerId({ id: 'legacy-player' }), '',
+  'nunca sustituye silenciosamente players_database.id por jugadores.id');
 
 const candidates = [
   { id: 'm1', player_id: 'p1', name: 'Alex', position_key: 'goalkeeper', joined_on: null, left_on: null, has_departed: false },

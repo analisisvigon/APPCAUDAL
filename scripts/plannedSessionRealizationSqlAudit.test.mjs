@@ -5,6 +5,7 @@ import path from 'node:path';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sql = await readFile(path.join(root, 'supabase_sessions_07_realization.sql'), 'utf8');
+const diagnostic = await readFile(path.join(root, 'supabase_sessions_realized_player_stats_diagnostic.sql'), 'utf8');
 const store = await readFile(path.join(root, 'src/data/plannedSessionsStore.js'), 'utf8');
 const confirmFunctionStart = sql.indexOf('create or replace function public.confirm_planned_training_session_realized_v1');
 
@@ -49,5 +50,13 @@ assert.match(store, /\.is\('cancelled_at', null\)/);
 assert.match(store, /\.is\('retired_at', null\)/);
 assert.match(store, /new Set\(sessions\.map\(\(row\) => row\.id\)/);
 assert.match(store, /\.eq\('player_id', playerId\)/);
+
+assert.match(diagnostic, /961970c8-0fcf-4c45-94d6-787647619c61/);
+assert.match(diagnostic, /planned_session_realizations/);
+assert.match(diagnostic, /planned_session_realized_player_statuses/);
+assert.match(diagnostic, /ficha\.global_player_id = roster_link\.player_id/);
+assert.match(diagnostic, /realization_count_mismatch/);
+assert.doesNotMatch(diagnostic, /^\s*(?:insert|update|delete|truncate|alter|create|drop|grant|revoke)\b/im,
+  'el diagnóstico de producción debe ser estrictamente de solo lectura');
 
 console.log('planned session realization SQL audit passed');

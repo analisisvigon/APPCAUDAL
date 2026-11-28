@@ -72,6 +72,7 @@ import {
   loadPlayerRealizedTrainingStats,
   SESSION_RETIREMENT_BACKEND_VERIFIED,
 } from './data/plannedSessionsStore.js';
+import { resolvePlannedSessionPlayerId } from './utils/plannedSessionPlayers.js';
 import SetPieceResponsibilityPanel, { SetPieceResponsibilityBadge } from './components/tactical/SetPieceResponsibilityPanel';
 import PlayerNumberName from './components/player/PlayerNumberName';
 import { getPlayerAvatarSource } from './utils/playerAvatarPresentation';
@@ -8682,6 +8683,7 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     () => players.find((player) => player.id === selectedPlayerProfileId) ?? null,
     [selectedPlayerProfileId, players]
   );
+  const selectedPlannedSessionPlayerId = resolvePlannedSessionPlayerId(selectedPlayerProfile);
 
   const normalizeLitoText = (value) =>
     String(value || '')
@@ -23540,8 +23542,13 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     const clubTeamSeasonId = rosterAccess.context?.id || '';
     setPlayerSessionAvailability(null);
     setPlayerSessionAvailabilityError('');
+    if (!selectedPlannedSessionPlayerId) {
+      setPlayerSessionAvailabilityError('El jugador no tiene una identidad global válida para consultar sus sesiones.');
+      setPlayerSessionAvailabilityLoading(false);
+      return undefined;
+    }
     setPlayerSessionAvailabilityLoading(true);
-    loadPlayerSessionAvailability(supabase, selectedPlayerProfile.id, clubTeamSeasonId, beforeDate)
+    loadPlayerSessionAvailability(supabase, selectedPlannedSessionPlayerId, clubTeamSeasonId, beforeDate)
       .then((summary) => {
         if (isCurrent) setPlayerSessionAvailability(summary);
       })
@@ -23555,7 +23562,8 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
       });
 
     return () => { isCurrent = false; };
-  }, [selectedPlayerProfileId, rosterAccess.context?.id, activeTab, playerSessionAvailabilityRefresh]);
+  }, [selectedPlayerProfileId, selectedPlannedSessionPlayerId, rosterAccess.context?.id,
+    activeTab, playerSessionAvailabilityRefresh]);
 
   useEffect(() => {
     if (!selectedPlayerProfile || activeTab !== 'Plantilla') {
@@ -23570,10 +23578,15 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     const throughDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     setPlayerRealizedTraining(null);
     setPlayerRealizedTrainingError('');
+    if (!selectedPlannedSessionPlayerId) {
+      setPlayerRealizedTrainingError('El jugador no tiene una identidad global válida para consultar sus entrenamientos realizados.');
+      setPlayerRealizedTrainingLoading(false);
+      return undefined;
+    }
     setPlayerRealizedTrainingLoading(true);
     loadPlayerRealizedTrainingStats(
       supabase,
-      selectedPlayerProfile.id,
+      selectedPlannedSessionPlayerId,
       rosterAccess.context?.id || '',
       throughDate,
     ).then((result) => {
@@ -23587,7 +23600,8 @@ function LegacyApp({ controlledSession = undefined, onControlledSignOut = null, 
     });
 
     return () => { isCurrent = false; };
-  }, [selectedPlayerProfileId, rosterAccess.context?.id, activeTab, playerSessionAvailabilityRefresh]);
+  }, [selectedPlayerProfileId, selectedPlannedSessionPlayerId, rosterAccess.context?.id,
+    activeTab, playerSessionAvailabilityRefresh]);
 
   const openMatchPage = (match, section) => requestMatchPlanNavigation({
     type: selectedMatchId && String(selectedMatchId) !== String(match.id) ? 'change-match' : 'change-match-section',

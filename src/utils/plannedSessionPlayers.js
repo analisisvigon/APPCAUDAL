@@ -47,6 +47,11 @@ export const PLAYER_STATUSES = [
   { key: 'first_team', label: 'Convocado con el primer equipo', short: 'Primer equipo' },
 ];
 
+export const resolvePlannedSessionPlayerId = (player) => {
+  const value = player?.globalPlayerId ?? player?.global_player_id;
+  return typeof value === 'string' ? value.trim() : '';
+};
+
 export const eligibleRosterCandidates = (candidates, date) => candidates.filter((row) =>
   Boolean(date) && !(row.has_departed && !row.left_on) &&
   (!row.joined_on || row.joined_on <= date) &&
