@@ -26,10 +26,12 @@ assert.deepEqual(ids(dualPages), dualActivation.map((slot) => slot.id));
 
 assert.equal(planPlannedSessionPrintSheets([exercise('a', 'activation')]).length, 1,
   'no se crea una segunda hoja vacía');
+assert.equal(planPlannedSessionPrintSheets([exercise('m', 'main')]).length, 1,
+  'una única actividad breve de cualquier fase aprovecha la primera hoja');
 assert.equal(planPlannedSessionPrintSheets([]).length, 1, 'la sesión vacía no genera hojas sobrantes');
 const excess = [...normal, exercise('m4', 'main')];
-assert.equal(planPlannedSessionPrintSheets(excess).length, 3,
-  'el contenido realmente excesivo se conserva y pasa a otra hoja');
+assert.equal(planPlannedSessionPrintSheets(excess).length, 2,
+  'el plan nunca crea una tercera hoja; el DOM decide si las dos hojas resultan legibles');
 assert.deepEqual(ids(planPlannedSessionPrintSheets(excess)), excess.map((slot) => slot.id));
 const detailed = exercise('detailed', 'activation');
 detailed.items = [{ id: 'copy-1', kind: 'library_task', snapshot: {

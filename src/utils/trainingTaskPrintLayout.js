@@ -33,42 +33,18 @@ export function taskSheetFits(sheet) {
   return size.height >= minimumHeightMm * MM_IN_PX;
 }
 
-function continuationHeader(sheet) {
-  const header = sheet.querySelector('.task-export-header')?.cloneNode(true);
-  const identity = header?.querySelector('p');
-  if (identity) identity.textContent = identity.textContent + ' · Continuación';
-  return header;
-}
-
-function addContinuation(sheet) {
-  const continuation = document.createElement('article');
-  continuation.className = 'task-export-sheet task-export-continuation';
-  continuation.dataset.taskId = sheet.dataset.taskId;
-  continuation.dataset.continuationFor = sheet.dataset.taskId;
-  const header = continuationHeader(sheet);
-  if (header) continuation.append(header);
-  const body = document.createElement('div');
-  body.className = 'task-export-continuation-content';
-  const content = sheet.querySelector('.task-export-content');
-  const footer = sheet.querySelector('.task-export-footer');
-  if (content) body.append(content);
-  if (footer?.children.length) body.append(footer);
-  continuation.append(body);
-  sheet.dataset.layout = 'continued';
-  sheet.after(continuation);
-  if (continuation.scrollHeight > continuation.clientHeight + 2 || elementEscapes(continuation)) {
-    continuation.dataset.overflow = 'true';
-  }
-  return continuation;
-}
-
-// Prefer one landscape page. Only the task that needs more space receives a continuation.
+// Una tarea equivale siempre a una hoja. Primero ajustamos espacios a la
+// densidad mínima legible (9 pt); si aún desborda, se impide imprimir para no
+// truncar contenido ni crear una continuación silenciosa.
 export function fitTrainingTaskPrintSheets(sheets) {
-  const continuations = [];
+  const overflow = [];
   for (const sheet of sheets) {
     delete sheet.dataset.density;
     if (!taskSheetFits(sheet)) sheet.dataset.density = 'compact';
-    if (!taskSheetFits(sheet)) continuations.push(addContinuation(sheet));
+    if (!taskSheetFits(sheet)) overflow.push(sheet.dataset.taskName || sheet.dataset.taskId || 'tarea sin nombre');
   }
-  return { sheets: sheets.length, continuations: continuations.length };
+  if (overflow.length) {
+    throw new Error(`No se ha generado el documento: ${overflow.map((name) => `«${name}»`).join(', ')} no cabe completa y legible en una sola hoja A4 horizontal.`);
+  }
+  return { sheets: sheets.length, continuations: 0 };
 }

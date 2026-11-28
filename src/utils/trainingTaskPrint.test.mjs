@@ -38,6 +38,19 @@ const task = await loadTrainingTaskPrintData(client, 'a');
 assert.equal(task.feedback.length, 205);
 assert.equal(task.media.length, 2);
 assert.equal(JSON.stringify({ base, media, feedback }), before);
+const photoClient = {
+  from(table) { return { select() { return this; }, eq() { return this; }, order() { return this; },
+    single() { return { data: { ...base, id: 'photo-source', editor_payload: {}, name: 'Tarea con foto' } }; },
+    range(start) { return { data: table === 'training_task_media' && start === 0 ? [{ id: 'photo-media',
+      task_id: 'photo-source', kind: 'image', source: 'upload', storage_path: 'club/task/photo.webp',
+      original_name: 'foto.webp', is_primary: true }] : [] }; },
+  }; },
+  storage: { from(bucket) { assert.equal(bucket, 'training-task-files'); return {
+    createSignedUrl(path) { assert.equal(path, 'club/task/photo.webp'); return { data: { signedUrl: 'https://signed.test/photo.webp' } }; },
+  }; } },
+};
+const photoTask = await loadTrainingTaskPrintData(photoClient, 'photo-source');
+assert.deepEqual(photoTask.printImage, { url: 'https://signed.test/photo.webp', name: 'foto.webp' });
 await assert.rejects(loadTrainingTaskPrintData({ from: () => ({ select() { return this; }, eq() { return this; }, single: () => ({ error: new Error('denied') }) }) }, 'a'), /denied/);
 assert.equal(printableMediaUrl({ source: 'url', originalUrl: 'javascript:alert(1)' }), '');
 assert.equal(printableMediaUrl({ source: 'url', originalUrl: 'https://example.com/video?token=secret' }), '');
@@ -48,6 +61,10 @@ try {
   const render = (component, props) => renderToStaticMarkup(React.createElement(component, props));
   const simple = render(TrainingTaskPrintSheet, { task: { id: 'simple', name: 'Sencilla', objective: 'Objetivo', editorPayload: {} } });
   assert.doesNotMatch(simple, /Multimedia|Evaluación posterior|Diseño de la tarea|undefined|—/);
+  const photoHtml = render(TrainingTaskPrintSheet, { task: { id: 'photo', name: 'Fotografía', editorPayload: {},
+    printImage: { url: 'https://example.test/foto.webp', name: 'Foto completa' } } });
+  assert.match(photoHtml, /task-export-image[\s\S]*task-export-image-frame[\s\S]*<img/);
+  assert.match(photoHtml, /https:\/\/example\.test\/foto\.webp/);
   const html = render(TrainingTaskPrintSheet, { task });
   for (const text of ['RON-01', 'Variante real', 'Ataque real', 'Defensa real', 'Herencia real', 'Técnica real',
     'FINAL DESCRIPCIÓN', 'FINAL REGLAS', 'Vídeo real', 'Consigna del vídeo', 'privado.pdf', 'Observación POST 204', 'Valoración 4/5']) assert.ok(html.includes(text), text);

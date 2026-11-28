@@ -7,6 +7,7 @@ import TrainingTaskMediaPanel from './TrainingTaskMediaPanel';
 import TrainingTaskBatchPrint from './TrainingTaskBatchPrint';
 import { fitTrainingTaskPrintSheets } from '../../utils/trainingTaskPrintLayout';
 import { loadTrainingTaskPrintData } from '../../utils/trainingTaskPrintData';
+import { printTrainingTaskDocument } from '../../utils/trainingTaskPrintOrientation';
 import { buildTrainingTaskCardPresentation } from '../../utils/trainingTaskCardPresentation';
 import { createTrainingTaskPlayerLookup } from '../../utils/trainingTaskRoster';
 import { countActiveTrainingTaskAdvancedFilters } from '../../utils/trainingTaskFilterPresentation';
@@ -223,6 +224,9 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
     const openPrint = async () => {
       await new Promise((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
       if (document.fonts?.ready) await document.fonts.ready;
+      const images = [...(batchPrintRef.current?.querySelectorAll('img') || [])];
+      await Promise.all(images.map((image) => image.complete
+        ? Promise.resolve() : image.decode?.() || Promise.reject(new Error('No se pudo cargar una imagen de la tarea.'))));
       if (cancelled) return;
       const sheets = batchPrintRef.current?.querySelectorAll('.task-export-sheet');
       if (sheets?.length !== batchPrint.tasks.length) throw new Error('No se pudieron preparar todas las fichas para imprimir.');
@@ -230,7 +234,7 @@ export default function TrainingTasksSection({ membership = null, userId = '', p
       document.title = batchPrint.fileName.replace(/\.pdf$/i, '');
       setExportProgress(`Abriendo la impresión de ${sheets.length} fichas. Elige «Guardar como PDF».`);
       window.addEventListener('afterprint', finish, { once: true });
-      window.print();
+      printTrainingTaskDocument();
     };
     openPrint().catch((cause) => {
       if (cancelled) return;

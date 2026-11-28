@@ -114,7 +114,8 @@ export function PlannedSessionPrintPages({ editor, selected, roster = [], guests
     if (slots.length === 3 && slots.every((slot) => slot.items.length === 1)) return 'three';
     return 'grid';
   };
-  return <div className="planned-print-pages" data-planned-print-pages data-pitch-appearance={pitchAppearance}>
+  return <div className="planned-print-pages" data-planned-print-pages data-pitch-appearance={pitchAppearance}
+    data-session-id={editor.id || ''} data-session-date={editor.session_date || ''}>
     {pages.map((page, index) => <article className={`planned-print-sheet ${page.kind === 'cover' ? '' : 'planned-print-sheet-exercises'}`} key={index} data-print-page={index + 1}>
       <PrintIdentity selected={selected} page={index + 1} leagueLogoUrl={leagueLogoUrl}
         cancelled={Boolean(editor.cancelled_at)} />

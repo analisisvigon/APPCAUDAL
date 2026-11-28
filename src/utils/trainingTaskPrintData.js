@@ -1,5 +1,6 @@
 import { normalizeTrainingTask } from './trainingTasks.js';
-import { sortTrainingTaskMedia } from './trainingTaskMedia.js';
+import { getTaskMediaSignedUrl, selectTrainingTaskPreviewMedia, sortTrainingTaskMedia,
+  TRAINING_TASK_MEDIA_BUCKET } from './trainingTaskMedia.js';
 import { normalizeTrainingTaskFeedback, sortTrainingTaskFeedback } from './trainingTaskFeedback.js';
 
 async function readRelated(client, table, taskId) {
@@ -22,7 +23,23 @@ export async function loadTrainingTaskPrintData(client, taskId) {
     readRelated(client, 'training_task_media', taskId),
     readRelated(client, 'training_task_feedback', taskId),
   ]);
-  return { ...normalizeTrainingTask(data), media: sortTrainingTaskMedia(media),
+  const task = normalizeTrainingTask(data);
+  const orderedMedia = sortTrainingTaskMedia(media);
+  const featured = selectTrainingTaskPreviewMedia(orderedMedia);
+  const legacyImagePath = String(task.attachmentMime || '').startsWith('image/') ? task.attachmentPath : '';
+  let printImage = null;
+  if (featured?.source === 'url' && printableMediaUrl(featured)) {
+    printImage = { url: printableMediaUrl(featured), name: featured.title || featured.originalName || task.name };
+  } else if (featured?.storagePath) {
+    printImage = { url: await getTaskMediaSignedUrl(client, featured),
+      name: featured.title || featured.originalName || task.name };
+  } else if (legacyImagePath) {
+    const { data: signed, error: signedError } = await client.storage.from(TRAINING_TASK_MEDIA_BUCKET)
+      .createSignedUrl(legacyImagePath, 3600);
+    if (signedError) throw signedError;
+    printImage = { url: signed.signedUrl, name: task.attachmentName || task.name };
+  }
+  return { ...task, media: orderedMedia, printImage,
     feedback: sortTrainingTaskFeedback(feedback.map(normalizeTrainingTaskFeedback)) };
 }
 

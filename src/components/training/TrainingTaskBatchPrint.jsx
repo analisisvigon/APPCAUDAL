@@ -44,7 +44,7 @@ export function TrainingTaskPrintSheet({ task, index = 0, total = 1, playerLooku
     ['Duración total', has(task.durationMinutes) ? task.durationMinutes + ' min' : ''],
     ['Espacio', [has(task.spaceWidthM) ? 'Ancho ' + task.spaceWidthM + ' m' : '', has(task.spaceLengthM) ? 'Largo ' + task.spaceLengthM + ' m' : ''].filter(has).join(' · ')],
   ].filter(([, text]) => has(text));
-  return <article className="task-export-sheet" data-task-id={task.id}>
+  return <article className="task-export-sheet" data-task-id={task.id} data-task-name={task.name || task.id}>
     <header className="task-export-header">
       <p>NEXO CLUB · Biblioteca de tareas · Ficha {index + 1} de {total}</p>
       <h1>{task.name}</h1>
@@ -55,12 +55,15 @@ export function TrainingTaskPrintSheet({ task, index = 0, total = 1, playerLooku
     {organization.length ? <section className="task-export-summary" aria-label="Organización">
       {organization.map(([label, text]) => <PrintText key={label} label={label}>{text}</PrintText>)}
     </section> : null}
-    <div className={`task-export-main${parsed.kind === 'empty' && !teams.length ? ' task-export-no-board' : ''}`} data-board-layout={boardLayout}>
+    <div className={`task-export-main${parsed.kind === 'empty' && !task.printImage && !teams.length ? ' task-export-no-board' : ''}`} data-board-layout={boardLayout}>
     <div className="task-export-visual">
     {parsed.kind === 'v1' ? <section className="task-export-board" data-pitch-type={pitchType}><h2>Diseño de la tarea</h2>
       <TrainingTaskDiagramCanvas elements={parsed.scene.board.elements} pitchType={pitchType}
         metricCalibration={parsed.scene.board.metricCalibration} measurements={parsed.scene.board.measurements}
         players={playerLookup} readOnly renderMode="preview" />
+    </section> : task.printImage ? <section className="task-export-image"><h2>Representación gráfica</h2>
+      <div className="task-export-image-frame"><img src={task.printImage.url}
+        alt={task.printImage.name || `Representación de ${task.name}`} /></div>
     </section> : parsed.kind !== 'empty' ? <p>Pizarra guardada en un formato no compatible con esta versión.</p> : null}
     {teams.map((team) => <PrintText key={team.key} label={team.teamName + ' · ' + team.colorName}>{team.players.join(', ')}</PrintText>)}
     </div>

@@ -55,8 +55,8 @@ try {
   }));
   assert.equal((markup.match(/class="planned-print-pages"/g) || []).length, 2,
     'cada sesión mantiene su propia composición de hojas');
-  assert.equal((markup.match(/class="planned-print-sheet /g) || []).length, 5,
-    'se conservan la ficha de Biblioteca y las continuaciones de la segunda sesión');
+  assert.equal((markup.match(/class="planned-print-sheet /g) || []).length, 4,
+    'cada sesión conserva todo el contenido sin crear una tercera hoja');
   for (const label of ['Título activation', 'Título main-0', 'Título main-4',
     'Material one', 'Material two', 'Nº sesión']) assert.ok(markup.includes(label), label);
   assert.ok(markup.includes('>7</b>') && markup.includes('>8</b>'),

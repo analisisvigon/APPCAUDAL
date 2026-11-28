@@ -8,6 +8,7 @@ import { needsPlannedTextFragmentation, needsPlannedWideSheet, planPlannedSessio
 import { getPlannedSessionBoardTeams } from '../../utils/plannedSessionBoardTeams';
 import { readTrainingTaskEditorPayload } from '../../utils/trainingTaskEditorPayload';
 import { printPlannedSessionDocument } from '../../utils/plannedSessionPrintOrientation';
+import { assertPlannedSessionPrintFits, plannedSessionPrintIssues } from '../../utils/plannedSessionPrintLayout';
 import TrainingTaskBoardPreview from './TrainingTaskBoardPreview';
 import TrainingTaskBoardEditor from './TrainingTaskBoardEditor';
 import PlannedSessionPrint from './PlannedSessionPrint';
@@ -362,11 +363,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   useEffect(() => {
     let frame = 0;
     const measure = () => {
-      const paperHeight = 210 * 96 / 25.4;
-      const sheetNodes = printRef.current?.querySelectorAll('.planned-print-sheet') || [];
-      const tooTall = [...sheetNodes].some((sheet) =>
-        sheet.getBoundingClientRect().height > paperHeight + 2 || sheet.scrollHeight > paperHeight + 2);
-      setPrintOverflow(sheetNodes.length > 2 || tooTall);
+      setPrintOverflow(plannedSessionPrintIssues(printRef.current).length > 0);
     };
     frame = window.requestAnimationFrame(measure);
     const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => {
@@ -378,8 +375,12 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
   }, [editor, selected, roster, guests, availability, selectedMembershipIds, distribution, printSheets.length]);
   const printDocument = () => {
     if (boardsError) return;
-    if (printOverflow && !window.confirm('El contenido supera dos hojas A4. La impresión conservará todo el contenido y puede necesitar más páginas. ¿Continuar?')) return;
-    printPlannedSessionDocument();
+    try {
+      assertPlannedSessionPrintFits(printRef.current);
+      printPlannedSessionDocument();
+    } catch (cause) {
+      window.alert(cause.message || 'La sesión no cabe completa en dos hojas A4 horizontales.');
+    }
   };
   const ordered = PLANNED_PHASES.flatMap((phase) => editor.slots.filter((slot) => slot.phase === phase.key));
   const numberOf = (id) => ordered.findIndex((slot) => slot.id === id) + 1;
@@ -423,7 +424,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
     <div className="planned-document-toolbar" aria-label="Vista de hojas">
       <span>Plantilla de sesión · A4 horizontal · {printSheets.length} hojas para imprimir</span>
       <SessionPitchAppearance value={pitchAppearance} onChange={onPitchAppearanceChange} />
-      <button type="button" onClick={printDocument} disabled={Boolean(boardsError)}
+      <button type="button" onClick={printDocument} disabled={Boolean(boardsError || printOverflow)}
         title={boardsError ? 'Recarga las pizarras antes de imprimir' : undefined}>
         Imprimir sesión · A4 horizontal</button>
       <label>Vista <select value={zoom} onChange={(event) => setZoom(event.target.value === 'fit' ? 'fit' : Number(event.target.value))}>
@@ -432,7 +433,7 @@ export default function PlannedSessionDocument({ editor, selected, canEdit, busy
       </select></label>
       <span>Desliza horizontalmente en móvil para recorrer la hoja.</span>
     </div>
-    {printOverflow ? <p className="planned-document-print-warning" role="alert">Esta sesión supera el espacio de dos hojas A4 horizontales. Al imprimir se conservará todo el contenido y podrían generarse hojas adicionales.</p> : null}
+    {printOverflow ? <p className="planned-document-print-warning" role="alert">No se puede imprimir todavía: esta sesión no cabe completa y legible en un máximo de dos hojas A4 horizontales. Revisa el contenido antes de generar el archivo.</p> : null}
     <div className="planned-document-viewport" ref={viewportRef}>
       <div className="planned-document-pages" style={{ zoom: `${zoom === 'fit' ? fitZoom : zoom}%` }}>
         {sheets.map((sheet, index) => <article className="planned-session-sheet" key={`${sheet.kind}-${index}`}

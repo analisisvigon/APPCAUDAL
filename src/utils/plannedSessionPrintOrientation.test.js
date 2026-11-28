@@ -3,9 +3,12 @@ import { readFileSync } from 'node:fs';
 import { PLANNED_SESSION_PRINT_PAGE_RULE, printPlannedSessionDocument } from './plannedSessionPrintOrientation.js';
 
 const printCss = readFileSync('src/components/training/plannedSessionPrint.css', 'utf8');
-assert.match(printCss, /@page nexo-session\s*\{\s*size:\s*A4 landscape;\s*margin:\s*0;/);
+assert.match(printCss, /@page nexo-session\s*\{\s*size:\s*297mm 210mm;\s*margin:\s*0;/);
 assert.match(printCss, /\.planned-print-sheet\s*\{\s*page:\s*nexo-session;/);
 assert.equal(/@page\s*\{/.test(printCss), false, 'la regla general no queda activa para otros documentos');
+assert.match(PLANNED_SESSION_PRINT_PAGE_RULE, /@page\s*\{\s*size:\s*297mm 210mm/,
+  'se inyecta una regla anónima compatible con Microsoft Print to PDF');
+assert.match(PLANNED_SESSION_PRINT_PAGE_RULE, /@page nexo-session\s*\{\s*size:\s*297mm 210mm/);
 
 const makeEnvironment = (print = () => {}) => {
   const listeners = new Map();

@@ -68,24 +68,16 @@ export const planPlannedSessionSheets = (slots = []) => {
 export const planPlannedSessionPrintSheets = (slots = []) => {
   const ordered = ['activation', 'main', 'cooldown'].flatMap((phase) =>
     slots.filter((slot) => slot.phase === phase));
-  const firstActivation = ordered[0]?.phase === 'activation' ? ordered[0] : null;
-  const activationOnCover = firstActivation && firstActivation.items.length <= 1 &&
-    !needsPlannedTextFragmentation(firstActivation) &&
-    !needsPlannedPrintContinuation(firstActivation) ? firstActivation : null;
-  const remaining = activationOnCover ? ordered.slice(1) : ordered;
-  const pages = [{ kind: 'cover', activation: activationOnCover }];
-  let group = [];
-  let units = 0;
-  for (const slot of remaining) {
-    const weight = needsPlannedPrintContinuation(slot) ? 4 : slot.items.length > 1 ? 2 : 1;
-    if (group.length && units + weight > 4) {
-      pages.push({ kind: 'exercises', slots: group });
-      group = [];
-      units = 0;
-    }
-    group.push(slot);
-    units += weight;
-  }
-  if (group.length) pages.push({ kind: 'exercises', slots: group });
+  const coverCandidate = ordered.length === 1
+    ? ordered[0] : ordered[0]?.phase === 'activation' ? ordered[0] : null;
+  const exerciseOnCover = coverCandidate && coverCandidate.items.length <= 1 &&
+    !needsPlannedTextFragmentation(coverCandidate) &&
+    !needsPlannedPrintContinuation(coverCandidate) ? coverCandidate : null;
+  const remaining = exerciseOnCover ? ordered.slice(1) : ordered;
+  const pages = [{ kind: 'cover', activation: exerciseOnCover }];
+  // El contrato de impresión admite como máximo dos A4. Conservamos todo
+  // el contenido en la segunda composición y dejamos que la medición real
+  // del DOM rechace el documento antes de imprimir si no resulta legible.
+  if (remaining.length) pages.push({ kind: 'exercises', slots: remaining });
   return pages;
 };

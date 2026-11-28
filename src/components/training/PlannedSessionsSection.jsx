@@ -76,6 +76,7 @@ import PlannedSessionDocument from './PlannedSessionDocument';
 import { checkPlannedSessionDeletion, canDeletePlannedSessionContext, deletePlannedSession } from '../../data/plannedSessionDeletionStore';
 import PlannedSessionBatchPrint from './PlannedSessionBatchPrint';
 import { printPlannedSessionDocument } from '../../utils/plannedSessionPrintOrientation';
+import { assertPlannedSessionPrintFits } from '../../utils/plannedSessionPrintLayout';
 import SessionPitchAppearance from './SessionPitchAppearance';
 import { loadPlannedSessionPrintData, plannedSessionExportFileName } from '../../utils/plannedSessionBatchExport';
 import {
@@ -598,6 +599,7 @@ export default function PlannedSessionsSection({ client, membership, userId, onD
       if (cancelled) return;
       const sheets = batchPrintRef.current?.querySelectorAll('.planned-print-sheet');
       if (!sheets?.length) throw new Error('No se pudieron preparar las hojas para imprimir.');
+      assertPlannedSessionPrintFits(batchPrintRef.current);
       document.title = batchPrint.fileName.replace(/\.pdf$/i, '');
       setExportProgress(`Abriendo la impresión de ${sheets.length} hojas. Elige «Guardar como PDF».`);
       window.addEventListener('afterprint', finish, { once: true });

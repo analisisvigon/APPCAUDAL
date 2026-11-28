@@ -1,6 +1,6 @@
-@page task-library { size: 297mm 210mm; margin: 0; page-orientation: upright; }
+@page task-library { size: 297mm 210mm; margin: 0; }
 .task-export-portal { position: absolute; left: -20000px; top: 0; width: 297mm; visibility: hidden; pointer-events: none; }
-.task-export-sheet { page: task-library; box-sizing: border-box; width: 297mm; height: 210mm; padding: 8mm; display: flex; flex-direction: column; gap: 3mm; background: white; color: #172334; font: 10pt/1.25 Arial, sans-serif; overflow-wrap: anywhere; break-inside: avoid; }
+.task-export-sheet { page: task-library; box-sizing: border-box; width: 297mm; height: 210mm; min-height: 0; padding: 8mm; display: flex; flex-direction: column; gap: 3mm; overflow: hidden; background: white; color: #172334; font: 10pt/1.25 Arial, sans-serif; overflow-wrap: anywhere; break-inside: avoid; }
 .task-export-sheet + .task-export-sheet { break-before: page; }
 .task-export-header { flex: none; border-top: 3pt solid #153b52; border-bottom: 1pt solid #b9ccd5; padding: 2mm 0; }
 .task-export-header > p { margin: .5mm 0; font-size: 8.5pt; color: #425a6b; }
@@ -26,17 +26,9 @@
 .task-export-sheet a { color: #075985; text-decoration: underline; overflow-wrap: anywhere; }
 .task-export-board { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; break-inside: avoid; }
 .task-export-board svg { display: block; width: 100%; height: 100%; flex: 1 1 0; min-height: 0; }
-.task-export-sheet[data-layout="continued"] .task-export-main { grid-template-columns: minmax(0,1fr); }
-.task-export-continuation { height: 210mm; }
-.task-export-continuation .task-export-header { padding: 1.5mm 0; }
-.task-export-continuation .task-export-header h1 { font-size: 16pt; }
-.task-export-continuation-content { min-height: 0; flex: 1 1 0; columns: 2; column-gap: 7mm; column-rule: .5pt solid #dce4e8; }
-.task-export-continuation-content .task-export-content { border-left: 0; padding-left: 0; }
-.task-export-continuation-content .task-export-field,
-.task-export-continuation-content .task-export-resource,
-.task-export-continuation-content .task-export-feedback { break-inside: avoid; }
-.task-export-continuation-content .task-export-footer { display: block; border-top: 0; padding-top: 0; }
-.task-export-continuation[data-overflow="true"] { height: auto; min-height: 210mm; break-inside: auto; }
+.task-export-image { display: flex; flex: 1 1 0; min-height: 0; flex-direction: column; }
+.task-export-image-frame { display: flex; flex: 1 1 0; min-height: 0; align-items: center; justify-content: center; overflow: hidden; border: .5pt solid #d8e1e6; background: #f7f9fa; }
+.task-export-image img { display: block; width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; object-position: center; }
 .task-export-footer { flex: none; display: flex; gap: 5mm; border-top: 1pt solid #b9ccd5; padding-top: 2mm; }
 .task-export-footer:empty { display: none; }
 .task-export-footer > section { flex: 1 1 0; min-width: 0; }
